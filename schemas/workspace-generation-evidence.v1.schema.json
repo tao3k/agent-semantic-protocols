@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-generation-evidence.v1.schema.json",
+  "title": "ASP Workspace Generation Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "digestAlgorithm",
+    "generationDigest",
+    "sourceRootDigest",
+    "rootDepth",
+    "leafCount",
+    "materializationState",
+    "moduleGraphDigest",
+    "selectorGenerationDigest",
+    "tombstoneDigest",
+    "packageGraphDigest",
+    "envelopeDigest",
+    "ownerCoverage",
+    "providerDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.workspace-generation.v1"
+    },
+    "digestAlgorithm": {
+      "const": "blake3-256"
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceRootDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "rootDepth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "leafCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "materializationState": {
+      "enum": [
+        "resident-memory",
+        "artifact-complete"
+      ]
+    },
+    "moduleGraphDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "selectorGenerationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "tombstoneDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "packageGraphDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "envelopeDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "ownerCoverage": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "providerDigest": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

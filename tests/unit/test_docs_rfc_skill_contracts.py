@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Documentation contract checks for RFC ownership and generated skills."""
 
 from pathlib import Path
@@ -23,7 +27,7 @@ _ACTIVE_DOC_PATHS = [
     _README_PATH,
     _ASP_SKILL_CONTRACT_PATH,
     _REPO_ROOT / "docs" / "10-19-rfcs" / "10.15-agent-hook-interception-protocol.org",
-    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux.org",
+    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-interactive-graph-first-progressive-searchloop.org",
     _REPO_ROOT
     / "docs"
     / "10-19-rfcs"
@@ -39,10 +43,11 @@ def test_readme_points_to_rfc_and_docs_owners() -> None:
         "## Documentation Map",
         "docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org",
         "tree-sitter-compatible syntax ABI",
-        "docs/10-19-rfcs/10.05-cli-first-harness-ux.org",
-        "asp <language> guide",
+        "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org",
+        "typed ASP Server client surface",
         "docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org",
-        "Detected Binaries",
+        "compiled Hook policy/provider projections",
+        "provider activation and Runtime execution",
         "schemas/README.md",
         "share tree-sitter provenance without merging packet envelopes",
         "31.18-tree-sitter-query-rfc-roadmap.org",
@@ -68,6 +73,15 @@ def test_tree_sitter_roadmap_records_closure_plan() -> None:
     ]
     missing_terms = [term for term in required_terms if term not in text]
     assert missing_terms == []
+
+
+_ASP_SKILL_CONTRACT_PATH = _REPO_ROOT / "org/contracts/asp.skill.v1.org"
+_ACTIVE_DOC_PATHS = [
+    _ASP_SKILL_CONTRACT_PATH
+    if path.name == "asp.skill.v1.org"
+    else path
+    for path in _ACTIVE_DOC_PATHS
+]
 
 
 def test_root_skill_template_contract() -> None:
@@ -103,7 +117,7 @@ def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
     required_ci_terms = [
         "Root schema gates",
         "tests/unit/semantic_tree_sitter_query_rfc",
-        "tests/unit/test_cli_first_harness_ux_rfc.py",
+        "tests/unit/test_asp_server_first_architecture_rfc.py",
         "tests/unit/test_agent_hook_interception_protocol_rfc.py",
         "tests/unit/test_docs_rfc_skill_contracts.py",
     ]

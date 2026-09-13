@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-polyglot-search-qualification.v1.schema.json",
+  "title": "Semantic Polyglot Search Qualification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "qualificationId", "generator",
+    "referenceTracePayloadDigest", "sourceSnapshotDigest", "environmentDigest",
+    "legacyArtifact", "candidateArtifact", "thresholds", "scenarios",
+    "aggregate", "decision", "qualificationDigest", "payloadDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.polyglot-search-qualification.v1"},
+    "schemaVersion": {"const": "1"},
+    "qualificationId": {"type": "string", "minLength": 1},
+    "generator": {"$ref": "#/$defs/generator"},
+    "referenceTracePayloadDigest": {"$ref": "#/$defs/digest"},
+    "sourceSnapshotDigest": {"$ref": "#/$defs/digest"},
+    "environmentDigest": {"$ref": "#/$defs/digest"},
+    "legacyArtifact": {"$ref": "#/$defs/artifact"},
+    "candidateArtifact": {"$ref": "#/$defs/artifact"},
+    "thresholds": {"$ref": "#/$defs/thresholds"},
+    "scenarios": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/scenario"}
+    },
+    "aggregate": {"$ref": "#/$defs/aggregate"},
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reasons"],
+      "properties": {
+        "state": {"enum": ["accepted", "rejected"]},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "qualificationDigest": {"$ref": "#/$defs/digest"},
+    "payloadDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "generator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {"id": {"const": "asp-proofs-polyglot-search-qualification"}, "version": {"const": "1"}}
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["providerDigest", "runtimeDigest"],
+      "properties": {"providerDigest": {"$ref": "#/$defs/digest"}, "runtimeDigest": {"$ref": "#/$defs/digest"}}
+    },
+    "thresholds": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "maxTokenRatioBps", "maxGraphHopRatioBps", "maxTurnRatioBps",
+        "maxLatencyRatioBps", "maxPrecisionRegressionBps",
+        "maxRecallRegressionBps", "maxClosureRegressionBps",
+        "maxAnswerQualityRegressionBps"
+      ],
+      "properties": {
+        "maxTokenRatioBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxGraphHopRatioBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxTurnRatioBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxLatencyRatioBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxPrecisionRegressionBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxRecallRegressionBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxClosureRegressionBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "maxAnswerQualityRegressionBps": {"type": "integer", "minimum": 0, "maximum": 10000}
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "totalTokens", "graphHops", "interactionTurns", "latencyMicros",
+        "cacheHit", "precisionBps", "recallBps", "closureBps",
+        "answerQualityBps", "stateDigestBefore", "stateDigestAfter", "resultDigest"
+      ],
+      "properties": {
+        "totalTokens": {"type": "integer", "minimum": 0},
+        "graphHops": {"type": "integer", "minimum": 0},
+        "interactionTurns": {"type": "integer", "minimum": 1},
+        "latencyMicros": {"type": "integer", "minimum": 0},
+        "cacheHit": {"type": "boolean"},
+        "precisionBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "recallBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "closureBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "answerQualityBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "stateDigestBefore": {"$ref": "#/$defs/digest"},
+        "stateDigestAfter": {"$ref": "#/$defs/digest"},
+        "resultDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "scenarioId", "scenarioClass", "cacheMode", "taskDigest", "queryDigest",
+        "expectedEvidenceDigest", "legacy", "candidate", "admitted", "reasons"
+      ],
+      "properties": {
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioClass": {"enum": ["gql-path", "gql-filter-alias", "logic-join", "parallel-witness-bag", "polyglot-edge", "stale-continuation"]},
+        "cacheMode": {"enum": ["cold", "warm"]},
+        "taskDigest": {"$ref": "#/$defs/digest"},
+        "queryDigest": {"$ref": "#/$defs/digest"},
+        "expectedEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "legacy": {"$ref": "#/$defs/observation"},
+        "candidate": {"$ref": "#/$defs/observation"},
+        "admitted": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "aggregate": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "scenarioCount", "admittedScenarioCount", "coldScenarioCount", "warmScenarioCount",
+        "legacyTotalTokens", "candidateTotalTokens", "legacyTotalGraphHops",
+        "candidateTotalGraphHops", "legacyTotalTurns", "candidateTotalTurns",
+        "legacyP95LatencyMicros", "candidateP95LatencyMicros"
+      ],
+      "properties": {
+        "scenarioCount": {"type": "integer", "minimum": 0},
+        "admittedScenarioCount": {"type": "integer", "minimum": 0},
+        "coldScenarioCount": {"type": "integer", "minimum": 0},
+        "warmScenarioCount": {"type": "integer", "minimum": 0},
+        "legacyTotalTokens": {"type": "integer", "minimum": 0},
+        "candidateTotalTokens": {"type": "integer", "minimum": 0},
+        "legacyTotalGraphHops": {"type": "integer", "minimum": 0},
+        "candidateTotalGraphHops": {"type": "integer", "minimum": 0},
+        "legacyTotalTurns": {"type": "integer", "minimum": 0},
+        "candidateTotalTurns": {"type": "integer", "minimum": 0},
+        "legacyP95LatencyMicros": {"type": "integer", "minimum": 0},
+        "candidateP95LatencyMicros": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

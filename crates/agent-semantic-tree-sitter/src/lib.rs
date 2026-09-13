@@ -1,34 +1,59 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Shared tree-sitter-compatible query catalog utilities for ASP.
+//! Shared S-expression syntax-query catalog utilities for ASP.
 //!
-//! This crate owns ASP-side catalog loading, fingerprinting, and runtime query
-//! compilation. Language providers keep native parser authority and maintain
-//! `.scm` catalogs; they do not need to link tree-sitter runtime or grammar
-//! crates for this ABI.
+//! This crate only loads `.scm` catalogs and compiles their Tree-sitter-compatible
+//! S-expression surface through the official Query grammar. Language providers
+//! retain parser authority and execute that compatibility projection against
+//! richer native syntax facts.
 
 pub mod builtin_catalog;
 pub mod catalog;
+pub mod enhanced_query;
 pub mod query_syntax;
-pub mod runtime;
-
-pub use builtin_catalog::{BuiltinCatalogId, BuiltinCatalogLanguageId, builtin_catalog_source};
-pub use catalog::{
-    LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor, extract_capture_names,
-    fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
-    normalize_capture_names,
+mod resident_syntax_plan;
+pub use agent_semantic_scheme_syntax::{
+    SCHEME_GRAMMAR_ID, SCHEME_GRAMMAR_REPOSITORY, SCHEME_GRAMMAR_VERSION, SchemeDatum,
+    SchemeSourceAdmission, SchemeSourceAdmissionError, admit_scheme_source, parse_scheme_datums,
 };
-pub use query_syntax::{
-    SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryAbiPredicate,
-    SyntaxQueryPredicateOp, SyntaxQueryPredicateValue, compile_query_abi_source,
+pub use builtin_catalog::BuiltinCatalogId;
+pub use builtin_catalog::BuiltinCatalogLanguageId;
+pub use builtin_catalog::builtin_catalog_source;
+pub use catalog::LoadedGrammarProfile;
+pub use catalog::LoadedSyntaxCatalog;
+pub use catalog::SyntaxCatalogDescriptor;
+pub use catalog::extract_capture_names;
+pub use catalog::fingerprint_catalog;
+pub use catalog::fingerprint_grammar_profile;
+pub use catalog::load_grammar_profile;
+pub use catalog::load_syntax_catalog;
+pub use catalog::normalize_capture_names;
+pub use enhanced_query::{
+    EnhancedQueryDocument, EnhancedQueryExpression, EnhancedQueryOperand, EnhancedQueryParseError,
+    EnhancedQueryPattern, EnhancedQueryPredicate, EnhancedQueryPredicateKind,
+    EnhancedQueryQuantifier, parse_enhanced_query_source,
 };
-pub use runtime::{
-    CompiledSyntaxQuery, SyntaxQueryCompileError, compile_catalog_query, compile_query_source,
-};
+pub use query_syntax::SyntaxQueryAbiError;
+pub use query_syntax::SyntaxQueryAbiPattern;
+pub use query_syntax::SyntaxQueryAbiPlan;
+pub use query_syntax::SyntaxQueryAbiPredicate;
+pub use query_syntax::SyntaxQueryPredicateOp;
+pub use query_syntax::SyntaxQueryPredicateValue;
+pub use query_syntax::compile_query_abi_source;
+pub use resident_syntax_plan::compile_resident_syntax_plan;
 
 #[cfg(test)]
 #[path = "../tests/unit/catalog.rs"]
 mod catalog_tests;
 #[cfg(test)]
+#[path = "../tests/unit/enhanced_query.rs"]
+mod enhanced_query_tests;
+#[cfg(test)]
 #[path = "../tests/unit/query_syntax.rs"]
 mod query_syntax_tests;
+#[cfg(test)]
+#[path = "../tests/unit/scheme_source.rs"]
+mod scheme_source_tests;

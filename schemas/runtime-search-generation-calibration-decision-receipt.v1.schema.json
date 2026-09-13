@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-search-generation-calibration-decision-receipt.v1.schema.json",
+  "title": "Runtime Search generation calibration decision receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "contentGenerationDigest",
+    "roundCount",
+    "observationCount",
+    "sampleOwnerLimit",
+    "calibrationMicros",
+    "calibrationMicrosLimit",
+    "strategy",
+    "workers",
+    "memoryBudgetBytes",
+    "sampleIdentity"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-search-generation-calibration-decision-receipt"
+    },
+    "schemaVersion": {"const": "1"},
+    "state": {"enum": ["ready", "budget-exhausted"]},
+    "contentGenerationDigest": {"$ref": "#/$defs/digest"},
+    "roundCount": {"type": "integer", "minimum": 1, "maximum": 4},
+    "observationCount": {"type": "integer", "minimum": 1, "maximum": 48},
+    "sampleOwnerLimit": {"const": 256},
+    "calibrationMicros": {"type": "integer", "minimum": 1},
+    "calibrationMicrosLimit": {"const": 1000000},
+    "strategy": {"enum": ["single-segment-bulk", "parallel-segments"]},
+    "workers": {"type": "integer", "minimum": 1, "maximum": 8},
+    "memoryBudgetBytes": {"type": "integer", "minimum": 1},
+    "sampleIdentity": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

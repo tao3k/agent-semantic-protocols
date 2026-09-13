@@ -1,0 +1,369 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.27 — Agent Session Host Acceptance Durability
+#+startup: overview
+
+* Status
+
+Draft for formal verification. This RFC specifies the missing durability and
+authority-continuity boundary after RFC 10.05.24. It does not authorize Rust
+implementation in this session.
+
+* Problem
+
+RFC 10.05.24 binds Host acceptance to a stable dispatch key and payload digest.
+Its original Lean model nevertheless proved idempotency only while one
+=HostSlot= remained resident in memory. That statement is too weak for an
+exactly-once effect claim.
+
+If a Host accepts an intent, performs effect =e_0=, crashes, and reconstructs
+the key slot as =Empty=, the same stable dispatch key may be accepted again and
+perform =e_1=. Stable request identity is necessary but cannot compensate for
+loss of the acceptance registry that gives the identity historical meaning.
+
+Authority rotation creates the same defect in a less obvious form. A new Host
+authority or epoch cannot interpret a missing local slot as proof that the key
+was never accepted. Absence in a new registry is not authoritative negative
+evidence about the old registry.
+
+The resulting safety chain is therefore:
+
+#+begin_example
+revision CAS reservation
+  -> durable intent/outbox
+  -> stable dispatch key
+  -> durable Host idempotent acceptance
+  -> authority-continuous acceptance receipt
+  -> verified intent-indexed receipt
+  -> delivered CAS
+#+end_example
+
+* Design decision
+
+The Host acceptance registry is protocol state, not a process cache. A process
+restart MUST restore the exact authoritative slot before dispatch resumes. An
+authority or epoch rotation MUST migrate accepted slots under an explicit
+continuity certificate. Missing or unverifiable continuity MUST quarantine the
+intent; it MUST NOT synthesize =Empty=.
+
+The durable receipt binds:
+
+- the dispatch intent, including stable key and payload digest;
+- Host authority identity;
+- Host authority epoch;
+- acceptance-registry generation;
+- Host acceptance sequence;
+- stable effect identity.
+
+The delivered CAS accepts only a receipt proven to be contained in the current
+authoritative registry projection. Merely constructing a receipt-shaped value
+does not authorize finalization.
+
+* Stateful architecture
+
+Every node below carries explicit state. Every edge names a transition, guard,
+capability, or prohibited effect.
+
+#+name: host-acceptance-durability-architecture
+#+begin_src mermaid
+flowchart LR
+  A["Session transaction\nstate: Attempting(revision, intent)"]
+  H["Host authority\nstate: Active(authority, epoch)"]
+  R["Acceptance registry\nstate: Durable(generation, slot)"]
+  E["External effect\nstate: Absent | Applied(effectId)"]
+  C["Continuity verifier\nstate: Verified | Missing | Invalid"]
+  Q["Recovery gate\nstate: Resume | Quarantine"]
+  D["Session transaction\nstate: Delivered(revision + 1, receipt)"]
+
+  A -->|"transition; state: Attempting -> Active; guard: durable intent visible"| H
+  H -->|"capability; state: Active -> Durable; CAS by key and payload"| R
+  R -->|"transition; state: Empty -> Applied; effect: apply once"| E
+  R -->|"transition; state: Accepted -> Active; effect: replay none"| H
+  R -->|"transition; state: Durable -> Pending; guard: same authority and generation"| C
+  C -->|"guard; state: Verified -> Resume; registry continuity valid"| Q
+  C -->|"prohibitedEffect; state: MissingOrInvalid -> Quarantine; never create Empty"| Q
+  Q -->|"transition; state: Resume -> Delivered; guard: receipt contained"| D
+  Q -->|"transition; state: Quarantine -> Durable; effect: dispatch remains closed"| R
+#+end_src
+
+* Crash, restart, and rotation state machine
+
+#+name: host-acceptance-durability-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Ready\nstate: DurableRegistry(authority, epoch, generation, Empty)" as Ready
+  state "Accepted\nstate: DurableRegistry(authority, epoch, generation, Accepted(receipt))" as Accepted
+  state "Restoring\nstate: RestartPending(snapshotIdentity)" as Restoring
+  state "Rotating\nstate: RotationPending(newAuthority, epoch + 1)" as Rotating
+  state "Quarantined\nstate: Quarantine(intent, missingContinuity)" as Quarantined
+  state "Delivered\nstate: Delivered(revision + 1, verifiedReceipt)" as Delivered
+
+  Ready --> Accepted: "transition; state: Empty -> Accepted; effect: apply effectId once"
+  Accepted --> Accepted: "transition; state: Accepted -> Accepted; effect: return identical receipt"
+  Accepted --> Restoring: "transition; state: Accepted -> RestartPending; event: Host crash"
+  Restoring --> Accepted: "guard; state: RestartPending -> Accepted; exact durable slot restored"
+  Accepted --> Rotating: "transition; state: Accepted -> RotationPending; authority rotation requested"
+  Rotating --> Accepted: "guard; state: RotationPending -> Accepted; continuity migrates slot"
+  Rotating --> Quarantined: "guard; state: RotationPending -> Quarantine; continuity missing or invalid"
+  Accepted --> Delivered: "transition; state: Accepted -> Delivered; receipt containment verified"
+#+end_src
+
+There is deliberately no =Restoring -> Ready= or unverified
+=Rotating -> Ready= edge. Those edges would erase accepted history and reopen
+the external effect.
+
+* Mathematical model
+
+Let an intent be =i=, a Host authority context be =a = (id, epoch)=, a registry
+generation be =g=, and a stable effect identity be =e=. The authoritative slot
+is either =Empty= or =Accepted(r)=.
+
+#+name: durable-host-replay-law
+#+begin_src typst
+#let Empty = math.upright("Empty")
+#let Accepted(x) = $upright("Accepted")(#x)$
+#let receipt = $r(i, a, g, e)$
+
+$
+  A(Empty, e, Accepted(receipt))
+  quad and quad
+  A(Accepted(receipt), e, Accepted(receipt)).
+$
+
+The second transition returns the same receipt and performs no new external
+effect. The registry slot, not the caller retry count, carries idempotency.
+#+end_src
+
+#+name: volatile-reset-counterexample
+#+begin_src typst
+#let Empty = math.upright("Empty")
+#let Accepted(x) = $upright("Accepted")(#x)$
+#let Accept(x) = $upright("accept")(#x)$
+#let Reset = math.upright("volatile reset")
+#let s0 = $Empty$
+#let r0 = $r(i, a, g, e_0)$
+#let r1 = $r(i, a, g, e_1)$
+
+$
+  s0 ->^(Accept(e_0)) Accepted(r0)
+     ->^(Reset) Empty
+     ->^(Accept(e_1)) Accepted(r1),
+  quad e_0 != e_1.
+$
+
+Therefore a stable dispatch key plus a volatile Host registry does not imply
+at-most-once effects.
+#+end_src
+
+#+name: authority-continuity-law
+#+begin_src typst
+#let Accepted(x) = $upright("Accepted")(#x)$
+#let Continuity(x, y) = $upright("Continuity")(#x, #y)$
+#let Effect(x) = $upright("effect")(#x)$
+#let Sequence(x) = $upright("sequence")(#x)$
+#let HasContinuity(x, y) = $upright("HasContinuity")(#x, #y)$
+#let Disposition(x) = $upright("disposition")(#x)$
+#let Quarantine = math.upright("Quarantine")
+#let migrate = $M$
+#let old = $(a, g, Accepted(r))$
+#let next = $(a', g + 1, Accepted(M(r)))$
+
+$
+  Continuity(old, next)
+  => Effect(M(r)) = Effect(r)
+  and Sequence(M(r)) = Sequence(r).
+$
+
+$
+  not HasContinuity(old, next)
+  => Disposition(i) = Quarantine.
+$
+
+Missing continuity is not evidence for an empty slot.
+#+end_src
+
+#+name: verified-delivered-cas-law
+#+begin_src typst
+#let Contains(x, r) = $upright("Contains")(#x, #r)$
+#let Registry(a, epoch, g) = $upright("Registry")(#a, #epoch, #g)$
+#let Verified(r, i, a, epoch, g) = $upright("Verified")(#r, #i, #a, #epoch, #g)$
+#let DeliveredCas(x, y) = $upright("CAS")(#x, #y)$
+#let EmptySlot(x) = $upright("EmptySlot")(#x)$
+#let Attempting(rev, i) = $upright("Attempting")(#rev, #i)$
+#let HostReceipt(r) = $upright("hostReceipt")(#r)$
+#let Delivered(rev, r) = $upright("Delivered")(#rev, #r)$
+#let rev = $v$
+#let epoch = $epsilon$
+#let tx = $Attempting(rev, i)$
+#let tx2 = $Delivered(rev + 1, HostReceipt(r))$
+
+$
+  Contains(Registry(a, epoch, g), r)
+  and Verified(r, i, a, epoch, g)
+  => DeliveredCas(tx, tx2).
+$
+
+$
+  EmptySlot(Registry(a, epoch, g))
+  => not exists r, Verified(r, i, a, epoch, g).
+$
+#+end_src
+
+* Formal state model
+
+The Lean model uses indexed inductive relations so invalid combinations are
+unconstructible:
+
+- =DurableHostReceipt intent authority epoch generation= binds receipt
+  evidence to the exact intent and Host registry context.
+- =DurableHostAccepts= admits only first acceptance from =Empty= or exact replay
+  from =Accepted(receipt)=.
+- =CrashRestartStep= preserves the entire durable registry.
+- =VolatileResetStep= exists only as an adversarial model and constructs the
+  duplicate-effect counterexample.
+- =AuthorityRotationStep= increments epoch and registry generation while
+  preserving sequence and effect identity of accepted entries.
+- =RotationAdmission= resumes only with a continuity certificate; missing
+  continuity has only the quarantine constructor.
+- =RegistryContainsReceipt= is constructible only for an accepted slot.
+- =VerifiedDurableDeliveredCasStep= requires that containment witness before
+  advancing the Session transaction.
+
+* Lean-discovered defects
+
+** D1: stable identity was mistaken for durable memory
+
+The earlier theorem =host_retry_is_idempotent= is local to one =HostSlot=.
+Lean could prove it without mentioning crash, persistence, authority identity,
+or registry generation. That missing dependency exposed the overclaim.
+
+** D2: a Host receipt was intent-indexed but not authority-indexed
+
+The receipt bound key and payload digest but did not state which Host authority,
+epoch, or registry generation asserted acceptance. A receipt could therefore
+survive type checking while its authority history was unverifiable.
+
+** D3: delivered CAS accepted a typed receipt without registry containment
+
+The previous delivered transition required a =HostReceipt= value, but not a
+proof that the active durable registry contained it. The strengthened relation
+requires the containment witness.
+
+** D4: authority rotation had no negative-evidence rule
+
+Without an explicit rule, an implementation may treat a new empty registry as
+proof of non-acceptance. The model replaces that unsafe default with
+quarantine. Only a continuity certificate permits resume.
+
+* Required protocol invariants
+
+1. Accepted slots survive process crash and restart without changing authority,
+   epoch, generation, receipt, sequence, or effect identity.
+2. A restart MUST NOT turn =Accepted= into =Empty=.
+3. A rotation increments the authority epoch and registry generation.
+4. Migration of an accepted slot preserves acceptance sequence and effect
+   identity.
+5. Missing or invalid continuity produces =Quarantine=, never =Resume=.
+6. A first acceptance is legal only from authoritative =Empty=.
+7. A replay from =Accepted(r)= returns =r= and creates no new effect.
+8. The delivered CAS requires a receipt-containment proof for the active
+   authority, epoch, and registry generation.
+9. An empty registry cannot produce a verified delivered transition.
+10. Timeout, process absence, and a fresh local database are not negative
+    evidence of prior non-acceptance.
+
+* Recovery sequence
+
+#+name: host-acceptance-durability-recovery-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant S as "Session Transaction [state: Attempting]"
+  participant H as "Host Runtime [state: Restarted]"
+  participant R as "Registry Store [state: Durable Snapshot]"
+  participant V as "Continuity Verifier [state: Pending]"
+  participant G as "Recovery Gate [state: Closed]"
+
+  H->>R: "transition; state: Restarted -> LookupPending; request authoritative slot"
+  R-->>V: "transition; state: DurableSnapshot -> Pending; project slot and authority context"
+  V->>V: "transition; state: Pending -> VerifiedOrRejected; verify continuity chain"
+  alt continuity verified
+    V-->>G: "guard; state: Verified -> Open; receipt containment valid"
+    G-->>H: "capability; state: Closed -> Resume; idempotent replay only"
+    H-->>S: "transition; state: Resume -> Attempting; return same receipt"
+    S->>S: "transition; state: Attempting -> Delivered(revision + 1); delivered CAS"
+  else continuity missing or invalid
+    V-->>G: "guard; state: MissingOrInvalid -> Closed; continuity rejected"
+    G-->>H: "prohibitedEffect; state: Closed -> Quarantine; never accept as Empty"
+  end
+#+end_src
+
+This recovery route is background protocol work. It MUST NOT require an LLM
+control round merely to reconstruct an already known stable dispatch key or to
+verify registry continuity. Only a quarantined ambiguity may be surfaced to an
+agent for policy judgment.
+
+* Traceability
+
+| RFC claim | Lean declaration |
+|-
+| Volatile reset permits two distinct effects | =volatile_reset_allows_duplicate_effect_trace= |
+| Durable restart preserves the whole registry | =crash_restart_preserves_registry= |
+| Accepted cannot restart as empty | =accepted_registry_cannot_restart_empty= |
+| Retry preserves effect identity | =durable_retry_preserves_effect= |
+| Rotation preserves effect identity | =accepted_rotation_preserves_effect= |
+| Rotation preserves Host sequence | =accepted_rotation_preserves_host_sequence= |
+| Accepted rotation cannot become empty | =accepted_rotation_cannot_become_empty= |
+| Missing continuity quarantines | =missing_continuity_quarantines= |
+| Missing continuity cannot resume | =missing_continuity_cannot_resume= |
+| Empty registry cannot verify a receipt | =empty_registry_cannot_verify_receipt= |
+| Verified accepted receipt can finalize | =verified_receipt_can_finalize= |
+| Empty registry cannot finalize | =empty_registry_cannot_finalize= |
+
+* Verification artifacts
+
+- =packages/proofs/ASPProof/AgentSessionHostAcceptanceDurability.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionHostAcceptanceDurability.lean=
+- =packages/proofs/audit/AgentSessionHostAcceptanceDurability.lean=
+- =packages/proofs/receipts/agent-session-host-acceptance-durability-v1.json=
+
+The proof audit MUST report all declarations axiom-free. Org source blocks are
+the documentation authority: Typst is evaluated from stdin and Mermaid is
+rendered by the TypeScript documentation runtime.
+
+Rollback-safe, fork-safe canonical snapshot authority is refined by
+[[file:../10.05.28-agent-session-host-registry-ledger/00-overview.org][RFC 10.05.28 — Agent Session Host Registry Authority Ledger]].
+
+* Implementation calibration boundary
+
+** Observed Agent Session resident counterexample
+
+During this RFC audit, parser-owned recovery entered
+=asp.session.repair.v1= for the registered =asp-explore= resident. The runtime
+server workspace generation was admitted, while the Agent Session resident
+binding was not profile-valid:
+
+- expected profile: =gpt-5.6-luna= with =low= reasoning;
+- observed resident binding: =gpt-5.4-mini=;
+- required repair: retire the drifted child, release its canonical path, and
+  create one typed replacement from the registered profile;
+- available Host lifecycle surface: interrupt without retire/path release;
+- disposition: =host-typed-resident-replacement-unavailable= and local
+  resident routing blocked.
+
+This is not evidence about Host effect dispatch implementation. It is evidence
+that ASP Server residency and ASP Agent Session residency are distinct
+authorities. Server generation admission cannot substitute for resident-child
+binding continuity, just as a fresh Host process cannot substitute for durable
+acceptance-registry continuity. The correct failure mode blocks only the
+resident-routed operation; it does not authorize raw-source fallback or deny
+unrelated tools.
+
+** Rust conformance
+
+This RFC specifies the contract that a later Rust audit must test. Until the
+runtime provides executable evidence for durable registry restoration,
+authority-continuity verification, and containment-gated delivered CAS, Rust
+conformance remains =Unverified=. A source-level resemblance is not a runtime
+receipt.

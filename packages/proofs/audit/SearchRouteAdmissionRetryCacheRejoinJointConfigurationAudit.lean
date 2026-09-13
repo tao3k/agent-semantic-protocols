@@ -1,0 +1,14 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinJointConfiguration
+
+open Lean Elab Command
+
+elab "#writeSearchRouteAdmissionRetryCacheRejoinJointConfigurationAudit" : command =>
+  ASPProof.Audit.writeReceipt
+    "receipts/searchroute-admission-retry-cache-rejoin-joint-configuration-audit-v1.json"
+    ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.auditJson
+
+#writeSearchRouteAdmissionRetryCacheRejoinJointConfigurationAudit

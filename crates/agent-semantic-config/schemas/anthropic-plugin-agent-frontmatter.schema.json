@@ -1,0 +1,19 @@
+{
+  "$id": "urn:agent-semantic-protocols:schema:anthropic-plugin-agent-frontmatter",
+  "x-asp-schema-version": 1,
+  "title": "Anthropic Claude Code plugin agent frontmatter",
+  "allOf": [
+    {
+      "$ref": "anthropic-agent-frontmatter.schema.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["permissionMode"] },
+          { "required": ["hooks"] },
+          { "required": ["mcpServers"] }
+        ]
+      }
+    }
+  ]
+}

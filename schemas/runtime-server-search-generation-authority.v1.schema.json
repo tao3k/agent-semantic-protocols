@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-search-generation-authority.v1.schema.json",
+  "title": "Runtime Server Search Generation Authority v1",
+  "description": "Compact resident authority binding content identity, independently published lexical acceleration, provider execution, and workspace evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectId",
+    "workspaceId",
+    "activeEpoch",
+    "generationDigest",
+    "ownerMerkleRootDigest",
+    "searchProjectionManifestDigest",
+    "searchProjectionAnalyzerDigest",
+    "providerSchemaDigest",
+    "runtimeProviderExecutionBinding",
+    "contentSearchGeneration",
+    "sourceSnapshot",
+    "projectResolutions",
+    "workspaceGeneration"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-search-generation-authority"
+    },
+    "schemaVersion": { "const": "1" },
+    "projectId": { "type": "string", "pattern": "^repo-.+$" },
+    "workspaceId": { "type": "string", "pattern": "^workspace-.+$" },
+    "activeEpoch": { "type": "integer", "minimum": 1 },
+    "generationDigest": { "$ref": "#/$defs/wireDigest" },
+    "ownerMerkleRootDigest": { "$ref": "#/$defs/wireDigest" },
+    "searchProjectionManifestDigest": { "$ref": "#/$defs/wireDigest" },
+    "searchProjectionAnalyzerDigest": { "$ref": "#/$defs/wireDigest" },
+    "providerSchemaDigest": { "$ref": "#/$defs/wireDigest" },
+    "runtimeProviderExecutionBinding": {
+      "$ref": "runtime-provider-execution-binding.v1.schema.json"
+    },
+    "contentSearchGeneration": {
+      "$ref": "content-search-generation-receipt.v1.schema.json"
+    },
+    "sourceSnapshot": {
+      "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    },
+    "projectResolutions": {
+      "$ref": "https://agent-semantic-protocols.local/schemas/runtime-server-definitions.v1.schema.json#/$defs/projectResolutions"
+    },
+    "workspaceGeneration": {
+      "$ref": "workspace-generation-root-evidence.v1.schema.json"
+    }
+  },
+  "$defs": {
+    "wireDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

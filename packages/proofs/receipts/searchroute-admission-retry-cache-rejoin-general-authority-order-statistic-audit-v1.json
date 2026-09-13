@@ -1,0 +1,68 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (reportCount faultBudget : Nat),\n  2 * faultBudget + 1 ≤ reportCount →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.ZeroIndexedRankWindow reportCount\n      faultBudget faultBudget",
+   "theoremFamily": "quorum-fault-rank-window",
+   "rfcClauseIds": ["GAOS-QUORUM", "GAOS-RANK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.quorum_places_fault_rank_interior",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (reportCount faultBudget rank : Nat)\n  (actualFaultWeight liveUpperBound selected :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight)\n  (belowActualCount aboveLiveCount : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.ZeroIndexedRankWindow reportCount\n      faultBudget rank →\n    belowActualCount ≤ faultBudget →\n      aboveLiveCount ≤ faultBudget →\n        (selected < actualFaultWeight → rank + 1 ≤ belowActualCount) →\n          (liveUpperBound < selected → reportCount ≤ rank + aboveLiveCount) →\n            actualFaultWeight ≤ selected ∧ selected ≤ liveUpperBound",
+   "theoremFamily": "rank-certificate-safety-liveness",
+   "rfcClauseIds": ["GAOS-LIVENESS", "GAOS-RANK", "GAOS-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.rank_certified_order_statistic_is_safe_and_live",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (reportCount faultBudget rank : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.ZeroIndexedRankWindow reportCount\n      faultBudget rank →\n    2 * faultBudget + 1 ≤ reportCount",
+   "theoremFamily": "collected-report-quorum-necessity",
+   "rfcClauseIds": ["GAOS-COLLECTION", "GAOS-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.rank_window_implies_collected_quorum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ configuredAuthorityCount collectedReportCount faultBudget rank,\n  2 * faultBudget + 1 ≤ configuredAuthorityCount ∧\n    collectedReportCount < configuredAuthorityCount ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.ZeroIndexedRankWindow\n          collectedReportCount faultBudget rank",
+   "theoremFamily": "configured-versus-collected-counterexample",
+   "rfcClauseIds": ["GAOS-COLLECTION", "GAOS-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.configured_quorum_does_not_cover_partial_collection",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ reportCount faultBudget actualFaultWeight liveUpperBound selected,\n  2 * faultBudget + 1 ≤ reportCount ∧ actualFaultWeight ≤ liveUpperBound ∧ selected < actualFaultWeight",
+   "theoremFamily": "rankless-lower-bound-counterexample",
+   "rfcClauseIds": ["GAOS-COUNTEREXAMPLE", "GAOS-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.rankless_selector_can_violate_actual_fault_lower_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ reportCount faultBudget actualFaultWeight liveUpperBound selected,\n  2 * faultBudget + 1 ≤ reportCount ∧ actualFaultWeight ≤ liveUpperBound ∧ liveUpperBound < selected",
+   "theoremFamily": "rankless-upper-bound-counterexample",
+   "rfcClauseIds": ["GAOS-COUNTEREXAMPLE", "GAOS-LIVENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.rankless_selector_can_violate_live_upper_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

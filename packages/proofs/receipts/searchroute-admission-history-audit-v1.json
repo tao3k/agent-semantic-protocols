@@ -1,0 +1,58 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteAdmissionHistory.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionHistory",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type} [inst : DecidableEq Identity] {before after : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {runIdentity : Identity} {record : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionHistory.AtomicRecordCommit before after runIdentity record →\n    SearchRouteAdmissionHistory.CommittedRecord after runIdentity record",
+   "theoremFamily": "durable-admission-record",
+   "rfcClauseIds": ["ASP-RFC-10.05-AHR-RECORD"],
+   "name":
+   "SearchRouteAdmissionHistory.atomic_record_commit_persists_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Identity : Type} [inst : DecidableEq Identity]\n  {before middle : SearchRouteAdmissionHistory.CommitmentLedger Identity} {runIdentity : Identity}\n  {firstRecord secondRecord : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionHistory.AtomicRecordCommit before middle runIdentity firstRecord →\n    ¬SearchRouteAdmissionHistory.CanRecordCommit middle runIdentity secondRecord",
+   "theoremFamily": "single-winner-linearization",
+   "rfcClauseIds": ["ASP-RFC-10.05-AHR-LINEARIZATION"],
+   "name":
+   "SearchRouteAdmissionHistory.first_linearized_commit_rejects_second_same_run",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Identity : Type} [inst : DecidableEq Identity] {before after : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {runIdentity : Identity} {record : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionHistory.AtomicRecordCommit before after runIdentity record →\n    SearchRouteAdmissionHistory.CommittedRecord after runIdentity record ∧\n      ¬SearchRouteAdmissionHistory.CanRecordCommit after runIdentity record",
+   "theoremFamily": "lost-ack-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-AHR-ACK-RECOVERY"],
+   "name":
+   "SearchRouteAdmissionHistory.lost_acknowledgement_is_recoverable_without_recommit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Identity : Type} [inst : DecidableEq Identity] {before after : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {runIdentity : Identity} {committed requested : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionHistory.AtomicRecordCommit before after runIdentity committed →\n    committed ≠ requested → SearchRouteAdmissionHistory.ConflictingRetry after runIdentity requested",
+   "theoremFamily": "conflicting-retry",
+   "rfcClauseIds": ["ASP-RFC-10.05-AHR-CONFLICT"],
+   "name":
+   "SearchRouteAdmissionHistory.conflicting_retry_returns_existing_record",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchRouteAdmissionHistory.MarkerEquivalent SearchRouteAdmissionHistory.recordLedgerA\n    SearchRouteAdmissionHistory.recordLedgerB ∧\n  SearchRouteAdmissionHistory.recordLedgerA.committedRecord SearchRouteAdmissionLedger.LedgerIdentity.run ≠\n    SearchRouteAdmissionHistory.recordLedgerB.committedRecord SearchRouteAdmissionLedger.LedgerIdentity.run",
+   "theoremFamily": "boolean-marker-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AHR-NONIMPLICATION", "ASP-RFC-10.05-AHR-RECORD"],
+   "name":
+   "SearchRouteAdmissionHistory.boolean_commit_marker_loses_acknowledgement_payload",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 5,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 5}

@@ -1,50 +1,125 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [workspace]
+
 members = [
     "build-support/asp-rust-project-harness-policy",
     "crates/agent-semantic-artifacts",
     "crates/agent-semantic-config",
+    "crates/agent-semantic-content-identity",
+    "crates/agent-semantic-context-product",
     "crates/agent-semantic-runtime",
     "crates/agent-semantic-client",
+    "crates/agent-semantic-client-protocol",
     "crates/agent-semantic-client-core",
     "crates/agent-semantic-client-db",
-    "crates/agent-semantic-client-local-cli",
+    "crates/agent-semantic-client-server",
+    "crates/agent-semantic-runtime-server",
     "crates/agent-semantic-hook",
+    "crates/agent-semantic-hook-testkit",
+    "crates/agent-semantic-http-json",
     "crates/agent-semantic-loop",
+    "crates/agent-semantic-mrr",
+    "crates/agent-semantic-provider-protocol",
     "crates/agent-semantic-provider-transport",
     "crates/agent-semantic-search",
-    "crates/agent-semantic-protocol",
-    "crates/agent-semantic-tree-sitter", "crates/agent-semantic-tree-sitter-runtime",
+    "crates/agent-semantic-search-playbook",
+    "crates/agent-semantic-search-projection",
+    "crates/agent-semantic-topology",
+    "crates/agent-semantic-schema-manager",
+    "crates/agent-semantic-scheme-syntax",
+    "crates/agent-semantic-shell-parser",
+    "crates/agent-semantic-tree-sitter",
+    "crates/agent-semantic-workspace-scheduler",
 ]
-exclude = ["languages/orgize", "languages/rust-lang-project-harness"]
+exclude = ["languages/orgize", "languages/asp-rust"]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+rust-version = "1.95"
+license = "Apache-2.0 AND LGPL-2.1-or-later"
+edition = "2024"
+
+[workspace.lints]
+
 [workspace.dependencies]
+ascent = "0.8.0"
+arc-swap = "1.9.2"
+memmap2 = "0.9.10"
+agent-semantic-provider-protocol = { path = "crates/agent-semantic-provider-protocol" }
+agent-semantic-provider-transport = { path = "crates/agent-semantic-provider-transport" }
+agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" }
+agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
+agent-semantic-hook = { path = "crates/agent-semantic-hook" }
+jsonschema = { version = "0.48.1", default-features = false }
+referencing = "0.48.1"
+aho-corasick = "1.1.5"
+base64 = "0.23.1"
+agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
-tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
+agent-semantic-http-json = { path = "crates/agent-semantic-http-json" }
+agent-semantic-mrr = { path = "crates/agent-semantic-mrr" }
+agent-semantic-workspace-scheduler = { path = "crates/agent-semantic-workspace-scheduler" }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tower = { version = "0.5", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+futures-util = "0.3"
+parking_lot = "0.12.5"
+rustc-hash = "2.1"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = [
+    "trace",
+    "rt-tokio",
+    "experimental_trace_batch_span_processor_with_async_runtime",
+] }
 
 blake3 = "1"
-bstr = "1"
 bytes = "1"
 criterion = "0.8.2"
-futures-util = "0.3"
+figment = "0.10.19"
 fs2 = "0.4"
-globset = "0.4"
+fs4 = { version = "1", features = ["tokio"] }
+gix = { version = "0.85.0", default-features = false, features = ["sha1"] }
+gix-config = { version = "0.58.0", features = ["sha1", "sha256"] }
+globset = "0.4.20"
+gql-catalog = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "305e967b06d98efe362b56dc26f43463e34657be", version = "0.1.0" }
+gql-compiler = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "305e967b06d98efe362b56dc26f43463e34657be", version = "0.1.0" }
+gql-ir = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "305e967b06d98efe362b56dc26f43463e34657be", version = "0.1.0" }
+meta-relational-reasoning = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "305e967b06d98efe362b56dc26f43463e34657be", version = "0.1.0" }
 ignore = { version = "0.4.26", features = ["simd-accel"] }
+insta = "1"
 orgize = { path = "languages/orgize", features = ["md"] }
+proc-macro2 = "1"
 libc = "0.2"
-memchr = "2"
-rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
-asp-rust-project-harness-policy = { path = "build-support/asp-rust-project-harness-policy" }
+windows-sys = "0.61.2"
+asp-rust = { path = "languages/asp-rust", default-features = false }
+asp-rust-build-support = { path = "languages/asp-rust/build-support" }
+asp-rust-project-harness-policy = { path = "build-support/asp-rust-project-harness-policy", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+prost = "0.14"
+protoc-bin-vendored = "3"
+tonic-prost-build = "0.14.6"
+postcard = { version = "1.1.3", features = ["alloc"] }
+regex-automata = "0.4.18"
+regex-syntax = "0.8.11"
+regex = "1.12.4"
 tempfile = "3"
 sha2 = "0.10"
-tokio-util = { version = "0.7", features = ["codec"] }
+streaming-iterator = "0.1"
+syn = "2"
+tantivy = "0.26.1"
 toml = "0.9"
-tracing = "0.1"
 tree-sitter = "0.26"
-tree-sitter-bash = "0.25"
-turso = { version = "0.7.0-pre.18", default-features = false, features = ["fts"] }
+tree-sitter-tsquery = "0.8.0"
+tree-sitter-scheme = "=0.24.7"
+turso = { version = "0.7.2", default-features = false, features = ["fts", "sync"] }
 which = "8"
 
 [profile.release]
@@ -56,6 +131,7 @@ strip = true
 
 [profile.dev]
 incremental = true
+opt-level = "s"
 debug = 1
 split-debuginfo = "unpacked"
 
@@ -66,11 +142,16 @@ debug = false
 opt-level = 1
 debug = false
 
+# Workspace-owned Develop hot-path optimization. Member crates consume one
+# root policy; no crate-local Cargo.toml owns optimization levels.
 [profile.dev.package.tree-sitter]
 opt-level = 2
 
 [profile.dev.package.sha2]
 opt-level = 2
+
+[profile.dev.package.blake3]
+opt-level = 3
 
 [profile.dev.package.memchr]
 opt-level = 2
@@ -83,6 +164,40 @@ opt-level = 2
 
 [profile.dev.package.aho-corasick]
 opt-level = 2
+
+[profile.dev.package.agent-semantic-config]
+opt-level = 2
+
+[profile.dev.package.agent-semantic-shell-parser]
+opt-level = 2
+
+[profile.dev.package.agent-semantic-hook]
+opt-level = 2
+
+[profile.dev.package.agent-semantic-client]
+opt-level = 1
+codegen-units = 16
+
+# Test binaries are executable evidence, not debugger artifacts. Omitting DWARF
+# keeps focused harness links proportional to code under test instead of the
+# transitive workspace dependency graph. Package-specific optimization below
+# remains available for representative latency/SLO tests.
+[profile.test]
+debug = 0
+incremental = true
+
+# Hook microsecond SLO tests must execute representative optimized policy code;
+# an unoptimized test artifact turns allocator/decoder debug overhead into a
+# false production regression. The black-box limits remain unchanged.
+[profile.test.package.agent-semantic-hook]
+opt-level = 2
+
+[profile.test.package.agent-semantic-client]
+opt-level = 2
+# The Client now owns the broad CLI composition surface. It must not inherit
+# the removed Protocol crate's single-unit test linkage, which serialized every
+# Hook composition fixture behind a 160MB binary link.
+codegen-units = 16
 
 [profile.dev-build]
 inherits = "dev"

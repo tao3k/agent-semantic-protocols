@@ -1,0 +1,144 @@
+{"sourcePath": "ASPProof/MultiRoleLifecycleAuthority.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.MultiRoleLifecycleAuthority",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.MultiRoleLifecycleAuthority.CanClaimRole ASPProof.MultiRoleLifecycleAuthority.baseAuthority\n  ASPProof.MultiRoleLifecycleAuthority.baseClaim",
+   "theoremFamily": "generic-role-claim",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-GENERIC", "ASP-RFC-10.05-MRLA-KEY"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.generic_role_claim_is_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.MultiRoleLifecycleAuthority.CanClaimRole ASPProof.MultiRoleLifecycleAuthority.perRoleQuotaAuthority\n    ASPProof.MultiRoleLifecycleAuthority.baseClaim",
+   "theoremFamily": "per-role-quota-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-ROLE-QUOTA"],
+   "name": "ASPProof.MultiRoleLifecycleAuthority.per_role_quota_blocks_claim",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.MultiRoleLifecycleAuthority.CanClaimRole ASPProof.MultiRoleLifecycleAuthority.totalQuotaAuthority\n    ASPProof.MultiRoleLifecycleAuthority.baseClaim",
+   "theoremFamily": "total-quota-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TOTAL-QUOTA"],
+   "name": "ASPProof.MultiRoleLifecycleAuthority.total_quota_blocks_claim",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.LegacyCanClaimWithoutQuota\n  ASPProof.MultiRoleLifecycleAuthority.perRoleQuotaAuthority ASPProof.MultiRoleLifecycleAuthority.baseClaim",
+   "theoremFamily": "missing-quota-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-ROLE-QUOTA"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.legacy_claim_gate_ignores_exhausted_quota",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.MultiRoleLifecycleAuthority.InstanceKey), left.roleId ≠ right.roleId → left ≠ right",
+   "theoremFamily": "role-key-isolation",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-KEY"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.distinct_roles_produce_distinct_instance_keys",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {authority : ASPProof.MultiRoleLifecycleAuthority.RoleAuthority}\n  {claim : ASPProof.MultiRoleLifecycleAuthority.RoleClaim}\n  (admissible : ASPProof.MultiRoleLifecycleAuthority.CanClaimRole authority claim),\n  have committed := ASPProof.MultiRoleLifecycleAuthority.commitRoleClaim authority claim admissible;\n  committed.authorityRevision = authority.authorityRevision + 1 ∧\n    committed.roleGeneration = authority.roleGeneration + 1 ∧\n      committed.activeRoleCount = authority.activeRoleCount + 1 ∧\n        committed.activeTotalCount = authority.activeTotalCount + 1",
+   "theoremFamily": "claim-count-linearization",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-CLAIM"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.claim_commit_increments_generation_revision_and_counts",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.CanDispatch ASPProof.MultiRoleLifecycleAuthority.baseAuthority\n  ASPProof.MultiRoleLifecycleAuthority.activeInstance ASPProof.MultiRoleLifecycleAuthority.activeLease",
+   "theoremFamily": "pre-termination-dispatch",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TERMINATION"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.dispatch_is_admissible_before_termination",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.CanBeginTermination ASPProof.MultiRoleLifecycleAuthority.baseAuthority\n  ASPProof.MultiRoleLifecycleAuthority.activeInstance ASPProof.MultiRoleLifecycleAuthority.terminationClaim",
+   "theoremFamily": "termination-race-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TERMINATION"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.termination_is_admissible_at_same_snapshot",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.MultiRoleLifecycleAuthority.CanDispatch ASPProof.MultiRoleLifecycleAuthority.terminatingState.authority\n    ASPProof.MultiRoleLifecycleAuthority.terminatingState.resident ASPProof.MultiRoleLifecycleAuthority.activeLease",
+   "theoremFamily": "termination-invalidates-dispatch",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TERMINATION"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.termination_linearization_invalidates_old_dispatch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.terminatedState.authority.activeRoleCount = 0 ∧\n  ASPProof.MultiRoleLifecycleAuthority.terminatedState.authority.activeTotalCount = 1",
+   "theoremFamily": "termination-quota-release",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-RELEASE"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.completed_termination_releases_quota",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.MultiRoleLifecycleAuthority.CanReplaceTarget ASPProof.MultiRoleLifecycleAuthority.terminatedState.resident 200",
+   "theoremFamily": "target-reuse-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TARGET"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.replacement_cannot_reuse_old_message_target",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.CanReplaceTarget ASPProof.MultiRoleLifecycleAuthority.terminatedState.resident 300",
+   "theoremFamily": "fresh-target-replacement",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-TARGET"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.replacement_with_fresh_target_is_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.SafeRecoveryPath ASPProof.MultiRoleLifecycleAuthority.RecoveryPhase.spawned\n  ASPProof.MultiRoleLifecycleAuthority.spawnedFrontierCost",
+   "theoremFamily": "spawned-frontier-safety",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-FRONTIER"],
+   "name": "ASPProof.MultiRoleLifecycleAuthority.spawned_frontier_path_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {candidate : ASPProof.MultiRoleLifecycleAuthority.RecoveryCost},\n  ASPProof.MultiRoleLifecycleAuthority.SafeRecoveryPath ASPProof.MultiRoleLifecycleAuthority.RecoveryPhase.spawned\n      candidate →\n    ASPProof.MultiRoleLifecycleAuthority.spawnedFrontierCost.graphHops ≤ candidate.graphHops",
+   "theoremFamily": "spawned-frontier-shortest-path",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-COST", "ASP-RFC-10.05-MRLA-FRONTIER"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.spawned_frontier_path_is_graph_shortest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.MultiRoleLifecycleAuthority.spawnedFrontierCost.interactionRounds <\n    ASPProof.MultiRoleLifecycleAuthority.restartLoopCost.interactionRounds ∧\n  ASPProof.MultiRoleLifecycleAuthority.spawnedFrontierCost.exposedTokens <\n    ASPProof.MultiRoleLifecycleAuthority.restartLoopCost.exposedTokens",
+   "theoremFamily": "frontier-cost-reduction",
+   "rfcClauseIds": ["ASP-RFC-10.05-MRLA-COST"],
+   "name":
+   "ASPProof.MultiRoleLifecycleAuthority.spawned_frontier_reduces_rounds_and_tokens",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 15,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 15,
+ "axiomDependentDeclarationCount": 0}

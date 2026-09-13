@@ -1,12 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate runtime profile schema facts used by agent provider repair."""
 
 import json
 import unittest
 from pathlib import Path
 from typing import Any
-
-from jsonschema import Draft202012Validator
-
 
 class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -15,8 +16,9 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
             / "schemas"
             / "semantic-agent-runtime-profiles.v1.schema.json"
         )
-        with open(schema_path, "r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+        from unit.schema_validation import schema_validator_for
+
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, profiles: dict[str, Any]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(profiles)]
@@ -32,14 +34,14 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
             "generatedBy": {"runtime": "asp", "version": "0.1.0"},
             "providers": [
                 {
-                    "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
+                    "manifestId": "agent.semantic-protocols.providers.rust.asp-rust",
                     "manifestDigest": "sha256:" + "a" * 64,
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "binary": "rs-harness",
+                    "providerId": "asp-rust",
+                    "binary": "asp-rust",
                     "providerCommandPrefix": [],
-                    "resolvedBinary": "/nix/store/example/bin/rs-harness",
-                    "argv": ["/nix/store/example/bin/rs-harness"],
+                    "resolvedBinary": "/nix/store/example/bin/asp-rust",
+                    "argv": ["/nix/store/example/bin/asp-rust"],
                     "health": {"status": "available"},
                 }
             ],
@@ -55,7 +57,7 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
         provider["argv"] = []
         provider["health"] = {
             "status": "missing",
-            "reason": "`rs-harness` was not found on PATH",
+            "reason": "`asp-rust` was not found on PATH",
         }
 
         self.assertEqual([], self.validation_errors(profiles))

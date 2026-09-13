@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Runtime audit synthesis tests for executed sandtable results."""
 
 from __future__ import annotations
@@ -162,14 +166,14 @@ def _audit_fixture_repo(root: Path) -> Path:
                                 "'totalTokens':420,"
                                 "'costUsd':0.123"
                                 "},"
-                                "'pipeFlow':{"
+                                "'commandFlow':{"
                                 "'aspCommands':3,"
                                 "'aspCommandOutputBytes':2048"
                                 "}"
                                 "}))"
                             ),
                         ],
-                        "expect": {"pipeFlow": {}},
+                        "expect": {"commandFlow": {}},
                     }
                 ],
             }

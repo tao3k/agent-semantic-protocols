@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Checkpoint-backed plan ranking tests for query-selected Org tasks."""
 
 from __future__ import annotations
@@ -53,7 +57,7 @@ def _checkpoint() -> Checkpoint:
         plan_id="checkpoint-sync-for-codex-session-recall",
         source_locator="flow/plans/checkpoint-sync.org:42-42",
         resume_command=(
-            "asp org query --selector flow/plans/checkpoint-sync.org:42-42 --content"
+            "asp search playbook --documents org --rg -n -e checkpoint-sync -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'"
         ),
         metadata={
             "planPath": "flow/plans/checkpoint-sync.org",

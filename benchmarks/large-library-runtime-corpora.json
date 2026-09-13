@@ -1,0 +1,254 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-large-library-corpora",
+  "schemaVersion": "1",
+  "corpora": [
+    {
+      "resourceId": "gerbil-scheme.gerbil",
+      "scenarioId": "gerbil-scheme.gerbil-intent-matrix",
+      "providerId": "asp-gerbil-scheme",
+      "language": "gerbil-scheme",
+      "repository": "mighty-gerbils/gerbil",
+      "git": {
+        "remote": "https://git.cons.io/mighty-gerbils/gerbil",
+        "revision": "c778d20da862ff7ac6c37d0b3feb30394e912c71"
+      },
+      "directory": "gerbil-scheme-gerbil",
+      "environment": "SANDTABLE_GERBIL_SCHEME_GERBIL_ROOT",
+      "inputs": {"owner": "src/gerbil/main.ss", "query": "main", "dependency": "gx"}
+    },
+    {
+      "resourceId": "julia.dataframes",
+      "scenarioId": "julia.dataframes-intent-matrix",
+      "providerId": "asp-julia",
+      "language": "julia",
+      "repository": "JuliaData/DataFrames.jl",
+      "git": {
+        "remote": "https://github.com/JuliaData/DataFrames.jl.git",
+        "revision": "3b23b4ab612e09bf850bbff87aa392d310dbfffa"
+      },
+      "directory": "julia-dataframes",
+      "environment": "SANDTABLE_JULIA_DATAFRAMES_ROOT",
+      "inputs": {"owner": "src/DataFrames.jl", "query": "DataFrame", "dependency": "Tables"}
+    },
+    {
+      "resourceId": "julia.flux",
+      "scenarioId": "julia.flux-intent-matrix",
+      "providerId": "asp-julia",
+      "language": "julia",
+      "repository": "FluxML/Flux.jl",
+      "git": {
+        "remote": "https://github.com/FluxML/Flux.jl.git",
+        "revision": "4d504e095adbb4ec0c110598cb17376be3b7d60e"
+      },
+      "directory": "julia-flux",
+      "environment": "SANDTABLE_JULIA_FLUX_ROOT",
+      "inputs": {"owner": "src/Flux.jl", "query": "Chain", "dependency": "Zygote"}
+    },
+    {
+      "resourceId": "julia.makie",
+      "scenarioId": "julia.makie-intent-matrix",
+      "providerId": "asp-julia",
+      "language": "julia",
+      "repository": "MakieOrg/Makie.jl",
+      "git": {
+        "remote": "https://github.com/MakieOrg/Makie.jl.git",
+        "revision": "f34d62d4fbe49ed9604e7571f22ae78f31cd7083"
+      },
+      "directory": "julia-makie",
+      "environment": "SANDTABLE_JULIA_MAKIE_ROOT",
+      "inputs": {"owner": "Makie/src/Makie.jl", "query": "Figure", "dependency": "GeometryBasics"}
+    },
+    {
+      "resourceId": "md.mdn-content",
+      "scenarioId": "md.mdn-content-intent-matrix",
+      "providerId": "asp-md",
+      "language": "md",
+      "repository": "mdn/content",
+      "git": {
+        "remote": "https://github.com/mdn/content.git",
+        "revision": "9ac06c29511065e28af60b8fe0ae44e700bfb31d"
+      },
+      "directory": "md-mdn-content",
+      "environment": "SANDTABLE_MD_MDN_CONTENT_ROOT",
+      "admission": {
+        "extensionAuthority": "provider-project-resolution",
+        "minimumMatchingFiles": 1000,
+        "minimumMatchingFileRatio": 0.8
+      },
+      "inputs": {"owner": "files/en-us/web/javascript/index.md", "query": "JavaScript", "dependency": "Web API"}
+    },
+    {
+      "resourceId": "org.worg",
+      "scenarioId": "org.worg-intent-matrix",
+      "providerId": "asp-org",
+      "language": "org",
+      "repository": "bzg/worg",
+      "git": {
+        "remote": "https://git.sr.ht/~bzg/worg",
+        "revision": "41eeb0d21840805324153c1e8de9e7422741e561"
+      },
+      "directory": "org-worg",
+      "environment": "SANDTABLE_ORG_WORG_ROOT",
+      "admission": {
+        "extensionAuthority": "provider-project-resolution",
+        "minimumMatchingFiles": 100,
+        "minimumMatchingFileRatio": 0.8
+      },
+      "inputs": {"owner": "index.org", "query": "agenda", "dependency": "Org"}
+    },
+    {
+      "resourceId": "python.fastapi",
+      "scenarioId": "python.fastapi-intent-matrix",
+      "providerId": "asp-python",
+      "language": "python",
+      "repository": "fastapi/fastapi",
+      "git": {
+        "remote": "https://github.com/fastapi/fastapi.git",
+        "revision": "7cb06f360dd44efac059848df1a9beee7643b018"
+      },
+      "directory": "python-fastapi",
+      "environment": "SANDTABLE_PY_FASTAPI_ROOT",
+      "inputs": {"owner": "fastapi/routing.py", "query": "APIRouter", "dependency": "pydantic"}
+    },
+    {
+      "resourceId": "python.pandas",
+      "scenarioId": "python.pandas-intent-matrix",
+      "providerId": "asp-python",
+      "language": "python",
+      "repository": "pandas-dev/pandas",
+      "git": {
+        "remote": "https://github.com/pandas-dev/pandas.git",
+        "revision": "b009277235e6909cb276899a0218327cd3f407bb"
+      },
+      "directory": "python-pandas",
+      "environment": "SANDTABLE_PY_PANDAS_ROOT",
+      "inputs": {"owner": "pandas/core/groupby/groupby.py", "query": "DataFrameGroupBy", "dependency": "numpy"}
+    },
+    {
+      "resourceId": "python.rich",
+      "scenarioId": "python.rich-intent-matrix",
+      "providerId": "asp-python",
+      "language": "python",
+      "repository": "Textualize/rich",
+      "git": {
+        "remote": "https://github.com/Textualize/rich.git",
+        "revision": "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"
+      },
+      "directory": "python-rich",
+      "environment": "SANDTABLE_PY_RICH_ROOT",
+      "inputs": {"owner": "rich/console.py", "query": "Console", "dependency": "markdown-it-py"}
+    },
+    {
+      "resourceId": "rust.tokio",
+      "scenarioId": "rust.tokio-intent-matrix",
+      "providerId": "asp-rust",
+      "language": "rust",
+      "repository": "tokio-rs/tokio",
+      "git": {
+        "remote": "https://github.com/tokio-rs/tokio.git",
+        "revision": "46c830117b82fb806f6a164fcda25050846cf5f9"
+      },
+      "directory": "rust-tokio",
+      "environment": "SANDTABLE_RUST_TOKIO_ROOT",
+      "inputs": {"owner": "tokio/src/lib.rs", "query": "Runtime", "dependency": "bytes"}
+    },
+    {
+      "resourceId": "rust.bytes",
+      "scenarioId": "rust.bytes-intent-matrix",
+      "providerId": "asp-rust",
+      "language": "rust",
+      "repository": "tokio-rs/bytes",
+      "git": {
+        "remote": "https://github.com/tokio-rs/bytes.git",
+        "revision": "76c0fbb54ed4336caf9d2311658a2f4a5627c21d"
+      },
+      "directory": "rust-bytes",
+      "environment": "SANDTABLE_RUST_BYTES_ROOT",
+      "inputs": {"owner": "src/lib.rs", "query": "Bytes", "dependency": "serde"}
+    },
+    {
+      "resourceId": "rust.ripgrep",
+      "scenarioId": "rust.ignore-intent-matrix",
+      "providerId": "asp-rust",
+      "language": "rust",
+      "repository": "BurntSushi/ripgrep",
+      "git": {
+        "remote": "https://github.com/BurntSushi/ripgrep.git",
+        "revision": "d5b85d44057ff729a89be9c6549958c45d95aa99"
+      },
+      "directory": "rust-ripgrep",
+      "environment": "SANDTABLE_RUST_IGNORE_ROOT",
+      "inputs": {"owner": "crates/core/main.rs", "query": "Args", "dependency": "ignore"}
+    },
+    {
+      "resourceId": "typescript.compiler",
+      "scenarioId": "typescript.typescript-intent-matrix",
+      "providerId": "asp-typescript",
+      "language": "typescript",
+      "repository": "microsoft/TypeScript",
+      "git": {
+        "remote": "https://github.com/microsoft/TypeScript.git",
+        "revision": "637d5746b70257028fb95aad32ddec6b26ab0a14"
+      },
+      "directory": "typescript-typescript",
+      "environment": "SANDTABLE_TS_TYPESCRIPT_ROOT",
+      "inputs": {"owner": "src/compiler/program.ts", "query": "createProgram", "dependency": "typescript"}
+    },
+    {
+      "resourceId": "typescript.effect",
+      "scenarioId": "typescript.effect-claude-concurrency-flow",
+      "providerId": "asp-typescript",
+      "language": "typescript",
+      "repository": "Effect-TS/effect",
+      "git": {
+        "remote": "https://github.com/Effect-TS/effect.git",
+        "revision": "d24511fee929d4cb98ab2a86387de4ea290f11ff"
+      },
+      "directory": "typescript-effect",
+      "environment": "SANDTABLE_TS_EFFECT_ROOT",
+      "inputs": {"owner": "packages/effect/src/Effect.ts", "query": "Effect", "dependency": "effect"}
+    },
+    {
+      "resourceId": "typescript.playwright",
+      "scenarioId": "typescript.playwright-intent-matrix",
+      "providerId": "asp-typescript",
+      "language": "typescript",
+      "repository": "microsoft/playwright",
+      "git": {
+        "remote": "https://github.com/microsoft/playwright.git",
+        "revision": "d448aac01df83188a4a7ce0d23fee1fe9fccd82f"
+      },
+      "directory": "typescript-playwright",
+      "environment": "SANDTABLE_TS_PLAYWRIGHT_ROOT",
+      "inputs": {"owner": "packages/playwright-core/src/server/fetch.ts", "query": "APIRequestContext", "dependency": "playwright"}
+    },
+    {
+      "resourceId": "typescript.vite",
+      "scenarioId": "typescript.vite-intent-matrix",
+      "providerId": "asp-typescript",
+      "language": "typescript",
+      "repository": "vitejs/vite",
+      "git": {
+        "remote": "https://github.com/vitejs/vite.git",
+        "revision": "c961cae2868cc1521457ec60583867f0440e6949"
+      },
+      "directory": "typescript-vite",
+      "environment": "SANDTABLE_TS_VITE_ROOT",
+      "inputs": {"owner": "packages/vite/src/node/server/pluginContainer.ts", "query": "pluginContainer", "dependency": "vite"}
+    },
+    {
+      "resourceId": "typescript.vue",
+      "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
+      "providerId": "asp-typescript",
+      "language": "typescript",
+      "repository": "vuejs/core",
+      "git": {
+        "remote": "https://github.com/vuejs/core.git",
+        "revision": "c0606e91798c8dca4f33d101e1dd836d672592c1"
+      },
+      "directory": "typescript-vue",
+      "environment": "SANDTABLE_TS_VUE_CORE_ROOT",
+      "inputs": {"owner": "packages/runtime-core/src/scheduler.ts", "query": "queueJob", "dependency": "vue"}
+    }
+  ]
+}

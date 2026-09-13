@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the software criterion catalog schema."""
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from schema_validation import schema_validator_for  # noqa: E402
 
 _SCHEMA_PATH = _ROOT / "schemas" / "software-criterion-catalog.v1.schema.json"
 _CATALOG_PATH = _ROOT / "schemas" / "software-criteria.v1.json"
-_REGISTRY_PATH = _ROOT / "schemas" / "semantic-language-registry.providers.v1.json"
+_PROFILES_PATH = _ROOT / "schemas" / "language-schema-profiles.json"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -66,24 +70,27 @@ def test_software_criterion_catalog_records_provider_readiness() -> None:
     }
 
 
-def test_source_language_registry_advertises_software_criterion_catalog_schema() -> None:
-    registry = _load_json(_REGISTRY_PATH)
+def test_source_language_profiles_advertise_software_criterion_catalog_schema() -> None:
+    profiles = _load_json(_PROFILES_PATH)
     source_languages = {"rust", "typescript", "python", "julia"}
     registrations = {
-        language["languageId"]: {schema["schemaId"] for schema in language["schemas"]}
-        for language in registry["languages"]
-        if language["languageId"] in source_languages
+        profile["languageId"]: set(profile["rootSets"])
+        for profile in profiles["profiles"]
+        if profile["languageId"] in source_languages
     }
 
     assert set(registrations) == source_languages
-    for schema_ids in registrations.values():
-        assert "agent.semantic-protocols.software-criterion-catalog" in schema_ids
+    assert "software-criterion-catalog.v1.schema.json" in profiles["rootSets"][
+        "agent-reasoning"
+    ]
+    for root_sets in registrations.values():
+        assert "agent-reasoning" in root_sets
 
 
 def test_software_criterion_catalog_rejects_retired_naming_lane() -> None:
     combined_contract = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (_SCHEMA_PATH, _CATALOG_PATH, _REGISTRY_PATH)
+        for path in (_SCHEMA_PATH, _CATALOG_PATH, _PROFILES_PATH)
     )
 
     forbidden = (

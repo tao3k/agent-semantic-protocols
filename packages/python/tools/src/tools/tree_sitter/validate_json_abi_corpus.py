@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate corpus cases against semantic tree-sitter JSON ABI shape."""
 
 from __future__ import annotations
@@ -32,19 +36,19 @@ CORPUS_CONFIGS = (
     CorpusConfig(
         language="rust",
         corpus_dir=REPO_ROOT
-        / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/query-corpus",
+        / "languages/asp-rust/tree-sitter/tree-sitter-rust/query-corpus",
         extension="rs",
     ),
     CorpusConfig(
         language="typescript",
         corpus_dir=REPO_ROOT
-        / "languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/test/corpus",
+        / "languages/asp-typescript/tree-sitter/tree-sitter-typescript/test/corpus",
         extension="ts",
     ),
     CorpusConfig(
         language="python",
         corpus_dir=REPO_ROOT
-        / "languages/python-lang-project-harness/tree-sitter/tree-sitter-python/query-corpus",
+        / "languages/asp-python/tree-sitter/tree-sitter-python/query-corpus",
         extension="py",
     ),
 )

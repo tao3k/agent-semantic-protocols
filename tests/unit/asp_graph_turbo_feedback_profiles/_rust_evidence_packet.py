@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Rust evidence graph-turbo request fixture."""
 
 from __future__ import annotations
@@ -15,12 +19,12 @@ def rust_evidence_graph_turbo_request() -> dict[str, object]:
         "queryTerms": ["rust evidence quality"],
         "profile": "rust-evidence-quality",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["owner:src/model.rs"],
+        "entryNodeIds": ["owner:src/model.rs"],
         "budget": 8,
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": ".", "package": None, "fields": {}},
         "summary": {
@@ -136,5 +140,5 @@ def rust_evidence_graph_turbo_request() -> dict[str, object]:
                 ],
             }
         ],
-        "fields": {"next": "pipe JSON to asp graph render"},
+        "fields": {"next": "review the typed graph result"},
     }

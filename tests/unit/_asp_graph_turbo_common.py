@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Tests for the ASP graph turbo Python package."""
 
 from __future__ import annotations
@@ -7,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo import (
+from asp_python_graphs import (
     TypedGraph,
     rank_frontier,
     render_compact,
@@ -119,7 +123,21 @@ def sample_request(
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
+        "sourceSnapshot": {
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceKind": "derived-overlay",
+            "leafCount": 6,
+            "providerDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        },
+        "workspaceGeneration": {
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootDepth": 0,
+            "leafCount": 6,
+            "ownerCount": 1,
+        },
         "queryTerms": ["parser"],
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
@@ -134,7 +152,7 @@ def sample_request(
                 "normalized": 3,
             }
         ],
-        "seedIds": ["q:parser", "owner:cli"],
+        "entryNodeIds": ["q:parser", "owner:cli"],
         "budget": budget,
         "kindBudgets": {"owner": 1, "dependency": 1, "test": 1},
         "windowMerge": {"enabled": True, "maxGapLines": 8},

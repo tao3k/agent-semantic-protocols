@@ -1,12 +1,18 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Profile-level graph-turbo calibration tests."""
 
 from __future__ import annotations
 
-from asp_graph_turbo.calibration import (
+from asp_python_graphs.calibration import (
     apply_profile_calibrations,
+    calibration_to_json,
     profile_calibration_from_feedback,
 )
-from asp_graph_turbo.profiles import resolve_profile
+from asp_python_graphs.algorithm import RankOptions, load_packet, rank_packet
+from asp_python_graphs.profiles import resolve_profile
 
 from ._asp_graph_turbo_common import (
     _GRAPH_TURBO_CALIBRATION_SCHEMA,
@@ -17,8 +23,6 @@ from ._asp_graph_turbo_common import (
     rank_frontier,
     result_to_packet,
     schema_validator_for,
-    subprocess,
-    sys,
 )
 
 
@@ -159,49 +163,32 @@ def test_calibration_relation_delta_changes_profile_matrix_channel() -> None:
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(adjusted)) == []
 
 
-def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) -> None:
+def test_calibration_import_only_api_and_algorithm_api_consume_it(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
-    feedback_path = tmp_path / "feedback.json"
     calibration_path = tmp_path / "calibration.json"
-    request_path.write_text(json.dumps(_relation_request()), encoding="utf-8")
-    feedback_path.write_text(
-        json.dumps(
-            _feedback_packet(
-                _receipt_node(
-                    "receipt:collection-neighborhood",
-                    "frontier-success",
-                    "boost",
-                    "frontier-success",
-                    "src/good.py:10:20",
-                    2.0,
-                    target_kinds=["field"],
-                    scope="relation-neighborhood",
-                    propagate_relations=["collection_of"],
-                    propagate_kinds=["collection"],
-                    propagation_factor=0.5,
-                )
-            )
-        ),
-        encoding="utf-8",
+    request = _relation_request()
+    feedback = _feedback_packet(
+        _receipt_node(
+            "receipt:collection-neighborhood",
+            "frontier-success",
+            "boost",
+            "frontier-success",
+            "src/good.py:10:20",
+            2.0,
+            target_kinds=["field"],
+            scope="relation-neighborhood",
+            propagate_relations=["collection_of"],
+            propagate_kinds=["collection"],
+            propagation_factor=0.5,
+        )
     )
-
-    calibration_result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_graph_turbo",
-            "calibrate",
-            str(feedback_path),
-            str(request_path),
-            "--profile",
-            "owner-query",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    calibration = profile_calibration_from_feedback(
+        [feedback],
+        request,
+        profile="owner-query",
     )
-    calibration_path.write_text(calibration_result.stdout, encoding="utf-8")
-    calibration = json.loads(calibration_result.stdout)
+    calibration_path.write_text(calibration_to_json(calibration), encoding="utf-8")
 
     assert calibration["schemaId"] == (
         "agent.semantic-protocols.semantic-graph-turbo-calibration"
@@ -215,23 +202,12 @@ def test_calibration_cli_builds_packet_and_rank_cli_consumes_it(tmp_path: Path) 
         == []
     )
 
-    ranked = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_graph_turbo",
-            "rank",
-            "--calibration",
-            str(calibration_path),
-            "--format",
-            "json",
-            str(request_path),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    payload = result_to_packet(
+        rank_packet(
+            load_packet(str(request_path)),
+            RankOptions(calibration=(str(calibration_path),)),
+        )
     )
-    payload = json.loads(ranked.stdout)
 
     selected = _profile_compatibility(payload, "owner-query")
     assert selected["relationWeightMultiplier"]["collection_of"] == 1.08
@@ -248,7 +224,7 @@ def _calibration_request() -> dict[str, object]:
         "packetKind": "graph-turbo-request",
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["q:feature"],
+        "entryNodeIds": ["q:feature"],
         "budget": 4,
         "cache": {"enabled": False},
         "graph": {

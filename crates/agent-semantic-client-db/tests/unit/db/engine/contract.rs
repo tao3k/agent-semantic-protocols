@@ -1,24 +1,31 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[test]
 fn db_engine_active_backend_contract_tracks_turso_default() {
     let project_root = temp_root("db-engine-active-project");
     let state_home = temp_root("db-engine-active-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
+        .expect("commit State Core identity before DB manifest write");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let report = engine.inspect();
 
     assert_eq!(report.layout_version, STATE_LAYOUT_VERSION);
-    assert_eq!(report.client_dir, state.paths.client_dir);
-    assert_eq!(report.manifest_path, state.paths.client_manifest_json);
-    assert_eq!(report.artifact_path, state.paths.artifacts_dir);
+    assert_eq!(report.client_dir, workspace_paths.root);
+    assert_eq!(report.manifest_path, workspace_paths.db_manifest_path());
+    assert_eq!(report.artifact_path, workspace_paths.artifacts);
     assert_eq!(engine.layout_version(), STATE_LAYOUT_VERSION);
-    assert_eq!(engine.client_dir(), state.paths.client_dir.as_path());
+    assert_eq!(engine.client_dir(), workspace_paths.root.as_path());
     assert_eq!(
         engine.manifest_path(),
-        state.paths.client_manifest_json.as_path()
+        workspace_paths.db_manifest_path().as_path()
     );
-    assert_eq!(engine.artifact_path(), state.paths.artifacts_dir.as_path());
+    assert_eq!(engine.artifact_path(), workspace_paths.artifacts.as_path());
     assert_eq!(engine.repo_id(), state.repo.repo_id.as_str());
     assert_eq!(engine.workspace_id(), state.workspace.workspace_id.as_str());
     assert_eq!(engine.scope_id(), state.scope_id.to_string());
@@ -40,30 +47,34 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(manifest["schemaVersion"], report.schema_version);
     assert_eq!(manifest["durability"], report.durability);
     assert_eq!(manifest["features"]["asyncIo"], true);
-    assert_eq!(manifest["features"]["concurrentWrites"], false);
+    assert_eq!(manifest["features"]["concurrentWrites"], true);
     assert_eq!(manifest["features"]["fts"], true);
     assert_eq!(manifest["features"]["ftsIndexMethod"], true);
-    assert_eq!(manifest["features"]["multiProcessWal"], true);
-    assert_eq!(manifest["features"]["serializedWriterSlot"], true);
-    assert_eq!(manifest["features"]["busyTimeoutMs"], 5000);
-    assert_eq!(manifest["features"]["openLockRetryAttempts"], 80);
-    assert_eq!(manifest["features"]["openLockRetryBaseMs"], 5);
-    assert_eq!(manifest["features"]["openLockRetryMaxMs"], 200);
-    assert_eq!(manifest["features"]["statementLockRetryAttempts"], 80);
-    assert_eq!(manifest["features"]["operationLock"], true);
-    assert_eq!(manifest["features"]["operationLockRetryAttempts"], 1000);
-    assert_eq!(manifest["features"]["operationLockRetryMs"], 5);
-    assert_eq!(manifest["features"]["mvcc"], false);
+    for removed_feature in [
+        "multiProcessWal",
+        "serializedWriterSlot",
+        "busyTimeoutMs",
+        "openLockRetryAttempts",
+        "openLockRetryBaseMs",
+        "openLockRetryMaxMs",
+        "statementLockRetryAttempts",
+        "operationLock",
+        "operationLockRetryAttempts",
+        "operationLockRetryMs",
+    ] {
+        assert!(manifest["features"].get(removed_feature).is_none());
+    }
+    assert_eq!(manifest["features"]["mvcc"], true);
     assert_eq!(manifest["features"]["beginConcurrent"], false);
     assert_eq!(manifest["features"]["sync"], false);
     assert_eq!(manifest["dbPath"], report.db_path.to_str().unwrap());
     assert_eq!(
         manifest["artifactPath"],
-        state.paths.artifacts_dir.to_str().unwrap()
+        workspace_paths.artifacts.to_str().unwrap()
     );
     assert_eq!(
         manifest["generationManifestPath"],
-        state.paths.client_cache_manifest_path.to_str().unwrap()
+        workspace_paths.cache_manifest_path().to_str().unwrap()
     );
     assert!(manifest.get("sqliteControlDbPath").is_none());
     assert!(manifest.get("sqliteReport").is_none());
@@ -77,12 +88,9 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(engine.backend(), ClientDbBackend::Turso);
     assert_eq!(report.backend, TURSO_BACKEND);
     assert_eq!(engine.backend().as_str(), TURSO_BACKEND);
-    assert_eq!(report.db_file_name, "client.turso");
-    assert_eq!(
-        engine.db_path(),
-        state.paths.client_dir.join("client.turso")
-    );
-    assert_eq!(report.db_path, state.paths.client_dir.join("client.turso"));
+    assert_eq!(report.db_file_name, "facts.turso");
+    assert_eq!(engine.db_path(), workspace_paths.facts);
+    assert_eq!(report.db_path, workspace_paths.facts);
     assert!(
         !report.db_path.exists(),
         "DB Engine inspect must not create the active DB file"
@@ -91,38 +99,48 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         engine.inspect_backend().status,
         agent_semantic_client_db::ClientDbStatus::Missing
     );
+    let expected_snapshot_root = "a".repeat(64);
+    let expected_index_artifact_digest = "b".repeat(64);
     let source_index_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         agent_semantic_client_db::ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &state.paths.client_dir,
+            client_dir: &workspace_paths.root,
             indexed_project_root: &project_root,
             language_id: None,
             query_keys: Vec::new(),
             limit: 8,
+            expected_snapshot_root: &expected_snapshot_root,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: None,
         },
     )
     .expect("lookup missing source-index control DB");
     assert_eq!(
         source_index_lookup.db_path,
-        ClientDbEngine::turso_path_for_client_dir(&state.paths.client_dir)
+        ClientDbEngine::turso_path_for_client_dir(&workspace_paths.root)
     );
     assert_eq!(
         source_index_lookup.state,
         agent_semantic_client_db::ClientDbSourceIndexLookupState::MissingDb
     );
-    {
-        let _state_home_env = EnvVarGuard::set(ASP_STATE_HOME_ENV, &state_home);
-        let project_source_index_lookup = ClientDbEngine::lookup_source_index_from_project(
-            agent_semantic_client_db::ClientDbSourceIndexProjectLookupRequest {
-                cache_project_root: &project_root,
-                indexed_project_root: &project_root,
-                language_id: None,
-                query_keys: Vec::new(),
-                limit: 8,
-            },
-        )
-        .expect("lookup missing source-index control DB from project root");
-        assert_eq!(project_source_index_lookup, source_index_lookup);
-    }
+    let status =
+        std::process::Command::new(std::env::current_exe().expect("locate current test binary"))
+            .arg("--exact")
+            .arg("db_engine::db_engine_project_lookup_state_home_helper")
+            .arg("--nocapture")
+            .env("ASP_DB_ENGINE_STATE_HOME_CHILD", "1")
+            .env("ASP_STATE_HOME", &state_home)
+            .env("ASP_DB_ENGINE_PROJECT_ROOT", &project_root)
+            .env("ASP_DB_ENGINE_SNAPSHOT_ROOT", &expected_snapshot_root)
+            .env(
+                "ASP_DB_ENGINE_INDEX_DIGEST",
+                &expected_index_artifact_digest,
+            )
+            .status()
+            .expect("run isolated project lookup state-home contract");
+    assert!(
+        status.success(),
+        "isolated project lookup state-home contract failed"
+    );
     let report_json = serde_json::to_value(&report).expect("serialize db engine report");
     assert_eq!(report_json["layoutVersion"], STATE_LAYOUT_VERSION);
     assert_eq!(report_json["repoId"], state.repo.repo_id.as_str());
@@ -131,13 +149,23 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         state.workspace.workspace_id.as_str()
     );
     assert_eq!(report_json["scopeId"], state.scope_id.to_string());
-    assert_eq!(report_json["features"]["concurrentWrites"], false);
+    assert_eq!(report_json["features"]["concurrentWrites"], true);
     assert_eq!(report_json["features"]["ftsIndexMethod"], true);
-    assert_eq!(report_json["features"]["multiProcessWal"], true);
-    assert_eq!(report_json["features"]["serializedWriterSlot"], true);
-    assert_eq!(report_json["features"]["busyTimeoutMs"], 5000);
-    assert_eq!(report_json["features"]["operationLock"], true);
-    assert_eq!(report_json["features"]["mvcc"], false);
+    for removed_feature in [
+        "multiProcessWal",
+        "serializedWriterSlot",
+        "busyTimeoutMs",
+        "openLockRetryAttempts",
+        "openLockRetryBaseMs",
+        "openLockRetryMaxMs",
+        "statementLockRetryAttempts",
+        "operationLock",
+        "operationLockRetryAttempts",
+        "operationLockRetryMs",
+    ] {
+        assert!(report_json["features"].get(removed_feature).is_none());
+    }
+    assert_eq!(report_json["features"]["mvcc"], true);
     assert_eq!(report_json["features"]["beginConcurrent"], false);
     assert!(report_json.get("controlReport").is_none());
     assert!(report_json.get("sqliteReport").is_none());
@@ -145,44 +173,41 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         "../../../../../../schemas/semantic-db-engine-report.v1.schema.json"
     ))
     .expect("parse db engine report schema");
+    let db_definitions: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../../schemas/semantic-db-definitions.v1.schema.json"
+    ))
+    .expect("parse shared semantic db definitions schema");
+    assert_eq!(
+        db_definitions["$id"],
+        "https://agent-semantic-protocols.local/schemas/semantic-db-definitions.v1.schema.json"
+    );
     assert_eq!(
         schema["$id"],
         "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
     );
     assert_eq!(schema["properties"]["backend"]["const"], TURSO_BACKEND);
-    assert_eq!(schema["properties"]["dbFileName"]["const"], "client.turso");
+    assert_eq!(schema["properties"]["dbFileName"]["const"], "facts.turso");
     assert_eq!(
         schema["properties"]["durability"]["const"],
         "turso-local-file"
     );
     assert_eq!(
         schema["properties"]["features"]["$ref"],
-        "#/$defs/tursoFeatures"
+        "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
-        false
-    );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["multiProcessWal"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
         true
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["busyTimeoutMs"]["const"],
-        5000
-    );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["operationLock"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
         true
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
         false
     );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
-        false
-    );
+    assert!(schema["$defs"].get("tursoFeatures").is_none());
     assert!(schema["properties"].get("sqliteReport").is_none());
     assert!(schema["$defs"].get("activeEngineFeatures").is_none());
     assert!(schema["$defs"].get("engineFeatures").is_none());
@@ -199,11 +224,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     let manifest_required = manifest_schema["required"]
         .as_array()
         .expect("manifest required fields");
-    for required_field in [
-        "backend",
-        "dbPath",
-        "generationManifestPath",
-    ] {
+    for required_field in ["backend", "dbPath", "generationManifestPath"] {
         assert!(
             manifest_required
                 .iter()
@@ -217,7 +238,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         manifest_schema["properties"]["dbFileName"]["const"],
-        "client.turso"
+        "facts.turso"
     );
     assert_eq!(
         manifest_schema["properties"]["durability"]["const"],
@@ -225,42 +246,31 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         manifest_schema["properties"]["features"]["$ref"],
-        "#/$defs/tursoFeatures"
+        "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
-        false
-    );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["multiProcessWal"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
         true
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["busyTimeoutMs"]["const"],
-        5000
-    );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["operationLock"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
         true
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
         false
     );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
-        false
-    );
-    for retired_field in ["sqliteControlDbPath", "sqliteReport"] {
+    assert!(manifest_schema["$defs"].get("tursoFeatures").is_none());
+    for removed_field in ["sqliteControlDbPath", "sqliteReport"] {
         assert!(
             !manifest_required
                 .iter()
-                .any(|field| field.as_str() == Some(retired_field)),
-            "manifest schema must not require retired {retired_field}"
+                .any(|field| field.as_str() == Some(removed_field)),
+            "manifest schema must not require removed {removed_field}"
         );
         assert!(
-            manifest_schema["properties"].get(retired_field).is_none(),
-            "manifest schema must not expose retired {retired_field}"
+            manifest_schema["properties"].get(removed_field).is_none(),
+            "manifest schema must not expose removed {removed_field}"
         );
     }
     assert!(
@@ -294,3 +304,67 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     let _ = std::fs::remove_dir_all(project_root);
     let _ = std::fs::remove_dir_all(state_home);
 }
+
+#[test]
+fn db_engine_resolves_through_the_artifacts_owned_workspace_layout() {
+    let project_root = temp_root("db-engine-canonical-workspace");
+    let state_home = temp_root("db-engine-canonical-state-home");
+    init_git_repository(&project_root);
+    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
+        .expect("resolve canonical state");
+    let workspace = state
+        .ensure_workspace_state_layout()
+        .expect("materialize canonical workspace");
+    let engine = ClientDbEngine::from_resolved_state(&state);
+
+    assert_eq!(engine.client_dir(), workspace.root);
+    assert_eq!(engine.db_path(), workspace.facts);
+    assert_eq!(engine.artifact_path(), workspace.artifacts);
+    assert_eq!(engine.manifest_path(), workspace.db_manifest_path());
+    assert!(workspace.binding_path().is_file());
+    assert!(!state_home.join("projects").exists());
+}
+
+#[test]
+fn db_engine_project_lookup_state_home_helper() {
+    if std::env::var("ASP_DB_ENGINE_STATE_HOME_CHILD")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
+        return;
+    }
+    let project_root = PathBuf::from(
+        std::env::var_os("ASP_DB_ENGINE_PROJECT_ROOT").expect("ASP_DB_ENGINE_PROJECT_ROOT"),
+    );
+    let expected_snapshot_root =
+        std::env::var("ASP_DB_ENGINE_SNAPSHOT_ROOT").expect("ASP_DB_ENGINE_SNAPSHOT_ROOT");
+    let expected_index_artifact_digest =
+        std::env::var("ASP_DB_ENGINE_INDEX_DIGEST").expect("ASP_DB_ENGINE_INDEX_DIGEST");
+    let project_source_index_lookup = ClientDbEngine::lookup_source_index_from_project(
+        agent_semantic_client_db::ClientDbSourceIndexProjectLookupRequest {
+            cache_project_root: &project_root,
+            indexed_project_root: &project_root,
+            language_id: None,
+            query_keys: Vec::new(),
+            limit: 8,
+            expected_snapshot_root: &expected_snapshot_root,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: None,
+        },
+    )
+    .expect("lookup missing source-index control DB from project root");
+    assert_eq!(
+        project_source_index_lookup.state,
+        agent_semantic_client_db::ClientDbSourceIndexLookupState::MissingDb
+    );
+}
+use super::fixture::init_git_repository;
+use super::fixture::temp_root;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_core::state_core::STATE_LAYOUT_VERSION;
+use agent_semantic_client_core::state_core::TURSO_BACKEND;
+use agent_semantic_client_db::ClientDbBackend;
+use agent_semantic_client_db::ClientDbEngine;
+use std::fs;
+use std::path::PathBuf;

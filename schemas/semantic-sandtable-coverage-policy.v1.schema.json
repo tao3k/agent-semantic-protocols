@@ -32,31 +32,8 @@
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "requiredCoverage": {
-          "$ref": "#/$defs/coverageList"
+          "$ref": "semantic-sandtable-definitions.v1.schema.json#/$defs/coverageList"
         }
-      }
-    },
-    "coverageList": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "language-registry",
-          "json-schema",
-          "search-flow",
-          "deps-query",
-          "policy-blackbox",
-          "policy-whitebox",
-          "performance",
-          "security",
-          "codex-hooks",
-          "codex-wrapper",
-          "evidence-assurance",
-          "desktop-hooks",
-          "cli-hooks",
-          "real-trigger",
-          "large-library"
-        ]
       }
     }
   }

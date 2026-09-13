@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json",
+  "title": "Canonical item selector v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "kind",
+    "symbol",
+    "scopes",
+    "structuralSelector"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.canonical-item-selector.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scopes": {
+      "$ref": "exact-definitions.v1.schema.json#/$defs/scopeList"
+    },
+    "structuralSelector": {
+      "type": "string",
+      "description": "Canonical selector whose rightmost # separates the verbatim owner path from the item identity fragment.",
+      "minLength": 1
+    }
+  },
+  "$defs": {}
+}

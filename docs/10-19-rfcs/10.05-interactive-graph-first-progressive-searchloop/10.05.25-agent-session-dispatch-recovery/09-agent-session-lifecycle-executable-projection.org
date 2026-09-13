@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Agent Session Lifecycle Executable Projection
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Executable refinement of [[file:08-agent-session-lifecycle-product-refinement.org][Agent Session Lifecycle Product Refinement]].
+
+* Contract
+
+The agent-facing projection is the product of four independently observed
+dimensions:
+
+#+begin_src text
+WorkspaceServer × SessionLifecycle × HostBinding × DispatchLifecycle
+#+end_src
+
+The shared JSON contract is
+=schemas/agent-session-lifecycle-projection.v1.schema.json=.  It uses
+=schemaVersion: "1"= and does not encode provider, model, profile, or CLI
+adapter policy.
+
+Missing Workspace Server, session, host-binding, or dispatch observation is
+projected as =unobserved=.  It must not be materialized as =unavailable=,
+=declared=, =unbound=, or =idle=. Observed absence of a previously recorded
+Host binding is represented as =pathObserved: false=; missing observation is
+=null= and cannot authorize either spawn or followup.
+
+Workspace Server health controls current executability.  It does not revoke
+or manufacture durable dispatch authority in the other three lifecycle
+dimensions.
+
+* Collaboration V2 dispatch alignment
+
+Dispatch selection is total only over observed path state:
+
+- =pathObserved: true= selects =followup-task=;
+- =pathObserved: false= selects =spawn-agent=;
+- =pathObserved: null= selects =unavailable=.
+
+Followup admission additionally requires a fresh Host binding whose generation
+equals the current session generation. A late receipt from an older binding
+generation cannot authorize followup. No close, path-release, or replacement
+predicate exists in the V2 projection.
+
+* Executable mapping
+
+The Rust projection is parser-neutral and lives behind the ASP Server operation boundary.  It
+accepts already-observed facts and emits the shared projection.  Registry
+strings such as =idle=, =invalid=, and =orphan-risk= are rejected as conflated
+legacy states; adapters must supply separate session, binding, and dispatch
+facts instead of guessing a product state from one flat status.
+
+The first executable increment is deliberately pure.  DB migration, live
+status rendering, and lifecycle mutation are later adapters over this contract,
+not inputs to its design.
+
+Unknown session identity and generation are encoded as JSON =null=, not as an
+empty string or generation zero.  Host-binding and dispatch generations are
+also nullable while their dimensions remain unobserved or unbound.  Any
+observed session or dispatch, and any recorded host binding, must carry its
+real generation before the projection can authorize dispatch.
+
+The shared fact adapter rejects flat legacy registry statuses and inconsistent
+partial facts before constructing the projection.  Command and storage owners
+may translate only evidence they actually possess; they must not mutate an
+in-memory registry status to make the projection appear complete.
+
+During migration, =agent session status --json= may expose either a
+=lifecycleProjection= or a typed =lifecycleProjectionError=.  The adapter must
+read an immutable clone of the durable registry row before legacy presentation
+logic derives =idle=, =invalid=, or =orphan-risk=.  Existing flat fields remain
+observation-only migration evidence; they are not inputs to durable lifecycle
+authority.

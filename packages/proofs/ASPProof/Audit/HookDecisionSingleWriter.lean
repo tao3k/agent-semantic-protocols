@@ -1,0 +1,32 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.HookDecisionSingleWriter
+
+namespace ASPProof.Audit.HookDecisionSingleWriter
+
+open ASPProof.HookDecisionSingleWriter
+
+#check scope_does_not_change_registry_projection
+#check committed_decision_has_committed_event
+#check atomicDecision
+#check orderedAfter
+#check deadlockFreeRecovery
+#check recovery_edge_does_not_wait_on_failed_authority
+#check boundedServerExit
+#check unresponsive_connection_cannot_own_server_lifetime
+#check reservesCleanup
+#check nested_execution_slices_leave_cleanup_reserve
+#check boundedControlLane
+#check stale_or_stalled_control_lane_cannot_deadlock_supervisor
+#check daemonOwnedConcurrentTasks
+#check generation_repair_cannot_collapse_onto_private_single_worker
+#check boundedHookEvaluation
+#check caller_timeout_leaves_no_io_or_writer_authority
+#check stableLongRunningHookAuthority
+#check completed_requests_cannot_accumulate_runtime_authority
+#check selectCandidate
+#check higher_priority_candidate_wins
+
+end ASPProof.Audit.HookDecisionSingleWriter

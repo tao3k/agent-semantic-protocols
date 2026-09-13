@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CLI comparison for failure-frontier trace pairs."""
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ def test_cli_compares_dev_log_trace_sessions(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "rust",
                 "--trace-provider-id",
-                "rs-harness",
+                "asp-rust",
                 "--scenario-id",
                 "rust.failure-frontier-trace-cli",
                 "--language",

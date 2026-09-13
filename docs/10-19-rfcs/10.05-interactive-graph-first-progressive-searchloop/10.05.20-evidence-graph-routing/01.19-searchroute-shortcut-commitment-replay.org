@@ -1,0 +1,311 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Shortcut Commitment Replay
+#+subtitle: Fail-closed reuse of a proof-carrying transitive shortcut
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module binds the transitive shortcut proved by
+[[file:01.18-searchroute-dominance-transitive-shortcut.org][01.18]] to an exact replay
+context.
+
+It proves logical commitment matching and fail-closed reuse.  It does not select
+a cryptographic hash algorithm, define canonical byte serialization, or
+implement a Rust/Python cache.
+
+* Result
+
+A cached shortcut is reusable only when nine commitment fields match exactly.
+
+#+name: shortcut-commitment-replay-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ C = (
+  "candidateUniverseDigest",
+  "startCanonicalRouteId",
+  "endpointCanonicalRouteId",
+  "costSemanticsDigest",
+  "selectionPolicyDigest",
+  "chainLength",
+  "explicitChainAuditDigest",
+  "theoremFamilyDigest",
+  "auditReceiptDigest"
+) $
+
+$ "matches"(C_e, C_c) = #true
+  quad "implies" quad
+  C_e = C_c $
+
+$ C_e != C_c
+  quad "implies" quad
+  "matches"(C_e, C_c) = #false $
+#+end_src
+
+An accepted typed cache entry preserves the removal decision without carrying
+the explicit witness chain in the hot projection.
+
+#+name: accepted-shortcut-replay-soundness
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "accept"(C_e, C_c) = "matches"(C_e, C_c) $
+
+$ "accept"(C_e, C_c) = #true
+  quad "implies" quad
+  "StrictDominates"("endpoint", "start") = #true $
+
+$ "cache fields" = 9 $
+
+$ "explicit fields" = 9 + "chainLength" $
+#+end_src
+
+* Two-gate replay model
+
+Replay soundness has two independent gates.
+
+** Gate 1: proof admission
+
+A raw serialized shortcut is not yet a =CachedShortcut=.  The typed Lean value
+contains a proof that the endpoint strictly dominates the start.
+
+An external adapter must establish that proof by validating the referenced
+theorem/audit receipt or replaying the explicit chain before constructing the
+typed cache entry.
+
+** Gate 2: context freshness
+
+An admitted shortcut may still be stale.  Its nine-field commitment must match
+the current candidate universe, identities, semantics, selection policy, chain
+audit, theorem family, and audit receipt.
+
+Proof admission without freshness can reuse a sound decision in the wrong
+generation.  Freshness without proof admission can accept an unproved JSON
+claim.  Both gates are required.
+
+* Normative clauses
+
+** SCR-EQUALITY: commitment-word equality is executable
+
+The proof package defines an executable natural-word equality and proves:
+
+- equality returning =true= implies propositional equality;
+- every word equals itself.
+
+The current natural words model opaque commitment tokens.  They are not a claim
+that production digests should be unbounded natural numbers.
+
+** SCR-COMMITMENT: all nine fields participate
+
+The replay matcher MUST compare all nine commitment fields.  A partial prefix,
+generic generation number, or endpoint-only key is insufficient.
+
+If the matcher returns =true=, the complete expected and cached commitment
+records are equal.  Equal records must match.
+
+** SCR-UNIVERSE: candidate-universe changes reject reuse
+
+A different candidate-universe digest MUST reject the cache entry even when the
+start and endpoint identities are unchanged.
+
+The candidate set controls:
+
+- which dominance witnesses were available;
+- the capacity rank;
+- the deterministic witness chain;
+- whether omitted candidates could alter the Pareto frontier.
+
+** SCR-SEMANTICS: cost-vector changes reject reuse
+
+A different cost-semantics digest MUST reject reuse.  This includes changes to:
+
+- dimension definitions;
+- missing-value treatment;
+- cache-miss accounting;
+- token or interaction-round measurement;
+- Pareto comparison semantics.
+
+The same numeric cost vector under different semantics is not the same proof
+input.
+
+** SCR-SELECTION: deterministic-policy changes reject reuse
+
+A different witness-selection policy digest MUST reject reuse.  The endpoint
+may remain Pareto-sound under another policy, but the cached chain length,
+explicit audit digest, and deterministic replay claim would no longer refer to
+the same execution.
+
+** SCR-AUDIT: theorem and audit identities are committed
+
+The shortcut commitment includes distinct fields for:
+
+- the theorem family;
+- the concrete audit receipt.
+
+The theorem family identifies the logical contract.  The audit receipt binds a
+specific checked proof artifact and axiom inventory.  Neither field replaces
+the other.
+
+** SCR-FAIL-CLOSED: any complete-record mismatch rejects
+
+If the expected commitment differs from the cached commitment in any field,
+=replayAccepts= MUST return =false=.
+
+The current proof includes named rejection theorems for universe, cost
+semantics, selection policy, and audit receipt mismatch.  The generic theorem
+covers start identity, endpoint identity, chain length, explicit-chain audit,
+and theorem family as well.
+
+** SCR-CACHE: cache construction consumes a proved shortcut
+
+A typed =CachedShortcut= is constructed from the 01.18
+=TransitiveShortcut=.  It stores:
+
+- the nine-field commitment;
+- the endpoint-dominates-start proof.
+
+It does not store the explicit chain in the hot replay value.  The chain remains
+owned by the audit artifact referenced by =explicitChainAuditDigest=.
+
+** SCR-ACCEPT: a fresh cache entry matches its own context
+
+A shortcut cached under the current replay context MUST be accepted when
+replayed against the same context, start, endpoint, and total chain length.
+
+Acceptance also proves exact equality between the expected and stored
+commitments.
+
+** SCR-SOUNDNESS: accepted typed replay preserves removal soundness
+
+For an admitted typed cache entry, accepted replay returns the existing proof:
+
+#+begin_example
+StrictDominates endpoint start = true
+#+end_example
+
+The explicit chain does not need to be retransmitted to the model.  It may still
+be fetched for independent replay.
+
+** SCR-RECEIPT: cached replay remains constant-shape
+
+The proof model assigns one field per commitment component.  Cached replay has
+constant field count, while explicit replay grows with chain length.
+
+For every nonempty chain, the cached projection is smaller than the explicit
+chain projection.
+
+* SearchLoop implications
+
+** Search cache key
+
+The nine-field commitment is the logical cache key.  A concrete implementation
+may encode it into a digest, but it must retain the ability to diagnose which
+semantic component caused a rejection.
+
+A single opaque =cacheVersion= is not sufficient protocol evidence.
+
+** Model projection
+
+The normal model-facing packet can contain:
+
+#+begin_example
+status = accepted
+startCanonicalRouteId
+endpointCanonicalRouteId
+chainLength
+shortcutCommitmentDigest
+proofReceiptDigest
+#+end_example
+
+The nine logical fields may be referenced through a committed digest rather
+than retransmitted individually after admission and freshness checks.
+
+** Cache metrics remain separated
+
+The following are distinct events:
+
+- shortcut search-cache lookup;
+- proof-admission cache hit;
+- commitment freshness acceptance;
+- explicit-chain replay;
+- model prefix-cache hit.
+
+The protocol MUST NOT collapse them into one generic =cacheHit=.
+
+** Rejection is a normal progressive-search transition
+
+A stale shortcut does not make the entire SearchLoop fail.  It causes a typed
+cache rejection and returns control to candidate-universe construction or
+explicit-chain resolution.
+
+The adapter SHOULD report the mismatched commitment dimension without exposing
+the complete chain unless further audit is requested.
+
+* Logic findings
+
+** Finding 1: digest equality and collision resistance are different claims
+
+Lean proves exact equality and inequality of opaque commitment tokens.  It does
+not prove that two different serialized inputs cannot produce the same token.
+
+The RFC must not describe this stage as a cryptographic collision-resistance
+proof.
+
+** Finding 2: typed soundness precedes freshness
+
+The accepted-replay theorem can return removal soundness because
+=CachedShortcut= already carries the endpoint-dominance proof.  Commitment
+matching only establishes that the proof belongs to the current context.
+
+A raw JSON object cannot enter this theorem without a separate admission step.
+
+** Finding 3: accepted commitment equality does not authenticate the producer
+
+Exact fields can still be supplied by an untrusted producer.  Producer
+authentication, signature verification, or locally replayed audit evidence is
+outside this equality theorem.
+
+** Finding 4: chain length is committed observability, not the soundness proof
+
+The endpoint-dominance proof establishes removal soundness.  Chain length binds
+the reported internal work and explicit-chain audit identity.  Tampering with
+it must reject replay even though the endpoint relation may remain true.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteShortcutCommitmentReplay.lean][SearchRouteShortcutCommitmentReplay.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteShortcutCommitmentReplay.lean][SearchRouteShortcutCommitmentReplay audit]]
+
+The machine-consumable receipt is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-shortcut-commitment-replay-audit-v1.json][searchroute-shortcut-commitment-replay-audit-v1.json]]
+
+The receipt covers sixteen declarations and MUST report:
+
+#+begin_example
+axiomDependentDeclarationCount = 0
+axiomInventory = []
+#+end_example
+
+* Next proof boundary
+
+The next module should formalize admission from a serialized external envelope:
+
+1. distinguish =RawCachedShortcut= from =VerifiedCachedShortcut=;
+2. require canonical encoding before digest calculation;
+3. bind schema version and hash-algorithm identity;
+4. validate theorem-family and Lean JSON audit receipts;
+5. model collision resistance or explicitly carry full canonical commitment
+   fields when that assumption is unavailable;
+6. prove that raw input cannot reach =replayAccepts= without admission;
+7. prove that failed admission falls back to explicit chain verification rather
+   than manufacturing a typed proof.
+
+Until this closure exists, the current theorem applies to proof-admitted typed
+cache entries.  It MUST NOT be cited as evidence that arbitrary serialized
+shortcut JSON is safe to replay.

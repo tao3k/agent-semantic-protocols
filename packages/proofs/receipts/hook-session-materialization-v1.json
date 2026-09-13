@@ -1,0 +1,128 @@
+{"sourcePath": "ASPProof/HookSessionMaterialization.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.HookSessionMaterialization",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.HookSessionMaterialization.CanClaim ASPProof.HookSessionMaterialization.absentState\n  ASPProof.HookSessionMaterialization.proposalOne",
+   "theoremFamily": "materialization-claim-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-CLAIM"],
+   "name": "ASPProof.HookSessionMaterialization.first_claim_is_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.HookSessionMaterialization.CanClaim ASPProof.HookSessionMaterialization.claimedState\n    ASPProof.HookSessionMaterialization.competingProposal",
+   "theoremFamily": "materialization-one-winner",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-ONE-WINNER"],
+   "name":
+   "ASPProof.HookSessionMaterialization.committed_claim_rejects_competing_writer",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.claimedState.physicalGeneration = 1 ∧\n  ASPProof.HookSessionMaterialization.claimedState.authorityRevision = 11",
+   "theoremFamily": "claim-generation-linearization",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-CLAIM"],
+   "name":
+   "ASPProof.HookSessionMaterialization.claim_advances_generation_and_revision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.spawnAtHost ASPProof.HookSessionMaterialization.spawnedHost 501 999 =\n  ASPProof.HookSessionMaterialization.spawnedHost",
+   "theoremFamily": "native-host-idempotency",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-HOST-KEY"],
+   "name":
+   "ASPProof.HookSessionMaterialization.duplicate_host_spawn_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.spawnAtHost ASPProof.HookSessionMaterialization.spawnedHost 502 300 =\n  ASPProof.HookSessionMaterialization.spawnedHost",
+   "theoremFamily": "native-host-conflict-rejection",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EORM-HOST-KEY", "ASP-RFC-10.05-EORM-ONE-WINNER"],
+   "name":
+   "ASPProof.HookSessionMaterialization.conflicting_host_claim_cannot_replace_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.HookSessionMaterialization.spawnAtHost ASPProof.HookSessionMaterialization.spawnedHost 501\n      999).childSessionId =\n  200",
+   "theoremFamily": "spawn-crash-recovery",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EORM-HOST-KEY", "ASP-RFC-10.05-EORM-SPAWN-RECEIPT"],
+   "name":
+   "ASPProof.HookSessionMaterialization.crash_after_host_spawn_reuses_same_child",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.nextMaterializationAction ASPProof.HookSessionMaterialization.spawnedState =\n  ASPProof.HookSessionMaterialization.MaterializationAction.reconcileBinding",
+   "theoremFamily": "spawned-state-reconciliation",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-RECONCILE"],
+   "name":
+   "ASPProof.HookSessionMaterialization.recorded_spawn_reconciles_instead_of_respawning",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.CanBind ASPProof.HookSessionMaterialization.spawnedState\n  ASPProof.HookSessionMaterialization.bindingReceipt",
+   "theoremFamily": "binding-identity-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-BIND"],
+   "name":
+   "ASPProof.HookSessionMaterialization.binding_requires_exact_generation_and_child",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.nextMaterializationAction ASPProof.HookSessionMaterialization.boundState =\n  ASPProof.HookSessionMaterialization.MaterializationAction.observeHeartbeat",
+   "theoremFamily": "heartbeat-before-activation",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-LEASE"],
+   "name": "ASPProof.HookSessionMaterialization.bound_state_requires_heartbeat",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.nextMaterializationAction ASPProof.HookSessionMaterialization.activeState =\n  ASPProof.HookSessionMaterialization.MaterializationAction.dispatch",
+   "theoremFamily": "fresh-lease-dispatch",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-DISPATCH"],
+   "name": "ASPProof.HookSessionMaterialization.fresh_active_state_dispatches",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.CanDispatch ASPProof.HookSessionMaterialization.activeState\n  ASPProof.HookSessionMaterialization.dispatchReceipt",
+   "theoremFamily": "dispatch-receipt-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-DISPATCH"],
+   "name":
+   "ASPProof.HookSessionMaterialization.bound_dispatch_receipt_is_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.HookSessionMaterialization.CanDispatch ASPProof.HookSessionMaterialization.expiredActiveState\n    ASPProof.HookSessionMaterialization.dispatchReceipt",
+   "theoremFamily": "expired-lease-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-DISPATCH", "ASP-RFC-10.05-EORM-LEASE"],
+   "name":
+   "ASPProof.HookSessionMaterialization.expired_heartbeat_blocks_dispatch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionMaterialization.nextMaterializationAction ASPProof.HookSessionMaterialization.expiredActiveState =\n  ASPProof.HookSessionMaterialization.MaterializationAction.replaceExpired",
+   "theoremFamily": "expired-lease-replacement",
+   "rfcClauseIds": ["ASP-RFC-10.05-EORM-DISPATCH"],
+   "name":
+   "ASPProof.HookSessionMaterialization.expired_active_state_requires_replacement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

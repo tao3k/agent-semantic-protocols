@@ -1,0 +1,11 @@
+{
+  "response_id": "resp-synthetic-v1",
+  "output_items": [
+    {
+      "type": "function_call",
+      "name": "exec_command",
+      "arguments": "{\"cmd\":\"rtk read --max-lines 1 docs/hook-contract.md\"}",
+      "call_id": "call-synthetic-rtk-read-v1"
+    }
+  ]
+}

@@ -1,7 +1,11 @@
-use agent_semantic_search::{
-    SourceIndexRankCandidate, SourceIndexRankRequest, rank_source_index_report,
-    source_index_lookup_terms,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use agent_semantic_search::SourceIndexRankCandidate;
+use agent_semantic_search::SourceIndexRankRequest;
+use agent_semantic_search::rank_source_index_report;
+use agent_semantic_search::source_index_lookup_terms;
 
 #[test]
 fn source_index_lookup_terms_include_path_segments_suffixes_and_stem() {

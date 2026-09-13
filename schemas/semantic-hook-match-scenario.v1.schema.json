@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-hook-match-scenario.v1.schema.json",
+  "title": "Semantic Hook Match Scenario v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scenarioId",
+    "commands",
+    "expected"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.hook-match-scenario"
+    },
+    "schemaVersion": {
+      "const": "v1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "decision",
+        "targetAgent",
+        "receiptKind"
+      ],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "decision": { "const": "deny" },
+        "targetAgent": { "type": "string", "minLength": 1 },
+        "receiptKind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxMatcherMicros"],
+      "properties": {
+        "maxMatcherMicros": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

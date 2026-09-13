@@ -1,8 +1,15 @@
-use crate::{
-    ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG, ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
-    ASP_SYNTAX_QUERY_PREDICATES_JSON_ARG, ClientMethod, LanguageId, append_syntax_query_plan_args,
-    syntax_query_ast_abi_fingerprint,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::ASP_SYNTAX_QUERY_CAPTURES_ARG;
+use crate::ASP_SYNTAX_QUERY_FIELDS_ARG;
+use crate::ASP_SYNTAX_QUERY_NODE_TYPES_ARG;
+use crate::ASP_SYNTAX_QUERY_PREDICATES_JSON_ARG;
+use crate::ClientMethod;
+use crate::LanguageId;
+use crate::append_syntax_query_plan_args;
+use crate::syntax_query_ast_abi_fingerprint;
 
 #[test]
 fn cache_flush_method_uses_stable_wire_spelling() {

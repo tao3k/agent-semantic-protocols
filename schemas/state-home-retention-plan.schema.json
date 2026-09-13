@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic.protocols/schemas/state-home-retention-plan",
+  "title": "ASP State Home Retention Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "evaluatedAtMs",
+    "retainForMs",
+    "selection",
+    "retainedCount",
+    "deletedCount",
+    "retainedBytes",
+    "deletedBytes",
+    "entries"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.state-home-retention-plan" },
+    "schemaVersion": { "const": 1 },
+    "evaluatedAtMs": { "type": "integer", "minimum": 0 },
+    "retainForMs": { "type": "integer", "minimum": 0 },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "all" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "workspaceDigest"],
+          "properties": {
+            "kind": { "const": "workspace-digest" },
+            "workspaceDigest": { "$ref": "#/$defs/blake3Digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "objectId"],
+          "properties": {
+            "kind": { "const": "object-id" },
+            "objectId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "retainedCount": { "type": "integer", "minimum": 0 },
+    "deletedCount": { "type": "integer", "minimum": 0 },
+    "retainedBytes": { "type": "integer", "minimum": 0 },
+    "deletedBytes": { "type": "integer", "minimum": 0 },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "disposition"],
+        "properties": {
+          "object": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["objectId", "kind", "lastObservedAtMs", "byteCount"],
+            "properties": {
+              "objectId": { "type": "string", "minLength": 1 },
+              "kind": {
+                "enum": ["project", "workspace", "artifact", "provider-build", "source-snapshot", "quarantine", "receipt"]
+              },
+              "lastObservedAtMs": { "type": "integer", "minimum": 0 },
+              "byteCount": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "disposition": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["state", "reason"],
+                "properties": {
+                  "state": { "const": "keep" },
+                  "reason": { "type": "string", "minLength": 1 }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["state", "reason"],
+                "properties": {
+                  "state": { "const": "delete" },
+                  "reason": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

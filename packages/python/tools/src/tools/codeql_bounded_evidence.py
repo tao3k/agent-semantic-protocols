@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CLI entrypoint for bounded ASP CodeQL evidence."""
 
 from __future__ import annotations
@@ -54,7 +58,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         type=Path,
     )
     parser.add_argument("--language-id", default="rust")
-    parser.add_argument("--provider-id", default="rs-harness")
+    parser.add_argument("--provider-id", default="asp-rust")
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--codeql-language", default="rust")
     parser.add_argument(

@@ -1,0 +1,156 @@
+{"sourcePath": "ASPProof/SearchRouteGraphRouterParetoCostSelection.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteGraphRouterParetoCostSelection",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (cost : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse cost cost",
+   "theoremFamily": "component-order-reflexive",
+   "rfcClauseIds": ["GRPC-NO-WORSE", "GRPC-ORDER"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.no_worse_is_reflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse first second →\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse second third →\n      ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse first third",
+   "theoremFamily": "component-order-transitive",
+   "rfcClauseIds": ["GRPC-NO-WORSE", "GRPC-ORDER"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.no_worse_is_transitive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates left right →\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse left right",
+   "theoremFamily": "strict-dominance-component-bound",
+   "rfcClauseIds": ["GRPC-DOMINANCE", "GRPC-PARETO"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.strict_dominance_implies_no_worse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (cost : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates cost cost",
+   "theoremFamily": "strict-dominance-irreflexive",
+   "rfcClauseIds": ["GRPC-ORDER", "GRPC-PARETO"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.strict_dominance_is_irreflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (better worse caps : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse better worse →\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.Feasible worse caps →\n      ASPProof.SearchRouteGraphRouterParetoCostSelection.Feasible better caps",
+   "theoremFamily": "dominance-preserves-feasibility",
+   "rfcClauseIds": ["GRPC-FEASIBLE", "GRPC-PARETO"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.no_worse_route_preserves_feasibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  left.graphHops < right.graphHops → ASPProof.SearchRouteGraphRouterParetoCostSelection.HopFirstLexBetter left right",
+   "theoremFamily": "hop-first-lex-head",
+   "rfcClauseIds": ["GRPC-HOPS", "GRPC-LEX"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.fewer_graph_hops_is_hop_first_lex_better",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (tokenCap : Nat),\n  have unsafeRoute :=\n    { graphHops := 0, interactionRounds := 0, projectedTokens := tokenCap.succ, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  have alternativeRoute :=\n    { graphHops := 1, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n      modelPrefixRecomputations := 0 };\n  have caps :=\n    { graphHops := 1, interactionRounds := 0, projectedTokens := tokenCap, verificationOps := 0, searchExecutions := 0,\n      modelPrefixRecomputations := 0 };\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.HopFirstLexBetter unsafeRoute alternativeRoute ∧\n    ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.Feasible unsafeRoute caps",
+   "theoremFamily": "lex-needs-hard-caps",
+   "rfcClauseIds": ["GRPC-COUNTEREXAMPLE", "GRPC-LEX"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.hop_first_lex_order_requires_prior_feasibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (regression : Nat),\n  have tokenHeavy :=\n    { graphHops := 0, interactionRounds := 0, projectedTokens := regression.succ, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  have hopHeavy :=\n    { graphHops := regression.succ, interactionRounds := 0, projectedTokens := 0, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.WeightedScore\n      ASPProof.SearchRouteGraphRouterParetoCostSelection.UnitWeights tokenHeavy =\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.WeightedScore\n      ASPProof.SearchRouteGraphRouterParetoCostSelection.UnitWeights hopHeavy",
+   "theoremFamily": "scalar-score-hides-token-tradeoff",
+   "rfcClauseIds": ["GRPC-SCALAR", "GRPC-TOKENS"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.equal_unit_weight_score_can_hide_token_tradeoff",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (regression : Nat),\n  have tokenHeavy :=\n    { graphHops := 0, interactionRounds := 0, projectedTokens := regression.succ, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  have hopHeavy :=\n    { graphHops := regression.succ, interactionRounds := 0, projectedTokens := 0, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.ParetoIncomparable tokenHeavy hopHeavy",
+   "theoremFamily": "scalar-equality-not-pareto-equivalence",
+   "rfcClauseIds": ["GRPC-PARETO", "GRPC-SCALAR"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.equal_unit_weight_routes_can_be_pareto_incomparable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "have searchReused :=\n  { graphHops := 0, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n    modelPrefixRecomputations := 1 };\nhave modelPrefixReused :=\n  { graphHops := 0, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 1,\n    modelPrefixRecomputations := 0 };\nASPProof.SearchRouteGraphRouterParetoCostSelection.CombinedCacheWork searchReused =\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.CombinedCacheWork modelPrefixReused",
+   "theoremFamily": "cache-aggregate-hides-direction",
+   "rfcClauseIds": ["GRPC-AGGREGATE", "GRPC-CACHE"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.combined_cache_work_can_hide_cache_direction",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "have searchReused :=\n  { graphHops := 0, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n    modelPrefixRecomputations := 1 };\nhave modelPrefixReused :=\n  { graphHops := 0, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 1,\n    modelPrefixRecomputations := 0 };\nASPProof.SearchRouteGraphRouterParetoCostSelection.ParetoIncomparable searchReused modelPrefixReused",
+   "theoremFamily": "cache-aggregate-not-pareto-equivalence",
+   "rfcClauseIds": ["GRPC-CACHE", "GRPC-PARETO"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.equal_combined_cache_work_can_be_pareto_incomparable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ cost, cost.searchExecutions = 0 ∧ cost.modelPrefixRecomputations = 1",
+   "theoremFamily": "search-reuse-not-model-reuse",
+   "rfcClauseIds": ["GRPC-MODEL-CACHE", "GRPC-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.search_reuse_does_not_imply_model_prefix_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ cost, cost.modelPrefixRecomputations = 0 ∧ cost.searchExecutions = 1",
+   "theoremFamily": "model-reuse-not-search-reuse",
+   "rfcClauseIds": ["GRPC-MODEL-CACHE", "GRPC-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.model_prefix_reuse_does_not_imply_search_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteEvaluationIdentity),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteEvaluationComparable identity identity",
+   "theoremFamily": "evaluation-identity-reflexive",
+   "rfcClauseIds": ["GRPC-COMPARISON", "GRPC-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.unchanged_route_evaluation_identity_is_comparable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (workspaceSnapshotDigest changedWorkspaceSnapshotDigest queryDigest searchPolicyDigest modelDigest promptAndToolDigest\n    budgetVectorDigest : Nat),\n  workspaceSnapshotDigest ≠ changedWorkspaceSnapshotDigest →\n    ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteEvaluationComparable\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, modelDigest := modelDigest,\n          promptAndToolDigest := promptAndToolDigest, budgetVectorDigest := budgetVectorDigest }\n        { workspaceSnapshotDigest := changedWorkspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, modelDigest := modelDigest,\n          promptAndToolDigest := promptAndToolDigest, budgetVectorDigest := budgetVectorDigest }",
+   "theoremFamily": "snapshot-invalidates-route-comparison",
+   "rfcClauseIds": ["GRPC-IDENTITY", "GRPC-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.changed_evaluation_snapshot_invalidates_comparison",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (workspaceSnapshotDigest queryDigest searchPolicyDigest modelDigest changedModelDigest promptAndToolDigest\n    budgetVectorDigest : Nat),\n  modelDigest ≠ changedModelDigest →\n    ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteEvaluationComparable\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, modelDigest := modelDigest,\n          promptAndToolDigest := promptAndToolDigest, budgetVectorDigest := budgetVectorDigest }\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, modelDigest := changedModelDigest,\n          promptAndToolDigest := promptAndToolDigest, budgetVectorDigest := budgetVectorDigest }",
+   "theoremFamily": "model-invalidates-route-comparison",
+   "rfcClauseIds": ["GRPC-IDENTITY", "GRPC-MODEL"],
+   "name":
+   "ASPProof.SearchRouteGraphRouterParetoCostSelection.changed_evaluation_model_invalidates_comparison",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 16,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 16,
+ "axiomDependentDeclarationCount": 0}

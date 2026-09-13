@@ -1,11 +1,17 @@
-use crate::graph_candidate_projection::{
-    GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
-    graph_candidate_hot_nodes, graph_candidate_item_node_id, graph_candidate_item_nodes,
-    graph_projection_candidate_readiness,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::graph_candidate_projection::GraphCandidateHotNodesRequest;
+use crate::graph_candidate_projection::GraphCandidateItemNodesRequest;
+use crate::graph_candidate_projection::GraphProjectionCandidate;
+use crate::graph_candidate_projection::graph_candidate_hot_nodes;
+use crate::graph_candidate_projection::graph_candidate_item_node_id;
+use crate::graph_candidate_projection::graph_candidate_item_nodes;
+use crate::graph_candidate_projection::graph_projection_candidate_readiness;
 
 #[test]
-fn graph_candidate_item_nodes_use_registered_language_structural_identity_without_line_ranges() {
+fn graph_candidate_item_nodes_use_language_neutral_structural_identity_without_line_ranges() {
     let candidate = GraphProjectionCandidate::new(
         "src/lib.rs",
         3,
@@ -15,13 +21,9 @@ fn graph_candidate_item_nodes_use_registered_language_structural_identity_withou
         "source-index",
         "high",
     );
-    let language_ids = agent_semantic_hook::registered_language_ids();
-
-    assert!(!language_ids.is_empty());
-
-    for language_id in language_ids {
+    for language_id in ["rust", "python", "typescript"] {
         let nodes = graph_candidate_item_nodes(GraphCandidateItemNodesRequest::new(
-            language_id.as_str(),
+            &language_id.into(),
             std::slice::from_ref(&candidate),
             8,
         ));
@@ -77,8 +79,11 @@ fn graph_candidate_hot_nodes_keep_code_policy_and_context_window() {
         "medium",
     );
 
-    let nodes =
-        graph_candidate_hot_nodes(GraphCandidateHotNodesRequest::new("rust", &[candidate], 8));
+    let nodes = graph_candidate_hot_nodes(GraphCandidateHotNodesRequest::new(
+        &"rust".into(),
+        &[candidate],
+        8,
+    ));
 
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0]["kind"], "hot");

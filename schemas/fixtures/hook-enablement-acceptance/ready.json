@@ -1,0 +1,20 @@
+{
+  "schemaId": "agent.semantic-protocols.hook-enablement-acceptance",
+  "schemaVersion": "1",
+  "status": "ready",
+  "reasonKind": "none",
+  "projectRoot": "/workspace",
+  "pluginLauncher": "/workspace/asp-codex-plugin/bin/asp-hook",
+  "activeDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "healthyDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "retentionProtectedDigests": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "policyDecisionSamples": 16,
+  "policyDecisionMaxCpuMicros": 500,
+  "policyDecisionBudgetMicros": 1000,
+  "launcherSamples": 16,
+  "launcherP99Micros": 20000,
+  "launcherMaxMicros": 25000
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-runtime-request-stream-ack.schema.json",
+  "title": "Provider Runtime Request Stream Acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "streamId", "frameIndex", "state"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.provider-runtime-request-stream-ack"},
+    "schemaVersion": {"const": "1"},
+    "streamId": {"type": "string", "minLength": 1},
+    "frameIndex": {"type": "integer", "minimum": 0},
+    "state": {"const": "accepted"}
+  }
+}

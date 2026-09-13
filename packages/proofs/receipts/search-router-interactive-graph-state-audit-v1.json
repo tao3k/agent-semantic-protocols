@@ -1,0 +1,129 @@
+{"sourcePath": "ASPProof/SearchRouterInteractiveGraphState.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouterInteractiveGraphState",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.ownershipDelta =\n  true",
+   "theoremFamily": "graph-delta-admission",
+   "rfcClauseIds": ["ASP-RFC-SRIG-GRAPH-DELTA", "ASP-RFC-SRIG-OBSERVATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.semantic_tool_observation_can_advance_the_graph",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.inventedEdgeDelta =\n  false",
+   "theoremFamily": "invented-edge-counterexample",
+   "rfcClauseIds": ["ASP-RFC-SRIG-COUNTEREXAMPLE", "ASP-RFC-SRIG-GROUNDING"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.model_invented_edge_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.nonDecreasingBudgetDelta =\n  false",
+   "theoremFamily": "transition-budget-decrease",
+   "rfcClauseIds": ["ASP-RFC-SRIG-BUDGET", "ASP-RFC-SRIG-TRANSITION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.accepted_transition_must_decrease_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.unauthorizedVerticalDelta =\n  false",
+   "theoremFamily": "capability-admission",
+   "rfcClauseIds": ["ASP-RFC-SRIG-CAPABILITY", "ASP-RFC-SRIG-VERTICAL"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.unavailable_tool_vertical_pair_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.validNoHitDelta =\n  true",
+   "theoremFamily": "typed-no-hit-transition",
+   "rfcClauseIds": ["ASP-RFC-SRIG-NO-HIT", "ASP-RFC-SRIG-OBSERVATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.typed_no_hit_is_a_valid_graph_transition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.resumeValid ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    \"continuation:owner-model\" \"session-owner-model\" \"symbol:ModelConfig\" 7 \"state-7\"\n    ASPProof.SearchRouterInteractiveGraphState.cachedFrontierRouteMeasure =\n  true",
+   "theoremFamily": "bounded-resume-hop",
+   "rfcClauseIds": ["ASP-RFC-SRIG-CONTINUATION", "ASP-RFC-SRIG-HOPS"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.resume_to_live_frontier_is_one_bounded_hop",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.resumeValid ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    \"continuation:owner-model\" \"session-owner-model\" \"symbol:ModelConfig\" 6 \"state-6\"\n    ASPProof.SearchRouterInteractiveGraphState.cachedFrontierRouteMeasure =\n  false",
+   "theoremFamily": "stale-continuation-rejection",
+   "rfcClauseIds": ["ASP-RFC-SRIG-CONTINUATION", "ASP-RFC-SRIG-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.stale_continuation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.resumeValid ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    \"continuation:owner-model\" \"session-owner-model\" \"symbol:ModelConfig\" 7 \"state-7\"\n    ASPProof.SearchRouterInteractiveGraphState.overflowRouteMeasure =\n  false",
+   "theoremFamily": "resume-hop-budget",
+   "rfcClauseIds": ["ASP-RFC-SRIG-BUDGET", "ASP-RFC-SRIG-CONTINUATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.resume_cannot_exceed_existing_hop_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.closureAllowed ASPProof.SearchRouterInteractiveGraphState.ownershipState [] =\n  false",
+   "theoremFamily": "closure-obligation",
+   "rfcClauseIds": ["ASP-RFC-SRIG-CLOSURE", "ASP-RFC-SRIG-OBLIGATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.unresolved_obligation_prevents_closure",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.unsupportedDischargeDelta =\n  false",
+   "theoremFamily": "unsupported-discharge-counterexample",
+   "rfcClauseIds": ["ASP-RFC-SRIG-GROUNDING", "ASP-RFC-SRIG-OBLIGATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.obligation_discharge_without_observation_evidence_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.deltaValid ASPProof.SearchRouterInteractiveGraphState.ownershipCapabilities\n    ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.supportedDischargeDelta =\n  true",
+   "theoremFamily": "grounded-discharge",
+   "rfcClauseIds": ["ASP-RFC-SRIG-OBLIGATION", "ASP-RFC-SRIG-OBSERVATION"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.observation_evidence_can_discharge_an_obligation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.datalogReceiptValid ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.validDatalogReceipt =\n  true",
+   "theoremFamily": "datalog-live-fact-grounding",
+   "rfcClauseIds": ["ASP-RFC-SRIG-DATALOG", "ASP-RFC-SRIG-GROUNDING"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.datalog_derivation_is_grounded_in_live_facts",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouterInteractiveGraphState.datalogReceiptValid ASPProof.SearchRouterInteractiveGraphState.ownershipState\n    ASPProof.SearchRouterInteractiveGraphState.inventedDatalogSource =\n  false",
+   "theoremFamily": "datalog-unknown-source-counterexample",
+   "rfcClauseIds": ["ASP-RFC-SRIG-COUNTEREXAMPLE", "ASP-RFC-SRIG-DATALOG"],
+   "name":
+   "ASPProof.SearchRouterInteractiveGraphState.datalog_derivation_with_unknown_source_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

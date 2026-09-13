@@ -1,17 +1,31 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-artifacts"
 version = "0.1.0"
-edition = "2024"
-license = "MIT"
+edition.workspace = true
+license.workspace = true
 description = "Content-addressed artifact identity and Merkle root primitives for ASP."
 
 [dependencies]
+agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-content-identity.workspace = true
+agent-semantic-provider-protocol.workspace = true
 blake3.workspace = true
+fs2.workspace = true
+libc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-asp-rust-project-harness-policy.workspace = true
+tempfile.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+
+[[test]]
+name = "runtime_artifact_publication_performance"
+path = "tests/integration/runtime_artifact_publication_performance.rs"

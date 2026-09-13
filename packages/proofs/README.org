@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: ASP Proof Packages
+
+* Container and package topology
+
+=packages/proofs= is the repository container for multiple independently
+buildable proof domains.  =ASPProof= is the first Lake package in that
+container; future proof domains may use separate manifests when their
+dependencies or release cadence diverge.
+
+* Ownership
+
+=packages/proofs= collectively owns Lean mathematical models, theorem sources,
+finite counterexamples, and proof receipts.  Each nested proof package owns its
+own assumptions and validation receipts.
+
+It does not own:
+
+- normative RFC prose, which remains under =docs/10-19-rfcs/=;
+- AXLE formal inputs and proof-driving artifacts, which belong under
+  =packages/proofs/axle=; reusable Python audit support remains package-local
+  under =packages/proofs/src/asp_proofs=;
+- human-facing Typst mathematical explanation, which remains under the owning
+  RFC's =docs/= tree;
+- runtime provider implementation or conformance tests.
+
+* Artifact flow
+
+#+begin_example
+Org RFC clauses
+  -> packages/python/tools AXLE extraction
+  -> versioned declaration bundle
+  -> packages/proofs Lean definitions, counterexamples, and theorems
+  -> proof receipt
+  -> docs Typst mathematical projection
+  -> RFC repair when a theorem fails or a witness is admitted
+#+end_example
+
+Lean and Typst artifacts share stable RFC clause and theorem identities.  The
+Lean source is authoritative for checked derivations; Typst is the human-facing
+mathematical explanation.
+
+* Commands
+
+#+begin_src sh
+lake build
+lake env lean ASPProof/SearchLoopClauseFirst.lean
+lake env lean ASPProof/SearchLoopTrace.lean
+lake env lean audit/SearchLoopTraceAudit.lean
+#+end_src
+
+Neither command establishes RFC closure by itself.  Proof receipts must also
+report assumptions, unsafe declarations, and any =sorry= or =admit= inventory.
+
+* Receipts
+
+- =receipts/search-route-provider-closure-audit-v1.json=: Lean-produced modular
+  audit for provider-closure noninterference, native-owner schema drift,
+  explicit capability admission, and synthetic fingerprint authority.
+
+- =receipts/searchloop-clause-first-proof-v1.org=: first executable
+  Clause-first model, theorem inventory, axiom audit, Org-owned Typst stdin
+  lint, and remaining RFC-to-AXLE-to-Lean gaps.
+- =receipts/searchloop-trace-audit-v1.json=: Lean-owned deterministic JSON
+  audit for trace safety, bounded progress, typed progress, counterexamples,
+  RFC clause identities, and axiom closures.
+- =receipts/searchloop-trace-proof-v1.org=: human-facing execution receipt for
+  the Lean JSON producer, AXLE admission, schemas, theorem counts, and remaining
+  proof obligations.

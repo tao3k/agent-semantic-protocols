@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Compatibility locator: SearchRoute realized trace catalog
+
+* Canonical RFC
+
+The canonical projection-cost RFC is
+[[file:../10.05.30-progressive-projection-cost/00.24-searchroute-realized-trace-catalog-global-driver.org][SearchRoute realized trace catalog]].

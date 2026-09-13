@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+schema_id = "agent.semantic-protocols.agent-route-registry"
+schema_version = 1
+
+[platforms.codex]
+matcher = "*_codex.toml"
+
+[platforms.claude]
+matcher = "*_claude.md"
+
+[agents.asp_explorer]
+session_lifetime = "resident"
+focus_mode = "leaf"
+roles = ["explore", "explorer", "subagent"]
+allowed_rule_intents = ["reasoning-search", "structured-projection"]
+agent_kind = "agent"
+display_role = "Evidence Explorer"
+description = "for code and evidence search"
+
+[agents.asp_testing]
+session_lifetime = "resident"
+focus_mode = "leaf"
+roles = ["build", "subagent", "testing"]
+allowed_rule_intents = ["test-build-command", "review-command", "live-corpus-qualification", "git-history-inspection"]
+agent_kind = "agent"
+display_role = "Test Runner"
+description = "for build and test jobs"
+
+[agents.asp_coding]
+session_lifetime = "resident"
+focus_mode = "leaf"
+roles = ["coding", "default", "subagent", "worker"]
+allowed_rule_intents = ["owner-scoped-mutation"]
+agent_kind = "agent"
+display_role = "Owner-scoped Coding Worker"
+description = "for edits restricted to explicitly registered owner paths"

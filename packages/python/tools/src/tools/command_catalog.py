@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Command catalog for the Python tooling entrypoint."""
 
 from __future__ import annotations
@@ -6,6 +10,13 @@ from .command_spec import CommandSpec
 
 
 COMMANDS: tuple[CommandSpec, ...] = (
+    CommandSpec(
+        ("schema", "profiles"),
+        "tools.schema_profiles",
+        "main",
+        "argv",
+        "Validate package-local copies of shared ASP schemas.",
+    ),
     CommandSpec(
         ("sandtable",),
         "tools.semantic_sandtable.cli",
@@ -42,60 +53,46 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Validate Julia cache miss/hit performance evidence.",
     ),
     CommandSpec(
-        ("graph", "turbo"),
-        "asp_graph_turbo.cli",
-        "main",
-        "argv",
-        "Rank typed ASP graph facts into compact frontier output.",
-    ),
-    CommandSpec(
         ("graph", "turbo", "benchmark"),
-        "asp_graph_turbo.benchmark_cli",
+        "asp_python_graphs.benchmark_cli",
         "main",
         "argv",
-        "Benchmark graph turbo ranking for sandtable evidence.",
+        "Benchmark Graph-Turbo algorithm output for offline evidence only.",
     ),
     CommandSpec(
         ("graph", "turbo", "sandtable-summary"),
-        "asp_graph_turbo.sandtable_summary_cli",
+        "asp_python_graphs.sandtable_summary_cli",
         "main",
         "argv",
-        "Summarize graph turbo benchmark and receipt metrics.",
+        "Summarize offline Graph-Turbo benchmark and receipt evidence.",
     ),
     CommandSpec(
         ("graph", "turbo", "ablation-report"),
-        "asp_graph_turbo.ablation_report_cli",
+        "asp_python_graphs.ablation_report_cli",
         "main",
         "argv",
-        "Compare graph turbo ablation variants for ranking calibration.",
+        "Compare offline Graph-Turbo ablation variants for calibration.",
     ),
     CommandSpec(
         ("graph", "turbo", "agent-benefit"),
-        "asp_graph_turbo.agent_benefit_cli",
+        "asp_python_graphs.agent_benefit_cli",
         "main",
         "argv",
-        "Report graph turbo agent reading, locator, feedback, and explanation benefits.",
+        "Report offline Graph-Turbo reading, locator, and explanation evidence.",
     ),
     CommandSpec(
         ("graph", "turbo", "artifacts"),
-        "asp_graph_turbo.artifacts_cli",
+        "asp_python_graphs.artifacts_cli",
         "main",
         "argv",
-        "Evaluate graph turbo against cached ASP search artifacts.",
+        "Evaluate offline Graph-Turbo output against cached ASP artifacts.",
     ),
     CommandSpec(
         ("graph", "turbo", "timeline"),
-        "asp_graph_turbo.timeline_cli",
+        "asp_python_graphs.timeline_cli",
         "main",
         "argv",
-        "Infer search rounds and subagent microbursts from cached ASP artifacts.",
-    ),
-    CommandSpec(
-        ("schema", "profiles"),
-        "tools.schema_profiles",
-        "main",
-        "argv",
-        "Validate language package schema downsync profiles.",
+        "Infer timeline evidence from cached ASP artifacts; no Runtime authority.",
     ),
     CommandSpec(
         ("syntax", "real-evidence"),
@@ -131,27 +128,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "runtime_boundary_main",
         "argv",
         "Validate that language providers do not depend on tree-sitter runtime packages.",
-    ),
-    CommandSpec(
-        ("tree-sitter", "validate", "frontier-code-contract"),
-        "tools.tree_sitter.contract_gates",
-        "frontier_code_main",
-        "argv",
-        "Validate tree-sitter locator/frontier and exact-code output.",
-    ),
-    CommandSpec(
-        ("tree-sitter", "validate", "search-read-plan-frontier-contract"),
-        "tools.tree_sitter.contract_gates",
-        "search_read_plan_main",
-        "argv",
-        "Validate search/read-plan frontier output without inline code.",
-    ),
-    CommandSpec(
-        ("tree-sitter", "validate", "exact-direct-read-contract"),
-        "tools.tree_sitter.contract_gates",
-        "exact_direct_read_main",
-        "argv",
-        "Validate exact direct-source-read frontier and pure-code output.",
     ),
     CommandSpec(
         ("tree-sitter", "validate", "python-query-corpus"),
@@ -194,13 +170,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "main",
         "sys_argv",
         "Refresh TypeScript tree-sitter query corpus metadata.",
-    ),
-    CommandSpec(
-        ("validate", "language-workspace-search-contract"),
-        "tools.language_workspace_search_contract",
-        "main",
-        "argv",
-        "Validate cross-language workspace/search ingest provider contracts.",
     ),
     CommandSpec(
         ("validate", "provider-registry-contracts"),

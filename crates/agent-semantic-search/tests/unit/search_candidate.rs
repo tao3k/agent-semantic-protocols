@@ -1,10 +1,19 @@
-use crate::{
-    LexicalOverlayDocument, LexicalOverlaySearchRequest, SourceIndexRankCandidate,
-    lexical_overlay_hit_to_search_candidate, merge_search_candidates,
-    merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
-    search_lexical_overlay, source_index_candidate_to_search_candidate, source_index_lookup_terms,
-};
-use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::LexicalOverlayDocument;
+use crate::LexicalOverlaySearchRequest;
+use crate::SourceIndexRankCandidate;
+use crate::StructuralIndexSearchHit;
+use crate::lexical_overlay_hit_to_search_candidate;
+use crate::merge_search_candidates;
+use crate::merge_search_candidates_with_receipt;
+use crate::search_candidate_has_executable_line_identity;
+use crate::search_lexical_overlay;
+use crate::source_index_candidate_to_search_candidate;
+use crate::source_index_lookup_terms;
+use crate::structural_index_hit_to_search_candidate;
 
 #[test]
 fn source_index_candidate_projects_to_shared_search_candidate_contract() {
@@ -34,8 +43,16 @@ fn source_index_candidate_projects_to_shared_search_candidate_contract() {
 
 #[test]
 fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
-    let hits = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new("overlay fixture").document(
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
+            fixture.provider_digest.clone(),
+        );
+    let result = search_lexical_overlay(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -44,7 +61,19 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
             .search_text("dynamic overlay fixture owner"),
         ),
     );
-    let candidate = lexical_overlay_hit_to_search_candidate(&hits[0], "session-1/base-1");
+    assert_eq!(
+        result.source_snapshot.source_kind,
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
+    );
+    assert_eq!(
+        result.source_snapshot.provider_digest,
+        fixture.provider_digest
+    );
+    assert_eq!(
+        result.source_snapshot.base_root_digest.as_deref(),
+        Some(fixture.evidence.root_digest.as_str())
+    );
+    let candidate = lexical_overlay_hit_to_search_candidate(&result.hits[0], "session-1/base-1");
 
     assert_eq!(candidate.route_source, "search-overlay");
     assert_eq!(
@@ -79,15 +108,16 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
 #[test]
 fn structural_index_hit_projects_selector_generation_and_stable_route() {
     let terms = source_index_lookup_terms("parse config serde_json");
-    let hit = TursoStructuralIndexSearchHit {
+    let hit = StructuralIndexSearchHit {
         document_id: "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/parse_config"
             .to_string(),
+        generation: "generation-1".to_string(),
         selector: Some("rust://src/lib.rs#item/fn/parse_config".to_string()),
-        document: "symbol parse_config rust rs-harness serde_json::from_str".to_string(),
+        document: "symbol parse_config rust asp-rust serde_json::from_str".to_string(),
     };
     let candidate = structural_index_hit_to_search_candidate(&hit, &terms);
 
-    assert_eq!(candidate.route_source, "turso-fts");
+    assert_eq!(candidate.route_source, "resident-structural-index");
     assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "selector");
     assert_eq!(candidate.generation.as_deref(), Some("generation-1"));
@@ -120,7 +150,15 @@ fn shared_search_candidate_detects_executable_line_identity() {
 }
 
 #[test]
-fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index() {
+fn merge_search_candidates_prefers_overlay_then_resident_structural_index_then_source_index() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
+            fixture.provider_digest.clone(),
+        );
     let terms = source_index_lookup_terms("overlay fixture");
     let source_index_candidate = source_index_candidate_to_search_candidate(
         SourceIndexRankCandidate {
@@ -131,17 +169,18 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
         &terms,
     );
     let structural_candidate = structural_index_hit_to_search_candidate(
-        &TursoStructuralIndexSearchHit {
+        &StructuralIndexSearchHit {
             document_id:
                 "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/overlay_fixture"
                     .to_string(),
+            generation: "generation-1".to_string(),
             selector: Some("rust://src/lib.rs#item/fn/overlay_fixture".to_string()),
             document: "symbol overlay_fixture stable structural document".to_string(),
         },
         &terms,
     );
-    let overlay_hits = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new("overlay fixture").document(
+    let overlay_result = search_lexical_overlay(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -150,7 +189,20 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
             .search_text("dynamic overlay fixture owner"),
         ),
     );
-    let overlay_candidate = lexical_overlay_hit_to_search_candidate(&overlay_hits[0], "session-1");
+    assert_eq!(
+        overlay_result.source_snapshot.source_kind,
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
+    );
+    assert_eq!(
+        overlay_result.source_snapshot.provider_digest,
+        fixture.provider_digest
+    );
+    assert_eq!(
+        overlay_result.source_snapshot.base_root_digest.as_deref(),
+        Some(fixture.evidence.root_digest.as_str())
+    );
+    let overlay_candidate =
+        lexical_overlay_hit_to_search_candidate(&overlay_result.hits[0], "session-1");
 
     let ranked = merge_search_candidates(vec![
         source_index_candidate,
@@ -159,12 +211,23 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
     ]);
 
     assert_eq!(ranked[0].candidate.route_source, "search-overlay");
-    assert_eq!(ranked[1].candidate.route_source, "turso-fts");
+    assert_eq!(
+        ranked[1].candidate.route_source,
+        "resident-structural-index"
+    );
     assert_eq!(ranked[2].candidate.route_source, "source-index");
 }
 
 #[test]
 fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
+            fixture.provider_digest.clone(),
+        );
     let terms = source_index_lookup_terms("overlay fixture");
     let source_index_candidate = source_index_candidate_to_search_candidate(
         SourceIndexRankCandidate {
@@ -174,8 +237,8 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
         },
         &terms,
     );
-    let overlay_hits = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new("overlay fixture").document(
+    let overlay_result = search_lexical_overlay(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -184,7 +247,20 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
             .search_text("dynamic overlay fixture owner"),
         ),
     );
-    let overlay_candidate = lexical_overlay_hit_to_search_candidate(&overlay_hits[0], "session-1");
+    assert_eq!(
+        overlay_result.source_snapshot.source_kind,
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer
+    );
+    assert_eq!(
+        overlay_result.source_snapshot.provider_digest,
+        fixture.provider_digest
+    );
+    assert_eq!(
+        overlay_result.source_snapshot.base_root_digest.as_deref(),
+        Some(fixture.evidence.root_digest.as_str())
+    );
+    let overlay_candidate =
+        lexical_overlay_hit_to_search_candidate(&overlay_result.hits[0], "session-1");
 
     let ranked = merge_search_candidates(vec![source_index_candidate, overlay_candidate]);
 

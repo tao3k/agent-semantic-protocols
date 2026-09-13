@@ -1,0 +1,366 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchLoop clause-result merge algebra
+#+startup: overview
+
+#+property: rfc_layer 10.05.10-interactive-searchloop
+
+* SearchLoop clause-result merge algebra
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SEARCHLOOP-MERGE-ALGEBRA
+:END:
+
+** Status and authority
+
+This module refines the clause-first SearchLoop contract with a formally checked
+result-admission and merge model.  It closes the previously open obligation to
+prove merge confluence for independent clause-result orderings.
+
+The normative proof source is
+[[file:../../../../packages/proofs/ASPProof/SearchLoopMerge.lean][ASPProof.SearchLoopMerge]].
+The mathematical notation below is an explanatory projection of that Lean
+model.  It is intentionally embedded as Org Babel Typst and is linted through
+stdin; no detached =.typ= file is an authority source.
+
+This module proves result-reduction confluence.  It does not prove universal
+SearchLoop liveness, graph-escalation completeness, or that every provider will
+eventually emit a result.
+
+** Problem: last-write-wins is not a merge law
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SMA-LWW-COUNTEREXAMPLE
+:END:
+
+A clause result has three semantic components:
+
+1. a clause identity =c=,
+2. a validation domain =d=, and
+3. an outcome =o=.
+
+If two agents report different outcomes for the same clause and domain, a
+last-write-wins store makes the final answer depend on arrival order.  Lean
+checks a concrete counterexample: writing =pending= then =contradiction= differs
+from writing =contradiction= then =pending=.
+
+Therefore arrival order MUST NOT be semantic evidence.  A SearchLoop
+implementation MAY preserve arrival order for diagnostics, but MUST reduce
+admitted semantic outcomes through the join defined below.
+
+** Outcome join
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SMA-OUTCOME-JOIN
+:END:
+
+Let the outcome carrier be
+
+\[
+O = \{\mathsf{pending},\mathsf{discharged},\mathsf{contradiction}\}
+\]
+
+with information order
+
+\[
+\mathsf{pending}\preceq\mathsf{discharged}\preceq\mathsf{contradiction}.
+\]
+
+The join =o₁ ⊔ o₂= selects the greatest outcome in this order.
+=contradiction= dominates because contradictory evidence must not be erased by
+a later success or pending report.  Lean proves that this join is:
+
+1. commutative,
+2. associative, and
+3. idempotent.
+
+These laws are protocol requirements, not implementation hints.  A provider
+extension that introduces a richer outcome set MUST define a join satisfying
+the same three laws or MUST remain outside the normalized merge ledger.
+
+** Admission precedes merge
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SMA-ADMISSION
+:END:
+
+The transport shape =ClauseResult(c,d,o)= is not yet mergeable.  The runtime
+MUST first admit it against the active validation domain =d*=.
+
+1. If =d ≠ d*=, admission returns the typed conflict =validationDomain=.
+2. If a pair-merge API is called with different clause identities, it returns
+   the typed conflict =clauseIdentity=.
+3. Only after domain admission may the runtime construct
+   =AdmittedResult d*=.
+
+The Lean model indexes =AdmittedResult= and =NormalizedLedger= by the
+validation domain.  Consequently, a result admitted for one domain cannot be
+passed to the merge operation of another domain without first violating the
+type boundary.
+
+The =clauseIdentity= conflict does not mean that two different clauses conflict
+in the global ledger.  It means that a caller attempted to pair-merge two
+different logical slots.  Different clauses are separate ledger keys and their
+writes commute.
+
+** Typed conflict boundary
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SMA-TYPED-CONFLICT
+:END:
+
+Domain or identity mismatch MUST be represented as typed control data before
+normalization.  It MUST NOT be:
+
+- silently coerced into the active domain,
+- reduced by last-write-wins,
+- interpreted as =pending=, or
+- hidden as an empty search result.
+
+This separation is necessary because the join algebra is closed only over
+already-admitted outcomes.  Treating admission failure as a member of =O= would
+conflate protocol invalidity with semantic evidence about a clause.
+
+** Normalized ledger and finite confluence
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SMA-CONFLUENCE
+:END:
+
+For one fixed validation domain =d=, the normalized ledger is
+
+\[
+L_d : C \to O.
+\]
+
+Merging an admitted result =(c,o)= updates only slot =c=:
+
+\[
+U_{c,o}(L_d)(c)=L_d(c)\sqcup o
+\]
+
+and leaves every other slot unchanged.  Lean proves:
+
+1. any two admitted updates commute, including two outcomes for the same
+   clause;
+2. replaying an admitted update is idempotent;
+3. raw writes to distinct clause keys commute; and
+4. for any finite lists =xs= and =ys=, if =xs= is a permutation of =ys=, then
+   =mergeMany L xs = mergeMany L ys=.
+
+The fourth theorem is the actual confluence statement.  Pairwise commutation
+alone was an incomplete RFC obligation because it did not formally connect
+local swaps to arbitrary finite result orderings.
+
+This theorem permits parallel search branches to finish in different orders
+without changing the normalized clause-result ledger, provided every result
+has already passed the same-domain admission boundary.
+
+** Lean-discovered repairs to the RFC
+
+The proof work exposed five design flaws in the earlier prose:
+
+1. “Independent result” had no exact identity rule.  The repair distinguishes
+   pair identity =(clause, validation-domain)= from independent ledger keys.
+2. The earlier wording allowed clause identity alone to authorize a merge.
+   The repair requires validation-domain equality before normalization.
+3. The earlier wording did not separate invalid input from semantic outcome.
+   The repair makes identity and domain failures typed conflicts.
+4. A two-update commutation claim was weaker than arbitrary-order confluence.
+   The repair adds a finite permutation-invariance theorem.
+5. Last-write-wins looked operationally convenient but is demonstrably
+   order-dependent.  The repair requires a join-semilattice reduction.
+
+The proof audit exposed a sixth verification constraint: extensional equality
+of ledgers uses Lean's trusted =Quot.sound= principle, while proposition
+simplification uses =propext=.  AXLE admission therefore MUST compare the
+reported axiom inventory with an explicit per-proof-family allow-list.  It MUST
+NOT assume that all SearchLoop proof families have the same inventory.
+
+** Lean JSON and AXLE audit
+
+The Lean-owned aggregate audit command is
+=#write_searchloop_merge_audit=.  It emits
+[[file:../../../../packages/proofs/receipts/searchloop-merge-audit-v1.json][searchloop-merge-audit-v1.json]].
+That aggregate document is an inventory, not the strongest admission unit.
+
+The commands =#write_searchloop_merge_algebra_audit= and
+=#write_searchloop_merge_ledger_audit= additionally emit two non-overlapping
+policy scopes:
+
+- [[file:../../../../packages/proofs/receipts/searchloop-merge-algebra-audit-v1.json][searchloop-merge-algebra-audit-v1.json]]
+  contains =merge-algebra=, =typed-conflict=, and =counterexample=; and
+- [[file:../../../../packages/proofs/receipts/searchloop-merge-ledger-audit-v1.json][searchloop-merge-ledger-audit-v1.json]]
+  contains =merge-confluence= and =ledger-independence=.
+
+AXLE admits those scopes separately and emits
+[[file:../../../../packages/proofs/receipts/searchloop-merge-algebra-axle-audit-v1.json][searchloop-merge-algebra-axle-audit-v1.json]]
+and
+[[file:../../../../packages/proofs/receipts/searchloop-merge-ledger-axle-audit-v1.json][searchloop-merge-ledger-axle-audit-v1.json]].
+
+Admission is fail-closed.  The AXLE policy requires:
+
+- no =sorryAx=;
+- theorem families =merge-algebra=, =merge-confluence=,
+  =ledger-independence=, =typed-conflict=, and =counterexample=;
+- all four normative clause IDs in this module; and
+- algebra/conflict/counterexample declarations use only =propext=; and
+- ledger/confluence declarations use only =propext= and =Quot.sound=.
+
+The JSON receipt is evidence about the compiled Lean environment.  A prose
+claim or =#print axioms= transcript is not a substitute for it.
+
+Splitting the Lean-owned JSON closes an AXLE policy-escalation flaw found during
+this proof pass.  A single aggregate allow-list would let the ledger family's
+=Quot.sound= authority leak into algebra declarations.  The conjunction of the
+two scoped AXLE receipts covers all thirteen declarations without granting that
+extra authority to the nine algebra/conflict/counterexample declarations.
+
+** Org Babel Typst projection
+
+#+name: searchloop-merge-algebra-model
+#+begin_src typst
+#set page(width: 180mm, height: auto, margin: 14mm)
+#set text(size: 10pt)
+#set heading(numbering: "1.")
+
+#let pending = math.op("pending")
+#let discharged = math.op("discharged")
+#let contradiction = math.op("contradiction")
+#let join = math.op("join")
+#let merge = math.op("mergeMany")
+#let perm = math.op("Perm")
+#let admit = math.op("admit")
+#let conflict = math.op("conflict")
+#let sameSlot = math.op("sameSlot")
+#let intersect = math.op("intersect")
+#let axioms = math.op("Ax")
+#let propext = math.op("propext")
+#let quotSound = math.op("Quot.sound")
+
+= SearchLoop admitted-result merge algebra
+
+== Lean-to-mathematics type projection
+
+#table(
+  columns: (1fr, 1.7fr),
+  inset: 5pt,
+  align: (left, left),
+  [*Lean type*], [*Mathematical role*],
+  [`ValidationDomain`], [$D = S times P times Sigma times Pi$],
+  [`ClauseResult`], [$R = C times D times O$],
+  [`AdmittedResult d`], [$(c, o)$ indexed by one fixed $d$],
+  [`NormalizedLedger d`], [$L_d : C arrow.r O$],
+  [`MergeConflict`], [typed rejection before normalization],
+)
+
+The domain components are source snapshot $S$, provider identity $P$, schema
+identity $Sigma$, and policy identity $Pi$.  Equality of human-readable text
+does not imply equality of $D$.
+
+== Admission boundary
+
+A transport result is not yet an element of the normalized ledger.  Admission
+checks the active validation domain:
+
+$ d' = d => admit_d(c, d', o) = (c, o), $
+
+$ d' != d => admit_d(c, d', o) =
+  conflict("validation-domain"). $
+
+Pair merge additionally requires one logical slot:
+
+$ sameSlot(r_1, r_2) <=>
+  r_1.c = r_2.c and r_1.d = r_2.d. $
+
+Different clauses do not conflict in the global ledger.  They address
+different keys.  A clause-identity conflict means only that a caller attempted
+to pair-merge different slots.
+
+== Outcome semilattice
+
+The outcome carrier and its information order are
+
+$ O = { pending, discharged, contradiction } $
+
+$ pending <= discharged <= contradiction. $
+
+The Lean function `joinOutcome` implements the least upper bound.  Its checked
+laws are
+
+$ a join b = b join a, $
+
+$ (a join b) join c = a join (b join c), $
+
+$ a join a = a. $
+
+`contradiction` dominates so that contradictory evidence cannot be erased by a
+later success or pending report.
+
+== Domain-indexed normalized ledger
+
+For a fixed admitted validation domain $d$, let
+
+$ L_d : C arrow.r O. $
+
+An admitted result $(c, o)$ updates only its own clause:
+
+$ U_(c,o)(L_d)(c) = L_d(c) join o, $
+
+$ x != c => U_(c,o)(L_d)(x) = L_d(x). $
+
+Consequently, admitted updates commute and replay is idempotent:
+
+$ U_r(U_s(L_d)) = U_s(U_r(L_d)), $
+
+$ U_r(U_r(L_d)) = U_r(L_d). $
+
+== Finite confluence
+
+$ perm(x_s, y_s) => merge(L_d, x_s) = merge(L_d, y_s). $
+
+This is `SearchLoopMerge.mergeMany_permutation_invariant`.  It quantifies over
+finite lists, rather than merely asserting that one pair of updates commutes.
+It is valid only after admission into the same indexed domain.
+
+== Countermodel for last-write-wins
+
+Last-write-wins on one clause is order-dependent:
+
+$ op("LWW")(pending, contradiction) !=
+  op("LWW")(contradiction, pending). $
+
+Thus scheduling order may affect diagnostics, but cannot determine the
+normalized semantic ledger.
+
+== Scoped Lean JSON to AXLE admission
+
+The thirteen audited declarations are partitioned into non-overlapping scopes:
+
+$ T = T_"algebra" union T_"ledger", $
+
+$ T_"algebra" intersect T_"ledger" = emptyset, $
+
+$ abs(T_"algebra") = 9, quad abs(T_"ledger") = 4. $
+
+Their admitted axiom inventories are intentionally different:
+
+$ axioms(T_"algebra") subset.eq { propext }, $
+
+$ axioms(T_"ledger") subset.eq { propext, quotSound }. $
+
+The aggregate inventory is not an admission authority.  AXLE must accept both
+scoped receipts independently; otherwise `Quot.sound`, needed for extensional
+ledger equality, would leak into the algebra-only proof authority.
+#+end_src
+
+** Remaining proof boundary
+
+The following remain outside this module:
+
+1. universal termination of a SearchLoop;
+2. completeness of graph escalation;
+3. fairness of provider or subagent scheduling;
+4. confluence of side effects other than normalized clause-result reduction;
+5. soundness of provider-produced evidence itself.
+
+Those obligations must not be inferred from the merge receipt.
+
+The adjacent minimal cache-identity and invalidation proof is specified in
+[[file:../10.05.40-receipts-cache-identity/00.15-searchloop-cache-minimal-identity-refinement.org][SearchLoop cache minimal-identity refinement]].

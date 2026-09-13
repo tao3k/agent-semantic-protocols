@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-provider-execution-binding.v1.schema.json",
+  "title": "Runtime Provider Execution Binding V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "generation",
+    "projectId",
+    "workspaceId",
+    "runtimeBundleDigest",
+    "schemaBundleDigest",
+    "workspaceClosureDigest",
+    "sourceSnapshotDigest",
+    "sourceIndexDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-provider-execution-binding"
+    },
+    "schemaVersion": { "const": "1" },
+    "generation": { "$ref": "#/$defs/integrityReference" },
+    "projectId": { "type": "string", "pattern": "^repo-.+$" },
+    "workspaceId": { "type": "string", "pattern": "^workspace-.+$" },
+    "runtimeBundleDigest": { "$ref": "#/$defs/integrityReference" },
+    "schemaBundleDigest": { "$ref": "#/$defs/integrityReference" },
+    "workspaceClosureDigest": { "$ref": "#/$defs/integrityReference" },
+    "sourceSnapshotDigest": { "$ref": "#/$defs/integrityReference" },
+    "sourceIndexDigest": { "$ref": "#/$defs/integrityReference" }
+  },
+  "$defs": {
+    "integrityReference": {
+      "type": "string",
+      "pattern": "^(blake3-256|sha256):[0-9a-fA-F]{64}$"
+    }
+  }
+}

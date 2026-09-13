@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Evidence graph and routing
+#+PROPERTY: rfc_layer evidence-graph-routing
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Ownership
+
+This layer owns evidence-graph topology, relation postings, graph-router
+escalation, bounded path selection, and the conditions under which a loop may
+pay for additional graph expansion.
+
+It does not own presentation syntax, cache invalidation, or Lean audit
+mechanics.
+
+* Canonical RFCs
+
+- [[file:00.08-relation-postings-and-graph-escalation.org][Relation postings and graph escalation]]
+- [[file:00.18-searchroute-constructive-enumeration.org][SearchRoute constructive enumeration]]
+- [[file:00.19-searchroute-certified-lazy-frontier.org][SearchRoute certified lazy frontier]]
+- [[file:00.26-searchroute-committed-candidate-universe.org][SearchRoute committed candidate universe]]
+- [[file:00.27-searchroute-finite-canonical-manifest-commitment.org][Finite canonical manifest commitment]]
+- [[file:00.28-evidence-graph-router-executability-certificate.org][Evidence-graph router executability certificate]]
+- [[file:00.29-evidence-graph-temporal-capability-lease.org][Evidence-graph temporal capability lease]]
+- [[file:00.30-certified-sparse-evidence-graph-projection.org][Certified sparse evidence-graph projection]]
+- [[file:00.31-lexicographic-omitted-frontier-certificate.org][Lexicographic omitted-frontier certificate]]
+- [[file:00.32-canonical-graph-cost-vector.org][Canonical graph cost vector]]
+- [[file:00.35-feasibility-first-route-admission.org][Feasibility-first route admission]]
+- [[file:00.62-completion-equivalent-pareto-router.org][Completion-equivalent Pareto router]]
+- [[file:00.94-semantic-path-cache-execution-separation.org][Semantic path and cache execution separation]]
+- [[file:01.08-searchroute-graph-router-pareto-cost-selection.org][Graph-router Pareto cost selection]]
+- [[file:01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]]
+- [[file:01.10-searchroute-pareto-frontier-vector-completeness.org][Pareto frontier cost-vector completeness]]
+- [[file:01.11-searchroute-vector-coverage-identity-fence.org][Vector-coverage semantic identity and generation fence]]
+- [[file:01.12-searchroute-deterministic-frontier-merge-fanout-fanin.org][Deterministic frontier merge for fan-out/fan-in]]
+- [[file:01.13-searchroute-coverage-transition-chain-integrity.org][Coverage transition-chain integrity]]
+- [[file:01.13-searchroute-certified-normalized-union-sequential-equivalence.org][Certified normalized union and sequential equivalence]]
+- [[file:01.14-searchroute-finite-multiobjective-pareto-mask-witness.org][Finite multiobjective Pareto mask and dominance witness]]
+- [[file:01.15-searchroute-bounded-dominance-witness-chain.org][Bounded dominance-witness chain]]
+- [[file:01.16-searchroute-capacity-rank-certificate.org][Capacity-rank certificate]]
+- [[file:01.17-searchroute-derived-capacity-rank.org][Derived capacity rank]]
+- [[file:01.17-searchroute-executable-verifier-conformance.org][Executable verifier conformance]]
+- [[file:01.18-searchroute-verifier-artifact-provenance.org][Verifier artifact provenance]]
+- [[file:01.19-searchroute-provenance-evidence-execution-conformance.org][Provenance evidence execution conformance]]
+- [[file:01.20-searchroute-batch-claim-dag-equivalence.org][Batch claim DAG equivalence]]
+- [[file:01.18-searchroute-dominance-transitive-shortcut.org][Dominance transitive shortcut]]
+- [[file:01.19-searchroute-shortcut-commitment-replay.org][Shortcut commitment replay]]
+- [[file:01.20-searchroute-shortcut-envelope-admission.org][Shortcut envelope admission]]
+- [[file:01.21-searchroute-canonical-payload-digest-replay.org][Canonical payload and digest replay]]
+- [[file:01.22-searchroute-safe-replay-mode-negotiation.org][Safe replay-mode negotiation]]
+- [[file:01.23-searchroute-end-to-end-replay-state-machine.org][End-to-end replay state machine]]
+- [[file:01.24-searchroute-adaptive-batch-failure-isolation.org][Adaptive batch failure isolation]]
+- [[file:01.25-searchroute-risk-bounded-batch-admission.org][Risk-bounded batch admission]]
+- [[file:01.26-searchroute-risk-feasible-graph-selection.org][Risk-feasible graph selection]]
+- [[file:01.27-searchroute-executable-risk-admitted-pareto-frontier.org][Executable risk-admitted Pareto frontier]]
+- [[file:01.15-searchroute-authority-rotation-chain-continuity.org][Authority-rotation chain continuity]]
+- [[file:01.16-searchroute-cryptographic-transfer-receipt-binding.org][Cryptographic transfer-receipt binding]]
+- [[file:01.17-searchroute-executable-verifier-conformance.org][Executable verifier conformance]]
+- [[file:10.05.88-lexical-search-frame-graph-router.org][Lexical SearchFrame and GraphRouter]]

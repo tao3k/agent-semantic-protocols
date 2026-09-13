@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-command-invocation.v1.schema.json",
+  "title": "Semantic command invocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "shape",
+    "wrapperMatch",
+    "wrapperChain",
+    "executable",
+    "flags",
+    "flagPresence",
+    "operands"
+  ],
+  "properties": {
+    "shape": {
+      "enum": [
+        "host-native",
+        "command",
+        "wrapped-command"
+      ]
+    },
+    "wrapperMatch": {
+      "enum": [
+        "matched",
+        "unmatched",
+        "unknown"
+      ]
+    },
+    "wrapperChain": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "executable": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "flagPresence": {
+      "enum": [
+        "present",
+        "absent"
+      ]
+    },
+    "operands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subjectKind": {
+            "enum": [
+              "registered-language-source",
+              "registered-language-source-pattern",
+              "directory",
+              "provider-config-file",
+              "structural-selector",
+              "other"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

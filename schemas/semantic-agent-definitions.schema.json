@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json",
+  "title": "Semantic Agent Family Definitions v1",
+  "description": "Shared definitions owned by the semantic-agent schema family.",
+  "$defs": {
+    "typedSubjectKind": {
+      "enum": ["registered-language-source", "registered-language-source-pattern", "provider-config-file", "directory", "structural-selector", "other"]
+    },
+    "subjectKindArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/typedSubjectKind" }
+    },
+    "agentOrgArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "inactiveAfterMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "artifactsPath": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".cache/agent-semantic-protocol/artifacts/org"
+        },
+        "entrySkillPath": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+        },
+        "archiveWarning": {
+          "$ref": "#/$defs/agentOrgArtifactsArchiveWarning"
+        }
+      }
+    },
+    "agentOrgArtifactsArchiveWarning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "activeOrgFileThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        },
+        "archivesDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "archives"
+        },
+        "maxReportedFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        }
+      }
+    },
+    "tokenCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "totalTokens",
+        "basis"
+      ],
+      "properties": {
+        "unit": {
+          "enum": [
+            "token-estimate",
+            "token-count"
+          ]
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheReadInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "generatedBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime",
+        "version"
+      ],
+      "properties": {
+        "runtime": {
+          "const": "asp"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agentStatus": {
+      "oneOf": [
+        {
+          "enum": [
+            "pending_init",
+            "running",
+            "interrupted",
+            "shutdown",
+            "not_found"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completed"],
+          "properties": {
+            "completed": {"type": ["string", "null"]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["errored"],
+          "properties": {
+            "errored": {"type": "string"}
+          }
+        }
+      ]
+    }
+  }
+}

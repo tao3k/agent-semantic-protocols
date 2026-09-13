@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Resident-visible and durable generation publication
+#+PROPERTY: RFC_ID ASP-SEARCH-GENERATION-PUBLICATION-V1
+
+* Status
+
+Normative.
+
+* Problem
+
+An exact query needs the current in-process generation, while restart recovery
+needs that generation to be durably represented by its segments, atomic
+pointer, and owner-identity journal.  These are different authorities.  A
+query must not wait for filesystem durability after the complete generation is
+already present in the Runtime Server.
+
+* Publication states
+
+The per-workspace writer lane owns one ordered state machine:
+
+1. =resident-ready=: the complete generation validates, a MemoryBackend has
+   been constructed, and the workspace resident pointer has atomically changed.
+2. =durable-ready=: the same generation's segments, directory entry, atomic
+   snapshot pointer, and owner-identity journal are durable.
+3. =failed=: durable publication failed.  The resident generation remains
+   readable, but health and repair must expose the failure and may not claim
+   restart safety.
+
+The receipt is =runtime-server-workspace-generation-durability.v1=.  Schema
+version is =1=; state names are protocol values, not schema versions.
+
+* Ordering law
+
+For one workspace, generation =g(n+1)= may become resident-visible only after
+the writer lane has reached =durable-ready= or =failed= for =g(n)=.  A replay
+of the same generation may read the resident generation immediately.  Different
+workspaces have independent writer lanes and never share a durability lock.
+
+* Query law
+
+Exact and search consumers may enter on =resident-ready=.  They consume the
+Runtime Server lease, not the mmap checkpoint.  Query-time entry performs no
+filesystem open, write, sync, Git discovery, provider process, Turso open, or
+activation repair.
+
+The registry accepts =ValidatedWorkspaceCanonicalMaterialization=, never a raw
+materialization.  The Turso generation loader validates once before publication;
+the registry must not repeat owner, snapshot, or generation-evidence validation
+on replay.  A raw materialization cannot enter the writer lane.
+
+Runtime Server lifecycle prepares the keyed resident workspace scope before a
+search or exact query is timed or dispatched.  Scope preparation owns durable
+checkpoint discovery and session-entry creation.  A cold generation means no
+active generation is present in an already prepared resident scope; it does not
+mean that query-time code may reopen the workspace session.
+
+* Failure and recovery law
+
+Durability work is never detached without authority.  Its terminal receipt is
+stored on the workspace resident entry.  Healthcheck reports =failed= and the
+repair lane republishes from the still-complete resident generation.  A server
+restart may restore only a =durable-ready= generation.
+
+* Performance qualification
+
+The empirical gate uses multiple workspaces, multiple sessions, repeated
+replay, and concurrent readers.  Foreground resident publication and replay
+retain sub-millisecond hard gates.  The fixture separately awaits and validates
+the durable terminal receipt; passing the latency gate by omitting durability
+is a protocol failure.

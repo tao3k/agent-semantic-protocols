@@ -1,0 +1,167 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Typed Runtime client frames, identities, catalogs, routes, and conformance contracts.
+
+mod agent_session;
+mod canonical_json;
+mod catalog;
+mod client_timing;
+mod conformance;
+mod enhanced_query_capability;
+mod frame;
+mod identity;
+pub mod protocol_identity;
+mod protocol_validation;
+mod resident_syntax_query_plan;
+mod route_validation;
+mod routes;
+mod schema_bundle;
+mod server_method_catalog;
+#[cfg(test)]
+#[path = "../tests/unit/server_method_catalog.rs"]
+mod server_method_catalog_tests;
+mod session;
+pub mod workspace_source_mutation;
+pub use canonical_json::to_jcs_vec as canonical_json_bytes;
+pub use catalog::ClientCapabilities;
+pub use catalog::ClientMethod;
+pub use catalog::ClientParameter;
+pub use catalog::ClientParameterCardinality;
+pub use catalog::ClientParameterSource;
+pub use catalog::ClientParameterType;
+pub use catalog::ClientProtocolCatalog;
+pub use catalog::ClientTransport;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_PHASES;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_WITNESS_SCHEMA_ID;
+pub use client_timing::RUNTIME_SEARCH_CLIENT_TIMING_WITNESS_SCHEMA_VERSION;
+pub use client_timing::RuntimeSearchClientTimingError;
+pub use client_timing::RuntimeSearchClientTimingPhase;
+pub use client_timing::RuntimeSearchClientTimingWitness;
+pub use conformance::ClientAdmissionError;
+pub use conformance::ClientConformanceCase;
+pub use conformance::ClientConformanceReceipt;
+pub use conformance::ClientConformanceSuite;
+pub use enhanced_query_capability::{
+    ENHANCED_QUERY_CAPABILITY_TABLE_SCHEMA_ID, EnhancedQueryCapabilityLowering,
+    EnhancedQueryCapabilityRow, EnhancedQueryCapabilityRowKind, EnhancedQueryCapabilityTable,
+    EnhancedQueryConstraintKind, EnhancedQueryEquivalenceEvidence, EnhancedQueryPublicationState,
+    EnhancedQueryVersionedIdentity,
+};
+pub use frame::ClientFrame;
+pub use frame::ClientFrameBase;
+pub use frame::ClientInfo;
+pub use frame::ClientOutcome;
+pub use frame::TraceContext;
+pub use identity::AgentChildThreadId;
+pub use identity::AgentName;
+pub use identity::AgentParentThreadId;
+pub use identity::AgentPath;
+pub use identity::AgentRootSessionId;
+pub use identity::AgentRouteKey;
+pub use identity::ClientProjectId;
+pub use identity::ClientReasonKind;
+pub use identity::ClientRequestId;
+pub use identity::ClientRouteId;
+pub use identity::ClientSchemaId;
+pub use identity::ClientSessionId;
+pub use identity::ClientWorkspaceIdentity;
+pub use session::ClientSession;
+pub use session::ClientSessionState;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_source_mutation.rs"]
+mod workspace_source_mutation_tests;
+pub use resident_syntax_query_plan::{
+    ENHANCED_TREE_SITTER_QUERY_PROFILE_ID, RESIDENT_SYNTAX_QUERY_PLAN_SCHEMA_ID,
+    ResidentRegexProgram, ResidentSyntaxQueryCapture, ResidentSyntaxQueryCardinality,
+    ResidentSyntaxQueryCondition, ResidentSyntaxQueryDirection, ResidentSyntaxQueryFactPath,
+    ResidentSyntaxQueryOrigin, ResidentSyntaxQueryOriginKind, ResidentSyntaxQueryPattern,
+    ResidentSyntaxQueryPlan, ResidentSyntaxQueryRangeMode, ResidentSyntaxQueryRelationOperator,
+    ResidentSyntaxQueryResultField, ResidentSyntaxQueryScalarOperator,
+    ResidentSyntaxQueryScalarValue, ResidentSyntaxQuerySetOperator,
+};
+pub use routes::AspClientExactQueryFailure;
+pub use routes::AspClientExactQueryRequest;
+pub use routes::AspClientExactQueryResponse;
+pub use routes::AspClientGraphsTimelineRequest;
+pub use routes::AspClientRuntimeWorkCounters;
+pub use routes::AspClientSearchPlaybookClauseAxis;
+pub use routes::AspClientSearchPlaybookClauseRef;
+pub use routes::AspClientSearchPlaybookGraphBlock;
+pub use routes::AspClientSearchPlaybookSyntaxBlock;
+pub use routes::AspClientSourceIndexLookupRequest;
+pub use routes::AspClientWorkspaceQueryPlaybookRequest;
+pub use routes::AspClientWorkspaceSearchPlaybookRequest;
+pub use routes::AspClientWorkspaceSyntaxPlanContextRequest;
+pub use routes::AspClientWorkspaceSyntaxPlanContextResponse;
+pub use routes::AspClientWorkspaceSyntaxQueryEvidence;
+pub use routes::AspClientWorkspaceSyntaxQueryProjection;
+pub use routes::AspClientWorkspaceSyntaxQueryRequest;
+pub use routes::AspClientWorkspaceSyntaxQueryResponse;
+pub use routes::AspClientWorkspaceSyntaxQueryScope;
+pub use routes::AspClientWorkspaceSyntaxQuerySelection;
+pub use routes::LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID;
+pub use routes::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID;
+pub use routes::LiveCorpusCacheStateReceipt;
+pub use routes::LiveCorpusCacheStateRequest;
+pub use routes::ProviderNativeExactProjection;
+pub use routes::ProviderNativeExactRequest;
+pub use routes::RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID;
+pub use routes::RuntimeProviderSearchRequest;
+pub use routes::RuntimeResidentRequestOperation;
+pub use routes::RuntimeResidentRequestPlaneReceipt;
+pub use routes::RuntimeResidentRequestTemperature;
+pub use schema_bundle::SCHEMA_BUNDLE_METHOD;
+pub use schema_bundle::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID;
+pub use schema_bundle::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
+pub use schema_bundle::SchemaBundleDocument;
+pub use schema_bundle::SchemaBundleEntry;
+pub use schema_bundle::SchemaBundleReceipt;
+pub use schema_bundle::SchemaBundleRequest;
+pub use schema_bundle::SchemaBundleResponse;
+pub use server_method_catalog::CANCELLATION_PROBE_METHOD;
+pub use server_method_catalog::CANCELLATION_PROBE_REQUEST_SCHEMA_ID;
+pub use server_method_catalog::CANCELLATION_PROBE_RESPONSE_SCHEMA_ID;
+pub use server_method_catalog::ClientDispatchClass;
+pub use server_method_catalog::FIRST_COMPUTATION_OBSERVATION_BUDGET;
+pub use server_method_catalog::GRAPH_EVALUATE_METHOD;
+pub use server_method_catalog::GRAPH_EVALUATE_REQUEST_SCHEMA_ID;
+pub use server_method_catalog::GRAPH_EVALUATE_RESPONSE_SCHEMA_ID;
+pub use server_method_catalog::GRAPH_TIMELINE_METHOD;
+pub use server_method_catalog::GRAPH_TIMELINE_REQUEST_SCHEMA_ID;
+pub use server_method_catalog::GRAPH_TIMELINE_RESPONSE_SCHEMA_ID;
+pub use server_method_catalog::LIVE_CORPUS_CACHE_STATE_METHOD;
+pub use server_method_catalog::MULTI_AGENT_CHILDREN_METHOD;
+pub use server_method_catalog::MULTI_AGENT_HOST_EVENT_METHOD;
+pub use server_method_catalog::ResolvedServerClientMethod;
+pub use server_method_catalog::ServerClientRoute;
+pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_METHOD;
+pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID;
+pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID;
+pub use server_method_catalog::WORKSPACE_QUERY_PLAYBOOK_METHOD;
+pub use server_method_catalog::WORKSPACE_SEARCH_PLAYBOOK_METHOD;
+pub use server_method_catalog::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD;
+pub use server_method_catalog::WORKSPACE_SYNTAX_QUERY_METHOD;
+pub use server_method_catalog::classify_client_dispatch;
+pub use server_method_catalog::resolve_server_client_method;
+pub use server_method_catalog::resolve_server_client_method_owner;
+pub use server_method_catalog::server_client_catalog;
+pub use server_method_catalog::server_client_methods;
+
+pub mod runtime_generation;
+
+pub use protocol_validation::run_conformance_suite;
+
+#[cfg(test)]
+#[path = "../tests/unit/client_protocol_contract.rs"]
+mod tests;
+pub use agent_session::AGENT_SESSION_REGISTER_METHOD;
+pub use agent_session::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
+pub use agent_session::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
+pub use agent_session::AgentSessionPlatform;
+pub use agent_session::AgentSessionRegisterReceipt;
+pub use agent_session::AgentSessionRegisterRequest;
+pub use agent_session::AgentSessionRegisterState;
+pub use agent_session::AgentSessionRegistryOwner;
+pub use agent_session::AgentSessionTransport;

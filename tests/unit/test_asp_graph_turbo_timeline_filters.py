@@ -1,10 +1,14 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Time-window filter tests for ASP graph turbo artifact timelines."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_timeline,
 )
@@ -31,7 +35,7 @@ def test_timeline_filters_since_and_recent_sessions(tmp_path) -> None:
         assert report["repeatSearches"] == 1
         assert report["promotableTypedFrontierSearches"] == 0
         assert report["collapsibleOwnerSearches"] == 1
-        assert report["repeatGroups"][0]["method"] == "search/owner"
+        assert report["repeatGroups"][0]["method"] == "search/playbook"
         assert report["repeatGroups"][0]["subject"] == "src/lib.rs"
 
     assert since_report["parameters"]["since"] == datetime.fromtimestamp(
@@ -53,12 +57,12 @@ def _write_filter_artifacts(search_dir) -> None:
     )
     write_timeline_json(
         search_dir / "rust-search-owner-a.json",
-        _packet("rust", "search/owner", owner="src/lib.rs"),
+        _packet("rust", "search/playbook", owner="src/lib.rs"),
         mtime=2000,
     )
     write_timeline_json(
         search_dir / "rust-search-owner-b.json",
-        _packet("rust", "search/owner", owner="src/lib.rs"),
+        _packet("rust", "search/playbook", owner="src/lib.rs"),
         mtime=2010,
     )
 
@@ -67,7 +71,7 @@ def _packet(
     language: str, method: str, *, query: str = "", owner: str = ""
 ) -> dict[str, object]:
     packet = {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
         "languageId": language,
         "method": method,
     }

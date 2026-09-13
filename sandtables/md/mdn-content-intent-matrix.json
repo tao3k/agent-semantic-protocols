@@ -1,0 +1,61 @@
+{
+  "id": "md.mdn-content-intent-matrix",
+  "language": "md",
+  "title": "MDN Markdown document corpus intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "markdown", "document-corpus", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "md",
+      "name": "MDN content",
+      "package": "content",
+      "repository": "mdn/content",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Locate JavaScript reference documents and their linked Web API concepts",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["JavaScript", "reference", "Web API"]
+      },
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Find the Markdown document frontier for a web platform feature",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["browser", "compatibility", "examples"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Trace conceptual links across a large Markdown documentation graph",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["JavaScript", "HTML", "HTTP"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_MD_MDN_CONTENT_ROOT"
+  },
+  "steps": [
+    {
+      "id": "live-provider-query",
+      "command": [
+        "asp",
+        "md",
+        "search",
+        "lexical",
+        "--query",
+        "JavaScript",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+      "expect": {
+        "lineProtocol": true
+      }
+    }
+  ]
+}

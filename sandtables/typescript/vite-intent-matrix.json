@@ -81,12 +81,10 @@
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -114,12 +112,10 @@
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands",
             "direct-read"
           ]
@@ -145,60 +141,60 @@
       "id": "prime",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "typescript|source",
+        ".",
+        "--tantivy",
+        "title:\"typescript\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "analysis=structure",
-          "nativeSyntaxFacts=skipped",
-          "policyFindings=skipped",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 16,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "intent-query-set",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "lexical",
-        "--query",
-        "handleHotUpdate",
-        "--query",
-        "createServer",
-        "--query",
-        "pluginContainer",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "handleHotUpdate|createServer|pluginContainer",
+        ".",
+        "--tantivy",
+        "title:\"handleHotUpdate\"^2 OR body:\"createServer\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

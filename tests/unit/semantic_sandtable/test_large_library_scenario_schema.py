@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Scenario schema coverage for large-library evidence."""
 
 from __future__ import annotations
@@ -5,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -45,10 +49,9 @@ def _target_library(scenario: dict[str, object]) -> dict[str, object]:
 
 
 def _validation_errors(scenario: dict[str, object]) -> list[str]:
-    schema = _load_json(
+    validator = schema_validator_for(
         _REPO_ROOT / "schemas" / "semantic-sandtable-scenario.v1.schema.json"
     )
-    validator = Draft202012Validator(schema)
     return [error.message for error in validator.iter_errors(scenario)]
 
 
@@ -86,7 +89,7 @@ def _large_library_scenario() -> dict[str, object]:
             {
                 "id": "intent-query-set",
                 "command": [
-                    "py-harness",
+                    "asp-python",
                     "search",
                     "lexical",
                     "--query-set",

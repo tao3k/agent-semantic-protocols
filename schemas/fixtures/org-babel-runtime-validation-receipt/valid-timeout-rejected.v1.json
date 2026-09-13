@@ -1,0 +1,29 @@
+{
+  "schemaId": "org-babel-runtime-validation-receipt.v1",
+  "schemaVersion": "1",
+  "sourceContext": {
+    "sourcePath": "/workspace/docs/model.org",
+    "workingDirectory": "/workspace/docs",
+    "packageRoot": "/workspace"
+  },
+  "binding": {
+    "kind": "exact-path",
+    "program": "/workspace/bin/typst-test-runtime",
+    "args": ["eval", "--in", "-", "ok"],
+    "stdin": true
+  },
+  "policy": {
+    "timeoutMs": 100,
+    "outputByteBudget": 1048576
+  },
+  "observation": {
+    "stdoutBytes": 0,
+    "stderrBytes": 0,
+    "elapsedMs": 104,
+    "terminationOutcome": "timed-out",
+    "exitCode": null,
+    "childReaped": true
+  },
+  "status": "rejected",
+  "diagnosticCode": "ORG043"
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Fixtures for semantic query projection uniqueness tests."""
 
 from __future__ import annotations
@@ -18,9 +22,9 @@ def semantic_query_packet_with_projection() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
-        "binary": "ts-harness",
-        "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+        "providerId": "asp-typescript",
+        "binary": "asp-typescript",
+        "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
         "method": "query/owner-items",
         "projectRoot": "/workspace/project",
         "ownerPath": "src/chain.ts",

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+version = 1
+
+[[annotations]]
+path = [
+    "asp_python_graphs/src/asp_python_graphs/py.typed",
+    "asp_schema_manager/asp-schema-lifecycle.v1.json",
+    "asp_schema_manager/src/asp_schema_manager/py.typed",
+    "tools/src/tools/py.typed",
+    "uv.lock",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 tao3k team and Contributors"
+SPDX-License-Identifier = "Apache-2.0 AND LGPL-2.1-or-later"

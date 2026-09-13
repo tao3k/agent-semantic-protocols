@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-runtime-server"
+license.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[[test]]
+name = "candidate_lifecycle"
+path = "tests/integration/candidate_lifecycle.rs"
+
+[[test]]
+name = "readiness_socket_identity"
+path = "tests/integration/readiness_socket_identity.rs"
+
+[[test]]
+name = "agent_session_registration"
+path = "tests/integration/agent_session_registration.rs"
+
+[[test]]
+name = "runtime_dependency_boundary"
+path = "tests/integration/runtime_dependency_boundary.rs"
+
+[[bench]]
+name = "runtime_schema_bundle_catalog"
+harness = false
+
+[dependencies]
+agent-semantic-artifacts.workspace = true
+agent-semantic-runtime.workspace = true
+agent-semantic-content-identity.workspace = true
+blake3.workspace = true
+agent-semantic-client-db = { path = "../agent-semantic-client-db" }
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
+agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-topology = { path = "../agent-semantic-topology" }
+agent-semantic-mrr.workspace = true
+agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+agent-semantic-schema-manager.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+regex.workspace = true
+regex-automata.workspace = true
+globset.workspace = true
+base64.workspace = true
+agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
+tokio.workspace = true
+futures-util.workspace = true
+agent-semantic-provider-protocol.workspace = true
+agent-semantic-provider-transport.workspace = true
+prost.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+tokio-stream.workspace = true
+tower.workspace = true
+hyper-util.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+agent-semantic-schema-manager.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+protoc-bin-vendored.workspace = true
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+criterion.workspace = true
+tempfile.workspace = true

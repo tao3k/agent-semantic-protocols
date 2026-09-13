@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.provider-registration",
+  "schemaVersion": "1",
+  "title": "ASP Provider Registration",
+  "type": "object",
+  "required": [
+    "$schema",
+    "binary",
+    "displayName",
+    "execution",
+    "languageId",
+    "namespace",
+    "providerDescriptor",
+    "providerId",
+    "queryPackDescriptor",
+    "runtimeContract",
+    "routes",
+    "searchCapabilities",
+    "schemas",
+    "sourceInventory"
+  ],
+  "properties": {
+    "$schema": { "const": "../schemas/provider-registration.schema.json" },
+    "binary": { "$ref": "#/$defs/nonEmptyString" },
+    "displayName": { "$ref": "#/$defs/nonEmptyString" },
+    "execution": { "$ref": "#/$defs/nonEmptyString" },
+    "languageId": { "$ref": "#/$defs/nonEmptyString" },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "provider-route.schema.json" }
+    },
+    "namespace": { "$ref": "#/$defs/nonEmptyString" },
+    "providerDescriptor": {
+      "type": "object",
+      "required": ["$ref"],
+      "properties": { "$ref": { "$ref": "#/$defs/nonEmptyString" } },
+      "additionalProperties": false
+    },
+    "providerId": { "$ref": "#/$defs/nonEmptyString" },
+    "queryPackDescriptor": { "$ref": "provider-query-pack-descriptor.schema.json" },
+    "runtimeContract": { "$ref": "provider-runtime-contract-descriptor.schema.json" },
+    "searchCapabilities": { "type": "object" },
+    "sourceInventory": { "$ref": "#/$defs/sourceInventory" },
+    "schemas": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/schemaRegistration" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "schemaRegistration": {
+      "type": "object",
+      "required": ["authority", "path", "schemaId", "schemaVersion"],
+      "properties": {
+        "authority": { "enum": ["asp", "provider"] },
+        "path": { "type": "string", "pattern": "^schemas/[^/]+\\.schema\\.json$" },
+        "schemaId": { "$ref": "#/$defs/nonEmptyString" },
+        "schemaVersion": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "sourceInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageRoots",
+        "configFiles",
+        "sourceExtensions",
+        "projectResolution",
+        "documentResolution"
+      ],
+      "properties": {
+        "packageRoots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "configFiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "sourceExtensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9+_-]+$" }
+        },
+        "projectResolution": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["entryMarkers"],
+              "properties": {
+                "entryMarkers": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/nonEmptyString" }
+                }
+              }
+            }
+          ]
+        },
+        "documentResolution": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["extensions", "supportsGitCandidates"],
+              "properties": {
+                "extensions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9+_-]+$" }
+                },
+                "supportsGitCandidates": { "type": "boolean" }
+              }
+            }
+          ]
+        }
+      },
+      "anyOf": [
+        { "properties": { "projectResolution": { "type": "object" } } },
+        { "properties": { "documentResolution": { "type": "object" } } }
+      ]
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{"sourcePath":
+ "packages/proofs/ASPProof/SearchRouteInspectCertifiedLedger.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectCertifiedLedger",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {snapshot : SearchRouteInspectCertifiedLedger.RankedDAGSnapshot}\n  {source target : Fin snapshot.graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget} {selected : SearchRouteDAG.GraphCandidate}\n  (ledger :\n    SearchRouteInspectCertifiedLedger.CertifiedTraceLedger initial snapshot source target requirement budget selected),\n  ledger.coverage.claimedSnapshotDigest = snapshot.digest",
+   "theoremFamily": "snapshot-binding",
+   "rfcClauseIds": ["ASP-RFC-10.05-SCL-SNAPSHOT"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.certified_trace_ledger_snapshot_is_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {snapshot : SearchRouteInspectCertifiedLedger.RankedDAGSnapshot}\n  {source target : Fin snapshot.graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget} {selected : SearchRouteDAG.GraphCandidate}\n  (ledger :\n    SearchRouteInspectCertifiedLedger.CertifiedTraceLedger initial snapshot source target requirement budget selected),\n  SearchRouteBranchBound.VisibleOptimal selected\n    (SearchRouteInspectTraceCatalog.projectTraceCatalog ledger.visibleCatalog)",
+   "theoremFamily": "visible-optimality",
+   "rfcClauseIds": ["ASP-RFC-10.05-SCL-VISIBLE"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.certified_trace_ledger_visible_is_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {snapshot : SearchRouteInspectCertifiedLedger.RankedDAGSnapshot}\n  {source target : Fin snapshot.graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget} {selected : SearchRouteDAG.GraphCandidate}\n  (ledger :\n    SearchRouteInspectCertifiedLedger.CertifiedTraceLedger initial snapshot source target requirement budget selected),\n  ∃ entry, entry ∈ ledger.visibleCatalog ∧ entry.candidate = selected",
+   "theoremFamily": "trace-provenance",
+   "rfcClauseIds": ["ASP-RFC-10.05-SCL-VISIBLE"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.certified_trace_ledger_selected_has_provenance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {snapshot : SearchRouteInspectCertifiedLedger.RankedDAGSnapshot}\n  {source target : Fin snapshot.graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget} {selected : SearchRouteDAG.GraphCandidate}\n  (ledger :\n    SearchRouteInspectCertifiedLedger.CertifiedTraceLedger initial snapshot source target requirement budget selected),\n  SearchRouteDAG.Realizes snapshot.graph source target selected",
+   "theoremFamily": "trace-realization",
+   "rfcClauseIds": ["ASP-RFC-10.05-SCL-VISIBLE"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.certified_trace_ledger_selected_realizes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {snapshot : SearchRouteInspectCertifiedLedger.RankedDAGSnapshot}\n  {source target : Fin snapshot.graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget} {selected : SearchRouteDAG.GraphCandidate}\n  (ledger :\n    SearchRouteInspectCertifiedLedger.CertifiedTraceLedger initial snapshot source target requirement budget selected),\n  (∃ entry, entry ∈ ledger.visibleCatalog ∧ entry.candidate = selected) ∧\n    SearchRouteDAG.Realizes snapshot.graph source target selected ∧\n      ∀ (candidate : SearchRouteDAG.GraphCandidate),\n        SearchRouteDAG.Realizes snapshot.graph source target candidate →\n          SearchRouteDAG.graphFeasibleB requirement budget candidate = true →\n            SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "ledger-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCL-CLOSURE",
+    "ASP-RFC-10.05-SCL-COVERAGE",
+    "ASP-RFC-10.05-SCL-GLOBAL",
+    "ASP-RFC-10.05-SCL-SNAPSHOT",
+    "ASP-RFC-10.05-SCL-UNIVERSE",
+    "ASP-RFC-10.05-SCL-VISIBLE"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.certified_trace_ledger_selects_global_driver",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (selected : SearchRouteDAG.GraphCandidate), SearchRouteInspectScheduler.ScheduleComplete selected []",
+   "theoremFamily": "scheduler-boundary",
+   "rfcClauseIds": ["ASP-RFC-10.05-SCL-CLOSURE"],
+   "name": "SearchRouteInspectCertifiedLedger.empty_schedule_is_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchRouteInspectScheduler.ScheduleComplete SearchRouteDAGEnumeration.generatedGraphOnlyCandidate [] ∧\n  ¬SearchRouteDAG.CandidateComplete SearchRouteDAGEnumeration.oneNodeGraph SearchRouteDAGEnumeration.onlyNode\n      SearchRouteDAGEnumeration.onlyNode SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n      SearchRouteDAGEnumeration.graphOnlyCandidates",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCL-CLOSURE", "ASP-RFC-10.05-SCL-NONIMPLICATION"],
+   "name":
+   "SearchRouteInspectCertifiedLedger.schedule_closure_does_not_imply_candidate_completeness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 7,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 5}

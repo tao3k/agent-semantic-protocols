@@ -1,9 +1,14 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use serde_json::json;
 
-use crate::provider_candidate_annotations::{
-    compact_provider_fact_nodes, compact_provider_fact_value, provider_candidate_annotation_nodes,
-    provider_facts_envelope_from_stdout, provider_facts_envelope_from_value,
-};
+use crate::provider_candidate_annotations::compact_provider_fact_nodes;
+use crate::provider_candidate_annotations::compact_provider_fact_value;
+use crate::provider_candidate_annotations::provider_candidate_annotation_nodes;
+use crate::provider_candidate_annotations::provider_facts_envelope_from_stdout;
+use crate::provider_candidate_annotations::provider_facts_envelope_from_value;
 
 #[test]
 fn provider_facts_envelope_parses_nodes_edges_and_candidate_annotations() {
@@ -57,7 +62,7 @@ fn provider_candidate_annotations_project_to_graph_nodes_without_path_heuristics
     let annotations = vec![json!({
         "path": "src/generated/lib.rs",
         "attributes": ["generated", "schema-generated"],
-        "source": "rust-harness",
+        "source": "asp-rust",
         "reason": "provider-parser-fact"
     })];
 

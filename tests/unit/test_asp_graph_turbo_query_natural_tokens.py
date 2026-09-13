@@ -1,7 +1,11 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph
-from asp_graph_turbo.query_weights import (
+from asp_python_graphs import TypedGraph
+from asp_python_graphs.query_weights import (
     query_clause_coverage_adjustment,
     query_package_cohesion_adjustment,
 )

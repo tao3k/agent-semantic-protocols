@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/parser-read-authority.v1.schema.json",
+  "title": "Parser Read Authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectId",
+    "workspaceId",
+    "canonicalWorkspaceRoot",
+    "languageId",
+    "providerId",
+    "providerManifestDigest",
+    "route",
+    "state",
+    "runtimeEndpointState",
+    "elapsedMicros",
+    "counters"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.parser-read-authority"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "projectId": { "$ref": "#/$defs/nonEmpty" },
+    "workspaceId": { "$ref": "#/$defs/nonEmpty" },
+    "canonicalWorkspaceRoot": { "$ref": "#/$defs/absolutePath" },
+    "languageId": { "$ref": "#/$defs/nonEmpty" },
+    "providerId": { "$ref": "#/$defs/nonEmpty" },
+    "providerManifestDigest": { "$ref": "#/$defs/digest" },
+    "generationEpoch": { "type": "integer", "minimum": 1 },
+    "generationDigest": { "$ref": "#/$defs/digest" },
+    "sourceRootDigest": { "$ref": "#/$defs/digest" },
+    "route": {
+      "enum": ["resident-memory", "durable-mmap", "none"]
+    },
+    "state": {
+      "enum": [
+        "ready",
+        "generation-required",
+        "generation-stale",
+        "generation-corrupt"
+      ]
+    },
+    "runtimeEndpointState": {
+      "enum": ["healthy", "stopped", "unavailable"]
+    },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mappedBytes",
+        "databaseOpens",
+        "providerSpawns",
+        "sourceFileReads",
+        "workspaceCanonicalizations",
+        "activationRefreshes",
+        "writes"
+      ],
+      "properties": {
+        "mappedBytes": { "type": "integer", "minimum": 0 },
+        "databaseOpens": { "type": "integer", "minimum": 0 },
+        "providerSpawns": { "type": "integer", "minimum": 0 },
+        "sourceFileReads": { "type": "integer", "minimum": 0 },
+        "workspaceCanonicalizations": { "type": "integer", "minimum": 0 },
+        "activationRefreshes": { "type": "integer", "minimum": 0 },
+        "writes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "ready" } } },
+      "then": {
+        "required": ["generationEpoch", "generationDigest", "sourceRootDigest"],
+        "properties": {
+          "route": { "enum": ["resident-memory", "durable-mmap"] }
+        }
+      },
+      "else": {
+        "properties": { "route": { "const": "none" } }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "absolutePath": { "type": "string", "pattern": "^/" },
+    "digest": {
+      "type": "string",
+      "pattern": "^(blake3|blake3-256|sha256):[0-9a-f]{32,64}$"
+    }
+  }
+}

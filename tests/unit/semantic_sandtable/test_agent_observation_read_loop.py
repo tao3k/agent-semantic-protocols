@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """ASP command read-loop metrics for sandtable agent observations."""
 
 from __future__ import annotations
@@ -11,8 +15,8 @@ from tools.semantic_sandtable.agent_observation_read_loop import (
 def test_read_loop_counts_language_query_selector_code_duplicates() -> None:
     stats = read_loop_stats(
         [
-            "asp rust query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code",
-            "asp rust query --selector tokio/src/io/blocking.rs:15:35 --code --context 30 .",
+            "asp query playbook --language rust --selector tokio/src/io/blocking.rs:15:35 --workspace . --code",
+            "asp query playbook --language rust --selector tokio/src/io/blocking.rs:15:35 --code --context 30 .",
         ]
     )
 
@@ -25,8 +29,8 @@ def test_read_loop_counts_language_query_selector_code_duplicates() -> None:
 def test_read_loop_ignores_metadata_selector_queries() -> None:
     stats = read_loop_stats(
         [
-            "asp org query --selector docs/plan.org:1-10 --view metadata .",
-            "asp rust query --selector src/lib.rs:1:20 .",
+            "asp query playbook --documents org --selector docs/plan.org:1-10 --view metadata .",
+            "asp query playbook --language rust --selector src/lib.rs:1:20 .",
         ]
     )
 
@@ -35,12 +39,12 @@ def test_read_loop_ignores_metadata_selector_queries() -> None:
 
 
 def test_read_loop_memory_records_selector_fingerprints_and_suppression() -> None:
-    command = "asp rust query --selector src/lib.rs:10:20 --workspace . --code"
+    command = "asp query playbook --language rust --selector src/lib.rs:10:20 --workspace . --code"
     memory = read_loop_memory(
         [
             command,
-            "asp rust query --selector src/lib.rs:10:20 --code --context 30 .",
-            "asp rust query --selector src/lib.rs:21:28 --workspace . --code",
+            "asp query playbook --language rust --selector src/lib.rs:10:20 --code --context 30 .",
+            "asp query playbook --language rust --selector src/lib.rs:21:28 --workspace . --code",
         ],
         [
             {

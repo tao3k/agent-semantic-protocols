@@ -1,7 +1,27 @@
-use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-pub(crate) static CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+pub(crate) struct CacheTestLock(std::sync::Mutex<()>);
+
+impl CacheTestLock {
+    pub(crate) const fn new() -> Self {
+        Self(std::sync::Mutex::new(()))
+    }
+
+    pub(crate) fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, std::convert::Infallible> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))
+    }
+}
+
+pub(crate) static CACHE_TEST_LOCK: CacheTestLock = CacheTestLock::new();
 
 pub(crate) struct EnvVarGuard {
     key: &'static str,
@@ -31,22 +51,26 @@ impl Drop for EnvVarGuard {
     }
 }
 
-pub(crate) fn v2_cache_root(workspace_state_root: &Path) -> PathBuf {
-    workspace_state_root.join("live").join("client")
-}
+pub(crate) fn owner_backed_temp_root(label: &str) -> PathBuf {
+    static FIXTURE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static FIXTURE_BASE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
-pub(crate) fn artifacts_root_from_cache_root(cache_root: &Path) -> PathBuf {
-    let live_dir = cache_root.parent().expect("cache root live dir");
-    assert_eq!(
-        cache_root.file_name().and_then(|name| name.to_str()),
-        Some("client")
-    );
-    assert_eq!(
-        live_dir.file_name().and_then(|name| name.to_str()),
-        Some("live")
-    );
-    live_dir
-        .parent()
-        .expect("cache root workspace dir")
-        .join("artifacts")
+    let fixture_base = FIXTURE_BASE.get_or_init(|| {
+        let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+            .expect("discover the owner-backed client test repository with Gix");
+        let worktree = repository
+            .worktree()
+            .expect("client tests require a non-bare owner checkout");
+        let base = worktree.base().join("target/asp-live-project-fixtures");
+        std::fs::create_dir_all(&base).expect("create owner-backed client fixture root");
+        base
+    });
+    let fixture_id = FIXTURE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let root = fixture_base.join(format!(
+        "agent-semantic-client-{label}-{}-{fixture_id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create isolated owner-backed client fixture");
+    gix::init(&root).expect("initialize owner-backed client fixture with Gix");
+    root
 }

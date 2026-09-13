@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Semantic Tree-sitter Query Protocol
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-04
 #+RFC: 011
 #+STATUS: native-projection-v1-closure
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
 #+SEE_ALSO: schemas/semantic-native-syntax-fact-index.v1.schema.json
 #+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-query-packet.v1.schema.json
@@ -101,14 +105,14 @@ stronger native-parser-backed language syntax search system.
    syntax query ABI, because that can silently redirect a query to the wrong
    owner.
 
-=query --selector <selector> --code= is a narrower transport boundary than
+=query --selector <selector> --projection source= is a narrower transport boundary than
 syntax frontier matching.  It requires an exact source file, source range, or
 parser-owned structural selector.  A directory selector may bound capture
 frontiers or cache containment checks, but it must not be treated as an exact
 code selector, and =--query <terms>= must not reinterpret it as recursive
 directory search.  Agents should use =search lexical=, =search owner=, or
 =search pipe= for directory-scoped discovery, then follow the returned exact
-=query --selector ... --code= action.
+=query --selector ... --projection source= action.
 
 9. /Normalized row replay is keyed by query AST/ABI./  Turso syntax rows may be
    replayed only when the request query compiles to the same tree-sitter ABI
@@ -184,7 +188,7 @@ artifact data showed the failure mode:
 This is a protocol guidance failure even when each individual direct read is
 bounded and provider-owned.  Agents follow the cheapest executable command in
 hook recovery and skill text; if those surfaces make
-=query --from-hook direct-source-read --code= more prominent than syntax
+=query --from-hook direct-source-read --projection source= more prominent than syntax
 locate, owner-local item query, read-plan frontier, or tree-sitter-compatible
 S-expression capture, the public workflow collapses back into manual range
 scanning.
@@ -198,7 +202,7 @@ recovery route: it is acceptable only after =search pipe= or equivalent
 parser-owned frontier output, with an exact bounded selector, and with a span
 small enough for the current policy threshold.  Discovery should route through
 =search prime=, =search lexical=, =search owner ... items=, normal =query
---names-only=, or =query --treesitter-query= locator/frontier output.  Wide or
+--projection source=, or =query --treesitter-query= locator/frontier output.  Wide or
 unbounded source recovery should return read-plan or syntax frontier refs before
 any inline code.  The graph-turbo history audit must keep
 =query/direct-source-read=, =query/code=, and =query/tree-sitter= as distinct
@@ -410,7 +414,7 @@ The core packet shape is:
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",
   "languageId": "typescript",
-  "providerId": "ts-harness",
+  "providerId": "asp-typescript",
   "projectRoot": ".",
   "grammarId": "tree-sitter-typescript",
   "grammarProfileVersion": "typescript-compiler-api-2026-06",
@@ -454,7 +458,7 @@ The core packet shape is:
 The packet should not store raw source by default.  Capture text may be omitted
 or summarized unless an explicit machine consumer requests bounded exact text
 and the provider policy allows it.  Source windows remain =semantic-read-packet=
-or provider =query --code= output, not the default syntax query packet.
+or provider =query --projection source= output, not the default syntax query packet.
 
 * Query input model
 
@@ -500,7 +504,7 @@ input form when a provider advertises =queryInputForms=s-expression=, but
 Recommended layout:
 
 #+begin_example
-languages/typescript-lang-project-harness/
+languages/asp-typescript/
   tree-sitter/
     tree-sitter-typescript/
       grammar-profile.json
@@ -512,7 +516,7 @@ languages/typescript-lang-project-harness/
         control-flow.scm
         tests.scm
 
-languages/rust-lang-project-harness/
+languages/asp-rust/
   tree-sitter/
     tree-sitter-rust/
       grammar-profile.json
@@ -530,7 +534,7 @@ languages/rust-lang-project-harness/
         declarations.txt
         imports-macros-cfg.txt
 
-languages/python-lang-project-harness/
+languages/asp-python/
   tree-sitter/
     tree-sitter-python/
       grammar-profile.json
@@ -752,7 +756,7 @@ fallback from retired rendered text or incomplete packet fields.
 The syntax query stdout contract is intentionally smaller than the JSON packet.
 Non-=--code= output is a locator/frontier surface for choosing the next exact
 query, read, or code extraction; it must not inline source windows or cache
-debugging state.  =--code= output is the only default prompt-facing syntax query
+debugging state.  =--projection source= output is the only default prompt-facing syntax query
 mode that writes source text, and it must write only the selected code.
 
 Providers may choose one of two render profiles while sharing the same
@@ -773,18 +777,24 @@ default non-JSON output.
 The code contract is stricter than the locate contract:
 
 #+begin_example
-asp <language> query --treesitter-query <query> --selector <exact-locator> --code
+asp <language> query --treesitter-query <query> --selector <exact-locator> --projection source
   -> stdout contains only provider-selected source code
 
 asp <language> query --treesitter-query <query> --selector <range-or-path>
   -> stdout contains locator/frontier facts only
 #+end_example
 
-When a non-=--code= query matches many captures, the renderer should cap prompt
+When a non-=--projection source= query matches many captures, the renderer should cap prompt
 output and state the cap with =matches=, =shown=, =omitted=, and =omit= rather
 than printing hidden source or JSON.  When =--code= would select multiple code
 windows, providers should reject the request or require a more exact selector or
 predicate.
+
+A semantic Tree-sitter match is a parser capture contained by a provider-owned
+=complete-owner= item.  Raw captures outside every complete owner, such as module
+attributes, are excluded before =matches= and =shown= are counted.  The renderer
+MUST NOT fabricate an owner or structural selector for them, and cold and cached
+reads MUST apply the same exclusion.
 
 =python -m tools tree-sitter validate frontier-code-contract= is the
 package-local rollout gate for syntax locate/code output and Rust, TypeScript,
@@ -894,7 +904,7 @@ default guide output.
 
 | Capability | V1 accepted | V2/deferred |
 |------------+-------------+-------------|
-| Public command surface | =asp <language> query= with =--treesitter-query=, catalog id, selector, and =--code= modes | New public families such as =ts-query=, =syntax-query=, or raw provider query surfaces |
+| Public command surface | =asp <language> query= with =--treesitter-query=, catalog id, selector, and =--projection source= modes | New public families such as =ts-query=, =syntax-query=, or raw provider query surfaces |
 | Runtime dependency | Native provider projection without grammar-specific tree-sitter runtime crates | Complete tree-sitter runtime compatibility claims for every provider |
 | Query plan | ASP-compiled flat plan facts: captures, node types, fields, predicates, selector, catalog/profile fingerprints | ASP-compiled pattern graph with nested children, optional children, anchors, alternation, quantifiers, and directives |
 | Match row | Single-capture rows that can locate an enclosing item or syntax frontier | Multi-capture match rows with capture-to-capture predicates and native relation groups |
@@ -955,7 +965,7 @@ stronger tree-sitter behavior.
    shared boundary and agent-facing render contract: language providers must
    not depend on tree-sitter runtime packages; Rust may render
    =compact-graph-frontier= and TypeScript/Python may render =corpus-locator=,
-   but all three must prove ASP-compiled query input, non-=--code=
+   but all three must prove ASP-compiled query input, non-=--projection source=
    locator/frontier output without cache noise, and pure-code =--code= output.
    The composite =python -m tools tree-sitter validate contracts= command also
    runs =python -m tools tree-sitter validate json-abi-corpus= so the JSON
@@ -969,7 +979,7 @@ exercise native parser facts without requiring another runtime boundary.
 1. Add catalog loading and fingerprinting to ASP so query catalog id, grammar
    id, and grammar profile version become part of cache provenance.
 2. Add artifact family =semantic-tree-sitter-query/<id>.json= or a compatible
-   query artifact namespace, and replay exact non-=--code= syntax locator
+   query artifact namespace, and replay exact non-=--projection source= syntax locator
    output from validated packet artifacts.
 3. Normalize syntax query rows into Turso from validated
    =semantic-tree-sitter-query.v1= packets; rows store project-relative ranges,
@@ -986,18 +996,18 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 3: TypeScript provider
 
 1. Add TypeScript =tree-sitter/tree-sitter-typescript/queries/*.scm= catalogs.
-2. Implement =ts-harness= native projection through the TypeScript Compiler API.
+2. Implement =asp-typescript= native projection through the TypeScript Compiler API.
 3. Project TypeScript declarations, imports, exports, calls, classes,
    interfaces, type aliases, and type-only import/export facts into captures.
 4. Use =tsconfig= and project references in native fields and cache digests.
 5. Route =asp typescript query "xx"= through ASP cache first, then
-   =ts-harness= on miss.
+   =asp-typescript= on miss.
 6. Prove repeated query speedup on a real TypeScript workspace.
 
 ** Phase 4: Python provider
 
 1. Add Python =tree-sitter/tree-sitter-python/queries/*.scm= catalogs.
-2. Implement =py-harness= native projection through =ast=, =tokenize=, and
+2. Implement =asp-python= native projection through =ast=, =tokenize=, and
    =symtable=.
 3. Preserve indentation-sensitive ownership through native fields and avoid
    claiming edit safety from syntax captures alone.
@@ -1007,7 +1017,7 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 5: Julia provider
 
 1. Align Julia on the =asp julia= facade backed by compiled
-   =asp-julia-harness= and cacheable runtime profiles.
+   =asp-julia= and cacheable runtime profiles.
 2. Add Julia =tree-sitter/tree-sitter-julia/queries/*.scm= compatible catalogs
    where the grammar profile has stable names.
 3. Export JuliaSyntax-owned captures and native fact refs for cache import.
@@ -1111,6 +1121,29 @@ Descriptor consistency rules:
    as downstream runtime requirements.
    Catalog delivery: provider/ASP binary embedding or provider exports.
 
+** Grammar execution ownership
+
+Each language client-server owns the language parser, native syntax facts,
+declarative =.scm= catalogs, grammar profile, and corpus evidence under the
+language package's =tree-sitter/= tree.  The =tree-sitter= directory name and
+node vocabulary are compatibility surfaces for the SCM query language; they do
+not assign parser ownership to a Tree-sitter runtime.
+
+ASP Server loads the selected SCM source and compiles its S-expression surface
+into a grammarless typed plan: patterns, captures, node types, fields, and
+predicates.  ASP then sends the typed plan through the resident
+=asp-client-server= operation.  The language provider executes that plan
+against its native parser/compiler facts and returns typed capture spans and
+native fact references.  The provider MAY expose richer facts than the
+Tree-sitter-compatible vocabulary; the SCM layer is a portable query adapter,
+not the upper bound of provider semantics.
+
+ASP Server MUST NOT compile or load =parser.c=, =scanner.c=, dynamic grammar
+libraries, or a second source parser for this flow.  No ASP crate or language
+provider may link =tree-sitter-rust=, =tree-sitter-typescript=, or another
+concrete grammar crate merely to execute SCM.  Adding a language adds a native
+provider adapter and SCM catalogs, not a grammar dependency or grammar bundle.
+
 * Validation
 
 Schema-level validation:
@@ -1193,7 +1226,7 @@ rules before richer v2 projection layers move into default guide output.
 1. =asp <language> query --treesitter-query <pattern> .= prints locator/frontier
    output by default.
    Prompt-noise ban: without source windows, cache ids, DB paths, receipt JSON, or artifact ids.
-2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --code=
+2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --projection source=
    prints pure source code and rejects broad multi-match code extraction unless
    the provider can prove a unique match.
 3. Search and read-plan outputs may attach =syn= anchors, but they must not
@@ -1234,7 +1267,7 @@ Required claims:
 
 #+begin_example
 languageId=rust
-providerId=rs-harness
+providerId=asp-rust
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1269,7 +1302,7 @@ Required claims:
 
 #+begin_example
 languageId=typescript
-providerId=ts-harness
+providerId=asp-typescript
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1301,7 +1334,7 @@ Required claims:
 
 #+begin_example
 languageId=python
-providerId=py-harness
+providerId=asp-python
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1330,7 +1363,7 @@ Required claims:
 
 #+begin_example
 languageId=julia
-providerId=julia-lang-project-harness
+providerId=asp-julia
 executionBackends=native-parser,cached-replay
 adapterModes=native-projection,cached-replay
 sourceAuthorities=native-parser-adapter,cached-provider-export
@@ -1395,7 +1428,7 @@ keeps RFC, registry, provider tests, guide output, and real evidence aligned.
 Current native-projection v1 lane records:
 
 #+begin_example
-[syntax-lane] language=rust provider=rs-harness lane=R
+[syntax-lane] language=rust provider=asp-rust lane=R
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id,s-expression
@@ -1405,7 +1438,7 @@ evidence=docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org
 review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
 status=native-projection-v1-reviewed
 
-[syntax-lane] language=typescript provider=ts-harness lane=T
+[syntax-lane] language=typescript provider=asp-typescript lane=T
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id
@@ -1415,7 +1448,7 @@ evidence=docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org
 review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
 status=native-projection-v1-reviewed
 
-[syntax-lane] language=python provider=py-harness lane=P
+[syntax-lane] language=python provider=asp-python lane=P
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id
@@ -1447,7 +1480,7 @@ Required evidence record:
 
 #+begin_example
 [syntax-real-evidence] language=<id> provider=<id> project=<name>
-commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
+commands=search-playbook,syntax-frontier,exact-selector-code,hook-recovery
 metrics=commandCount=<n>,providerProcessCount=<n>,packetBytes=<n>,coldElapsedMs=<n>,warmElapsedMs=<n>
 metrics=syntaxQueryCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>
 metrics=treeSitterArtifactCount=<n>,directReadCount=<n>
@@ -1465,9 +1498,9 @@ Evidence rules:
 
 1. Search/read-plan recovery remain discovery surfaces, and =search prime= remains a discovery surface; all of them
    must not inline source code.
-2. =query --treesitter-query= without =--code= must render locator/frontier
+2. =query --treesitter-query= without =--projection source= must render locator/frontier
    evidence, not artifact ids, DB paths, receipt JSON, or raw source windows.
-3. =query --selector <exact> --treesitter-query <pattern> --code= must print only source text for the selected exact or unique match.
+3. =query --selector <exact> --treesitter-query <pattern> --projection source= must print only source text for the selected exact or unique match.
 4. Cache speedup may be claimed only when the receipt reports =cacheClaim=hit= or
    a validated normalized-row replay path.  =warm-provider= is not a cache hit.
 5. =directReadCount= must be explained by exact-locator follow-up or

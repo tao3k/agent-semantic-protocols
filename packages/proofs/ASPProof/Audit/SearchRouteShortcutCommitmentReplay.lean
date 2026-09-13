@@ -1,0 +1,24 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteShortcutCommitmentReplay
+
+open ASPProof.SearchRouteShortcutCommitmentReplay
+
+#print axioms natEq_true_implies_eq
+#print axioms natEq_is_reflexive
+#print axioms commitment_match_true_implies_equal
+#print axioms equal_commitments_match
+#print axioms commitment_mismatch_fails_closed
+#print axioms cacheTransitiveShortcut
+#print axioms freshly_cached_shortcut_is_accepted
+#print axioms accepted_replay_has_exact_commitment
+#print axioms mismatched_replay_is_rejected
+#print axioms accepted_replay_preserves_removal_soundness
+#print axioms universe_digest_mismatch_is_rejected
+#print axioms cost_semantics_mismatch_is_rejected
+#print axioms selection_policy_mismatch_is_rejected
+#print axioms audit_receipt_mismatch_is_rejected
+#print axioms cached_replay_receipt_is_constant_shape
+#print axioms cached_replay_beats_nonempty_explicit_replay

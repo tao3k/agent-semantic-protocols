@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Projection reverse-navigation action tests."""
 
 from __future__ import annotations
@@ -51,7 +55,7 @@ def test_projection_navigation_rejects_materialized_exact_read_argv() -> None:
             "target": "build:ret",
             "read": "src/chain.ts:2:7",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",

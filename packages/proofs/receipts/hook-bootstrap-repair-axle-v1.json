@@ -1,0 +1,23 @@
+{
+  "auditSha256": "b4db87974aeca66684a1cbeb1ee37cf67a8eb02f70d2b23ba1fd83f0ad4c09fe",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 9,
+  "axiomInventory": [],
+  "declarationCount": 9,
+  "rfcClauseIds": [
+    "ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "hook-bootstrap-bounded-replay",
+    "hook-bootstrap-coherent-publication",
+    "hook-bootstrap-enforcement-fail-closed",
+    "hook-bootstrap-lifecycle-nondeadlock",
+    "hook-bootstrap-one-process-warm-path",
+    "hook-bootstrap-parser-order",
+    "hook-bootstrap-server-generation-sharing",
+    "hook-bootstrap-single-writer",
+    "hook-bootstrap-stable-public-surface"
+  ]
+}

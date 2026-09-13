@@ -1,0 +1,177 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: ASP Python Graphs gRPC Service
+#+property: schema_id agent.semantic-protocols.asp-python-graphs-session
+#+property: schema_version 1
+
+* Authority
+
+The shared southbound contract is =asp-python-graphs-session= v1.  It is a
+private gRPC bidirectional stream between ASP Server and the installed
+=asp-python-graphs= algorithm artifact.  It is not the public ASP Client
+Protocol and not a language-provider protocol.
+
+ASP Server owns process and channel lifecycle.  Python owns only algorithm
+state and evaluation.  Parallel stdin/stdout, workspace database, HTTP,
+per-query process, and provider-private graph paths are forbidden.
+
+* Envelope and operations
+
+The protobuf package is the stable =asp.python.graphs= namespace.  It MUST NOT
+carry a version suffix.  Contract evolution is owned by =schemaVersion= and
+=payloadSchemaId= inside the JSON envelope; changing the protobuf namespace is
+not a schema-version mechanism.
+
+The protobuf wire type contains one =bytes json= field.  The JSON value is
+validated against shared schemas before dispatch and after receipt.  Required
+operations are =hello=, =compile-generation=, =cancel=, =health=, and
+=shutdown=.  Python does not open, retain, evaluate, release, or query a live
+generation; it returns one bounded construction result to the Rust-owned
+generation attempt.
+
+Every request and receipt echoes request ID, workspace identity when scoped,
+generation digest and positive generation token when generation-scoped, and
+service epoch.  Unknown operations,
+root-digest substitution, cross-generation receipts, non-monotone sequence,
+and duplicate terminals fail closed.
+
+* Backpressure
+
+ASP Server admission capacity and Python evaluation concurrency are explicit
+Ready-receipt fields.  The gRPC window is not the only memory bound.  ASP
+Server returns =asp-python-graphs-backpressure= when its bounded queue is full.
+Python uses an =asyncio.Semaphore= and bounded executor for CPU work.  Results
+are committed in request-ID order only where the caller requires ordering;
+independent requests may complete out of order.
+
+* Cancellation and shutdown
+
+ClientFrame cancellation propagates through ASP Server to the algorithm
+request.  ASP Server's terminal registry is the linearization authority:
+cancellation recorded before result commit wins, and a later Python receipt is
+discarded and counted as a late result.  Dropping a client stream cancels its
+owned outstanding requests.
+
+Shutdown closes admission, sends =shutdown=, drains accepted requests for the
+published deadline, cancels remaining work, closes the gRPC channel, joins the
+Tokio task group, and reaps the child.  Process exit is never inferred from a
+dropped sender alone.
+
+* Transport topology
+
+#+begin_src text
+language clients except Scheme
+  -> ASP Client Protocol gRPC/ClientFrame
+Scheme
+  -> ASP Client Protocol HTTP/JSON adapter
+both
+  -> one ASP Server frame owner and workspace-generation admission
+  -> one ASP Server graphs supervisor
+  -> private UDS gRPC stream carrying versioned JSON envelopes
+  -> asp-python-graphs grpc.aio service
+#+end_src
+
+The HTTP adapter and gRPC ClientFrame binding produce identical route, schema,
+generation, cancellation, and terminal semantics.  The Python service has no
+HTTP adapter because it is not a language client.
+
+* Artifact publication
+
+The Runtime daemon is a read-only consumer of the exact
+=asp-python-graphs= member of the active and healthy Runtime artifact bundle.
+It MUST NOT discover a workspace checkout, synthesize argv, repair a missing
+member, inspect PATH, or publish an executable during bootstrap.  There is no
+loose State Home descriptor and no graph-specific publication command.  The
+Artifacts transaction verifies the member bytes, binds its content digest to
+the bundle digest, and advances the bundle selector once.  The member is a
+server-managed optional capability, never a public standalone graph command
+or a second lifecycle/authority.
+
+The release bundle therefore carries the prebuilt =asp-python-graphs= wheel,
+its complete dependency environment, private executable launcher, and a
+machine-readable artifact manifest as a member of the same bundle as =asp=.
+The manifest covers every environment and launcher file, identifies the
+=graph-turbo= algorithm, and binds the private
+=asp_python_graphs.service_cli= gRPC entry point.  Runtime publication consumes
+that verified bundle through the single generic Runtime artifact transaction;
+the release bundle does not publish a public graph executable or add a second
+service lifecycle.
+
+*** Service-first algorithm boundary
+
+The Runtime ranking path is service-first.  =asp_python_graphs.service_cli
+serve= is the only executable entry point for the server-managed Graph-Turbo
+service.  The ranking implementation is an import-only Python algorithm API
+invoked by the gRPC session after ASP Server admission; =cli.py= and a direct
+=graph turbo rank= command are not public or Runtime surfaces.  Offline
+benchmark, calibration, and receipt tools may import the pure algorithm API
+only for evidence generation.  They MUST NOT own lifecycle, generation
+admission, provider execution, cache publication, or a second authority.
+
+The Gerbil provider's Structural Index is a separate provider-local parser
+projection.  It is not an =asp-python-graphs= input, not an =asp-rust=
+algorithm, and not a graph-service lifecycle.  ASP Server owns source-index
+generation, persistence, lookup, and runtime-source checkout acquisition
+through its IPC control plane.  Gerbil may emit its parser-owned Structural
+Index/interface facts and selector metadata, but it does not build, query, or
+persist a Source Index.  No Gerbil search path may spawn an =asp= executable
+or claim the ASP Server source-index authority.
+The resident timeline handler imports the shared timeline-parameter model and
+does not import an offline =*_cli= parser; command-line parsing is an evidence
+adapter only.
+
+The Gerbil provider's Structural Index is a provider-local parser/interface
+artifact.  A Gerbil search handler MUST NOT invoke the installed =asp= binary
+to read or rebuild a source index: that would turn a provider request into a
+recursive CLI control path and would mix the ASP Server source-index owner
+with the Gerbil parser owner.  Runtime search either returns provider-owned
+parser facts already admitted in the request or emits a typed no-output
+receipt that defers Source Index lookup to ASP Server.  Source-index cache
+control and lookup are explicit server IPC operations owned by ASP Server and
+are never hidden subprocesses or local checkout scans inside provider search.
+
+The exact release environment layout remains an MVP1 architecture decision,
+not a release acceptance claim. A candidate bundle must prove that its exact
+=asp-python-graphs= member remains valid after extraction on every supported
+platform and that the service starts offline without dependency installation or
+network access. The Runtime active/healthy bundle selector, bundle digest, and
+member content digest are the complete publication authority. There is no
+separate graph descriptor generation or stable graph executable selector.
+Until relocation proof and the Windows private-endpoint oracle are accepted,
+release-bundle smoke output is design evidence only and does not replace the
+Runtime bundle admission gate.
+
+* Proof and test obligations
+
+* History and timeline ownership
+
+`Graph-Turbo` remains a legal algorithm/profile identity and remains present in
+the graph event and timeline report schemas.  It is not a compatibility alias
+for the service.  The service, executable artifact, transport owner, and
+lifecycle authority are all `asp-python-graphs`.
+
+The public history audit uses the server-owned `asp.graphs.timeline` ClientFrame
+method.  The history command may assemble the schema-owned artifact-event
+packet through the DB Engine, but it submits that packet to the resident ASP
+Server; it must not construct a `ProviderProcessSpec`, spawn a standalone graph
+executable,
+read a standalone graph-turbo receipt/path, or create an independent provider
+lifecycle.  The ASP Server routes the method through its existing bounded
+`asp-python-graphs` gRPC session and owns admission, cancellation, terminal
+receipt, and shutdown.
+
+The negative matrix rejects standalone graph executable selection,
+graph-turbo-private lifecycle/receipt authority, and history paths that bypass
+the ASP Server.  It accepts only the `asp.graphs.timeline` server method and
+the shared event/timeline schemas.
+
+Red tests cover single-flight start, bounded saturation, slow consumer,
+concurrent generation publication, stale service epoch, cross-generation
+response, duplicate terminal, cancellation race, process crash, malformed JSON,
+malformed protobuf envelope, and shutdown drain.  Lean countermodels first show
+why the removed direct IPC/stdio/dual-authority designs permit cross-generation
+or late-result behavior; the corrected model proves generation closure,
+exactly-once terminal, cancellation safety, bounded-buffer safety, and monotone
+publication without axioms.

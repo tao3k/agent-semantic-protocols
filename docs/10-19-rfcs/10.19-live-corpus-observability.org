@@ -1,0 +1,270 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Live Corpus Qualification and OpenTelemetry Contract
+#+author: ASP Architecture
+#+property: header-args :mkdirp yes
+
+* Status
+
+This RFC defines the V1, source-only qualification contract for live corpus
+search and query measurements. It does not publish a corpus, refresh a
+Runtime artifact, change a provider route, or change a Hook contract.
+
+The existing shared schemas remain the contract authority:
+
+- =asp.live-corpus-search-query-qualification-plan=
+- =asp.live-corpus-search-query-qualification-receipt=
+- =runtime-server-opentelemetry-performance-event=
+- =runtime-server-performance-observation=
+- =resident-query-performance-receipt=
+
+Schema identity and schema version are fields in those schemas. They are not
+encoded into this RFC's namespace or into an artifact path.
+
+* First divergence
+
+The qualification command can be admitted and enumerate the declared
+corpus, but a qualification run is not ready when a required immutable
+resource pointer is absent. In that state it must return a typed data
+availability result and must not sync, materialize, substitute, or silently
+retry the corpus. A missing corpus resource is distinct from Runtime,
+provider, and Host permission failure.
+
+* Authority and data flow
+
+1. The qualification plan declares corpus resource identity, profile, warmup,
+   sample counts, concurrency, failure injections, and budgets.
+2. The ASP Server resolves the immutable resource pointer and exact content
+   binding. A missing pointer ends qualification before provider admission.
+3. The server creates one request identity and one source/runtime binding for
+   each sample. Clients render typed receipts only.
+4. The provider consumes an immutable typed snapshot. It does not discover
+   corpus paths, read activation labels, or maintain a qualification cache.
+5. Every sample emits phase spans and a terminal receipt. A terminal receipt
+   is emitted exactly once, including data-unavailable and cancellation.
+
+* Required phase telemetry
+
+Each sample records monotonic time and the same request/session/content
+identity on all events. The contract has exactly ten ordered phases with one
+measurement owner per phase:
+
+1. =launcher= -- client command and environment normalization;
+2. =client-frame-encode= -- client canonical method/parameter encoding;
+3. =ipc-connect= -- client transport acquisition through an initialized,
+   sendable session;
+4. =server-admission-queue= -- WorkspaceGenerationAdmission queue ownership;
+5. =snapshot-resolve= -- Runtime workspace registry and execution-publication
+   resolution;
+6. =provider-dispatch= -- Runtime route handoff to the admitted provider;
+7. =parse-index-query= -- SearchExecution-owned fd, rg, Tantivy, resident-index,
+   and provider-native syntax execution;
+8. =projection-rank= -- SearchProjection-owned graph fan-in, ranking, and
+   bounded result synthesis;
+9. =schema-validate-serialize= -- ClientFrame service response validation and
+   canonical serialization;
+10. =terminal-egress= -- transport writer completion for the one terminal.
+
+The owner name is not caller-supplied metadata. Each phase enters the trace
+only through a typed boundary witness produced by that execution authority and
+admitted against the exact request plus workspace execution publication. The
+trace carrier accepts the complete independently admitted witness; an enum,
+string, or nonzero witness identifier embedded by the caller is not authority.
+
+The owner at a later layer MUST NOT synthesize a missing earlier measurement.
+In particular, the Runtime route cannot invent SearchExecution or
+SearchProjection time, a provider-native sub-operation cannot claim the
+aggregate SearchExecution phase, and the response builder cannot claim
+terminal egress before the transport writer completes. Measurements are
+joined through a bounded request-scoped trace carrier after Runtime identity
+settlement; they are not copied into a process-global cache. An incomplete
+trace remains explicitly incomplete and cannot be normalized into a passing
+ten-phase artifact.
+
+The SearchExecution surface returns the aggregate phase-7 timing witness with
+its immutable request, provider-catalog, source-generation, and
+execution-publication binding. Provider-native work may return typed child
+witnesses, but those witnesses remain nested evidence. SearchProjection
+returns the phase-8 witness after graph fan-in and bounded synthesis. Measuring
+around either call in the Runtime route and assigning a caller-supplied owner
+tag is forbidden. Likewise, phase 9 is admitted only from the response-service
+serialization callback, and phase 10 only from the transport writer's
+delivered-or-closed callback. These callbacks are evidence boundaries, not
+planner actions and not recommendations for a later Agent step.
+
+The event attributes include schema reference, request and session identity,
+workspace identity, canonical non-empty language and provider identity sets,
+workspace/source/runtime
+digests, the workspace execution-publication digest,
+the verified outer Runtime bundle digest, operation, profile, sample number,
+queue depth, single-flight key, cancellation identity, terminal status, and
+error reason. Activation sequence values are optional observations only and
+are not identity or a cache key. Every phase for one request carries the same
+complete identity product; an artifact or bundle refresh cannot mutate a
+partially recorded request.
+
+The Runtime derives this identity from the already validated workspace
+execution publication. =sourceSnapshotDigest= is the publication's committed
+=sourceRootDigest=; it is equal to the content binding's workspace snapshot by
+publication admission. A route must not reconstruct or override individual
+identity fields from process state, activation generations, or provider-local
+caches.
+
+** Pre-admission client timing settlement
+
+The launcher, ClientFrame encoder, and IPC connector execute before the server
+can admit a workspace execution publication. They therefore emit one typed
+=runtime-search-client-timing-witness= containing only the Host-bound session
+and request identities plus the three ordered duration measurements. The
+witness contains no workspace, source, provider, Runtime artifact, bundle,
+publication, cache, or activation identity.
+
+After admission, the Runtime validates the witness's session and request
+against the accepted ClientFrame and enriches the measurements with the exact
+workspace execution publication. Only this server-owned settlement may produce
+the complete telemetry identity used by observations and artifacts. Client
+timings cannot authorize a generation, select a Runtime product, affect a
+single-flight key, or become metric labels. A missing, foreign, reordered, or
+duplicate witness is a typed telemetry failure; it never changes Search or
+Query admission.
+
+The measurement boundaries are deterministic. =launcher= ends after command
+and environment normalization. =client-frame-encode= measures canonical
+method/parameter payload encoding before the timing witness is attached, so
+the measurement is not self-referential. =ipc-connect= ends when the bounded
+Runtime session is available and initialized and precedes the request write.
+The cold path therefore includes connection and initialization; the warm path
+measures acquisition of the already initialized session. This boundary is the
+first point at which the Playbook request is actually sendable and prevents a
+cached-session lookup from being misreported as a new socket connection.
+
+* Qualification matrix
+
+The plan must declare, before execution:
+
+- cold initialization and resident warm profiles;
+- ten sequential samples;
+- thirty-two concurrent samples with bounded admission;
+- at least three named failure-injection rounds;
+- a repeated identical workload for deterministic comparison;
+- explicit latency, error, timeout, RSS, provider-process/task, packet-size,
+  and command-count budgets.
+
+No budget may be invented after execution. A missing immutable resource,
+unavailable Host permission, or exceeded budget is recorded as a typed
+non-pass result with its first divergence and recovery action.
+
+* Deterministic acceptance rules
+
+- Same content binding and request plan produce byte-identical normalized
+  receipts after removing monotonic timestamps.
+- Different content bindings never share a sample, single-flight key, or
+  terminal receipt.
+- Cancellation before commit produces no publication and exactly one
+  cancelled terminal.
+- Queue saturation produces typed backpressure and releases its permit.
+- A stale or torn resource pointer fails closed before provider execution.
+- A missing corpus resource never invokes sync/materialize or a fallback.
+
+** Executed-sample accounting
+
+=residentSampleCount= is an executable workload count, not plan metadata.  A
+qualification receipt is invalid unless the runner dispatched and validated
+exactly that many warm Search, exact-source Query, and callable-skeleton Query
+operations for every admitted case and derived each reported distribution from
+those terminal receipts.  Reading the field only during plan validation is a
+false-green qualification and MUST fail the contract gate.
+
+The ten-sample sequential run and the thirty-two-sample concurrent run are
+separate workloads.  Their terminals retain the same workspace, source-root,
+provider, generation, selector, and schema identities as the warm sample set.
+The concurrent run uses the public bounded client/session transport; a harness
+thread pool, subprocess fan-out, or direct provider call is not equivalent.
+Every named failure-injection round emits exactly one typed terminal and is
+counted separately from successful latency samples.  No failed, cancelled, or
+non-Ready sample may be omitted from the machine-readable receipt.
+
+When more than one case is selected, the case workloads themselves execute as
+independent Tokio tasks over distinct benchmark Workspace identities. This is
+the required multi-workspace exercise; running the per-case 32-request burst
+sequentially across the matrix is not equivalent. The runner admits every
+selected case task without a leaf task-count constant, lets the bounded Runtime
+transport own readiness and backpressure, joins all tasks, and restores plan
+order before canonical receipt publication. The client-protocol receipt names
+the scheduler and records the number of concurrently admitted workspaces.
+
+** Explicit cache-state matrix
+
+Every language/corpus case executes three distinct cache states.  The receipt
+MUST name the state and the exact Runtime-owned preparation action; elapsed
+times from different states are never pooled into one distribution.
+
+1. =cold-build= uses a run-scoped benchmark workspace identity with no active
+   generation binding.  It measures source snapshot, provider projection,
+   CompleteGeneration publication, and first admission.  This phase does not
+   carry the sub-millisecond resident-read budget.
+2. =cold-load= retains the immutable published generation but evicts only that
+   benchmark workspace/generation from resident mmap and client-session state.
+   The next public Search/Query must load the exact content-bound generation.
+3. =warm-read= reuses that exact resident generation and records the 128-sample,
+   ten sequential, and thirty-two concurrent workloads under the one
+   millisecond terminal budget.
+
+The cache preparation API is owned by ASP Server and requires workspace,
+resource, artifact, source-root, generation, and provider identities.  A global
+cache clear, directory deletion, hidden provider cache, label-only invalidation,
+or client-local fallback is forbidden.  Preparation and observation receipts
+MUST prove the same content identity before timing begins.  This makes a
+single-language/single-corpus run reproducible without perturbing another
+language, project, or live coding generation.
+
+The language-neutral request and receipt contracts are
+=asp.live-corpus-cache-state-request.v1.schema.json= and
+=asp.live-corpus-cache-state-receipt.v1.schema.json=.  The receipt reports the
+scoped resident eviction explicitly and proves that source-workspace, global
+cache, and filesystem mutation counts remain zero.
+
+* Design review
+
+** Candidate A: qualification-owned ad hoc timers and local corpus discovery
+
+This has low initial code size but creates a second resource authority, hides
+the first unavailable phase, and cannot prove content identity or replay.
+It is rejected.
+
+** Candidate B: provider-local benchmark wrappers
+
+This isolates provider measurements but repeats lifecycle, cache, and identity
+logic per language. It makes cross-language receipts incomparable and permits
+provider-private fallback. It is rejected.
+
+** Candidate C: server-owned plan, typed content binding, and shared phase
+events
+
+This reuses the existing V1 schemas and keeps admission, identity, queue,
+single-flight, cancellation, and terminalization in the ASP Server. Providers
+remain stateless snapshot consumers. It adds bounded event payload overhead
+and one serialization boundary, but permits comparable measurements and
+deterministic replay. Candidate C is selected.
+
+* Mapping and ownership
+
+- Schema Manager owns the shared schema references and bundle digests.
+- ASP Server owns plan admission, immutable resource resolution, queue,
+  single-flight, cancellation, terminalization, and receipt publication.
+- Language providers own parser/index/query facts only.
+- The live-corpus harness owns workload declaration and report aggregation,
+  not corpus publication or provider lifecycle.
+
+The qualification plan and validation matrix are recorded in
+=packages/proofs/receipts/live-corpus-observability-validation-plan.json=.
+
+* Recovery and deferred gate
+
+The current qualification remains blocked until the declared immutable
+=julia.dataframes= resource is prepublished by its owner. The recovery is to
+publish that exact resource through the approved owner path, then replay the
+same plan. No sync, materialize, restart, plugin refresh, or Hook-disable path
+is part of this RFC's acceptance.

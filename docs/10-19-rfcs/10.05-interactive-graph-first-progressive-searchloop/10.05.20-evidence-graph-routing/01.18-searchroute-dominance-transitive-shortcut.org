@@ -1,0 +1,322 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Dominance Transitive Shortcut
+#+subtitle: Compressing a nonempty witness chain without weakening removal soundness
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module closes the transitivity and chain-compression boundary identified by
+[[file:01.17-searchroute-derived-capacity-rank.org][01.17]].
+
+It specifies and proves a shortcut receipt.  It does not implement a Rust or
+Python router.
+
+* Result
+
+The canonical executable =StrictDominates= relation is transitive.
+
+For candidates =a=, =b=, and =c=:
+
+#+name: dominance-transitive-shortcut-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "StrictDominates"(a, b) = #true
+  and
+  "StrictDominates"(b, c) = #true
+  quad "implies" quad
+  "StrictDominates"(a, c) = #true $
+
+$ "NoWorse"(a, b) = #true
+  and
+  "NoWorse"(b, c) = #true
+  quad "implies" quad
+  "NoWorse"(a, c) = #true $
+#+end_src
+
+Consequently, the endpoint of a nonempty descending witness chain directly
+strictly dominates the chain start.
+
+#+name: nonempty-chain-direct-shortcut
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ r_0 arrow.r r_1 arrow.r dots.c arrow.r r_k $
+
+$ k > 0
+  quad "implies" quad
+  "StrictDominates"(r_k, r_0) = #true $
+
+$ "shortcut" =
+  (
+    "chainLength": k,
+    "start": r_0,
+    "endpoint": r_k,
+    "directDominance": #true
+  ) $
+#+end_src
+
+The shortcut permits a constant-shape default projection while retaining the
+explicit chain as audit evidence.
+
+* Proof decomposition
+
+** Componentwise no-worse order
+
+The proof converts executable =NoWorse left right = true= into five
+natural-number inequalities:
+
+#+begin_example
+left.graphHops          <= right.graphHops
+left.projectedTokens    <= right.projectedTokens
+left.interactionRounds  <= right.interactionRounds
+left.searchCacheMisses  <= right.searchCacheMisses
+left.modelCacheMisses   <= right.modelCacheMisses
+#+end_example
+
+Natural-number transitivity is applied independently to every dimension, then
+the five results are constructively re-encoded as executable =NoWorse=true=.
+
+** Strict-improvement dimension witness
+
+Executable =StrictlyImproves=true= is decoded into one of five typed dimension
+witnesses.  If =a= strictly improves =b= in one dimension and =b= is no worse
+than =c= in that dimension, then =a= strictly improves =c= in the same
+dimension.
+
+The proof does not need to guess which dimension improved.
+
+** Strict dominance
+
+=StrictDominates a b= consists of:
+
+- =a= no worse than =b= in every dimension;
+- =a= strictly better than =b= in at least one dimension.
+
+The first part composes componentwise.  The strict witness from the first edge
+survives composition with the no-worse second edge.  Both parts are then
+re-encoded into the executable Boolean relation.
+
+* Normative clauses
+
+** DTS-COMPONENT: executable comparisons have both directions
+
+The proof layer MUST connect natural order and executable =natLe= in both
+directions.  Together with 01.17, the proof package now covers:
+
+- Boolean =natLe=true= to propositional =<=;
+- propositional =<= to Boolean =natLe=true=;
+- Boolean =natLt=true= to propositional =<=/- strict order;
+- propositional strict order to Boolean =natLt=true=.
+
+The conversion functions MUST remain axiom-free.
+
+** DTS-NOWORSE: no-worse is transitive
+
+For all canonical cost vectors:
+
+#+begin_example
+NoWorse a b = true
+NoWorse b c = true
+-----------------------
+NoWorse a c = true
+#+end_example
+
+This theorem is componentwise.  It does not use scalar =totalCost=.
+
+** DTS-STRICT: strict improvement survives composition
+
+If =a= is strictly better than =b= in a dimension and =b= is no worse than =c=
+in that dimension, =a= is strictly better than =c= in the same dimension.
+
+The proof MUST preserve the typed dimension witness until the executable
+=StrictlyImproves= value is reconstructed.
+
+** DTS-DOMINANCE: strict dominance is transitive
+
+The router MAY claim =StrictDominates endpoint start=true= after replaying a
+valid nonempty chain of strict-dominance witness edges.
+
+It MUST NOT infer this claim from scalar total-cost descent alone.  Scalar
+descent proves termination but does not encode the full Pareto relation.
+
+** DTS-CHAIN: chain induction preserves direct dominance
+
+For any descending witness chain, the endpoint relation is:
+
+- endpoint equality for the zero-length endpoint constructor; or
+- direct strict dominance of the start.
+
+This disjunction is the correct theorem for chains whose length is not known to
+be positive.
+
+** DTS-NONEMPTY: zero-length chains cannot become shortcuts
+
+A direct strict-dominance shortcut requires a nonempty chain.
+
+The zero-length constructor has =endpoint = start=.  Treating it as a direct
+shortcut would require self-dominance, contradicting strict-dominance
+irreflexivity.
+
+Adapters MUST distinguish:
+
+#+begin_example
+zero-length identity result
+nonempty transitive shortcut
+#+end_example
+
+They MUST NOT encode both as =directDominance=true=.
+
+** DTS-SHORTCUT: the shortcut is proof-carrying data
+
+The shortcut is a data structure with:
+
+- chain length;
+- the source chain proof;
+- a derived endpoint-dominates-start proof.
+
+Lean rejected a design that placed =chainLength : Nat= inside a =Prop=-valued
+structure.  The protocol therefore treats a shortcut receipt as data in =Type=
+with proof fields, not as a proof proposition that accidentally hides
+projection data.
+
+** DTS-SOUNDNESS: shortcut removal is equivalent to chain removal
+
+The endpoint in a valid shortcut directly strictly dominates the start.
+Removing the start in favor of that endpoint therefore preserves the same
+Pareto soundness established by the explicit witness chain.
+
+This theorem does not say that every intermediate candidate may be erased from
+the audit corpus.  It authorizes omission from the default model projection.
+
+** DTS-RECEIPT: default projection is constant-shape
+
+The normal SearchLoop projection SHOULD carry:
+
+#+begin_example
+startCanonicalRouteId
+endpointCanonicalRouteId
+chainLength
+directDominance
+candidateUniverseDigest
+proofReceiptDigest
+#+end_example
+
+The number of fields is independent of chain length.  The explicit audit
+projection remains linear in the number of witness edges.
+
+The proof model establishes that the shortcut projection is smaller than the
+explicit projection for every nonempty chain.
+
+** DTS-CONSTRUCTIVE: Boolean reconstruction remains axiom-free
+
+Boolean conjunction and disjunction are reconstructed with explicit
+constructive helpers.  The proof MUST NOT reintroduce proposition
+extensionality through convenience equivalences.
+
+* SearchLoop implications
+
+** One router transition can summarize many graph edges
+
+An agent-facing SearchLoop does not need to observe each internal dominance
+edge.  The router can resolve the chain internally and return one certified
+shortcut receipt.
+
+This reduces:
+
+- tool-call count;
+- projected graph-edge tokens;
+- repeated next-action interpretation;
+- opportunities for model-loop drift.
+
+The receipt still reports =chainLength= so internal work is observable.
+
+** Chain evidence is retained outside the hot projection
+
+The explicit chain remains necessary for:
+
+- independent replay;
+- audit disputes;
+- graph-quality research;
+- diagnosis of a stale or mismatched shortcut;
+- proof receipt regeneration.
+
+Compression changes projection, not evidence ownership.
+
+** Search cache and model prefix cache remain distinct
+
+A search cache may store the shortcut under candidate-universe and semantics
+digests.  A stable constant-shape shortcut may improve model prefix-cache reuse.
+The receipt MUST continue to report these cache events separately.
+
+** Scalar cost remains a termination measure only
+
+The transitivity theorem is proved from the five-dimensional Pareto relation.
+It does not use the 01.17 scalar rank.  This prevents shortcut compression from
+silently changing route selection into scalar cost minimization.
+
+* Logic findings
+
+** Finding 1: nonempty is a semantic discriminator
+
+Length is not merely receipt metadata.  Positive length separates a real
+dominance shortcut from an identity result.  Omitting this distinction would
+permit a false self-dominance claim.
+
+** Finding 2: proof and receipt data need different universes
+
+A =Prop= can certify a fact but cannot expose arbitrary computational receipt
+fields such as chain length.  The shortcut must be data carrying proofs.
+
+This boundary should also guide future Lean-to-JSON audit projections.
+
+** Finding 3: chain compression does not authorize evidence deletion
+
+The constant-shape receipt proves the model-facing control decision.  It does
+not prove that the source witness chain is no longer needed for replay.
+
+The protocol must distinguish projection omission from evidence erasure.
+
+** Finding 4: transitivity authorizes a direct edge, not a new selection policy
+
+The direct shortcut is valid because every explicit edge already satisfies the
+canonical Pareto relation.  It cannot be used to manufacture edges from
+incomparable candidates or from scalar cost order.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteDominanceTransitiveShortcut.lean][SearchRouteDominanceTransitiveShortcut.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteDominanceTransitiveShortcut.lean][SearchRouteDominanceTransitiveShortcut audit]]
+
+The machine-consumable receipt is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-dominance-transitive-shortcut-audit-v1.json][searchroute-dominance-transitive-shortcut-audit-v1.json]]
+
+The receipt covers eighteen declarations and MUST report:
+
+#+begin_example
+axiomDependentDeclarationCount = 0
+axiomInventory = []
+#+end_example
+
+* Next proof boundary
+
+The next module should bind shortcut semantics to committed replay identity:
+
+1. commit the candidate-universe digest;
+2. commit canonical start and endpoint identities;
+3. commit cost-vector semantics and deterministic witness selection;
+4. commit chain length and explicit-chain audit digest;
+5. bind the Lean theorem family and audit receipt digest;
+6. reject a cached shortcut after any commitment mismatch;
+7. prove that an accepted cached shortcut reproduces the same removal decision
+   without retransmitting the explicit chain.
+
+Until this binding is proved, a transitive shortcut is mathematically sound
+inside one proof execution but MUST NOT be reused across candidate-universe,
+cost-semantics, or selection-policy generations.

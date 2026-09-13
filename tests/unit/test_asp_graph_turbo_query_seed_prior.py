@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
 import pytest
 from scipy.sparse import csr_matrix
 
-from asp_graph_turbo import TypedGraph, rank_frontier, result_to_packet
-from asp_graph_turbo.backend import sparse_backend_from_parts
-from asp_graph_turbo.pagerank import graph_turbo_typed_personalized_pagerank_result
-from asp_graph_turbo.query_clause_coverage import query_clause_coverage_adjustment
-from asp_graph_turbo.query_weights import (
+from asp_python_graphs import TypedGraph, rank_frontier, result_to_packet
+from asp_python_graphs.backend import sparse_backend_from_parts
+from asp_python_graphs.pagerank import graph_turbo_typed_personalized_pagerank_result
+from asp_python_graphs.query_clause_coverage import query_clause_coverage_adjustment
+from asp_python_graphs.query_weights import (
     query_package_cohesion_adjustment,
     query_seed_personalization_weights,
 )
@@ -36,16 +40,16 @@ def test_owner_query_seed_prior_weights_specific_owner_above_generic_owner() -> 
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                 },
             ],
@@ -94,16 +98,16 @@ def test_package_cohesion_prefers_package_path_over_same_token_text() -> None:
                     "id": "q:package",
                     "kind": "query",
                     "role": "term",
-                    "value": "asp_graph_turbo pagerank",
+                    "value": "asp_python_graphs pagerank",
                 },
                 {
                     "id": "item:rust-mention",
                     "kind": "item",
                     "role": "symbol",
-                    "value": "asp_graph_turbo pagerank",
+                    "value": "asp_python_graphs pagerank",
                     "path": "crates/agent-semantic-client/tests/unit/search_history.rs",
                     "ownerPath": "crates/agent-semantic-client/tests/unit/search_history.rs",
-                    "symbol": "asp_graph_turbo",
+                    "symbol": "asp_python_graphs",
                 },
                 {
                     "id": "item:python-package",
@@ -111,12 +115,12 @@ def test_package_cohesion_prefers_package_path_over_same_token_text() -> None:
                     "role": "symbol",
                     "value": "pagerank",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "symbol": "pagerank",
                 },
@@ -161,16 +165,16 @@ def test_package_cohesion_changes_rank_frontier_for_deep_package_query() -> None
                     "id": "q:package",
                     "kind": "query",
                     "role": "term",
-                    "value": "asp_graph_turbo pagerank",
+                    "value": "asp_python_graphs pagerank",
                 },
                 {
                     "id": "item:rust-mention",
                     "kind": "item",
                     "role": "symbol",
-                    "value": "asp_graph_turbo pagerank",
+                    "value": "asp_python_graphs pagerank",
                     "path": "crates/agent-semantic-client/tests/unit/search_history.rs",
                     "ownerPath": "crates/agent-semantic-client/tests/unit/search_history.rs",
-                    "symbol": "asp_graph_turbo",
+                    "symbol": "asp_python_graphs",
                 },
                 {
                     "id": "item:python-package",
@@ -178,12 +182,12 @@ def test_package_cohesion_changes_rank_frontier_for_deep_package_query() -> None
                     "role": "symbol",
                     "value": "pagerank",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/pagerank.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/pagerank.py"
                     ),
                     "symbol": "pagerank",
                 },
@@ -240,10 +244,10 @@ def test_clause_coverage_requires_package_path_for_package_clause() -> None:
                     "role": "symbol",
                     "value": "queryClauses coverage typed graph request",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/cli.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/algorithm.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/cli.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/algorithm.py"
                     ),
                     "symbol": "queryClauses",
                 },
@@ -252,7 +256,7 @@ def test_clause_coverage_requires_package_path_for_package_clause() -> None:
         }
     )
     clauses = (
-        "asp_graph_turbo queryClauses clause coverage scoring",
+        "asp_python_graphs queryClauses clause coverage scoring",
         "typed graph request rank objective",
     )
 
@@ -282,7 +286,7 @@ def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() 
                     "id": "q:clauses",
                     "kind": "query",
                     "role": "term",
-                    "value": "asp_graph_turbo queryClauses typed graph request",
+                    "value": "asp_python_graphs queryClauses typed graph request",
                 },
                 {
                     "id": "item:package-only",
@@ -290,12 +294,12 @@ def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() 
                     "role": "symbol",
                     "value": "queryClauses coverage scoring",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/request_projection.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/request_projection.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/request_projection.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/request_projection.py"
                     ),
                     "symbol": "queryClauses",
                 },
@@ -305,12 +309,12 @@ def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() 
                     "role": "symbol",
                     "value": "queryClauses coverage scoring typed graph request rank",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/request_projection.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/request_projection.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/request_projection.py"
+                        "packages/python/asp_python_graphs/src/"
+                        "asp_python_graphs/request_projection.py"
                     ),
                     "symbol": "queryClauses",
                 },
@@ -337,7 +341,7 @@ def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() 
         limit=3,
         kind_budgets={"query": 1, "item": 2},
         query_clauses=(
-            "asp_graph_turbo queryClauses clause coverage scoring",
+            "asp_python_graphs queryClauses clause coverage scoring",
             "typed graph request rank objective",
         ),
     )

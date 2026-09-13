@@ -1,0 +1,18 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteCanonicalPayloadDigestReplay
+
+open ASPProof.SearchRouteCanonicalPayloadDigestReplay
+
+#print axioms canonical_encoding_is_injective
+#print axioms full_field_replay_needs_no_digest_assumption
+#print axioms schema_version_is_inside_canonical_preimage
+#print axioms hash_algorithm_is_inside_canonical_preimage
+#print axioms admitted_digest_equality_implies_payload_equality
+#print axioms constant_digest_collides
+#print axioms collision_payloads_are_distinct
+#print axioms digest_equality_alone_does_not_imply_payload_equality
+#print axioms digest_compressed_replay_is_constant_shape
+#print axioms digest_compressed_projection_is_smaller

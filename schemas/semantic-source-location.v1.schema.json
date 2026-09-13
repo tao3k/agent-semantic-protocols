@@ -57,39 +57,15 @@
     },
     "structuralSelector": {
       "type": "string",
-      "description": "Parser-owned structural selector for an AST/document element. It identifies the element by language, project path, and structural path rather than by line range.",
+      "description": "Parser-owned structural selector for an AST/document element. It identifies the element by language, project path, and structural path rather than by line range. The rightmost # separates the verbatim project-relative owner path from the canonical identity fragment, so # remains legal inside an owner filename.",
       "minLength": 1,
-      "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+      "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+#[^\\s]+$"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "structuralSelector": {
-          "$ref": "#/$defs/structuralSelector"
-        },
-        "displayLineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "sourceLocatorHint": {
-          "$ref": "#/$defs/sourceLocator"
-        }
-      }
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/location"
     },
     "sourceLocator": {
-      "type": "string",
-      "description": "Project-root-relative source selector accepting path:start, path:start:end, or path:start-end.",
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/sourceLocator"
     },
     "sourceSpanLocator": {
       "type": "string",
@@ -105,9 +81,11 @@
         "doc",
         "children",
         "content",
+        "source",
+        "callable-skeleton",
         "code"
       ],
-      "description": "Requested or rendered projection for a semantic locator. Non-code projections are search/query frontiers; code is exact source transport."
+      "description": "Requested or rendered projection for a semantic locator. Exact query uses source or callable-skeleton; content is the document projection."
     },
     "codePolicy": {
       "enum": [
@@ -115,7 +93,7 @@
         "code-after-exact-selector",
         "requires-exact-code"
       ],
-      "description": "Boundary for when a source locator hint may be materialized into --code transport."
+      "description": "Boundary for when a source locator hint may be materialized through an exact selector with projection=source."
     }
   }
 }

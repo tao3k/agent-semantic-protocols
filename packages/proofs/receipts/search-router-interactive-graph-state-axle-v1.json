@@ -1,0 +1,41 @@
+{
+  "auditSha256": "99f90eaa6803503b0595485ee28198d9d0261957b7cb68e8b67555c818a52d1c",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 13,
+  "axiomInventory": [],
+  "declarationCount": 13,
+  "rfcClauseIds": [
+    "ASP-RFC-SRIG-BUDGET",
+    "ASP-RFC-SRIG-CAPABILITY",
+    "ASP-RFC-SRIG-CLOSURE",
+    "ASP-RFC-SRIG-CONTINUATION",
+    "ASP-RFC-SRIG-COUNTEREXAMPLE",
+    "ASP-RFC-SRIG-DATALOG",
+    "ASP-RFC-SRIG-GRAPH-DELTA",
+    "ASP-RFC-SRIG-GROUNDING",
+    "ASP-RFC-SRIG-HOPS",
+    "ASP-RFC-SRIG-NO-HIT",
+    "ASP-RFC-SRIG-OBLIGATION",
+    "ASP-RFC-SRIG-OBSERVATION",
+    "ASP-RFC-SRIG-SNAPSHOT",
+    "ASP-RFC-SRIG-TRANSITION",
+    "ASP-RFC-SRIG-VERTICAL"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "bounded-resume-hop",
+    "capability-admission",
+    "closure-obligation",
+    "datalog-live-fact-grounding",
+    "datalog-unknown-source-counterexample",
+    "graph-delta-admission",
+    "grounded-discharge",
+    "invented-edge-counterexample",
+    "resume-hop-budget",
+    "stale-continuation-rejection",
+    "transition-budget-decrease",
+    "typed-no-hit-transition",
+    "unsupported-discharge-counterexample"
+  ]
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build sandtable receipts from recorded agent command traces."""
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from .receipts import (
     validate_receipt_consistency,
 )
 from .direct_read_shape import direct_source_read_shape
-from .route_verification import evaluate_route_verification
+from .agent_observation_asp import command_contains_asp
 from .trace_receipt_events import TraceCommandFilter, trace_commands_from_path
 from .utils import dict_value, optional_int
 
@@ -30,7 +34,6 @@ class TraceReceiptConfig:
     edit_boundary: str = "before-edit"
     project_source: str = "checkout"
     recorded_at: str | None = None
-    route_verification: dict[str, Any] | None = None
 
 
 def build_receipt_from_trace_path(
@@ -56,14 +59,6 @@ def build_receipt_from_trace_path(
     }
     if config.recorded_at:
         receipt["recordedAt"] = config.recorded_at
-    if config.route_verification is not None:
-        route_result = evaluate_route_verification(
-            commands,
-            config.route_verification,
-        )
-        receipt["routeVerificationTrace"] = route_result.trace
-        if route_result.quality_findings:
-            receipt["qualityFindings"] = route_result.quality_findings
     validate_receipt_consistency(receipt)
     return receipt
 
@@ -165,8 +160,7 @@ def _is_semantic_command(command: dict[str, Any]) -> bool:
     argv = _argv(command)
     if not argv:
         return False
-    binary = Path(argv[0]).name
-    return binary == "asp" or binary.endswith("-harness")
+    return command_contains_asp(" ".join(argv))
 
 
 def _argv(command: dict[str, Any]) -> list[str]:

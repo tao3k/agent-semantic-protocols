@@ -1,0 +1,33 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryAdjudicationDecisionCertificate
+
+namespace ASPProof.Audit.AgentSessionHostRegistryAdjudicationDecisionCertificate
+
+open ASPProof.AgentSessionHostRegistryAdjudicationDecisionCertificate
+
+#print axioms provenance_binding_binds_terminal
+#print axioms provenance_binding_requires_replay
+#print axioms provenance_replay_is_independent
+#print axioms nonreplayed_provenance_cannot_bind
+#print axioms self_replayed_provenance_cannot_bind
+#print axioms same_collector_is_not_independent_pair
+#print axioms same_root_is_not_independent_pair
+#print axioms uphold_decision_requires_asymmetric_judgments
+#print axioms replace_decision_requires_asymmetric_judgments
+#print axioms both_valid_evidence_has_no_decision_entailment
+#print axioms valid_certificate_binds_both_provenance_roots
+#print axioms valid_certificate_carries_entailment
+#print axioms valid_certificate_advances_generation
+#print axioms valid_certificate_seal_matches_payload
+#print axioms wrong_certificate_seal_is_rejected
+#print axioms revoked_certificate_cannot_authorize_new_decision
+#print axioms revocation_is_append_only_lifecycle_step
+#print axioms revoked_status_cannot_transition_back_to_active
+#print axioms valid_appeal_binds_prior_certificate
+#print axioms valid_appeal_advances_certificate_generation
+#print axioms appeal_cannot_restore_quarantined_generation
+
+end ASPProof.Audit.AgentSessionHostRegistryAdjudicationDecisionCertificate

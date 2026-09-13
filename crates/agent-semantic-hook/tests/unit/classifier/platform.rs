@@ -1,7 +1,11 @@
-use agent_semantic_hook::{classify_hook, render_platform_response};
-use serde_json::json;
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::registry;
+use agent_semantic_hook::classify_hook;
+use agent_semantic_hook::render_platform_response;
+use serde_json::json;
 
 #[test]
 fn permission_request_allow_renders_explicit_allow_for_claude() {
@@ -13,13 +17,12 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search prime --workspace . --view seeds"
+                "command": "asp search playbook --language typescript --rg 'ParserService cacheDir'"
             }
         }),
     );
 
     let response = render_platform_response(&decision).unwrap();
-
     assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Allow);
     assert_eq!(
         response["hookSpecificOutput"]["hookEventName"],
@@ -32,7 +35,69 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("decision context");
-    assert!(context.contains("\"decision\":\"allow\""), "{context}");
+    assert_eq!(context, decision.message);
+}
+
+#[test]
+fn permission_request_uses_codex_decision_object_contract() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "permission-request",
+        &json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp search playbook --language typescript --rg 'ParserService cacheDir'"
+            }
+        }),
+    );
+
+    let response = render_platform_response(&decision).unwrap();
+    assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Allow);
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "PermissionRequest"
+    );
+    assert_eq!(
+        response["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+    assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
+}
+
+#[test]
+fn permission_request_deny_uses_codex_decision_object_with_agent_message() {
+    let mut decision = classify_hook(
+        &registry(),
+        "codex",
+        "permission-request",
+        &json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": { "command": "rg -n TODO ." }
+        }),
+    );
+    decision.decision = agent_semantic_hook::DecisionKind::Deny;
+    decision.message =
+        "编辑模式必须在主线程完成，当前的 asp_explorer 不允许执行 edit action。".to_string();
+
+    let response = render_platform_response(&decision).unwrap();
+    assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Deny);
+    assert_eq!(
+        response["hookSpecificOutput"]["decision"]["behavior"],
+        "deny"
+    );
+    assert_eq!(
+        response["hookSpecificOutput"]["decision"]["message"],
+        response["systemMessage"]
+    );
+    assert!(
+        response["hookSpecificOutput"]["decision"]["message"]
+            .as_str()
+            .is_some_and(|message| !message.trim().is_empty())
+    );
+    assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
 }
 
 #[test]
@@ -48,71 +113,31 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
     );
 
     let response = render_platform_response(&decision).unwrap();
-
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("user prompt additional context");
     assert_eq!(
         response["hookSpecificOutput"]["hookEventName"],
         "UserPromptSubmit"
     );
     assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
-    let context = response["hookSpecificOutput"]["additionalContext"]
-        .as_str()
-        .expect("user prompt additional context");
-    assert!(
-        context.contains("ASP evidence-state search routing"),
-        "{context}"
-    );
-    assert!(
-        context.contains("Search is not a mandatory pipeline"),
-        "{context}"
-    );
-    assert!(
-        context.contains("Choose the narrowest ASP route"),
-        "{context}"
-    );
-    assert!(context.contains("skip `search prime`"), "{context}");
-    assert!(
-        context.contains("search prime --workspace <workspace-root> --view seeds"),
-        "{context}"
-    );
-    assert!(
-        context.contains(
-            "search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds"
-        ),
-        "{context}"
-    );
-    assert!(
-        context.contains("Do not answer from prime alone"),
-        "{context}"
-    );
-    assert!(context.contains("prime is only a project map"), "{context}");
-    assert!(
-        context.contains("ASP facades are language IDs"),
-        "{context}"
-    );
-    assert!(
-        context.contains("Do not repeat an exact ASP command"),
-        "{context}"
-    );
-    assert!(
-        context.contains("query --selector <exact-selector> --workspace . --code"),
-        "{context}"
-    );
-    assert!(
-        context.contains("return one compact `[asp-search-subagent]` graph-route receipt"),
-        "{context}"
-    );
-    assert!(
-        context.contains("never source bodies or line-range selectors"),
-        "{context}"
-    );
-    assert!(
-        context.contains("display line ranges and sourceLocatorHint as hints"),
-        "{context}"
-    );
-    assert!(
-        context.contains("Do not use direct source reads as the first step"),
-        "{context}"
-    );
+    for expected in [
+        "ASP Search playbook routing is active for this prompt",
+        "`asp search playbook '<scheme-expression>'`",
+        "`(producers (language ...) (documents ...))`",
+        "begin V1 composition with `(intersect (rg ...) (tantivy ...))`",
+        "Preserve every native argv token as a Scheme string",
+        "one admitted immutable workspace generation",
+        "without prescribing the Agent's next action",
+        "one `asp query playbook` request",
+        "`--selector <exact-selector>`",
+        "Query has no implicit Search state",
+    ] {
+        assert!(
+            context.contains(expected),
+            "missing `{expected}` in {context}"
+        );
+    }
 }
 
 #[test]
@@ -131,213 +156,23 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("user prompt additional context");
-
-    assert!(context.contains("locator/frontier question"), "{context}");
-    assert!(
-        context.contains("answer where to look before editing"),
-        "{context}"
-    );
-    assert!(
-        context.contains("Do not answer from prime alone"),
-        "{context}"
-    );
-    assert!(
-        context.contains("ASP facades are language IDs"),
-        "{context}"
-    );
-    assert!(context.contains("Do not run `query --code`"), "{context}");
-    assert!(
-        context.contains("compact `[asp-search-subagent]` graph-route receipt"),
-        "{context}"
-    );
-}
-
-#[test]
-fn read_only_subagent_write_denial_uses_sandbox_permission_context() {
-    let payload = serde_json::json!({
-        "session_id": "child-session",
-        "tool_name": "Write",
-        "tool_input": {
-            "path": "src/lib.rs"
-        }
-    });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
-        managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
-
-    let decision = agent_semantic_hook::classify_read_only_subagent_write(
-        "codex", "pre-tool", &payload, &context,
-    )
-    .expect("read-only ASP-managed write should be denied");
-
-    assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Deny);
-    assert_eq!(
-        decision.reason_kind,
-        agent_semantic_hook::ReasonKind::ReadOnlySubagentWrite
-    );
-    assert_eq!(
-        decision.fields.get("configuredSandboxMode"),
-        Some(&serde_json::json!("read-only"))
-    );
-    assert!(
-        decision
-            .message
-            .contains("selector-only graph-route `[asp-search-subagent]` receipt"),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision
-            .message
-            .contains("schema/intent/route/state/evidence/next"),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision
-            .message
-            .contains("do not return source bodies, snippets, or line-range selectors"),
-        "{}",
-        decision.message
-    );
-    assert!(!decision.message.contains("return compact evidence"));
-}
-
-#[test]
-fn read_only_subagent_write_denial_ignores_unmanaged_subagents() {
-    let payload = serde_json::json!({
-        "session_id": "child-session",
-        "tool_name": "Write",
-        "tool_input": {
-            "path": "src/lib.rs"
-        }
-    });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: false,
-        managed_child_name: "asp-explore",
-        registered_name: "user-subagent",
-        registry_status: "active",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
-
-    assert!(
-        agent_semantic_hook::classify_read_only_subagent_write(
-            "codex", "pre-tool", &payload, &context,
-        )
-        .is_none()
-    );
-}
-
-#[test]
-fn read_only_subagent_receipt_accepts_graph_route_receipts() {
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
-        managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
-
-    for message in [
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=hook/read-only-subagent -> tests\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=crates/agent-semantic-hook/src/read_only_subagent.rs selector=rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt relation=validates-receipt\nnext=E1 asp rust query --selector rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt --workspace . --code\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=owner -> item -> test\nstate=selector-ready\nrankedEvidence=E1 kind=item role=primary owner=src/lib.rs selector=rust://src/lib.rs#item/function/run relation=selected; E2 kind=test role=guard owner=tests/run.rs selector=rust://tests/run.rs#item/function/run_is_guarded relation=covers\nedges=E1-covered-by->E2\nnext=E1 asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code\nalt=E2 asp rust query --selector rust://tests/run.rs#item/function/run_is_guarded --workspace . --code\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation,not-found-inventory",
+    for expected in [
+        "ASP Search playbook routing is active for this locator question",
+        "`asp search playbook '<scheme-expression>'`",
+        "`(producers (language ...) (documents ...))`",
+        "with `graph` leaves last",
+        "Preserve every native argv token as a Scheme string",
+        "one admitted immutable workspace generation",
+        "without prescribing the Agent's next action",
+        "one `asp query playbook` request",
+        "`--selector <exact-selector>`",
+        "Query has no implicit Search state",
     ] {
-        let payload = serde_json::json!({
-            "session_id": "child-session",
-            "last_assistant_message": message
-        });
-
-        let decision = agent_semantic_hook::classify_read_only_subagent_receipt(
-            "codex",
-            "subagent-stop",
-            &payload,
-            &context,
-        )
-        .expect("managed read-only ASP subagent receipt should be classified");
-
-        assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Allow);
-        assert_eq!(
-            decision.fields.get("subagentReceiptStatus"),
-            Some(&serde_json::json!("accepted"))
-        );
-    }
-}
-
-#[test]
-fn read_only_subagent_receipt_blocks_broad_or_explanatory_receipts() {
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
-        managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
-
-    for message in [
-        "[asp-search-subagent]\nowner=src/lib.rs\nread=src/lib.rs:1-80\nnext=asp rust query --selector src/lib.rs:1-80 --workspace . --code",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=bad-line-range\nroute=owner -> item\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=src/lib.rs selector=src/lib.rs:1-80 relation=bad\nnext=E1 asp rust query --selector src/lib.rs:1-80 --workspace . --code\navoid=raw-read\nomit=source,line-range",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=item-skeleton\nroute=owner -> item\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=src/lib.rs selector=rust://src/lib.rs#item/function/run relation=bad\nnext=E1 asp rust query --from-hook item-skeleton --selector rust://src/lib.rs#item/function/run --workspace . --names-only\navoid=raw-read\nomit=source,line-range",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=prose\nroute=owner -> item\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=src/lib.rs selector=rust://src/lib.rs#item/function/run relation=bad\nnext=E1 asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code\nconfidence=high",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=ranked-evidence-missing-owner\nroute=owner -> item\nstate=selector-ready\nrankedEvidence=E1 kind=item role=primary selector=rust://src/lib.rs#item/function/run relation=bad\nnext=E1 asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code\navoid=raw-read\nomit=source,line-range",
-    ] {
-        let payload = serde_json::json!({
-            "session_id": "child-session",
-            "last_assistant_message": message
-        });
-
-        let decision = agent_semantic_hook::classify_read_only_subagent_receipt(
-            "codex",
-            "subagent-stop",
-            &payload,
-            &context,
-        )
-        .expect("managed read-only ASP subagent receipt should be classified");
-
-        assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Block);
-        assert_eq!(
-            decision.reason_kind,
-            agent_semantic_hook::ReasonKind::SubagentReceiptRequired
-        );
         assert!(
-            decision
-                .message
-                .contains("valid selector-only graph-route `[asp-search-subagent]` receipt"),
-            "{}",
-            decision.message
+            context.contains(expected),
+            "missing `{expected}` in {context}"
         );
     }
-}
-
-#[test]
-fn read_only_subagent_receipt_ignores_unmanaged_subagents() {
-    let payload = serde_json::json!({
-        "session_id": "child-session",
-        "last_assistant_message": "ordinary user subagent final message"
-    });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: false,
-        managed_child_name: "asp-explore",
-        registered_name: "user-subagent",
-        registry_status: "active",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
-
-    assert!(
-        agent_semantic_hook::classify_read_only_subagent_receipt(
-            "codex",
-            "subagent-stop",
-            &payload,
-            &context,
-        )
-        .is_none()
-    );
+    assert!(!context.contains("--code"), "{context}");
+    assert!(!context.contains("--names-only"), "{context}");
 }

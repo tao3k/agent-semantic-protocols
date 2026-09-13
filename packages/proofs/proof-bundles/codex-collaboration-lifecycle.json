@@ -1,0 +1,50 @@
+{
+  "schemaId": "asp.lean-org-typst-proof-bundle-index.v1",
+  "schemaVersion": "1",
+  "enforcedLeanGlobs": [
+    "packages/proofs/ASPProof/AgentSessionLifecycleProduct.lean",
+    "packages/proofs/ASPProof/AgentSessionLifecycleExecutableRefinement.lean",
+    "packages/proofs/ASPProof/HookAgentIdentityDeadlockFreedom.lean",
+    "packages/proofs/ASPProof/CodexMultiAgentV2ControlPlane.lean",
+    "packages/proofs/ASPProof/MultiAgentV2CollaborationAuthority.lean",
+    "packages/proofs/ASPProof/CollaborationAgentProjectionDispatch.lean"
+  ],
+  "bundles": [
+    {
+      "bundleId": "collaboration-v2-lifecycle-product",
+      "leanPath": "packages/proofs/ASPProof/AgentSessionLifecycleProduct.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    },
+    {
+      "bundleId": "collaboration-v2-executable-refinement",
+      "leanPath": "packages/proofs/ASPProof/AgentSessionLifecycleExecutableRefinement.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    },
+    {
+      "bundleId": "collaboration-v2-hook-deadlock-freedom",
+      "leanPath": "packages/proofs/ASPProof/HookAgentIdentityDeadlockFreedom.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    },
+    {
+      "bundleId": "collaboration-v2-control-plane",
+      "leanPath": "packages/proofs/ASPProof/CodexMultiAgentV2ControlPlane.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    },
+    {
+      "bundleId": "collaboration-v2-native-interface-authority",
+      "leanPath": "packages/proofs/ASPProof/MultiAgentV2CollaborationAuthority.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    },
+    {
+      "bundleId": "collaboration-v2-projection-dispatch",
+      "leanPath": "packages/proofs/ASPProof/CollaborationAgentProjectionDispatch.lean",
+      "orgPath": "docs/10-19-rfcs/10.15.02.06-codex-multi-agent-v2-state-lifecycle.org",
+      "minimumTypstBlocks": 1
+    }
+  ]
+}

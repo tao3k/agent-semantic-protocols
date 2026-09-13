@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "asp_provider_projection_batch_workspace_pressure_stays_inside_scenario_gate"
+target_total = "1ms"
+max_total = "50ms"
+observed_total = "1ms"
+regression_budget = "50ms"
+memory_budget_bytes = 4194304
+observed_memory_bytes = 2097152
+route_source = "provider-projection-batch-planner"
+max_provider_process_count = 10
+max_stdout_bytes = 1024
+fallback_reason = "none"
+target_rationale = "A representative 294-owner Scheme workspace must plan as ten or fewer sequential provider processes, each bounded to 32 owners and 4 MiB before the shared 2 GiB process-group gate applies."
+
+[observed_timings]
+batch_planning = "1ms"

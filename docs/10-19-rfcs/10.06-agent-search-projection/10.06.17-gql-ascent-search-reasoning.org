@@ -1,0 +1,219 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.06.17 - Project Topology Settlement and Internal Logical Inference
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:gql:ascent:topology:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Project Topology Settlement And Internal Logical Inference
+:PROPERTIES:
+:ID: 697cf001-1838-4edf-b72c-114b941205cf
+:CUSTOM_ID: asp-gql-ascent-search-reasoning-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: internal fixed-point reasoning and compact Agent-facing settlement
+:SDD_SCOPE: default Search Playbook reasoning projection
+:SDD_OWNER: ASP shared evidence derivation contract
+:TRACEABILITY_STATUS: abstract-model-mapped
+:EVIDENCE_STATUS: see RFC 10.06.14 receipt
+:REVIEW_STATUS: source-admission-validated-runtime-integration-withheld
+:END:
+
+** Ownership
+
+The Project Topology is the reusable architecture authority. It gives Search,
+Query, code understanding, framework calibration, refactoring, and later Agent
+turns one content-addressed structural and semantic map. A Search settlement is
+only a request-bound projection of that topology plus current retrieval
+evidence; it is not the topology itself.
+
+The typed settlement packet binds the exact Project Topology library digest and
+topology generation digest and is the machine authority for that projection. GQL
+is its sole default Agent-facing form and carries admitted native nodes, direct
+Query selectors, direct relations, request-local retrieval projections, settled
+derived relations, semantic annotations, and frontier boundaries. There is no
+parallel selector list: the Agent reasons over the GQL and selects canonical
+selectors directly from the nodes it decides to inspect.
+
+Ascent is an internal inference engine behind the =meta-relational-reasoning=
+facade and runs the versioned
+=project-topology-inference.v1= program. It imports a typed extensional database
+from Project Topology bindings and current evidence, and computes recursive
+closure, expected-edge gaps, compatibility, proof dependencies, and candidate
+eligibility. Its result is a candidate until MRR validates identity, lineage,
+transition, removals, completeness, and terminal state. Its source, relation declarations, intermediate tuples, and fired
+rules are machine diagnostics, not default Agent context. Python Graphs ranks
+eligible closure and proposes a minimal decision core; Runtime verifies the
+selected core against the topology proof DAG before rendering.
+
+Gerbil Scheme and POO declarations are compiled ahead of time into admitted MRR
+extension bundles. Scheme does not execute in the Search or Query hot path.
+The standard native profile is parsed by =orgize= from the Org
+Contract-governed ASP resource; any future project-owned profile requires its
+own versioned contract and admission boundary. The profile system is specified
+by [[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]].
+
+Orgize performs this projection through exact element-index queries over local
+=node-property= records and graph scope. The contract is a read-only admission
+constraint, not an LLM write surface: neither a matched property nor generated
+prose may assert a parser fact. Native providers and independently admitted
+source declarations alone populate the typed MRR extensional database.
+
+** Internal Logical Contract
+
+The extensional database distinguishes structural facts, declared semantics,
+accepted and proposed model annotations, fd path discovery, rg occurrences,
+Tantivy full-query receipts and matched clauses, native selectors, coverage,
+and binding compatibility. fd alone cannot establish content relevance.
+
+MRR passes only exact relation-bearing EDB tuples to Ascent. Ascent may derive
+proof-bearing recommendation candidates such as
+=DEPENDS_ON_CONFIG(x,z)= from =CALLS(x,y)= and =READS_CONFIG(y,z)=; it does not
+turn those recommendations into source facts, admission, or writes. MRR keeps
+the rule identity and complete premise fact IDs when accepting a candidate.
+
+Recursive rules derive edge-kind-safe reachability and cross-language/document
+paths. Expected relation grammar and coverage yield =known=, =missing=, or
+=unknown=. Partial coverage can only yield unknown. A custom best-plan lattice
+or proof antichain minimizes context cost while preserving evidence strength,
+exact Query targets, connectors, alternative compatible proofs, and transitive
+proof dependencies. A well-founded frontier budget bounds cycles and recursive
+expansion.
+
+Every derived conclusion has a proof-DAG node. Runtime settles it into GQL with
+=modality:"derived"=, =derived_by:"project-topology-inference.v1"=, and a proof reference.
+It must never be rendered as a direct parser fact. A semantic summary carries
+its premise set, producer/model identity, and =proposed=, =contested=, or
+=accepted= state.
+
+Settlement is information-preserving. A direct or declared GQL edge retains
+its binding, modality, and source witnesses. A derived edge retains those same
+fields plus the inference-program identity and proof identity. The settlement
+renderer MUST reject any conversion that erases this distinction or substitutes
+one edge with an equivalent-looking unbound pair.
+
+Logical completion is an explicit terminal property. A bounded run that spends
+its budget is =budget-exhausted=, not =fixed-point=. A fixed-point receipt is
+valid only when another complete inference step produces the identical
+candidate relation set. Incremental replacement also retracts every transitive
+derived descendant of a deleted premise before issuing that receipt.
+
+** Compact Polyglot Settlement
+
+The following is the complete default shape. There is no following Ascent block.
+
+#+begin_example
+#+begin_src gql :name result
+(rust:Language)-[:RESULTS]->[(registry:RustImpl {name:"Registry",selector:"rust://src/registry.rs#item/implementation/type/Registry",projection:{rank:1,depth:0,hit:{fd:true,rg:[[42,46]],tantivy:["artifact refresh"]}}})]
+(registry)-[:DECLARES]->[(refresh:RustMethod {name:"refresh_registry",selector:"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"}),(publish:RustMethod {name:"publish_artifact",selector:"rust://src/registry.rs#item/method/publish_artifact/scope/implementation-owner/type/Registry"})]
+(refresh)-[:CALLS {modality:"parser-direct",witnesses:["call-refresh-publish"]}]->(publish)
+(org:Language)-[:RESULTS]->[(publication:OrgHeading {title:"Publication",level:2,selector:"org://docs/publication.org#item/heading/Publication",projection:{rank:3,depth:1,hit:{rg:[[18,24]],tantivy:["artifact publication"]}}})]
+(publication)-[:EXPLAINS {modality:"declared",witnesses:["doc-explains-publication"]}]->(publish)
+(python:Language)-[:RESULTS]->[(ranker:PythonFunction {name:"rank_frontier",selector:"python://languages/asp-python/src/asp_python/ranking.py#item/function/rank_frontier",projection:{rank:5,depth:2,hit:{rg:[[70,73]]}}})]
+(json:Language)-[:RESULTS]->[(packet:JsonObject {selector:"json://schemas/search-evidence.v1.schema.json#item/pointer/properties/rankedPacket",projection:{rank:6,depth:2,jq:"{candidateSetDigest,selected,witnesses}"}})]
+(refresh)-[:DOCUMENTED_PATH {modality:"derived",derived_by:"project-topology-inference.v1",proof:"proof-path-42",witnesses:["call-refresh-publish","doc-explains-publication"]}]->(publication)
+(meaning:SemanticAnnotation {text:"Registry refresh reaches publication through the artifact commit path.",state:"proposed",binding:"topology-1",premises:["call-refresh-publish","doc-explains-publication"],producer:"model-reasoner@receipt-7"})-[:SUMMARIZES]->(refresh)
+(publish)-[:FRONTIER {relation:"ADMITS",target_kind:"RuntimeAdmission",depth:2,state:"unknown",reason:"coverage-open"}]->(admission_boundary:Unknown)
+#+end_src
+#+end_example
+
+For the normal text presentation, stdout is exactly this one named Org/GQL
+source block. Runtime activation, resident-transaction, timing, and admission
+receipts are observable through explicit status/telemetry surfaces; they MUST
+NOT be prepended to the Search result. JSON remains an explicit machine/debug
+presentation and is never the implicit Search result format.
+
+Language result groups provide orientation without duplicating a separate rank
+table. Each node's compact =projection= contains only request-local values that
+affect the next decision. Queryable native/document/JSON nodes carry selectors;
+unsupported text instead uses a bounded =SourceExcerpt= with =match= and =read=
+ranges. jq is attached only to a JSON selector and never replaces it.
+
+The natural-language annotation explains why the path matters but remains a
+proposal. It can influence ranking or open the =ADMITS= frontier. It cannot
+prove that admission exists. After source-owned Org or human admission, the
+same claim is republished with a new semantic topology identity and
+=state:"accepted"=.
+
+** Selector Reasoning And Frontier
+
+Every queryable node owns its canonical selector. The public projection has no
+=MaterializationSet=, selector shortlist, or auto-fill marker. The Agent uses
+node identity, edge modality, witnesses, proof-connected paths, rank, and
+frontiers to choose a repeated =--selector= Query request. This choice is Agent
+reasoning rather than Search settlement state, and the projection never invents
+=Query 1=, =Query 2=, or =Search 1= identifiers.
+
+A =FRONTIER= edge states the known graph boundary: anchor, expected relation,
+target kind, seed-relative depth, epistemic state, and reason. It schedules
+another Search only when the current Query set cannot discharge the obligation.
+A direct selector with sufficient evidence may be queried immediately.
+
+** Machine Receipt
+
+The typed packet, not repeated GQL properties, binds logic-program id/digest,
+engine/profile identity, topology identity, evidence-binding digest, fixed-point
+scope/status and iteration count, proof-DAG digest and locator, coverage
+certificates, Python ranking receipt, post-ranking certification, decision-core
+digest, FrontierSet digest, topology-delta digest,
+request identity, and exactly one terminal.
+
+A =fixed-point= terminal is admitted only when
+=candidateRelationSetDigest= equals =nextRelationSetDigest=. Budget or fuel
+exhaustion cannot set this equality by assertion and remains a typed
+non-fixed-point terminal.
+
+The topology portion of that packet is accepted only when all nine identity
+members match the imported Project Topology library: workspace, source
+generation, provider catalog, library, topology generation, structural
+topology, semantic topology, inference program, and the independently admitted
+topology closure. The request-local proof-DAG cannot replace or float free of
+that reusable closure identity. No publication-generation counter may replace
+any member. Accepted natural-language semantics additionally
+resolve a separate admission receipt under the same semantic binding and the
+same annotation identity. Project Topology generation admission likewise
+resolves an independent from-scratch rebuild receipt bound to both topology
+generation and recomputed library digest; a self-declared duplicate digest is
+not a certificate.
+
+The reusable packet fields are =fromScratchRebuildReceipt=,
+=semanticAdmissionReceipts=, and closure =proofDependencies=. These fields are
+validated as cross-record evidence: complete receipt records equal the caller's
+independently admitted records rather than merely sharing IDs, annotation and
+semantic identities match exactly, and
+every derived edge names all of its active premises.
+
+The reusable library shape is
+[[file:../../../schemas/project-topology-library.v1.schema.json][project-topology-library.v1]].
+The request-bound Search projection shape is
+[[file:../../../schemas/search-topology-settlement.v1.schema.json][search-topology-settlement.v1]].
+Its independent semantic validator additionally resolves graph references,
+annotation binding, authority/modality pairs, coverage, proof dependencies,
+derived counts, and canonical selector ownership. Schema acceptance alone is
+not topology admission or inference-proof authenticity.
+
+** Validation
+
+Tests reject implicit relation injection, duplicate aliases, dangling edges,
+forged witnesses, partial-coverage absence, stale selectors, derived edges
+rendered as direct facts, unbound model summaries, deleted topology retained
+across generations, Python selections without witness paths, multiple Query
+batches, exposed Ascent source in default output, and unbounded frontier cycles.
+Every rendered derived edge, frontier, and proposal must resolve back to its
+typed IDB fact and proof without changing modality, support, or completeness.
+Tests also reject cross-generation topology replay, accepted prose without an
+admission receipt, a foreign or stale annotation receipt, a self-declared
+from-scratch digest without a rebuild receipt, deletion that leaves a transitive derived descendant,
+budget exhaustion labeled as fixed point, duplicate materialization selectors,
+and selectors absent from the bound topology generation.
+
+The executable abstraction is
+[[file:../../../packages/proofs/ASPProof/SearchEvidenceDerivation.lean][SearchEvidenceDerivation]].

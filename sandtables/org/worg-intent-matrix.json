@@ -1,0 +1,61 @@
+{
+  "id": "org.worg-intent-matrix",
+  "language": "org",
+  "title": "Worg Org document corpus intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "org", "document-corpus", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "org",
+      "name": "Worg",
+      "package": "worg",
+      "repository": "bzg/worg",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Locate agenda guidance and linked Org concepts across Worg documents",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["agenda", "capture", "workflow"]
+      },
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Find the document frontier for an Org workflow before updating guidance",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["agenda", "commands", "entry"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Trace links between Babel, export, and publishing documents",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["Babel", "export", "publishing"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_ORG_WORG_ROOT"
+  },
+  "steps": [
+    {
+      "id": "live-provider-query",
+      "command": [
+        "asp",
+        "org",
+        "search",
+        "lexical",
+        "--query",
+        "agenda",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+      "expect": {
+        "lineProtocol": true
+      }
+    }
+  ]
+}

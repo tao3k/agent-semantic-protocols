@@ -1,0 +1,175 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Agent Bootstrap Terminal and Dispatch Disposition
+#+property: RFC_ID 10.05.25.12
+#+property: SCHEMA_ID agent.semantic-protocols.agent-session-dispatch-disposition
+#+property: SCHEMA_VERSION 1
+
+* Status
+
+This RFC is a V1 P0 correction. It introduces no second Agent registry and does
+not make Host tree observation authoritative.
+
+* First divergence
+
+The recovery prompt presented =collaboration.spawn_agent= as the default first
+action and then used =collaboration.list_agents= for verification. A successful
+spawn proves only that the Host accepted a task identity. It does not prove that
+the child executed =asp session register-child= or that the Runtime-owned
+AgentSession Registry admitted the binding.
+
+The concrete counterexample is an accepted spawn whose first task completes
+with =state=empty-payload=. A Host task exists, but no registration command or
+receipt exists. Treating this as registered permits an unauthorised follow-up.
+Treating it as a rejected registration permits a duplicate spawn.
+
+* Authority and disposition
+
+The Runtime-owned AgentSession Registry is the sole durable binding authority.
+The Host task tree observes path and task lifecycle only. The dispatcher
+combines these typed facts and emits one action:
+
+| Registry | Host path | Host task | Bootstrap | Required action |
+|----------+-----------+-----------+-----------+-----------------|
+| exact    | present   | any       | registered | followup-task |
+| absent   | absent    | absent    | not-started | spawn-agent |
+| absent or stale | present | idle | not-started | register-existing |
+| any      | unobserved | any      | not-started | observe-host-path |
+| absent   | present   | running   | pending or empty-payload | await-bootstrap-terminal |
+| absent   | present   | completed or errored | empty-payload | repair-existing |
+| any      | any       | any       | typed-failure | repair-existing |
+
+=followup-task= has higher dispatch priority than =spawn-agent=.
+=observe-host-path= is the only low-priority use of =list-agents=. It is used
+when path presence is genuinely unobserved, or after an action for audit; it is
+not an unconditional first step.
+
+* Bootstrap transaction
+
+#+begin_src text
+absent
+  -- spawn accepted --> bootstrap-pending
+bootstrap-pending
+  -- registered receipt --> registered
+bootstrap-pending
+  -- typed failure receipt --> bootstrap-failed
+bootstrap-pending
+  -- empty payload while Host task runs --> bootstrap-pending
+bootstrap-pending
+  -- Host task completes without typed terminal --> bootstrap-terminal-missing
+bootstrap-terminal-missing
+  -- repair same child --> bootstrap-pending
+registered
+  -- required work --> followup-task
+#+end_src
+
+Spawn acceptance and Registry registration are separate linearization points.
+Every bootstrap must close with exactly one typed terminal bound to the spawn
+task, root session, parent thread, child thread, Agent path, Registry owner,
+request, and terminal identity.
+
+While the Host task remains active, empty payload authorizes one event-driven
+wait and no dispatch. Once the Host task completes or errors without a typed
+terminal, the lifecycle coordinator emits exactly one
+=agent-bootstrap-terminal-missing= failure. This is a bootstrap protocol
+failure, not evidence that Registry registration was rejected. It authorizes
+repair of the same child and never authorizes another spawn.
+
+* Exact Host calls
+
+Current Registry binding:
+
+#+begin_src javascript
+collaboration.followup_task({
+  target: "/root/asp_explorer",
+  message: "<parent-authored task>"
+})
+#+end_src
+
+Absent binding and absent Host path:
+
+#+begin_src javascript
+collaboration.spawn_agent({
+  agent_type: "asp_explorer",
+  task_name: "asp_explorer",
+  message: "First register this child exactly once with Host-native authority, then execute: <parent-authored task>"
+})
+#+end_src
+
+Existing Host path with missing or stale binding:
+
+#+begin_src javascript
+collaboration.followup_task({
+  target: "/root/asp_explorer",
+  message: "First register this existing child exactly once with Host-native authority; after the typed registered receipt execute: <parent-authored task>"
+})
+#+end_src
+
+Only the Registry-owned adapter fills =register-child= identities. Prompt text
+must not guess the child thread identity.
+
+* Runtime bootstrap
+
+=session register-child= is a bounded Runtime operation. It must use the same
+=ensure_healthy_runtime_server_for_bounded_operation= authority as language and
+Live Corpus routes before opening the Runtime transport. Direct endpoint lookup
+is not a bootstrap authority. Missing endpoint, connection failure, and early
+EOF remain typed failures; they must never become empty stdout.
+
+Building a current-tree candidate to repair this bootstrap cycle is not Runtime
+artifact publication and does not switch the installed serving binary.
+
+* Rejected candidates
+
+** Spawn first, then list
+
+Rejected because it duplicates an existing Agent and turns observation into
+post-hoc authority.
+
+** Empty payload means registered
+
+Rejected because task creation does not prove Registry admission.
+
+** Empty payload means rejected registration
+
+Rejected because the registration request may never have executed. Only a
+completed Host task can close the separate bootstrap protocol as terminal
+missing.
+
+** Client retry, restart, or provider-private cache
+
+Rejected because each hides the missing linearization point or creates another
+lifecycle authority.
+
+** Configurable collaboration prose
+
+Rejected as an execution authority. Legacy =codexAgentFlow= may remain readable
+for V1 compatibility, but it cannot override the typed disposition or command
+priority.
+
+* Reflection obligations
+
+Every recovery projection must answer:
+
+1. Which authority established the Registry binding?
+2. Which Host observation established path and task state?
+3. Which typed terminal closed bootstrap?
+4. What single action is executable now?
+5. Would replay create a duplicate Agent or turn?
+
+Text is redundant if it repeats commands without changing disposition. It is
+insufficient if registration must be inferred from creation, status, empty
+output, or tool availability.
+
+* Test and proof mapping
+
+- Exact binding selects follow-up.
+- Unobserved path selects low-priority observation.
+- Present unregistered path selects repair/registration, not respawn.
+- Running empty payload waits.
+- Completed empty payload emits terminal-missing and repairs the same child.
+- Bootstrap admits at most one typed terminal.
+- Concurrent absent-path dispatch admits at most one spawn.
+- Current-tree =register-child= bootstraps Runtime before transport resolution.

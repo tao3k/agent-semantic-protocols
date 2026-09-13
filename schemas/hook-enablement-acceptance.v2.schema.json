@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/hook-enablement-acceptance.v2.schema.json",
+  "title": "Hook Enablement Acceptance v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "status",
+    "reasonKind",
+    "projectRoot",
+    "pluginLauncher",
+    "activeDigest",
+    "healthyDigest",
+    "retentionProtectedDigests",
+    "policyDecisionSamples",
+    "policyDecisionMaxCpuMicros",
+    "policyDecisionBudgetMicros",
+    "launcherSamples",
+    "launcherP99Micros",
+    "launcherMaxMicros",
+    "hostAcceptance"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-enablement-acceptance" },
+    "schemaVersion": { "const": "2" },
+    "status": { "enum": ["probe-ready", "ready"] },
+    "reasonKind": { "enum": ["host-delivery-evidence-required", "none"] },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "pluginLauncher": { "type": "string", "minLength": 1 },
+    "activeDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "healthyDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "retentionProtectedDigests": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "policyDecisionSamples": { "const": 16 },
+    "policyDecisionMaxCpuMicros": { "type": "integer", "minimum": 0, "maximum": 999 },
+    "policyDecisionBudgetMicros": { "const": 1000 },
+    "launcherSamples": { "const": 16 },
+    "launcherP99Micros": { "type": "integer", "minimum": 0, "maximum": 49999 },
+    "launcherMaxMicros": { "type": "integer", "minimum": 0, "maximum": 99999 },
+    "hostAcceptance": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "semantic-hook-host-acceptance.v1.schema.json" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "probe-ready" } } },
+      "then": {
+        "properties": {
+          "reasonKind": { "const": "host-delivery-evidence-required" },
+          "hostAcceptance": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "ready" } } },
+      "then": {
+        "properties": {
+          "reasonKind": { "const": "none" },
+          "hostAcceptance": {
+            "allOf": [
+              { "$ref": "semantic-hook-host-acceptance.v1.schema.json" },
+              {
+                "properties": {
+                  "state": { "const": "accepted" },
+                  "reasonKind": {
+                    "const": "normal-task-hook-policy-bundle-bound-deny-observed"
+                  },
+                  "pluginLoaded": { "const": true },
+                  "probeCallObserved": { "const": true },
+                  "hookEventObserved": { "const": true },
+                  "generationBoundDenyObserved": { "const": true },
+                  "sourceBytesReturned": { "const": false }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

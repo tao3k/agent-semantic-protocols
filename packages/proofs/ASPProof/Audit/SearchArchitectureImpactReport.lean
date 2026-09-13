@@ -1,0 +1,18 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchArchitectureImpactReport
+
+open ASPProof.SearchArchitectureImpactReport
+
+#print axioms directFallbackProducesRejectedReport
+#print axioms directFallbackPreservesShortestCounterexample
+#print axioms orphanLegacyProviderCacheBreaksSourceHardCut
+#print axioms orphanLegacyProviderCacheIsReportedEvenWhenUnreachable
+#print axioms generatedClientSearchPlannerIsRejected
+#print axioms generatedClientSearchPlannerReportsBothCapabilities
+#print axioms legacyGraphEvaluateReadyRouteIsRejected
+#print axioms legacyGraphEvaluateReadyRoutePreservesShortestCounterexample
+#print axioms legacyGraphEvaluateReadyRouteReportsPythonExecutable
+#print axioms proofReportNeverInventsAxioms

@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-search-query-qualification-receipt.schema.json",
+  "title": "ASP Live Corpus Search Query Qualification Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "planDigest",
+    "lockDigest",
+    "clientProtocol",
+    "qualifiedCaseCount",
+    "cases",
+    "status"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "planDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "lockDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "clientProtocol": { "$ref": "#/$defs/clientProtocolReceipt" },
+    "qualifiedCaseCount": { "type": "integer", "minimum": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/caseReceipt" }
+    },
+    "status": { "const": "qualified" }
+  },
+  "$defs": {
+    "clientProtocolReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolId", "protocolVersion", "transport", "workspaceScheduling", "concurrentWorkspaceCount", "phases", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "cancelOutcome", "requestOutcome", "requiredTelemetryEvents", "qualifiedCaseCount", "maximumResidentMicros", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
+      "properties": {
+        "protocolId": { "const": "agent.semantic-protocols.client" },
+        "protocolVersion": { "const": "1" },
+        "transport": { "const": "grpc-tokio-streams" },
+        "workspaceScheduling": { "const": "tokio-join-set" },
+        "concurrentWorkspaceCount": { "type": "integer", "minimum": 1 },
+        "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
+        "sessionPolicy": { "const": "one-initialize-per-session" },
+        "readyEffects": { "const": ["mpsc", "oneshot", "cancel", "response"] },
+        "forbiddenReadyEffects": { "const": ["process", "filesystem", "dbWrite", "generationMutation", "providerActivation", "controlPoll"] },
+        "nonReadyDispatchCount": { "const": 0 },
+        "residualTaskCount": { "const": 0 },
+        "cancelOutcome": { "const": "cancelled" },
+        "requestOutcome": { "const": "cancelled" },
+        "requiredTelemetryEvents": { "$ref": "asp.live-corpus-search-query-qualification-plan.schema.json#/$defs/requiredClientProtocolTelemetryEvents" },
+        "qualifiedCaseCount": { "const": 17 },
+        "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "p50MaximumMicros": { "const": 250 },
+        "p99MaximumMicros": { "const": 700 },
+        "maxMaximumMicros": { "const": 1000 }
+      }
+    },
+    "caseReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "resourceId",
+        "scenarioId",
+        "languageId",
+        "providerId",
+        "revision",
+        "gitTree",
+        "sourceArtifactDigest",
+        "benchmarkWorkspaceIdentity",
+        "benchmarkWorkspaceMaterialization",
+        "benchmarkWorkspaceMaterializationElapsedMicros",
+        "benchmarkWorkspaceRetained",
+        "benchmarkWorkspaceCleanupElapsedMicros",
+        "releasePrepareElapsedMicros",
+        "cancellationProbeElapsedMicros",
+        "backpressureCapacity",
+        "backpressureHeldCallCount",
+        "backpressureRejectedCallCount",
+        "backpressureProbeElapsedMicros",
+        "staleContentBindingRejected",
+        "staleContentBindingProbeElapsedMicros",
+        "generationDigest",
+        "rootDigest",
+        "searchOperationId",
+        "searchElapsedMicros",
+        "residentSampleCount",
+        "searchTotalLatencyMicros",
+        "candidateCount",
+        "selector",
+        "queryOperationId",
+        "queryElapsedMicros",
+        "exactSourceLatencyMicros",
+        "callableSkeletonOperationId",
+        "callableSkeletonElapsedMicros",
+        "callableSkeletonLatencyMicros",
+        "coldBuildSampleCount",
+        "coldBuildSearchQueryLatencyMicros",
+        "coldLoadSampleCount",
+        "coldLoadPrepareLatencyMicros",
+        "coldLoadSearchQueryLatencyMicros",
+        "warmReadPrepareElapsedMicros",
+        "sequentialSampleCount",
+        "sequentialSearchQueryLatencyMicros",
+        "concurrentSampleCount",
+        "concurrentSearchQueryLatencyMicros",
+        "merkleOwnerPath",
+        "merkleSourceBlobDigest",
+        "merkleOwnerSubtreeDigest",
+        "merkleProofDigest",
+        "merkleProofStepCount",
+        "zeroMatchOperationId",
+        "runtimeEcosystem",
+        "searchExecutionMode",
+        "searchBinding",
+        "exactReadMode",
+        "exactReadWorkCounters",
+        "route",
+        "searchTerminal",
+        "queryTerminal",
+        "callableSkeletonTerminal",
+        "zeroMatchTerminal",
+        "status",
+        "semanticProjectionSchemaId",
+        "payloadSchemaId",
+        "payloadDigest"
+      ],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "scenarioId": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "gitTree": { "type": "string", "minLength": 1 },
+        "sourceArtifactDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "benchmarkWorkspaceIdentity": { "type": "string", "minLength": 1 },
+        "benchmarkWorkspaceMaterialization": {
+          "enum": ["apfs-clonefile", "hardlink-tree"]
+        },
+        "benchmarkWorkspaceMaterializationElapsedMicros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "benchmarkWorkspaceRetained": { "const": false },
+        "benchmarkWorkspaceCleanupElapsedMicros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "releasePrepareElapsedMicros": { "type": "integer", "minimum": 0 },
+        "cancellationProbeElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "backpressureCapacity": { "const": 32 },
+        "backpressureHeldCallCount": { "const": 31 },
+        "backpressureRejectedCallCount": { "const": 1 },
+        "backpressureProbeElapsedMicros": { "type": "integer", "minimum": 0 },
+        "staleContentBindingRejected": { "const": true },
+        "staleContentBindingProbeElapsedMicros": { "type": "integer", "minimum": 0 },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "searchOperationId": { "type": "string", "minLength": 1 },
+        "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "residentSampleCount": { "type": "integer", "minimum": 128 },
+        "searchTotalLatencyMicros": { "$ref": "#/$defs/searchLatencyDistribution" },
+        "candidateCount": { "type": "integer", "minimum": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "queryOperationId": { "type": "string", "minLength": 1 },
+        "queryElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "exactSourceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "callableSkeletonOperationId": { "type": "string", "minLength": 1 },
+        "callableSkeletonElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "callableSkeletonLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "coldBuildSampleCount": { "const": 1 },
+        "coldBuildSearchQueryLatencyMicros": { "$ref": "#/$defs/executedLatencyDistribution" },
+        "coldLoadSampleCount": { "const": 10 },
+        "coldLoadPrepareLatencyMicros": { "$ref": "#/$defs/executedLatencyDistribution" },
+        "coldLoadSearchQueryLatencyMicros": { "$ref": "#/$defs/executedLatencyDistribution" },
+        "warmReadPrepareElapsedMicros": { "type": "integer", "minimum": 0 },
+        "sequentialSampleCount": { "const": 10 },
+        "sequentialSearchQueryLatencyMicros": { "$ref": "#/$defs/executedLatencyDistribution" },
+        "concurrentSampleCount": { "const": 32 },
+        "concurrentSearchQueryLatencyMicros": { "$ref": "#/$defs/executedLatencyDistribution" },
+        "merkleOwnerPath": { "type": "string", "minLength": 1 },
+        "merkleSourceBlobDigest": { "type": "string", "minLength": 1 },
+        "merkleOwnerSubtreeDigest": { "type": "string", "minLength": 1 },
+        "merkleProofDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+        "merkleProofStepCount": { "type": "integer", "minimum": 0 },
+        "zeroMatchOperationId": { "type": "string", "minLength": 1 },
+        "runtimeEcosystem": { "const": "tokio" },
+        "searchExecutionMode": { "const": "workspace-search-playbook" },
+        "searchBinding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceGenerationDigest", "providerCatalogDigest", "topologyGenerationDigest"],
+          "properties": {
+            "sourceGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+            "providerCatalogDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+            "topologyGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" }
+          }
+        },
+        "exactReadMode": { "const": "synchronous-mmap" },
+        "exactReadWorkCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
+        "route": { "const": "public-typed-asp-client" },
+        "searchTerminal": { "const": "ready" },
+        "queryTerminal": { "const": "ready" },
+        "callableSkeletonTerminal": { "const": "ready" },
+        "zeroMatchTerminal": { "const": "ready" },
+        "status": { "const": "qualified" },
+        "semanticProjectionSchemaId": {
+          "const": "agent.semantic-protocols.semantic-projection"
+        },
+        "payloadSchemaId": {
+          "const": "agent.semantic-protocols.callable-skeleton"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "executedLatencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "minMicros": { "type": "integer", "minimum": 0 },
+        "p50Micros": { "type": "integer", "minimum": 0 },
+        "p95Micros": { "type": "integer", "minimum": 0 },
+        "p99Micros": { "type": "integer", "minimum": 0 },
+        "maxMicros": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "latencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 128 },
+        "minMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p50Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p95Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p99Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "maxMicros": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "searchLatencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 128 },
+        "minMicros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p50Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p95Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "p99Micros": { "type": "integer", "minimum": 0, "maximum": 500000 },
+        "maxMicros": { "type": "integer", "minimum": 0, "maximum": 500000 }
+      }
+    }
+  }
+}

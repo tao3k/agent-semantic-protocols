@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/turso-mvcc-optimization-receipt.v1.schema.json",
+  "title": "ASP Turso MVCC Optimization Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "profile",
+    "connectionLanes",
+    "partitionShards",
+    "statementCache",
+    "insertRowsPerStatement",
+    "transactionMode",
+    "mvcc",
+    "passiveCheckpoint",
+    "multiprocessWal",
+    "fts"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.turso-mvcc-optimization-receipt.v1"
+    },
+    "profile": {
+      "enum": ["async-io-mvcc", "async-io-mvcc-passive-checkpoint"]
+    },
+    "connectionLanes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "partitionShards": {
+      "const": 4
+    },
+    "statementCache": {
+      "const": "prepared-cached-per-connection"
+    },
+    "insertRowsPerStatement": {
+      "const": 32
+    },
+    "transactionMode": {
+      "const": "begin-concurrent"
+    },
+    "mvcc": {
+      "const": true
+    },
+    "passiveCheckpoint": {
+      "type": "boolean"
+    },
+    "multiprocessWal": {
+      "const": false
+    },
+    "fts": {
+      "const": false
+    }
+  }
+}

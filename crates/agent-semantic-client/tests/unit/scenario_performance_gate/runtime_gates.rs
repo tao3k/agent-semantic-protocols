@@ -1,0 +1,403 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+    thread,
+    time::{Duration, Instant},
+};
+
+use serde::Deserialize;
+
+use super::contracts::assert_runtime_timeout_policy_benchmark_contract;
+use super::shared::SharedBenchmarkToml;
+use crate::provider_command::support::temp_project_root;
+
+pub(crate) fn scenario_benchmark_duration_contract_rejects_zero_budget() {
+    let path = Path::new("scenario/benchmark.toml");
+    let mut invalid = Vec::new();
+    require_positive_duration_manifest_field(&mut invalid, path, "target_total", "0ms");
+    require_positive_duration_manifest_field(&mut invalid, path, "target_total", "500us");
+    require_observed_timing_manifest_field(
+        &mut invalid,
+        path,
+        "provider_process_count",
+        &toml::Value::String("0ms".to_string()),
+    );
+    require_observed_timing_manifest_field(
+        &mut invalid,
+        path,
+        "provider_process_count",
+        &toml::Value::String("0us".to_string()),
+    );
+
+    assert_eq!(
+        invalid,
+        vec![
+            "scenario/benchmark.toml: target_total=\"0ms\" must be a positive duration such as 500us or 25ms",
+            "scenario/benchmark.toml: observed_timings.provider_process_count must use 0us for zero-duration branches, not 0ms",
+        ]
+    );
+}
+
+pub(crate) fn duration_millis_from_manifest(value: &str) -> u128 {
+    let trimmed = value.trim();
+    if let Some(value) = trimmed.strip_suffix("ns").and_then(parse_u128) {
+        return value.div_ceil(1_000_000);
+    }
+    if let Some(value) = trimmed.strip_suffix("us").and_then(parse_u128) {
+        return value.div_ceil(1_000);
+    }
+    if let Some(value) = trimmed.strip_suffix("ms").and_then(parse_u128) {
+        return value;
+    }
+    if let Some(value) = trimmed.strip_suffix('s').and_then(parse_u128) {
+        return value * 1_000;
+    }
+    panic!("duration manifest value must use ns/us/ms/s suffix: {value:?}");
+}
+
+pub(crate) fn duration_literal(duration: std::time::Duration) -> String {
+    let micros = duration.as_micros();
+    if micros == 0 {
+        format!("{}ns", duration.as_nanos())
+    } else if micros < 1_000 {
+        format!("{micros}us")
+    } else {
+        format!("{}ms", duration.as_millis())
+    }
+}
+
+pub(crate) fn read_toml<T>(path: &Path) -> T
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let text = fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    toml::from_str(&text)
+        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
+}
+
+pub(super) fn require_positive_duration_manifest_field(
+    invalid: &mut Vec<String>,
+    path: &Path,
+    field: &str,
+    value: &str,
+) {
+    let trimmed = value.trim();
+    if !is_positive_duration_literal(trimmed) {
+        invalid.push(format!(
+            "{}: {field}={value:?} must be a positive duration such as 500us or 25ms",
+            path.display()
+        ));
+    }
+}
+
+pub(super) fn require_observed_timing_manifest_field(
+    invalid: &mut Vec<String>,
+    path: &Path,
+    field: &str,
+    value: &toml::Value,
+) {
+    let Some(value) = value.as_str() else {
+        invalid.push(format!(
+            "{}: observed_timings.{field} must be a duration string",
+            path.display()
+        ));
+        return;
+    };
+    let trimmed = value.trim();
+    if !is_duration_literal(trimmed) {
+        invalid.push(format!(
+            "{}: observed_timings.{field}={value:?} must use ns/us/ms/s duration units",
+            path.display()
+        ));
+    }
+    if trimmed == "0ms" {
+        invalid.push(format!(
+            "{}: observed_timings.{field} must use 0us for zero-duration branches, not 0ms",
+            path.display()
+        ));
+    }
+}
+
+fn is_positive_duration_literal(value: &str) -> bool {
+    is_duration_literal(value) && value.chars().next().is_some_and(|ch| ch != '0')
+}
+
+fn is_duration_literal(value: &str) -> bool {
+    !value.is_empty()
+        && ["ns", "us", "ms", "s"]
+            .iter()
+            .any(|suffix| value.strip_suffix(suffix).is_some_and(is_ascii_digits))
+}
+
+pub(super) fn is_ascii_digits(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|ch| ch.is_ascii_digit())
+}
+
+fn parse_u128(value: &str) -> Option<u128> {
+    value.parse::<u128>().ok()
+}
+
+pub(crate) fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_runtime_timeout_policy_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_runtime_timeout_policy_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let policy =
+        agent_semantic_runtime::RuntimeOperationTimeoutPolicy::new("owner-items-provider", 10, 25);
+    let started_at = Instant::now();
+    let receipt = agent_semantic_runtime::runtime_operation_timeout_receipt(&policy, 1);
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+
+    assert_eq!(receipt.operation, "owner-items-provider");
+    assert_eq!(receipt.elapsed_ms, 1);
+    assert!(!receipt.timed_out);
+    assert!(!receipt.cancellation_required);
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "runtime timeout policy cold functional path exceeded benchmark max_total={} observed={}ms receipt={receipt:?}",
+        benchmark.max_total,
+        elapsed_ms
+    );
+
+    let observed_total = duration_literal(elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-runtime-timeout-policy-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_runtime::runtime_operation_timeout_receipt"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireRuntimeOwnedTimeoutPolicy": true,
+            "allowedFirstRoutes": ["runtime-timeout-policy"],
+            "forbiddenRoutes": ["command-timeout-policy", "provider-process"],
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "firstRoute": "runtime-timeout-policy",
+            "executedRoutes": ["runtime-timeout-policy"],
+            "timedOut": receipt.timed_out,
+            "cancellationRequired": receipt.cancellation_required,
+            "stdoutBytes": 0,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-runtime-timeout-policy-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["timedOut"], false);
+    assert_eq!(performance_gate["observed"]["cancellationRequired"], false);
+}
+
+#[cfg(unix)]
+pub(crate) async fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
+    use agent_semantic_provider_transport::{
+        OutputMode, ProviderProcessLimits, ProviderProcessSpec, ProviderProcessSupervisor,
+        StdinMode,
+    };
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_provider_process_orphan_descendant_closure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let root = temp_project_root("scenario-provider-orphan-descendant-closure");
+    let pid_path = root.join("provider-child.pid");
+    let command = format!(
+        "sleep 30 & child=$!; printf '%s' \"$child\" > '{}'; printf orphan; exit 0",
+        pid_path.display()
+    );
+    let spec = ProviderProcessSpec {
+        program: "/bin/sh".to_string(),
+        args: vec!["-c".to_string(), command],
+        cwd: root.clone(),
+        env: BTreeMap::new(),
+        remove_env: Default::default(),
+        remove_env_prefixes: Default::default(),
+        stdin: StdinMode::Closed,
+        stdout: OutputMode::Capture,
+        stderr: OutputMode::Capture,
+        limits: ProviderProcessLimits::default().with_timeout(Some(Duration::from_secs(2))),
+    };
+
+    let started_at = Instant::now();
+    let supervisor = ProviderProcessSupervisor::default();
+    let output = supervisor
+        .run(spec)
+        .await
+        .expect("run one-shot provider fixture");
+    supervisor.shutdown().await;
+    let elapsed = started_at.elapsed();
+    let descendant_pid: i32 = fs::read_to_string(&pid_path)
+        .expect("read descendant pid")
+        .parse()
+        .expect("parse descendant pid");
+    let descendant_gone = (0..10).any(|_| {
+        if unsafe { libc::kill(descendant_pid, 0) } == -1 {
+            true
+        } else {
+            thread::sleep(Duration::from_millis(10));
+            false
+        }
+    });
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout_lossy(), "orphan");
+    assert!(output.receipt.process_group_isolation_enforced());
+    assert!(output.receipt.descendant_cleanup_required());
+    assert!(
+        descendant_gone,
+        "one-shot provider descendant pid={descendant_pid} remained after facade completion"
+    );
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "provider orphan closure exceeded max_total={} observed={}ms receipt={:?}",
+        benchmark.max_total,
+        elapsed.as_millis(),
+        output.receipt
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-provider-process-orphan-descendant-closure",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": ["agent_semantic_provider_transport::run_provider_process"],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireProcessGroupIsolation": true,
+            "requireDescendantClosure": true,
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": duration_literal(elapsed),
+            "providerProcessCount": 1,
+            "stdoutBytes": output.receipt.stdout_bytes(),
+            "processGroupIsolationEnforced": output.receipt.process_group_isolation_enforced(),
+            "descendantCleanupRequired": output.receipt.descendant_cleanup_required(),
+            "descendantGone": descendant_gone,
+            "memoryLimitEnforced": output.receipt.memory_limit_enforced(),
+            "memoryLimitBytes": output.receipt.memory_limit_bytes(),
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-provider-process-orphan-descendant-closure"]
+    });
+    assert_eq!(performance_gate["observed"]["descendantGone"], true);
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(crate) fn asp_provider_projection_batch_workspace_pressure_stays_inside_scenario_gate() {
+    use agent_semantic_provider_transport::projection_batch::{
+        MAX_PROVIDER_PROJECTION_BATCH_OWNERS, MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
+        provider_projection_batch_ranges,
+    };
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_provider_projection_batch_workspace_pressure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let owner_sizes = vec![64 * 1024; 294];
+
+    let started_at = Instant::now();
+    let ranges = provider_projection_batch_ranges(&owner_sizes);
+    let elapsed = started_at.elapsed();
+    let max_batch_source_bytes = ranges
+        .iter()
+        .map(|range| owner_sizes[range.clone()].iter().sum::<usize>())
+        .max()
+        .expect("workspace pressure must produce batches");
+
+    assert_eq!(
+        ranges.len(),
+        usize::try_from(
+            benchmark
+                .max_provider_process_count
+                .expect("process budget")
+        )
+        .expect("process budget fits usize")
+    );
+    assert!(
+        ranges
+            .iter()
+            .all(|range| range.len() <= MAX_PROVIDER_PROJECTION_BATCH_OWNERS)
+    );
+    assert!(max_batch_source_bytes <= MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES);
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "projection batch planning exceeded max_total={} observed={}ms",
+        benchmark.max_total,
+        elapsed.as_millis()
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-provider-projection-batch-workspace-pressure",
+        "languageId": "gerbil-scheme",
+        "workspace": ".",
+        "command": ["agent_semantic_provider_transport::provider_projection_batch_ranges"],
+        "phase": "cold-generation-planning",
+        "expected": {
+            "workspaceOwnerCount": 294,
+            "maxOwnersPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_OWNERS,
+            "maxSourceBytesPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": duration_literal(elapsed),
+            "plannedProviderProcessCount": ranges.len(),
+            "maxBatchOwnerCount": ranges.iter().map(|range| range.len()).max(),
+            "maxBatchSourceBytes": max_batch_source_bytes,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-provider-projection-batch-workspace-pressure"]
+    });
+    assert_eq!(
+        performance_gate["observed"]["plannedProviderProcessCount"],
+        10
+    );
+}

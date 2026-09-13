@@ -1,0 +1,23 @@
+{
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "auditSha256": "4532ae9c06d378c2c534f5556b04c4f4456059fde0966194038afd6a7a4ee179",
+  "declarationCount": 7,
+  "axiomFreeDeclarationCount": 7,
+  "axiomDependentDeclarationCount": 0,
+  "axiomInventory": [],
+  "rfcClauseIds": [
+    "ASP-RFC-10.15-REGISTRY-LOCK-NO-REPLACEMENT",
+    "ASP-RFC-10.15-REGISTRY-NORMAL-SERVER-IPC",
+    "ASP-RFC-10.15-REGISTRY-OFFLINE-OWNERSHIP",
+    "ASP-RFC-10.15-REGISTRY-RESTART-INDEPENDENCE",
+    "ASP-RFC-10.15-REGISTRY-SINGLE-WRITER"
+  ],
+  "theoremFamilies": [
+    "registry-lock-no-replacement",
+    "registry-normal-ipc",
+    "registry-offline-ownership",
+    "registry-restart-independence",
+    "registry-single-writer"
+  ]
+}

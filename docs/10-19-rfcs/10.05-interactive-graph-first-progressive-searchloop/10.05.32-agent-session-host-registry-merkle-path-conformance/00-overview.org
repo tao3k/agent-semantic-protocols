@@ -1,0 +1,303 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.32 — Agent Session Registry Merkle Path Conformance
+#+startup: overview
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.31-agent-session-host-registry-authenticated-projection/00-overview.org][RFC 10.05.31 — Agent
+Session Authenticated Registry Projection]]. It defines executable Merkle path
+conformance. The source module and direct audit compile, all 22 audited theorem
+declarations are axiom-free, and the module is imported by the proof-package
+root. It does not authorize Rust implementation in this session.
+
+The aggregate =lake build ASPProof= gate remains outside this focused claim.
+Unrelated proof modules retain the previously recorded =Mathlib= and
+=Decidable= failures. This RFC claims focused proof closure, not aggregate
+proof-package closure.
+
+* Problem
+
+RFC 10.05.31 binds inclusion and exclusion to a canonical semantic snapshot and
+root. It deliberately does not prove that a runtime path verifier implements
+that relation.
+
+The executable gap contains five independent failure classes:
+
+- ambiguous leaf serialization can map different key/generation tuples to the
+  same preimage before any cryptographic property is considered;
+- swapping a left sibling with a right sibling changes branch semantics;
+- a path can recompute an attacker-selected root rather than the admitted root;
+- an exclusion claim can present plausible neighbors without semantic absence;
+- an unbounded path can be correct but destroy token, latency, and memory bounds.
+
+Therefore “hash recomputation succeeded” is not equivalent to authenticated
+membership or absence.
+
+* Reused authority
+
+This RFC uses the existing Merkle authority rather than defining another one:
+
+- workspace leaves are sorted by normalized identity;
+- leaf, branch, and empty domains are distinct;
+- leaf inputs are canonical and length-delimited in the runtime contract;
+- path steps preserve ordered left/right sibling direction;
+- an odd final node is duplicated as its own right sibling;
+- =leafCount=, =rootDepth=, and =rootDigest= come from one provider generation;
+- warm verification does not start a provider or rewrite persistent state;
+- parser, source-content, snapshot-leaf, and artifact digest domains remain
+  distinct.
+
+The Lean layer models the semantic shape with abstract hash functions. It does
+not claim that a particular digest algorithm is collision-free.
+
+* Canonical leaf contract
+
+#+name: registry-merkle-canonical-leaf-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Leaf(vs, vz, k, g, d) = $upright("LeafInput")(#vs, #vz, #k, #g, #d)$
+#let H(x) = $upright("leafHash")(#x)$
+#let Key(r) = $upright("key")(#r)$
+#let Generation(r) = $upright("generation")(#r)$
+#let Disposition(r) = $upright("disposition")(#r)$
+
+$
+  h_r = H(Leaf(v_s, v_z, Key(r), Generation(r), Disposition(r))).
+$
+
+The preimage is structured and domain-separated. Concatenation or arithmetic
+combination of untagged fields is not canonical encoding.
+#+end_src
+
+* Ordered path execution
+
+#+name: registry-merkle-path-fold-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let B(l, r) = $upright("branch")(#l, #r)$
+#let Step(a, s) = $upright("step")(#a, #s)$
+#let Fold(step, init, path) = $upright("fold")(#step, #init, #path)$
+
+$
+  Step(a, ("left", s)) = B(s, a),
+  quad Step(a, ("right", s)) = B(a, s).
+$
+
+$
+  root = Fold(Step, h_r, p).
+$
+#+end_src
+
+Direction is semantic data. A verifier MUST NOT sort sibling digests or treat
+the path as an unordered set.
+
+* Stateful architecture
+
+#+name: registry-merkle-path-architecture
+#+begin_src mermaid
+flowchart LR
+  L["Canonical leaf encoder\nstate: RecordBound(schema, serialization, key, generation, disposition)"]
+  P["Path executor\nstate: Cursor(level, currentDigest, nextSide)"]
+  B["Bound checker\nstate: WithinDepth | Oversized"]
+  R["Root comparator\nstate: RootMatched | WrongRoot"]
+  S["Semantic bridge\nstate: Inclusion | Exclusion | Unbound"]
+  V["Runtime verifier\nstate: SoundAndComplete | Drifted"]
+  Q["Quarantine\nstate: Closed(reason, packetIdentity)"]
+
+  L -->|"transition; state: RecordBound -> Cursor(0, leafDigest); canonical preimage"| P
+  P -->|"transition; state: Cursor(i) -> Cursor(i + 1); ordered left/right branch"| P
+  P -->|"guard; state: PathComplete -> WithinDepthOrOversized; compare path length"| B
+  B -->|"guard; state: WithinDepth -> RootMatchedOrWrong; compare admitted root"| R
+  R -->|"capability; state: RootMatched -> InclusionOrExclusion; bind RFC31 semantics"| S
+  S -->|"guard; state: SemanticBound -> SoundAndComplete; verifier equivalence"| V
+  L -->|"prohibitedEffect; state: AmbiguousEncoding -> Closed"| Q
+  P -->|"prohibitedEffect; state: WrongDirection -> Closed"| Q
+  B -->|"prohibitedEffect; state: Oversized -> Closed"| Q
+  R -->|"prohibitedEffect; state: WrongRoot -> Closed"| Q
+  S -->|"prohibitedEffect; state: UnboundOrForgedGap -> Closed"| Q
+#+end_src
+
+* Path verification state machine
+
+#+name: registry-merkle-path-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Packet\nstate: Unverified(record, path, claimedRoot)" as Packet
+  state "LeafExact\nstate: CanonicalPreimage" as LeafExact
+  state "Folding\nstate: Level(i, digest, side)" as Folding
+  state "RootExact\nstate: Matched(admittedRoot)" as RootExact
+  state "Semantic\nstate: Member | Absent" as Semantic
+  state "Accepted\nstate: ConformantReceipt" as Accepted
+  state "Rejected\nstate: Quarantine(defect)" as Rejected
+
+  Packet --> LeafExact: "guard; state: Unverified -> CanonicalPreimage"
+  Packet --> Rejected: "prohibitedEffect; state: AmbiguousLeaf -> Quarantine"
+  LeafExact --> Folding: "transition; state: CanonicalPreimage -> Level(0)"
+  Folding --> Folding: "transition; state: Level(i) -> Level(i + 1); preserve side"
+  Folding --> RootExact: "guard; state: CompleteAndBounded -> Matched"
+  Folding --> Rejected: "prohibitedEffect; state: OversizedOrWrongDirection -> Quarantine"
+  RootExact --> Semantic: "guard; state: Matched -> MemberOrAbsent; root-bound bridge"
+  Semantic --> Accepted: "capability; state: MemberOrAbsent -> ConformantReceipt"
+  Semantic --> Rejected: "prohibitedEffect; state: ForgedGapOrConflict -> Quarantine"
+#+end_src
+
+* Runtime sequence
+
+#+name: registry-merkle-path-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant A as "Agent [state: ReceiptPending]"
+  participant E as "Leaf Encoder [state: AwaitingRecord]"
+  participant P as "Path Verifier [state: Cursor(0)]"
+  participant S as "Semantic Bridge [state: RootBound]"
+  participant C as "Receipt Consumer [state: Closed]"
+
+  A->>E: "transition; state: ReceiptPending -> LeafPending; submit record + versions"
+  E->>P: "transition; state: LeafPending -> Cursor(0); canonical leaf digest"
+  loop each bounded sibling
+    P->>P: "transition; state: Cursor(i) -> Cursor(i + 1); apply left/right step"
+  end
+  P->>S: "guard; state: PathComplete -> RootMatched; compare root and depth"
+  S->>C: "guard; state: RootMatched -> SemanticBound; inclusion or exclusion"
+  alt verifier equivalent to Lean semantics
+    C-->>A: "capability; state: SemanticBound -> ReceiptAccepted"
+  else wrong root, forged gap, oversized path, or verifier drift
+    C-->>A: "prohibitedEffect; state: Rejected -> Quarantine"
+  end
+#+end_src
+
+* Exclusion gap contract
+
+An executable exclusion receipt may carry lower and upper boundary inclusion
+paths, but those paths are not sufficient by themselves. Both paths MUST bind
+the same root, and the semantic bridge MUST prove =KeyAbsent= for that root.
+
+#+name: registry-merkle-exclusion-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Gap(k, lo, hi, rho) = $upright("Gap")(#k, #lo, #hi, #rho)$
+#let Inc(r, rho) = $upright("Inclusion")(#r, #rho)$
+#let Absent(k, rho) = $upright("Absent")(#k, #rho)$
+#let Key(r) = $upright("key")(#r)$
+
+$
+  Gap(k, l, u, rho) =>
+  Inc(l, rho) and Inc(u, rho) and Key(l) < k and k < Key(u)
+  and Absent(k, rho).
+$
+
+Neighbor labels without root-bound inclusion and semantic absence are a forged
+gap claim.
+#+end_src
+
+* Proof-size and token bound
+
+#+name: registry-merkle-proof-cost-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Len(p) = $upright("pathLength")(#p)$
+#let Depth(rho) = $upright("rootDepth")(#rho)$
+#let Cost(p) = $upright("tokenCost")(#p)$
+#let Accepted(p, rho) = $upright("Accepted")(#p, #rho)$
+
+$
+  Accepted(p, rho) => Len(p) <= Depth(rho).
+$
+
+$
+  Cost(p) = Len(p) dot w <= Depth(rho) dot w.
+$
+#+end_src
+
+This is a protocol admission bound, not merely an implementation optimization.
+An otherwise correct oversized proof is rejected before it enters the agent
+context.
+
+* Lean contract embedded in Org
+
+#+name: registry-merkle-path-lean-contract
+#+begin_src lean
+inductive SiblingSide where
+  | left
+  | right
+
+structure PathStep where
+  side : SiblingSide
+  sibling : MerkleDigest
+
+def recomputeRoot (branch : BranchHasher) (leaf : MerkleDigest)
+    (steps : List PathStep) : MerkleDigest :=
+  steps.foldl (applyPathStep branch) leaf
+
+def ExecutablePathAccepted (leafHash : LeafHasher) (branch : BranchHasher)
+    (packet : InclusionPacket) : Prop :=
+  packet.leafDigest = leafHash (canonicalLeafInput packet.record) ∧
+  recomputeRoot branch packet.leafDigest packet.steps = packet.claimedRoot ∧
+  packet.steps.length ≤ packet.rootDepth
+
+def RuntimeVerifierConforms (verifier : RuntimePathVerifier)
+    (leafHash : LeafHasher) (branch : BranchHasher) : Prop :=
+  ∀ packet, verifier packet = true ↔
+    ExecutablePathAccepted leafHash branch packet
+
+structure ExclusionPacket where
+  lowerPacket : Option InclusionPacket
+  upperPacket : Option InclusionPacket
+
+structure ExclusionConformance
+    (commitment : ManifestCommitment)
+    (leafHash : LeafHasher)
+    (branch : BranchHasher)
+    (snapshot : ManifestSnapshot)
+    (root : ManifestRootDigest)
+    (key : KeyId)
+    (gap : ExclusionPacket) : Prop where
+  lowerAccepted : ∀ packet, gap.lowerPacket = some packet →
+    ExecutablePathAccepted leafHash branch packet ∧ packet.claimedRoot = root
+  upperAccepted : ∀ packet, gap.upperPacket = some packet →
+    ExecutablePathAccepted leafHash branch packet ∧ packet.claimedRoot = root
+  semanticExclusion : AuthenticatedExclusion commitment snapshot root key
+#+end_src
+
+* Lean-discovered obligations
+
+The formal model distinguishes three claims that prose often collapses:
+
+1. executable path validity: canonical leaf, ordered fold, exact root, and depth
+   bound;
+2. semantic validity: RFC31 inclusion or exclusion under the same root;
+3. verifier conformance: runtime =true= if and only if executable validity holds.
+
+The model constructs counterexamples for ambiguous untagged encoding, an
+attacker-selected root, an oversized proof, a forged gap claim, and an
+always-accept verifier. A direction-sensitive branch function also proves that
+flipping a one-step left/right marker changes the resulting root.
+
+Lean also requires =ExclusionPacket : Type= to own lower/upper transport data,
+while =ExclusionConformance : Prop= owns only verification evidence. Putting
+packet data inside a proof-valued structure would violate proof irrelevance and
+make executable projection impossible.
+
+Cryptographic strength, byte-level canonical serialization, and equality with a
+specific runtime implementation remain executable evidence obligations. They
+are not silently imported as Lean axioms.
+
+* Verification plan
+
+- build the focused Lean source and direct audit;
+- require every audited declaration to report no axioms;
+- execute the audit runner and validate its JSON receipt;
+- evaluate every Typst block through stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- keep aggregate proof-package failures separate;
+- add no Rust implementation in this session.
+
+* Next boundary
+
+After path conformance closes, the next formal boundary is byte-level verifier
+attestation: canonical length-prefix encoding, digest-domain test vectors,
+runtime artifact identity, proof decoder totality, malformed-packet rejection,
+and an AXLE audit receipt connecting executable test vectors to these Lean
+relations.
+
+That boundary is refined by [[file:../10.05.33-agent-session-host-registry-verifier-attestation/00-overview.org][RFC 10.05.33 — Agent Session Registry Verifier
+Attestation]].

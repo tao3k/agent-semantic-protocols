@@ -1,0 +1,225 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Search and Query Incident Lifecycle
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Normative extension to the interactive SearchLoop and agent search projection
+contracts.  This RFC defines how an agent-facing =search= or =query= execution
+becomes an observable incident, how a repair is verified, and when resolved
+state may be removed from the active incident set.
+
+* Problem
+
+An agent-facing search failure is currently easy to lose when it is rendered
+only as stderr, a wall-budget receipt, a blocked route, or a projection packet
+without requested code.  Repeated failures then consume turns without creating
+a durable repair queue.  Conversely, retaining every historical failure in the
+active queue biases later agents toward defects that have already been fixed.
+
+The protocol therefore requires a lifecycle ledger rather than unstructured
+logging.
+
+* Normative incident boundary
+
+A =search= or =query= execution MUST create or update an incident when any of
+the following is true:
+
+1. execution terminates with a typed error;
+2. execution is blocked or unavailable before producing its requested packet;
+3. a declared performance budget is exceeded;
+4. source or callable projection was requested but the terminal packet contains
+   no parser-owned code projection;
+5. a provider, generation, workspace endpoint, or graph dependency prevents a
+   terminal code-bearing result.
+
+The decision MUST be derived from typed execution and projection fields.  It
+MUST NOT parse rendered stdout or stderr strings.
+
+A successful command that did not request a code projection is not an incident
+merely because it contains no code.
+
+* Identity and deduplication
+
+The incident identity is the digest of:
+
+#+begin_example
+workspace identity
+language id
+surface: search | query
+canonical request digest
+requested projection
+failure stage
+reason kind
+provider contract digest
+active generation digest
+#+end_example
+
+Repeated observations with the same identity update =occurrenceCount= and
+=lastSeenUnixMicros=.  They MUST NOT append an unbounded sequence of active
+rows.  A provider, artifact, or generation transition produces a distinct
+identity unless a verified replay explicitly relates the generations.
+
+Raw source, raw query text, prompts, and credentials MUST NOT be stored in the
+incident ledger.  Canonical digests and bounded typed attributes are sufficient.
+
+* Lifecycle
+
+#+begin_example
+Open -> Repairing -> VerificationPending -> Resolved -> Compacted
+                    |                    
+                    +-> FailedVerification -> Open
+
+Open -> Superseded
+#+end_example
+
+Only the main agent may transition =Open -> Repairing= by attaching a repair
+artifact digest.  Search and testing subagents are read-only consumers of the
+ledger.
+
+=Resolved= requires a replay of the same canonical request against the repair
+artifact and active generation.  The replay MUST:
+
+- terminate successfully;
+- contain the requested parser-owned code projection;
+- satisfy the applicable performance budget;
+- carry matching workspace, artifact, provider, and generation receipts.
+
+A changed generation without replay is =Superseded=, never =Resolved=.
+
+=Compacted= is permitted only after a verified =Resolved= transition and the
+configured retention gate.  Compaction removes the incident from the active
+repair queue while retaining a bounded append-only transition receipt for
+audit.  Implementations MUST NOT erase unresolved or failed-verification state.
+
+* Runtime ownership
+
+Each Runtime Server instance owns one bounded incident bus.  Search/query
+adapters publish typed observations to that bus without opening Turso and
+without waiting for durable persistence.  The resident OpenTelemetry writer is
+the unique receiver and Turso writer.
+
+Terminal incident and resolution transitions are lossless.  Repeated metric
+samples may be coalesced by incident identity.  Backpressure MUST NOT block the
+search/query response path; reserved terminal capacity or a bounded durable WAL
+MUST preserve terminal transitions.
+
+Workspace ledgers, replay leases, writer queues, and compaction are isolated by
+workspace identity.  No global incident mutex or cross-workspace database lock
+is permitted.
+
+* OpenTelemetry attributes
+
+The resident writer records at least:
+
+- =asp.search.incident.id=
+- =asp.search.surface=
+- =asp.search.language=
+- =asp.search.stage=
+- =asp.search.reason=
+- =asp.search.request.digest=
+- =asp.search.projection.requested=
+- =asp.search.projection.code_present=
+- =asp.search.budget.micros=
+- =asp.search.elapsed.micros=
+- =asp.workspace.identity=
+- =asp.runtime.artifact.digest=
+- =asp.provider.contract.digest=
+- =asp.generation.digest=
+- =asp.search.incident.state=
+- =asp.search.incident.occurrence_count=
+- =asp.search.verification.receipt.digest=
+
+Runtime RSS, disk read/write bytes, event-loop lag, active task count, child
+count, and writer queue depth SHOULD accompany budget and availability failures.
+
+* Durable model
+
+Turso owns three logical relations:
+
+1. active incident materialization, keyed by incident id;
+2. append-only lifecycle transitions;
+3. replay verification receipts.
+
+Search/query callers never open these relations directly.  All mutations flow
+through the resident writer lane.  Agent-facing telemetry queries read a
+resident snapshot or read lease and return unresolved incidents by default.
+
+* Agent repair loop
+
+#+begin_example
+Observe -> Deduplicate -> Explore -> Repair -> Replay -> Resolve -> Compact
+#+end_example
+
+=@asp_explorer= reads unresolved incidents and returns evidence receipts only.
+The main agent owns source edits.  =@asp_testing= replays canonical requests and
+returns verification receipts only.  The Runtime Server owns state transition,
+deduplication, persistence, and compaction.
+
+* Required gates
+
+1. Every typed error, block, budget failure, and missing requested code
+   projection creates exactly one active incident identity.
+2. Concurrent repetitions increment one incident without duplicate active rows.
+3. A successful non-code projection does not create a false incident.
+4. Resolution without a matching code-bearing replay is impossible.
+5. Failed replay reopens the incident.
+6. Compaction cannot remove unresolved state.
+7. A repaired incident disappears from the active queue after verified
+   resolution and retention, while its bounded audit receipt remains.
+8. Multi-workspace concurrency cannot cross-contaminate incidents or writer
+   queues.
+9. Telemetry unavailability cannot block the search/query response.
+10. Real-project qualification records incident count, command count, latency,
+    packet size, RSS, I/O amplification, and cleanup completion.
+
+* Executable transport refinement
+
+The resident transport is one =RuntimeTelemetryBus=.  Lifecycle events and
+Search/Query incident events are variants of the same typed envelope and are
+drained by the same resident OpenTelemetry/Turso writer.  A second global
+queue, a second database writer, and query-time database opening are forbidden.
+The bus has a reserved terminal lane and a separate coalescable transition
+lane.  Search/Query responses use non-blocking terminal admission; transition
+pressure cannot consume terminal capacity or stall the response path.  A full
+terminal lane is itself a typed runtime defect and must be observable rather
+than converted into an unbounded task, thread, or child-process backlog.
+
+Every accepted incident transition carries a positive, monotonically
+increasing =transitionSequence=.  The persisted event identity is the tuple
+=(workspaceIdentity, incidentId, transition, transitionSequence)=.  Workspace
+identity is therefore part of uniqueness even when two workspaces produce the
+same semantic incident digest.  Invalid or rejected transitions do not consume
+a sequence number.
+
+Emission occurs at the typed Runtime Server terminal-completion boundary,
+before rendering and without parsing stdout or stderr.  The adapter must retain
+typed surface, stage, requested projection, language/provider identity,
+canonical request digest, generation and artifact receipts, terminal state,
+reason kind, elapsed time, budget, and code-projection presence.  A string
+=projectionKind= crossing the runtime IPC boundary is not an acceptable
+refinement of the shared schema; the boundary must carry a schema-owned enum.
+
+Turso retains append-only transition spans.  In the same writer transaction it
+materializes =asp_otel_active_search_incident= as the latest workspace-scoped
+state for each incident; query-time window scans and JSON ranking are
+forbidden.  Only =open=, =repairing=, =verification-pending=, and
+=failed-verification= are active.  A verified =resolved= or retained
+=compacted= transition removes the incident from this active relation without
+deleting its bounded audit history.
+
+* Provider responsibility boundary
+
+Language providers do not own incident lifecycle fields.  Their shared
+=provider-native-exact-response.v1= contract already provides a typed =oneOf=
+between a resolved projection and a diagnostic resolution state.  The Runtime
+Server terminal adapter derives =succeeded=, =codeProjectionPresent=, and the
+diagnostic =reasonKind= from that typed branch, then combines it with transport
+termination, blocking, and budget receipts.  Providers must not independently
+invent incident identifiers, transition sequences, retention state, or Turso
+writes.  This keeps Rust, TypeScript, Python, Gerbil Scheme, Julia, and future
+lazy-loaded providers aligned without copying lifecycle logic into each
+harness.

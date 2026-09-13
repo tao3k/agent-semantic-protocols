@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Benchmark command tests for graph turbo sandtable evidence."""
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ def test_graph_turbo_benchmark_json_is_schema_owned(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "benchmark",
             str(packet_path),
             "--runs",
@@ -63,7 +67,7 @@ def test_graph_turbo_benchmark_passes_p95_performance_gate(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "benchmark",
             str(packet_path),
             "--runs",
@@ -103,7 +107,7 @@ def test_graph_turbo_benchmark_fails_p95_performance_gate(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "benchmark",
             str(packet_path),
             "--runs",

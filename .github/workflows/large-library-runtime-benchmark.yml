@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 name: Large Library Runtime Benchmark
 
 on:
@@ -21,15 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure isolated benchmark state home
+        shell: bash
+        run: echo "ASP_STATE_HOME=$RUNNER_TEMP/asp-state-home" >> "$GITHUB_ENV"
+
       - name: Checkout provider catalog submodules
         shell: bash
         run: |
           set -euo pipefail
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
-            languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
 
       - name: Install Nix for the project direnv environment
         uses: cachix/install-nix-action@v31
@@ -51,7 +62,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+          cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Python and uv
         uses: actions/setup-python@v5
@@ -67,20 +78,12 @@ jobs:
         with:
           version: "1.12"
 
-      - name: Build V1 provider artifacts through direnv
+      - name: Build, publish, and activate every registered corpus provider
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . cargo build --release --bin asp
-          direnv exec . cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --release --features cli --bin rs-harness
-          direnv exec . npm --prefix languages/typescript-lang-project-harness ci
-          direnv exec . npm --prefix languages/typescript-lang-project-harness run build
-          direnv exec . uv sync --project languages/python-lang-project-harness --frozen
-          direnv exec . env \
-            JULIA_DEPOT_PATH="$PWD/.cache/julia-depot:$HOME/.julia" \
-            ASP_JULIA_BUILD_DIR="$PWD/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
-            ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
-            languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh
+          direnv exec . just agent-tools-install-global \
+            "$ASP_STATE_HOME/runtime/bin"
 
       - name: Enforce V1 1193-owner Turso cold-write gate
         shell: bash
@@ -95,15 +98,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .data
-          jq -r '.corpora[] | [.repository, .revision, .directory] | @tsv' \
-            benchmarks/large-library-runtime-search.v1.baseline.json | \
-            while IFS=$'\t' read -r repository revision directory; do
-              git clone --filter=blob:none "https://github.com/${repository}.git" ".data/${directory}"
-              git -C ".data/${directory}" checkout --detach "$revision"
+          jq -r '.corpora[].resourceId' \
+            benchmarks/large-library-runtime-corpora.json | \
+            while IFS= read -r resource_id; do
+              sync_receipt="$(
+                "$ASP_STATE_HOME/runtime/bin/asp" live-corpus sync \
+                  --resource "$resource_id" \
+                  --lock benchmarks/large-library-runtime-corpora.json \
+                  --json
+              )"
+              checkout_path="$(jq -r '.checkoutPath' <<<"$sync_receipt")"
+              "$ASP_STATE_HOME/runtime/bin/asp" live-corpus materialize \
+                --resource "$resource_id" \
+                --source "$checkout_path" \
+                --lock benchmarks/large-library-runtime-corpora.json
             done
 
-      - name: Run V1 14-corpus search command matrix
+      - name: Run V1 registered-corpus search command matrix
         shell: bash
         run: |
           set -euo pipefail

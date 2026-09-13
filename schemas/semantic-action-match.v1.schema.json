@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-action-match.v1.schema.json",
+  "title": "Semantic Action Match v1",
+  "description": "Capability-first Hook matcher contract with subjects as an orthogonal axis.",
+  "$ref": "agent-action-match.v1.schema.json"
+}

@@ -1,0 +1,245 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute semantic path and cache execution separation
+#+property: rfc_layer evidence-graph-routing
+
+* Status and authority
+
+This RFC refines the graph-router cost model.  It is canonical for the
+distinction between semantic evidence-path length and cache-adjusted execution
+work.
+
+It composes four existing contracts:
+
+- [[file:00.32-canonical-graph-cost-vector.org][Canonical graph cost vector]]
+- [[file:00.35-feasibility-first-route-admission.org][Feasibility-first route admission]]
+- [[file:00.62-completion-equivalent-pareto-router.org][Completion-equivalent Pareto router]]
+- [[file:01.08-searchroute-graph-router-pareto-cost-selection.org][Graph-router Pareto cost selection]]
+- [[file:01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]]
+- [[file:../10.05.40-receipts-cache-identity/00.63-orthogonal-cache-credit-ledger.org][Orthogonal cache credit ledger]]
+
+The Lean refinement is
+[[file:../../../../packages/proofs/ASPProof/SearchRouteSemanticPathCacheSeparation.lean][SearchRouteSemanticPathCacheSeparation.lean]].
+Its modular Lean-JSON audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteSemanticPathCacheSeparation.lean][SearchRouteSemanticPathCacheSeparation audit]].
+The emitted Lean receipt and admitted AXLE receipt are
+[[file:../../../../packages/proofs/receipts/searchroute-semantic-path-cache-separation-audit-v1.json][Lean audit JSON]]
+and
+[[file:../../../../packages/proofs/receipts/searchroute-semantic-path-cache-separation-axle-audit-v1.json][AXLE admission JSON]].
+
+* Lean-discovered design gap
+
+The cache-credit model previously used one field named =graphHops= both for
+route cost and for work removed by a search-cache hit.  Those meanings are not
+interchangeable.
+
+A semantic graph hop belongs to the evidence certificate.  It states how many
+evidence relations connect the query obligation to the accepted witness.  A
+cache hit does not alter that proof object.
+
+An executed graph hop belongs to the realization trace.  It states how much
+provider or graph traversal work was performed during this execution.  A
+search-result cache may reduce this value.
+
+The previous projection can turn a planned value of four graph hops into a
+realized value of one after applying a cache credit.  Therefore that field
+cannot simultaneously certify semantic path length.  Lean records this
+countermodel as
+=legacy_cache_projection_changes_declared_graph_hops=.
+
+* Corrected route type
+
+A route exposes the following typed measure:
+
+#+begin_example
+RouteMeasure {
+  semanticGraphHops: Nat,
+  executedGraphHops: Nat,
+  toolRounds: Nat,
+  searchTokens: Nat,
+  uncachedModelTokens: Nat
+}
+#+end_example
+
+=semanticGraphHops= is certificate-bound and cache-invariant.
+=executedGraphHops=, =toolRounds=, and =searchTokens= are realization costs
+that a valid search-cache receipt may reduce.  =uncachedModelTokens= is a
+separate realization cost that only a valid model-prefix receipt may reduce.
+
+* Normative clauses
+
+** ASP-RFC-10.05-SPCS-SEMANTIC-INVARIANT
+
+Applying search-cache or model-prefix credits MUST preserve
+=semanticGraphHops=.  A cache-adjusted execution receipt MUST NOT be used as a
+certificate that a different or shorter semantic evidence path exists.
+
+** ASP-RFC-10.05-SPCS-EXECUTION-CONSERVATION
+
+For every execution-cost dimension, realized cost plus the admitted cache
+credit MUST equal planned cost.  Credits MUST be bounded by their corresponding
+planned dimensions before subtraction.
+
+** ASP-RFC-10.05-SPCS-CACHE-ORTHOGONAL
+
+Search-result cache credit and model-prefix cache credit MUST remain separate:
+
+- search-result credit may reduce executed traversal, tool rounds, and
+  disclosed search tokens;
+- model-prefix credit may reduce uncached model tokens;
+- neither credit may be projected into the other lane.
+
+** ASP-RFC-10.05-SPCS-LEGACY-COUNTERMODEL
+
+The =graphHops= field in the legacy orthogonal-cache cost projection MUST be
+interpreted as executed traversal work.  It MUST NOT be reused as the semantic
+path metric without an explicit migration.
+
+** ASP-RFC-10.05-SPCS-OBSERVATION-NONIDENTITY
+
+Equal cache-adjusted execution cost does not identify equal semantic paths.
+The route receipt MUST carry the semantic path digest and semantic hop count
+independently of the realization-cost receipt.
+
+* Router order
+
+The graph router MUST apply the following order:
+
+1. admit only candidates that cover all mandatory obligations and have valid
+   identity, freshness, capability, and projection certificates;
+2. compare only completion-equivalent admitted candidates;
+3. compute the Pareto frontier over semantic path length and realization-cost
+   dimensions;
+4. apply an explicit policy order to incomparable frontier members;
+5. stop only when the selected completion certificate closes the required
+   obligation set.
+
+The router MUST NOT choose a route merely because its cache-adjusted execution
+work is smallest.  It also MUST NOT infer completion from the absence of a
+cheaper next action.
+
+The recommended agent policy compares the following tuple after admission:
+
+#+begin_example
+(
+  toolRounds,
+  searchTokens,
+  semanticGraphHops,
+  uncachedModelTokens,
+  executedGraphHops
+)
+#+end_example
+
+This order treats LLM/tool interaction rounds and disclosed context as the hot
+path, while retaining semantic path length as a proof property.  A deployment
+may select a different explicit order, but it MUST publish the policy identity
+in the route receipt.
+
+* Org-Babel Typst mathematical model
+
+The mathematical source is embedded here.  Org owns the block; =typst eval=
+validates the block from standard input, so no standalone =.typ= source or PDF
+side effect is required.
+
+#+name: semantic-path-cache-execution-separation-math
+#+begin_src typst
+#let planned = (
+  semantic-hops: 4,
+  executed-hops: 4,
+  tool-rounds: 2,
+  search-tokens: 100,
+  uncached-model-tokens: 1000,
+)
+
+#let search-credit = (
+  executed-hops: 3,
+  tool-rounds: 1,
+  search-tokens: 80,
+)
+
+#let model-credit = (
+  uncached-model-tokens: 800,
+)
+
+#let realized = (
+  semantic-hops: planned.semantic-hops,
+  executed-hops: planned.executed-hops - search-credit.executed-hops,
+  tool-rounds: planned.tool-rounds - search-credit.tool-rounds,
+  search-tokens: planned.search-tokens - search-credit.search-tokens,
+  uncached-model-tokens:
+    planned.uncached-model-tokens - model-credit.uncached-model-tokens,
+)
+
+#let semantic-preserved = (
+  realized.semantic-hops == planned.semantic-hops
+)
+
+#let execution-conserved = (
+  realized.executed-hops + search-credit.executed-hops
+      == planned.executed-hops
+  and realized.tool-rounds + search-credit.tool-rounds
+      == planned.tool-rounds
+  and realized.search-tokens + search-credit.search-tokens
+      == planned.search-tokens
+  and realized.uncached-model-tokens
+        + model-credit.uncached-model-tokens
+      == planned.uncached-model-tokens
+)
+
+#metadata((
+  schema-id: "asp.searchroute.semantic-path-cache-separation.v1",
+  semantic-preserved: semantic-preserved,
+  execution-conserved: execution-conserved,
+  planned: planned,
+  realized: realized,
+)) <semantic-path-cache-execution-separation>
+
+$ C_"sem"(p) = h_"sem"(p) $
+
+$ C_"exec"(p) =
+  (h_"exec"(p), r(p), t_"search"(p), t_"model"(p)) $
+
+$ h_"sem"(p_c) = h_"sem"(p) $
+
+$ C_"exec"(p_c)
+  + (c_s, c_m) = C_"exec"(p) $
+
+$ "Admissible"(p) =
+  "Coverage"(p) and "Identity"(p) and "Freshness"(p) and "Capability"(p) $
+
+$ F(P) =
+  {p in P: "Admissible"(p) and not exists q in P: q prec p} $
+#+end_src
+
+* Machine-checked consequences
+
+The Lean module proves:
+
+- cache application preserves semantic evidence-path hops;
+- valid execution credits conserve every realization-cost dimension;
+- search-result and model-prefix credits are orthogonal;
+- the legacy cache projection can change its declared =graphHops= field;
+- two routes can have equal realized traversal work while retaining different
+  semantic path lengths.
+
+The last theorem closes an information-loss bug: a cache-adjusted cost vector is
+not sufficient evidence for route identity or shortest-proof-path selection.
+
+* Python Turbo Graph boundary
+
+The future Python Turbo Graph implementation MUST expose semantic path
+certificate fields separately from realized execution fields.  It MUST NOT
+reuse a cache-adjusted execution counter as the graph-router path rank.
+
+No Python or Rust implementation is authorized by this RFC-only session.  The
+contract is intentionally established in RFC, Lean, Typst, and Lean-JSON first.
+
+* Remaining proof boundary
+
+This refinement does not yet prove that a concrete provider enumerates the
+complete candidate universe.  Global optimality still depends on the existing
+frontier-coverage certificate.  It also does not claim that one fixed
+lexicographic policy is optimal for every model or workload; policy identity
+must remain explicit and auditable.

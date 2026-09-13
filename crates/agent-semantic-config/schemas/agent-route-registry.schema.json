@@ -1,0 +1,81 @@
+{
+  "$id": "urn:agent-semantic-protocols:schema:agent-route-registry",
+  "x-asp-schema-version": 1,
+  "title": "ASP agent route registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "platforms", "agents"],
+  "properties": {
+    "schema_id": {
+      "const": "agent.semantic-protocols.agent-route-registry"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "platforms": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/platform"
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/agentRoute"
+      }
+    }
+  },
+  "$defs": {
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher"],
+      "properties": {
+        "matcher": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agentRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_lifetime", "roles", "allowed_rule_intents", "agent_kind", "display_role"],
+      "properties": {
+        "session_lifetime": {
+          "enum": ["resident", "temporary"]
+        },
+        "focus_mode": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "allowed_rule_intents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "agent_kind": {
+          "type": "string",
+          "enum": ["agent", "subagent"]
+        },
+        "display_role": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

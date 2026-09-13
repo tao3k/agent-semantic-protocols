@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-binary-profile.v1.schema.json",
+  "title": "Runtime Binary Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "binaryId",
+    "profile",
+    "executableAliases",
+    "invocationAuthorities",
+    "sessionBinding",
+    "allowDirectAgent",
+    "generationBinding",
+    "argvBinding"
+  ],
+  "properties": {
+    "schemaId": { "const": "runtime-binary-profile.v1" },
+    "schemaVersion": { "const": "1" },
+    "binaryId": { "type": "string", "minLength": 1 },
+    "profile": {
+      "enum": [
+        "facade",
+        "provider-internal",
+        "support-tool",
+        "host-tool",
+        "test-fixture"
+      ]
+    },
+    "languageId": { "type": ["string", "null"] },
+    "providerId": { "type": ["string", "null"] },
+    "executableAliases": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "artifactDigest": { "type": ["string", "null"] },
+    "invocationAuthorities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "direct-agent",
+          "asp-facade",
+          "asp-runtime-dispatch",
+          "asp-wrapper",
+          "host-policy",
+          "test-runtime"
+        ]
+      }
+    },
+    "sessionBinding": {
+      "enum": ["none", "optional", "required"]
+    },
+    "allowDirectAgent": { "type": "boolean" },
+    "generationBinding": { "type": "boolean" },
+    "argvBinding": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "profile": { "const": "provider-internal" } },
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "languageId": { "type": "string", "minLength": 1 },
+          "providerId": { "type": "string", "minLength": 1 },
+          "invocationAuthorities": { "const": ["asp-runtime-dispatch"] },
+          "sessionBinding": { "const": "required" },
+          "allowDirectAgent": { "const": false },
+          "generationBinding": { "const": true },
+          "argvBinding": { "const": true }
+        },
+        "required": ["languageId", "providerId"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "profile": { "const": "facade" } },
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "invocationAuthorities": { "const": ["direct-agent", "asp-facade"] },
+          "allowDirectAgent": { "const": true }
+        }
+      }
+    }
+  ]
+}

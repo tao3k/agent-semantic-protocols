@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Workspace-Specific Generation Admission Closure
+
+* Status
+
+This module specifies the receipt boundary for Runtime Server warm publication.
+It precedes Rust implementation.  It complements workspace generation
+readiness by defining when generation admission is complete for every registered
+workspace rather than merely healthy at the process level.
+
+* Problem
+
+A process-level =healthy= response is compatible with all of the following:
+
+- a registered workspace with no active generation;
+- an active generation whose root digest is stale;
+- a current generation without the requested projection mode; and
+- a nested workspace that was never independently published.
+
+Consequently, process-level health cannot close workspace admission.  Each
+=EnsureWorkspace= request closes only when its exact workspace has a matching
+committed publication receipt.
+
+The current Rust search facade also failed to expose an owner-tests surface for
+=runtime_server_workspace/registry/publication.rs=.  The owner-items surface
+identified =ensure_canonical_generation=, but executable test correspondence
+remains unproven.  This RFC does not treat symbol discovery as test evidence.
+
+* Closure state machine
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> RequirementRegistered
+  RequirementRegistered --> IntentDurable: revision CAS
+  IntentDurable --> OutboxDurable: atomic intent + outbox
+  OutboxDurable --> PublishDispatched: stable workspace dispatch key
+  PublishDispatched --> HostAccepted: idempotent accept
+  HostAccepted --> ReceiptIndexed: workspace-specific receipt
+  ReceiptIndexed --> WorkspaceClosed: delivered CAS
+  WorkspaceClosed --> FleetClosed: every required workspace closed
+
+  RequirementRegistered --> Rejected: health-only receipt
+  ReceiptIndexed --> Rejected: wrong workspace identity
+  ReceiptIndexed --> Rejected: stale root digest
+  ReceiptIndexed --> Rejected: missing projection
+  WorkspaceClosed --> IntentDurable: new root digest
+
+  note right of FleetClosed
+    Fleet closure quantifies over every
+    registered workspace identity.
+  end note
+#+end_src
+
+* Mathematical contract
+
+#+begin_src typst :lint typst-eval
+#let satisfies = math.op("satisfies")
+#let closed = math.op("closed")
+#let fleetClosed = math.op("fleet-closed")
+#let workspace = math.op("workspace")
+#let rootDigest = math.op("root-digest")
+#let projection = math.op("projection")
+#let committed = math.op("committed")
+#let receipt = math.op("receipt")
+#let key = math.op("stable-key")
+
+$ satisfies(q, r) =
+  (workspace(q) = workspace(r))
+  and (rootDigest(q) = rootDigest(r))
+  and committed(r)
+  and (projection(q) subset.eq projection(r)) $
+
+$ closed(q, R) = exists r in R: satisfies(q, r) $
+
+$ fleetClosed(Q, R) = forall q in Q: closed(q, R) $
+
+$ key(q) = (workspace(q), rootDigest(q), projection(q)) $
+#+end_src
+
+The stable key changes when the workspace root digest or required projection
+set changes.  Retrying the same requirement reuses the same key and receipt
+index.  A later root digest creates a new publication intent without changing
+Agent Session authority.
+
+* Lean correspondence
+
+The executable model is maintained in:
+
+- =packages/proofs/ASPProof/ASPWorkspaceReconcileClosure.lean=
+- =packages/proofs/ASPProof/Audit/ASPWorkspaceReconcileClosure.lean=
+
+It proves:
+
+- no receipt cannot close a workspace;
+- a canonical committed receipt closes its exact requirement;
+- wrong identity, wrong digest, uncommitted, and missing-projection receipts are
+  rejected;
+- a health-only summary cannot establish fleet closure; and
+- the stable dispatch key is deterministic and changes with the root digest.
+
+* Runtime refinement gate
+
+Each Runtime Server =EnsureWorkspace= receipt MUST identify its required
+workspace with:
+
+- workspace identity;
+- current root digest;
+- published generation digest;
+- committed publication CAS;
+- available projection modes;
+- stable dispatch key; and
+- intent-indexed delivery receipt.
+
+Warm publication may run continuously in the background.  Interactive search
+should request or await this internal closure through Server IPC.  It must not
+restart the Server, direct-open the registry, or mutate the Agent Session.

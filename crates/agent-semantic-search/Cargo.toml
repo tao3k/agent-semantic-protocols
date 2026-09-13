@@ -1,10 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [[test]]
 name = "file_locator"
 path = "tests/integration/file_locator.rs"
-
-[[test]]
-name = "search_planner"
-path = "tests/integration/search_planner.rs"
 
 [[test]]
 name = "source_index_lookup_terms"
@@ -14,34 +14,58 @@ path = "tests/integration/source_index_lookup_terms.rs"
 name = "source_index_rank_performance"
 path = "tests/integration/source_index_rank_performance.rs"
 
+[[test]]
+name = "graph_generation_authority"
+path = "tests/integration/graph_generation_authority.rs"
+
 [package]
 name = "agent-semantic-search"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Search orchestration services for ASP agent-facing queries."
-license = "MIT"
+license.workspace = true
+
+[features]
+default = ["tantivy-accelerator"]
+tantivy-accelerator = ["dep:tantivy"]
 
 [dependencies]
-globset = "0.4"
-agent-semantic-client-core = { path = "../agent-semantic-client-core" }
-agent-semantic-client-db = { path = "../agent-semantic-client-db" }
-agent-semantic-hook = { path = "../agent-semantic-hook" }
-agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
-agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+sha2.workspace = true
+serde = { workspace = true, features = ["derive"] }
+agent-semantic-content-identity.workspace = true
+agent-semantic-mrr.workspace = true
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
+blake3.workspace = true
+globset.workspace = true
+agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
+agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }
 ignore = { workspace = true }
-orgize = { workspace = true }
 serde_json = { workspace = true }
-turso = { workspace = true }
+memmap2.workspace = true
+memchr = "2"
+regex.workspace = true
+regex-syntax.workspace = true
+rustc-hash.workspace = true
+toml = { workspace = true }
+tokio = { workspace = true }
+tokio-stream.workspace = true
+tantivy = { workspace = true, optional = true }
 which = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
-rust-lang-project-harness = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true }
+agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
 [[test]]
 name = "graph_owner_rank_report"
 path = "tests/integration/graph_owner_rank_report/mod.rs"
+
+[[test]]
+name = "search_generation_segment"
+path = "tests/unit/search_generation_segment.rs"

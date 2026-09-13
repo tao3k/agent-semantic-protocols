@@ -1,83 +1,27 @@
-use std::{
-    env,
-    ffi::{OsStr, OsString},
-    fs,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::{Arc, Barrier},
-    thread,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_core::state_core::{
-    ASP_STATE_HOME_ENV, ResolvedState, STATE_LAYOUT_VERSION, TURSO_BACKEND,
-};
-use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
-};
-use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexSource,
-    ClientDbStructuralDependencyUsage, ClientDbStructuralIndexImport, ClientDbStructuralKind,
-    ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
-    ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
-    ClientDbStructuralSymbol, build_source_index_import,
-};
-use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbBackend, ClientDbEngine};
-use serde_json::json;
+//! Database-engine integration scenarios grouped by storage responsibility.
 
-include!("artifact_events.rs");
-include!("artifact_graph.rs");
-include!("bootstrap.rs");
-include!("contract.rs");
-include!("write_session.rs");
+mod fixture;
 
-fn temp_root(label: &str) -> PathBuf {
-    let mut root = std::env::temp_dir();
-    let unique = format!(
-        "asp-client-db-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    );
-    root.push(unique);
-    std::fs::create_dir_all(&root).expect("create temp root");
-    root
-}
-
-struct EnvVarGuard {
-    key: &'static str,
-    previous: Option<OsString>,
-    _env_lock: std::sync::MutexGuard<'static, ()>,
-}
-
-impl EnvVarGuard {
-    fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
-        let env_lock = crate::env::ENV_LOCK.lock().expect("lock env");
-        let previous = std::env::var_os(key);
-        unsafe {
-            std::env::set_var(key, value);
-        }
-        Self {
-            key,
-            previous,
-            _env_lock: env_lock,
-        }
-    }
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => unsafe {
-                std::env::set_var(self.key, value);
-            },
-            None => unsafe {
-                std::env::remove_var(self.key);
-            },
-        }
-    }
-}
+mod artifact_events;
+mod artifact_pointer;
+mod artifact_pointer_crash;
+mod artifact_pointer_domains;
+mod bootstrap;
+mod contract;
+mod corrupt_cache;
+mod storage_contract;
+mod storage_performance_receipt;
+mod turso_agent_storage;
+mod turso_cdc_storage;
+mod turso_encrypted_storage;
+mod turso_migration;
+#[path = "turso_mvcc_keyset.rs"]
+mod turso_mvcc_keyset_tests;
+mod turso_mvcc_store;
+mod turso_sync_server_e2e;
+mod turso_sync_storage;
+mod write_session;

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Live agent-session CLI wrapper tests."""
 
 from __future__ import annotations
@@ -123,7 +127,7 @@ def test_cli_records_live_agent_session_without_sdk(
     assert improvement["sessionId"] == "live-cli-session"
     assert quality["turnSummary"]["phaseCounts"]["command-result"] == 1
     assert quality["turnSummary"]["qualitySignalCounts"]["command-started"] == 1
-    assert quality["turnSummary"]["qualitySignalCounts"]["search-prime"] == 1
+    assert quality["turnSummary"]["qualitySignalCounts"]["search-playbook"] == 1
     assert quality["roundSummary"]["totalRounds"] == 1
     assert quality["roundDetails"][0]["commandKind"] == "search"
     assert quality["roundDetails"][0]["resultStatus"] == "complete"
@@ -131,7 +135,7 @@ def test_cli_records_live_agent_session_without_sdk(
     assert improvement["improvementPoints"] == []
     assert any(
         turn["phase"] == "command-result"
-        and "search-prime" in turn["qualitySignals"]
+        and "search-playbook" in turn["qualitySignals"]
         for turn in quality["turnDetails"]
     )
     assert any(
@@ -153,7 +157,7 @@ def _messages() -> list[dict[str, object]]:
                 {
                     "id": "call_1",
                     "name": "Bash",
-                    "input": {"command": "asp rust search prime --workspace . --view seeds"},
+                    "input": {"command": "asp search playbook --language rust --rg --files . --tantivy term source"},
                 }
             ],
         },
@@ -163,8 +167,8 @@ def _messages() -> list[dict[str, object]]:
                 {
                     "tool_use_id": "call_1",
                     "content": (
-                        "[search-prime] language=rust project=tokio\n"
-                        "nextCommand=asp rust search pipe 'readiness' --workspace . --view seeds"
+                        "[search-playbook] language=rust project=tokio\n"
+                        "nextCommand=asp search playbook --language rust --rg -n -e 'readiness' . --tantivy term 'readiness'"
                     ),
                     "is_error": False,
                 }

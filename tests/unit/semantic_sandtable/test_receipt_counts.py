@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Receipt summary and output-mode count validation tests."""
 
 from __future__ import annotations
@@ -32,9 +36,9 @@ class ReceiptCountValidationTests(unittest.TestCase):
                         "editBoundary": "before-edit",
                         "commands": [
                             {
-                                "id": "prime",
+                                "id": "search-playbook",
                                 "kind": "search",
-                                "argv": ["rs-harness", "search", "prime", "."],
+                                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                                 "metrics": {
                                     "elapsedMs": 2,
                                     "stdoutBytes": 20,
@@ -73,7 +77,7 @@ class ReceiptCountValidationTests(unittest.TestCase):
                         "schemaVersion": "1",
                         "scenarioId": "typescript.receipt",
                         "language": "typescript",
-                        "project": {"name": "typescript-lang-project-harness"},
+                        "project": {"name": "asp-typescript"},
                         "intent": "Explore parser tests",
                         "editBoundary": "before-edit",
                         "commands": [
@@ -81,7 +85,7 @@ class ReceiptCountValidationTests(unittest.TestCase):
                                 "id": "text-json",
                                 "kind": "search",
                                 "argv": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "projectRoot",

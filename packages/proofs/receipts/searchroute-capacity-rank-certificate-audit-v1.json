@@ -1,0 +1,93 @@
+{"sourcePath": "ASPProof/SearchRouteCapacityRankCertificate.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteCapacityRankCertificate",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (rank : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate → Nat),\n  (∀ (removed witness : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates removed = some witness →\n        rank witness < rank removed) →\n    ∀ (fuel : Nat) (current : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n      rank current < fuel →\n        (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates fuel current).status =\n          ASPProof.SearchRouteBoundedDominanceWitnessChain.ResolutionStatus.retained",
+   "theoremFamily": "rank-bounded-resolution-is-retained",
+   "rfcClauseIds": ["CRC-DESCENT", "CRC-RANK", "CRC-RETAINED"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.rank_bounded_resolution_is_retained",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (certificate : ASPProof.SearchRouteCapacityRankCertificate.CapacityRankCertificate candidates)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  start ∈ candidates →\n    (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates candidates.length start).status =\n      ASPProof.SearchRouteBoundedDominanceWitnessChain.ResolutionStatus.retained",
+   "theoremFamily": "capacity-fuel-is-not-exhausted",
+   "rfcClauseIds": ["CRC-BOUND", "CRC-RETAINED"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.capacity_fuel_is_not_exhausted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (certificate : ASPProof.SearchRouteCapacityRankCertificate.CapacityRankCertificate candidates)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  start ∈ candidates →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates\n        (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates candidates.length\n            start).endpoint =\n      true",
+   "theoremFamily": "capacity-fuel-reaches-kept-endpoint",
+   "rfcClauseIds": ["CRC-ENDPOINT"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.capacity_fuel_reaches_kept_endpoint",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates candidates.length start).steps ≤\n    candidates.length",
+   "theoremFamily": "capacity-fuel-step-bound",
+   "rfcClauseIds": ["CRC-STEPS"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.capacity_fuel_step_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ startRank candidateCapacity, 0 < startRank ∧ candidateCapacity < startRank",
+   "theoremFamily": "total-cost-descent-does-not-supply-capacity-bound",
+   "rfcClauseIds": ["CRC-BOUND", "CRC-RANK"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.total_cost_descent_does_not_supply_capacity_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate), start ∈ [] → False",
+   "theoremFamily": "zero-capacity-has-no-member",
+   "rfcClauseIds": ["CRC-BOUND"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.zero_capacity_has_no_member",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteCapacityRankCertificate.explicitCapacityRankReceiptTokens candidates = 4 + candidates.length",
+   "theoremFamily": "explicit-capacity-rank-receipt-is-linear",
+   "rfcClauseIds": ["CRC-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.explicit_capacity_rank_receipt_is_linear",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCapacityRankCertificate.summarizedCapacityRankReceiptTokens = 4",
+   "theoremFamily": "summarized-capacity-rank-receipt-is-constant",
+   "rfcClauseIds": ["CRC-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.summarized_capacity_rank_receipt_is_constant",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  0 < candidates.length →\n    ASPProof.SearchRouteCapacityRankCertificate.summarizedCapacityRankReceiptTokens <\n      ASPProof.SearchRouteCapacityRankCertificate.explicitCapacityRankReceiptTokens candidates",
+   "theoremFamily": "summarized-capacity-rank-receipt-beats-explicit-nonempty",
+   "rfcClauseIds": ["CRC-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCapacityRankCertificate.summarized_capacity_rank_receipt_beats_explicit_nonempty",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 9,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 9,
+ "axiomDependentDeclarationCount": 0}

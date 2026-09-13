@@ -4,10 +4,10 @@
   "scenarioId": "typescript.render-location-queryset",
   "language": "typescript",
   "project": {
-    "name": "typescript-lang-project-harness",
-    "package": "typescript-lang-project-harness",
+    "name": "asp-typescript",
+    "package": "asp-typescript",
     "source": "checkout",
-    "workdir": "languages/typescript-lang-project-harness"
+    "workdir": "languages/asp-typescript"
   },
   "intent": "Repair semantic-search render location formatting in render.ts",
   "recordedAt": "2026-05-31",
@@ -225,7 +225,7 @@
         "text-location-line"
       ],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",

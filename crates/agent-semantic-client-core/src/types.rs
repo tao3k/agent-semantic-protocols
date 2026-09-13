@@ -1,8 +1,15 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Shared semantic scalar types used by the agent semantic client.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 macro_rules! semantic_string_type {
@@ -76,14 +83,8 @@ macro_rules! semantic_string_type {
     };
 }
 
-semantic_string_type!(
-    /// Language provider id such as `rust`, `typescript`, or `python`.
-    LanguageId
-);
-semantic_string_type!(
-    /// Provider implementation id such as `rs-harness`.
-    ProviderId
-);
+pub use agent_semantic_config::LanguageId;
+pub use agent_semantic_config::ProviderId;
 semantic_string_type!(
     /// JSON schema id carried by a client envelope.
     SemanticSchemaId
@@ -105,7 +106,7 @@ semantic_string_type!(
     CacheGenerationId
 );
 semantic_string_type!(
-    /// Provider-advertised export method such as `search/prime`.
+    /// Provider-advertised export method such as `search/playbook`.
     CacheExportMethod
 );
 semantic_string_type!(

@@ -1,7 +1,13 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
 
 const SCENARIO_ID: &str = "search-package-linear-performance-monitoring";
 const SCENARIO_ROOT: &str = concat!(
@@ -22,6 +28,14 @@ fn search_package_linear_performance_monitoring_covers_all_unit_surfaces() {
         "scenario must carry the package-level search performance policy id"
     );
     assert_benchmark_contract(&benchmark);
+    assert!(
+        benchmark.contains("measurement_status = \"not-measured\""),
+        "benchmark must declare when timing receipts have not been collected"
+    );
+    assert!(
+        !benchmark.contains("= \"0us\""),
+        "benchmark must not publish zero-valued placeholder timings"
+    );
 
     let surfaces = monitored_surfaces();
     assert!(

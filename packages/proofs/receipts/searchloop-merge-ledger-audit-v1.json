@@ -1,0 +1,57 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopMerge.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopMerge",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  (left right : SearchLoopMerge.AdmittedResult domain),\n  SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger left) right =\n    SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger right) left",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.admitted_merges_commute",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  (result : SearchLoopMerge.AdmittedResult domain),\n  SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger result) result =\n    SearchLoopMerge.mergeAdmitted ledger result",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.admitted_merge_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  {left right : List (SearchLoopMerge.AdmittedResult domain)},\n  left.Perm right → SearchLoopMerge.mergeMany ledger left = SearchLoopMerge.mergeMany ledger right",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.mergeMany_permutation_invariant",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (store : SearchLoopMerge.ResultStore) (left right : SearchLoopMerge.ClauseResult),\n  left.clause ≠ right.clause →\n    SearchLoopMerge.writeResult (SearchLoopMerge.writeResult store left) right =\n      SearchLoopMerge.writeResult (SearchLoopMerge.writeResult store right) left",
+   "theoremFamily": "ledger-independence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.independent_writes_commute",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 4,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 4}

@@ -30,7 +30,7 @@
                 "uv",
                 "run",
                 "--project",
-                "packages/python/asp_graph_turbo",
+                "packages/python/asp_python_graphs",
                 "--frozen",
                 "pytest",
                 "-q",
@@ -168,10 +168,10 @@
           "receiptId": "asp.search-frontier.python-semantic-fact-frontier-receipt-relationchannels-ppr",
           "goldContext": {
             "goldFrontierNodeIds": [
-              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py-semantic-fact-frontier-receipt-79"
+              "hot:packages/python/asp_python_graphs/src/asp_python_graphs/frontier_receipt.py-semantic-fact-frontier-receipt-79"
             ],
             "goldSelectors": [
-              "packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py:71:91"
+              "packages/python/asp_python_graphs/src/asp_python_graphs/frontier_receipt.py:71:91"
             ],
             "goldTestAction": {
               "argv": [
@@ -242,10 +242,10 @@
           "receiptId": "asp.search-frontier.python-semantic-fact-frontier-receipt-relationchannels-ppr",
           "goldContext": {
             "goldFrontierNodeIds": [
-              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py-semantic-fact-frontier-receipt-79"
+              "hot:packages/python/asp_python_graphs/src/asp_python_graphs/frontier_receipt.py-semantic-fact-frontier-receipt-79"
             ],
             "goldSelectors": [
-              "packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py:71:91"
+              "packages/python/asp_python_graphs/src/asp_python_graphs/frontier_receipt.py:71:91"
             ],
             "goldTestAction": {
               "argv": [
@@ -316,17 +316,17 @@
           "receiptId": "asp.search-frontier.python-sandtable-summary-benchmark-report-contextmetrics-report-scenario",
           "goldContext": {
             "goldFrontierNodeIds": [
-              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py-contextmetrics-108"
+              "hot:packages/python/asp_python_graphs/src/asp_python_graphs/sandtable_summary_cli.py-contextmetrics-108"
             ],
             "goldSelectors": [
-              "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120"
+              "packages/python/asp_python_graphs/src/asp_python_graphs/sandtable_summary_cli.py:100:120"
             ],
             "goldTestAction": {
               "argv": [
                 "uv",
                 "run",
                 "--project",
-                "packages/python/asp_graph_turbo",
+                "packages/python/asp_python_graphs",
                 "--frozen",
                 "pytest",
                 "-q",
@@ -395,17 +395,17 @@
           "receiptId": "asp.search-frontier.python-relation-weights-typed-transition-masks-profilecompatibility",
           "goldContext": {
             "goldFrontierNodeIds": [
-              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35"
+              "hot:packages/python/asp_python_graphs/src/asp_python_graphs/backend.py-weights-35"
             ],
             "goldSelectors": [
-              "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47"
+              "packages/python/asp_python_graphs/src/asp_python_graphs/backend.py:27:47"
             ],
             "goldTestAction": {
               "argv": [
                 "uv",
                 "run",
                 "--project",
-                "packages/python/asp_graph_turbo",
+                "packages/python/asp_python_graphs",
                 "--frozen",
                 "pytest",
                 "-q",

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-hook-blackbox-test.v1.schema.json",
+  "title": "Semantic Hook blackbox test matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "maxDecisionMicros", "typicalDecisionMicros", "coverage"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-blackbox-test" },
+    "schemaVersion": { "const": "1" },
+    "maxDecisionMicros": { "description": "Exclusive thread-CPU limit for Hook-owned decision work.", "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "typicalDecisionMicros": { "description": "Wall-clock operating target enforced at the test quorum.", "type": "integer", "minimum": 1, "maximum": 999 },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator", "maxWrapperDepth", "includeNegativeExtensionMutation", "minimumWitnesses"],
+      "properties": {
+        "generator": { "const": "compiled-policy-balanced-v1" },
+        "maxWrapperDepth": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "includeNegativeExtensionMutation": { "const": true },
+        "minimumWitnesses": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "polarity",
+        "toolName",
+        "toolInput",
+        "expectedDecision",
+        "expectedReasonKind",
+        "expectedLanguageIds"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "polarity": { "enum": ["black", "white"] },
+        "toolName": { "type": "string", "minLength": 1 },
+        "toolInput": { "type": ["object", "string"] },
+        "expectedDecision": { "enum": ["allow", "deny"] },
+        "expectedReasonKind": { "type": "string", "minLength": 1 },
+        "expectedRuleId": { "type": "string", "minLength": 1 },
+        "expectedLanguageIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "expectedProviderId": { "type": "string", "minLength": 1 },
+        "expectedRoutePrefix": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "polarity": { "const": "black" } } },
+          "then": {
+            "required": ["expectedRuleId", "expectedProviderId", "expectedRoutePrefix"],
+            "properties": { "expectedDecision": { "const": "deny" } }
+          }
+        },
+        {
+          "if": { "properties": { "polarity": { "const": "white" } } },
+          "then": { "properties": { "expectedDecision": { "const": "allow" } } }
+        }
+      ]
+    }
+  }
+}

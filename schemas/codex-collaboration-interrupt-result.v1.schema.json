@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-collaboration-interrupt-result.v1.schema.json",
+  "title": "Codex Collaboration Interrupt Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["previous_status"],
+  "properties": {
+    "previous_status": { "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentStatus" }
+  }
+}

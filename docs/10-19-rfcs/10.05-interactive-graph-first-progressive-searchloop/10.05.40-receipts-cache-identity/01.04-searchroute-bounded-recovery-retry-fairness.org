@@ -1,0 +1,431 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.40.01.04 - Bounded Recovery Retry and Fairness
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module adds bounded retries, bounded backoff, and explicit fairness
+assumptions to RFC 01.03 deterministic recovery contention. It changes protocol
+and receipt semantics only. It does not authorize Rust or Python
+implementation.
+
+* Abstract
+
+Single-winner safety does not imply that a particular recovery candidate will
+ever run, remain eligible, win, or commit. Recovery liveness must therefore be
+conditional on an explicit scheduler fairness assumption.
+
+Resource use can still be bounded unconditionally:
+
+#+name: searchroute-bounded-recovery-retry-fairness-model
+#+begin_src typst
+#let retry-authorized(used, maximum) = used < maximum
+#let next-used(used) = used + 1
+#let cumulative-bound(attempts, maximum-delay) = (
+  attempts * maximum-delay
+)
+#assert(retry-authorized(0, 3))
+#assert(next-used(0) == 1)
+#assert(not retry-authorized(3, 3))
+#assert(cumulative-bound(3, 5) == 15)
+"ok"
+#+end_src
+
+The protocol distinguishes:
+
+- unconditional safety;
+- unconditional resource bounds;
+- fairness-conditional liveness.
+
+* Retry state
+
+A retry state binds:
+
+- =transitionId=;
+- =candidateId=;
+- =roundNumber=;
+- =attemptsUsed=;
+- =maximumAttempts=;
+- =expectedLeaseEpoch=;
+- =expectedPublicationRevision=;
+- =verificationSnapshotId=;
+- =candidateSetDigest=;
+- =backoffPolicyVersion=;
+- =fairnessAssumptionId=.
+
+Retry is authorized only when:
+
+#+begin_example
+attemptsUsed < maximumAttempts
+#+end_example
+
+A retry transition atomically increments:
+
+#+begin_example
+roundNumber = previousRoundNumber + 1
+attemptsUsed = previousAttemptsUsed + 1
+#+end_example
+
+It does not preserve authority from the previous round.
+
+* Previous-round fencing
+
+A losing candidate receives a loser redirect receipt for the committed round.
+Entering another round requires a new retry command binding the current:
+
+- lease epoch;
+- publication revision;
+- verification snapshot;
+- round number;
+- candidate set;
+- attempt budget.
+
+The previous =roundNumber= cannot authorize the next round. Reusing an earlier
+selection, loser, or eligibility receipt fails with =stale-retry-round=.
+
+The same candidate identity across two rounds does not make their retry
+commands compatible.
+
+* Attempt budget
+
+If an authorized retry begins with:
+
+\[
+u<m,
+\]
+
+then after consuming the attempt:
+
+\[
+u+1\le m.
+\]
+
+Once:
+
+\[
+m\le u,
+\]
+
+no further retry is authorized.
+
+Exhaustion produces a durable =recovery-attempt-budget-exhausted= receipt. The
+runtime MUST NOT silently reset the budget, create a new round under the same
+retry identity, or reinterpret a model retry request as new authority.
+
+A new budget requires a new policy authorization and retry root identity.
+
+* Bounded backoff
+
+Let \(d(r)\) be the delay before round \(r\), with:
+
+\[
+d(r)\le d_{\max}.
+\]
+
+For \(n\) attempts:
+
+#+name: searchroute-bounded-recovery-retry-fairness-proposition
+#+begin_src typst
+#let backoff-bound = $
+  (forall r, d(r) <= d_"max")
+  arrow.r.double
+  sum_(r=0)^(n-1) d(r) <= n d_"max"
+$
+#let conditional-liveness = $
+  upright("FairWithin")(c, B)
+  and upright("CommitProgress")(c)
+  arrow.r.double
+  exists r < B, upright("Committed")(c, r)
+$
+#let no-unconditional-liveness = $
+  exists sigma,
+  forall r,
+  not upright("Scheduled")(sigma, c, r)
+$
+#assert(type(backoff-bound) == content)
+#assert(type(conditional-liveness) == content)
+#assert(type(no-unconditional-liveness) == content)
+"ok"
+#+end_src
+
+Backoff MAY be constant, linear, exponential-with-cap, or policy-derived. It
+MUST supply a verifier-checkable per-round maximum. An uncapped exponential
+backoff does not satisfy this RFC.
+
+The cumulative resource receipt MUST bind the actual delay sequence or a
+compact proof committed to it.
+
+* Fairness assumptions
+
+** No unconditional scheduler liveness
+
+An adversarial scheduler can choose:
+
+\[
+\forall r,\quad \neg\mathsf{Scheduled}(c,r).
+\]
+
+Therefore no theorem can derive eventual success from retry arithmetic alone.
+
+RFC text, schemas, logs, and user-facing status MUST NOT state unconditional
+=will eventually recover=.
+
+** Bounded fairness
+
+This RFC uses a bounded fairness witness:
+
+#+begin_example
+exists round:
+  round < maximumFairRounds
+  scheduled(candidate, round)
+  eligible(candidate, round)
+  selected(candidate, round)
+#+end_example
+
+Together with a commit-progress assumption:
+
+#+begin_example
+scheduled && eligible && selected
+  -> committed
+#+end_example
+
+it establishes a committed round below =maximumFairRounds=.
+
+The fairness witness is an environmental assumption unless supplied by a
+trusted scheduler receipt. A policy declaration is not runtime evidence that
+the assumption held.
+
+** Claim classification
+
+Every liveness receipt or report MUST classify its claim:
+
+- =safety-only=;
+- =resource-bounded=;
+- =fairness-conditional-liveness=;
+- =observed-completion=.
+
+Only =observed-completion= proves that recovery actually committed.
+
+* Retry command identity
+
+#+begin_example
+recoveryRetryCommandId = H(
+  transitionId,
+  candidateId,
+  roundNumber,
+  attemptNumber,
+  maximumAttempts,
+  expectedLeaseEpoch,
+  expectedPublicationRevision,
+  verificationSnapshotId,
+  candidateSetDigest,
+  backoffPolicyVersion,
+  fairnessAssumptionId
+)
+#+end_example
+
+Changing round, attempt number, budget, lease epoch, revision, snapshot,
+candidate set, backoff policy, or fairness assumption creates a different
+command.
+
+Equal candidate identity or equal intended winner does not relax compatibility.
+
+* Retry and exhaustion receipts
+
+** Retry receipt
+
+#+begin_example
+recoveryRetryReceiptId = H(
+  recoveryRetryCommandId,
+  previousRoundId,
+  nextRoundId,
+  previousAttemptsUsed,
+  committedAttemptsUsed,
+  chosenBackoff,
+  cumulativeBackoff,
+  retryReason,
+  issuedAt
+)
+#+end_example
+
+** Exhaustion receipt
+
+#+begin_example
+recoveryRetryExhaustionReceiptId = H(
+  transitionId,
+  candidateId,
+  retryRootId,
+  maximumAttempts,
+  attemptsUsed,
+  finalRoundNumber,
+  cumulativeBackoff,
+  lastLeaseEpoch,
+  lastPublicationRevision,
+  lastVerificationSnapshotId,
+  terminalReason
+)
+#+end_example
+
+Exhaustion is terminal for that retry root. A higher-level agent may request a
+new authorized recovery plan, but MUST NOT continue through a hidden loop.
+
+* Search and model cache semantics
+
+Retry cache identity binds the complete command. The cache invalidates when:
+
+- round or attempt changes;
+- maximum-attempt policy changes;
+- lease epoch or publication revision changes;
+- verification snapshot changes;
+- candidate set changes;
+- backoff or fairness policy changes.
+
+A model prefix-cache hit on repeated retry prose does not consume, restore, or
+authorize an attempt.
+
+Search-result cache entries MUST preserve the distinction between:
+
+- a planned retry;
+- a scheduled retry;
+- a selected candidate;
+- a committed recovery;
+- an exhausted retry root.
+
+* SearchLoop and graph-router consequences
+
+The interactive loop is:
+
+#+begin_example
+consume loser/failure receipt
+  -> inspect current retry budget
+  -> if exhausted, emit terminal exhaustion
+  -> compute bounded backoff
+  -> wait for authoritative retry time
+  -> enter next closed contention round
+  -> consume winner/loser result
+  -> repeat only within budget
+#+end_example
+
+The compact state projection SHOULD expose:
+
+- current round and attempt;
+- remaining attempts;
+- next bounded delay;
+- cumulative delay bound;
+- current lease epoch/revision/snapshot;
+- liveness claim classification;
+- typed next action.
+
+This gives the agent one progressive edge instead of repeatedly reconstructing
+the entire contention graph or invoking increasingly complex CLI commands.
+
+* Failure receipts
+
+The protocol adds:
+
+- =stale-retry-round=;
+- =stale-retry-attempt=;
+- =recovery-attempt-budget-exhausted=;
+- =backoff-bound-violation=;
+- =backoff-policy-mismatch=;
+- =fairness-assumption-missing=;
+- =fairness-assumption-mismatch=;
+- =conditional-liveness-not-observed=;
+- =cross-round-retry-replay=.
+
+Every receipt MUST bind retry root, round, attempt, and the current
+epoch/revision/snapshot fence.
+
+* Proof-discovered gaps
+
+** Finite retries do not imply success
+
+An attempt budget proves termination of the retry loop, not successful
+recovery.
+
+** Bounded backoff does not imply scheduling
+
+The delay may expire while an adversarial scheduler never runs the candidate.
+
+** Same candidate is not same retry
+
+Round and attempt identities are semantic. Caching by candidate identity can
+replay stale authority.
+
+** Fairness policy is not fairness evidence
+
+Naming a scheduler policy does not prove it scheduled an eligible candidate.
+Conditional theorem assumptions must remain visible in receipts and reports.
+
+** Hidden retry resets violate resource bounds
+
+Resetting =attemptsUsed= under the same retry root destroys the proof that
+resource use is bounded.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.lean
+#+end_example
+
+It proves:
+
+- retry increments round and attempt;
+- authorized retry remains within the attempt budget;
+- exhausted budget blocks retry;
+- the previous round is fenced;
+- stale round blocks the retry fence;
+- cumulative backoff is bounded by attempts times maximum delay;
+- an adversarial scheduler can starve a candidate;
+- bounded recovery liveness follows only from explicit fairness and commit
+  progress assumptions;
+- retry compatibility binds round;
+- cross-round replay is rejected;
+- same candidate does not imply compatible retry;
+- changing the attempt budget invalidates replay.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairnessAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-bounded-recovery-retry-fairness-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- unconditional recovery liveness;
+- fairness under an adversarial scheduler;
+- candidate registration flood resistance;
+- a bound on candidate-set size;
+- compact selection proof size;
+- optimal backoff.
+
+* Next proof boundary
+
+The next module should bound candidate admission and selection-proof size.
+Bounded rounds are insufficient when one round can admit unbounded candidates,
+expand the evidence graph, and consume unbounded tokens.
+
+The proof should introduce per-round capacity, per-principal quota, compact
+tournament or minimum certificate size, and an end-to-end bound on recovery
+search cost.

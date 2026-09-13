@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::graph_candidate_projection::GraphProjectionCandidate;
 use crate::graph_owner_rank::ranked_graph_owner_paths_for_submodule_paths;
 
@@ -48,10 +52,18 @@ fn graph_owner_rank_prefers_package_query_axis_coverage() {
             "path",
         ),
     ];
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let generation = crate::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+        &fixture.evidence,
+        &fixture.generation,
+        &fixture.generation,
+    )
+    .expect("canonical graph generation");
     let ranked = ranked_graph_owner_paths_for_submodule_paths(
         &candidates,
         &["dynamicOverlay".to_string(), "SearchRouter".to_string()],
         &[],
+        &generation,
     );
 
     assert_eq!(ranked[0], "packages/runtime/search/src/router.rs");
@@ -80,10 +92,18 @@ fn graph_owner_rank_prefers_topology_local_submodule_matches() {
             "high",
         ),
     ];
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let generation = crate::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+        &fixture.evidence,
+        &fixture.generation,
+        &fixture.generation,
+    )
+    .expect("canonical graph generation");
     let ranked = ranked_graph_owner_paths_for_submodule_paths(
         &candidates,
         &["dynamicOverlay".to_string()],
         &["languages/rust".to_string()],
+        &generation,
     );
 
     assert_eq!(ranked[0], "languages/rust/src/lib.rs");
@@ -108,17 +128,30 @@ fn graph_owner_rank_report_projects_score_breakdown_for_python_consumers() {
         ),
     ];
 
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let generation = crate::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+        &fixture.evidence,
+        &fixture.generation,
+        &fixture.generation,
+    )
+    .expect("canonical graph generation");
     let report = crate::graph_owner_rank::rank_graph_owner_report(
-        crate::graph_owner_rank::GraphOwnerRankRequest {
+        crate::graph_owner_rank::GraphOwnerRankRequest::from_admitted_generation(
             candidates,
-            query_terms: vec!["dynamicOverlay".to_string()],
-            submodule_paths: vec!["languages/rust".to_string()],
-        },
+            vec!["dynamicOverlay".to_string()],
+            vec!["languages/rust".to_string()],
+            &generation,
+        ),
     );
 
     assert_eq!(
         report.query_axes,
         vec!["dynamic", "overlay", "dynamicoverlay"]
+    );
+    assert_eq!(report.graph_artifact_digest.len(), 64);
+    assert_eq!(
+        report.source_snapshot.source_kind,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem
     );
     let top = report
         .ranked_owners
@@ -171,13 +204,21 @@ fn graph_owner_rank_hot_path_stays_under_twenty_milliseconds() {
     let query_terms = ["dynamicOverlay".to_string()];
     let submodule_paths = ["languages/rust".to_string()];
 
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let generation = crate::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+        &fixture.evidence,
+        &fixture.generation,
+        &fixture.generation,
+    )
+    .expect("canonical graph generation");
     let started_at = std::time::Instant::now();
     let report = crate::graph_owner_rank::rank_graph_owner_report(
-        crate::graph_owner_rank::GraphOwnerRankRequest {
+        crate::graph_owner_rank::GraphOwnerRankRequest::from_admitted_generation(
             candidates,
-            query_terms: query_terms.to_vec(),
-            submodule_paths: submodule_paths.to_vec(),
-        },
+            query_terms.to_vec(),
+            submodule_paths.to_vec(),
+            &generation,
+        ),
     );
     let elapsed = started_at.elapsed();
 

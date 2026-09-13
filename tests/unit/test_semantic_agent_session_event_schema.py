@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate semantic agent session event schema."""
 
 from __future__ import annotations
@@ -36,8 +40,8 @@ def test_agent_session_event_accepts_command_result_artifact_ref() -> None:
             }
         ],
         "fields": {
-            "command": "asp rust search prime --workspace . --view seeds",
-            "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+            "command": "asp search playbook --language rust --rg --files . --tantivy term source",
+            "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
             "stdoutBytes": 14,
             "denied": False,
         },

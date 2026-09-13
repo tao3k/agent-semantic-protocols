@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the shared asp.toml project configuration schema."""
 
 from __future__ import annotations
@@ -57,7 +61,7 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
             "schemaVersion": "1",
             "providers": {
                 "rust": {"enabled": False},
-                "python": {"enabled": True, "binary": ".bin/custom-py-harness"},
+                "python": {"enabled": True, "binary": ".bin/custom-asp-python"},
                 "org": {"enabled": False},
                 "md": {"enabled": True},
             },

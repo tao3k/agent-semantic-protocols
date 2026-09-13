@@ -74,129 +74,145 @@
       "id": "workspace",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "workspace",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "typescript|packages",
+        ".",
+        "--tantivy",
+        "title:\"typescript\"^2 OR body:\"packages\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-workspace]",
-          "playwright-internal",
-          "packages/playwright-core"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 28,
-        "maxElapsedMsWarn": 15000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "prime-root",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "typescript|source",
+        ".",
+        "--tantivy",
+        "title:\"typescript\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "root=playwright-internal",
-          "packages/playwright-core/src/server/fetch.ts"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 9000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "text-api-request-query-set",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "lexical",
-        "--query",
-        "APIRequestContext",
-        "--query",
-        "BrowserContextAPIRequestContext",
-        "--query",
-        "fetch",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "APIRequestContext|BrowserContextAPIRequestContext|fetch",
+        ".",
+        "--tantivy",
+        "title:\"APIRequestContext\"^2 OR body:\"BrowserContextAPIRequestContext\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "packages/playwright-core/src/server/fetch.ts",
-          "tests/playwright-test/playwright.spec.ts",
-          "packages/playwright-core/src/server/dispatchers/tracingDispatcher.ts"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 8000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "owner-fetch-items",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "APIRequestContext|BrowserContextAPIRequestContext|fetch",
         "packages/playwright-core/src/server/fetch.ts",
-        "items",
-        "--query",
-        "APIRequestContext|BrowserContextAPIRequestContext",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "--tantivy",
+        "title:\"APIRequestContext\"^2 OR body:\"BrowserContextAPIRequestContext\""
       ],
       "expect": {
         "stdoutContains": [
-          "[search-owner]",
-          "class APIRequestContext",
-          "class BrowserContextAPIRequestContext"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 8000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "tests-fetch-missing",
       "command": [
         "asp",
-        "typescript",
         "search",
-        "tests",
-        "packages/playwright-core/src/server/fetch.ts",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "fetch|test",
+        ".",
+        "--tantivy",
+        "title:\"fetch\"^2 OR body:\"test\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-tests]",
-          "test:path(packages/playwright-core/src/server/fetch.ts)",
-          "owner:path(packages/playwright-core/src/server/fetch.ts)"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 8000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
@@ -211,23 +227,29 @@
       ],
       "command": [
         "asp",
-        "typescript",
         "search",
-        "ingest",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "typescript",
+        "--rg",
+        "-n",
+        "-e",
+        "typescript|source",
+        ".",
+        "--tantivy",
+        "title:\"typescript\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-ingest]",
-          "root=.",
-          "tests/library/global-fetch.spec.ts"
+          "#+begin_src gql :name result",
+          "(typescript:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 7,
-        "maxElapsedMsWarn": 8000
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

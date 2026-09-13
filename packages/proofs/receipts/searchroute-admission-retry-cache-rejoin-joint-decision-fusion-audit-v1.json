@@ -1,0 +1,112 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (oldValue newValue : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ∃ fusedValue,\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.ConservativeMaximum oldValue newValue fusedValue",
+   "theoremFamily": "joint-maximum-totality",
+   "rfcClauseIds": ["JDF-MAX", "JDF-TOTAL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.conservative_maximum_exists",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (actualFaultWeight liveUpperBound oldValue newValue fusedValue :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  actualFaultWeight ≤ oldValue ∧ oldValue ≤ liveUpperBound →\n    actualFaultWeight ≤ newValue ∧ newValue ≤ liveUpperBound →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.ConservativeMaximum oldValue newValue\n          fusedValue →\n        actualFaultWeight ≤ fusedValue ∧ fusedValue ≤ liveUpperBound",
+   "theoremFamily": "joint-maximum-interval-preservation",
+   "rfcClauseIds": ["JDF-LIVENESS", "JDF-MAX", "JDF-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.conservative_maximum_is_safe_and_live",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (oldValue newValue fusedValue : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.ConservativeMaximum oldValue newValue fusedValue →\n    oldValue ≤ fusedValue ∧ newValue ≤ fusedValue",
+   "theoremFamily": "joint-maximum-conservative-dominance",
+   "rfcClauseIds": ["JDF-DOMINANCE", "JDF-MAX"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.conservative_maximum_dominates_both_inputs",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ actualFaultWeight liveUpperBound oldValue newValue candidate,\n  actualFaultWeight ≤ oldValue ∧\n    oldValue ≤ liveUpperBound ∧\n      actualFaultWeight ≤ newValue ∧\n        newValue ≤ liveUpperBound ∧\n          actualFaultWeight ≤ candidate ∧ candidate ≤ liveUpperBound ∧ ¬(oldValue ≤ candidate ∧ newValue ≤ candidate)",
+   "theoremFamily": "interval-without-dominance-counterexample",
+   "rfcClauseIds": ["JDF-COUNTEREXAMPLE", "JDF-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.interval_membership_alone_does_not_imply_conservative_dominance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (oldVerified : Prop),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.BothInputsVerified oldVerified False",
+   "theoremFamily": "missing-new-input-rejection",
+   "rfcClauseIds": ["JDF-NEW", "JDF-VERIFICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.missing_new_verification_blocks_joint_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (newVerified : Prop),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.BothInputsVerified False newVerified",
+   "theoremFamily": "missing-old-input-rejection",
+   "rfcClauseIds": ["JDF-OLD", "JDF-VERIFICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.missing_old_verification_blocks_joint_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId ReceiptId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionReceiptKey TransitionId ReceiptId\n      PolicyId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionCompatible left right →\n    left.oldWeightedReceiptId = right.oldWeightedReceiptId ∧ left.newWeightedReceiptId = right.newWeightedReceiptId",
+   "theoremFamily": "joint-input-identity-binding",
+   "rfcClauseIds": ["JDF-IDENTITY", "JDF-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.joint_decision_compatibility_binds_both_inputs",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId ReceiptId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionReceiptKey TransitionId ReceiptId\n      PolicyId),\n  left.oldWeightedReceiptId ≠ right.oldWeightedReceiptId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionCompatible left right",
+   "theoremFamily": "old-input-cache-invalidation",
+   "rfcClauseIds": ["JDF-CACHE", "JDF-OLD"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.changed_old_input_invalidates_joint_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId ReceiptId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionReceiptKey TransitionId ReceiptId\n      PolicyId),\n  left.newWeightedReceiptId ≠ right.newWeightedReceiptId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionCompatible left right",
+   "theoremFamily": "new-input-cache-invalidation",
+   "rfcClauseIds": ["JDF-CACHE", "JDF-NEW"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.changed_new_input_invalidates_joint_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId ReceiptId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionReceiptKey TransitionId ReceiptId\n      PolicyId),\n  left.fusedValue = right.fusedValue →\n    left.oldWeightedReceiptId ≠ right.oldWeightedReceiptId →\n      left.fusedValue = right.fusedValue ∧\n        ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionCompatible left right",
+   "theoremFamily": "same-result-identity-separation",
+   "rfcClauseIds": ["JDF-COUNTEREXAMPLE", "JDF-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.same_fused_value_does_not_imply_joint_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId ReceiptId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionReceiptKey TransitionId ReceiptId\n      PolicyId),\n  left.oldWeightedReceiptId = right.newWeightedReceiptId ∧ left.newWeightedReceiptId = right.oldWeightedReceiptId →\n    left.oldWeightedReceiptId ≠ left.newWeightedReceiptId →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.JointDecisionCompatible left right",
+   "theoremFamily": "lane-role-identity-separation",
+   "rfcClauseIds": ["JDF-IDENTITY", "JDF-LANE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.lane_swap_with_distinct_receipts_changes_joint_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 11,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 11,
+ "axiomDependentDeclarationCount": 0}

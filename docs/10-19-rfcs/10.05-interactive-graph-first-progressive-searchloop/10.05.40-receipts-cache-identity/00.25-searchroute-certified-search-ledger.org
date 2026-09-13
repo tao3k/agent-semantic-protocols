@@ -1,0 +1,411 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.25 — SearchRoute Certified Search Ledger
+#+startup: overview
+
+#+property: rfc_layer receipts-cache-identity
+
+* Status
+
+This RFC refines:
+
+- [[file:00.24-searchroute-realized-trace-catalog-global-driver.org][RFC 10.05.24 — SearchRoute Realized Trace Catalog and Global Driver Optimality]]
+- [[file:00.20-searchroute-partial-route-inspect-scheduler.org][RFC 10.05.20 — SearchRoute Partial-Route Inspect Scheduler]]
+- [[file:00.19-searchroute-certified-lazy-frontier.org][RFC 10.05.19 — SearchRoute Certified Lazy Frontier]]
+- [[file:00.18-searchroute-constructive-enumeration.org][RFC 10.05.18 — SearchRoute Constructive Enumeration]]
+
+The Org document is the protocol authority.  Its mathematical projection is
+embedded as a named Org-Babel Typst block.  The corresponding Lean
+implementation is:
+
+- =packages/proofs/ASPProof/SearchRouteInspectCertifiedLedger.lean=
+
+The Lean JSON and AXLE receipts under =packages/proofs/receipts/= are normative
+verification artifacts.
+
+This RFC changes no Rust implementation and adds no public CLI command.
+
+* Lean-discovered correction to RFC 10.05.24
+
+RFC 10.05.24 introduced =RealizedTraceCatalogComplete=.  Its exact quantified
+obligation is represented by =UniverseComplete= in the embedded Org-Babel
+Typst model below: every realized and feasible candidate belongs to the
+projected catalog.
+
+Every feasible realized candidate therefore had to be the projection of a
+materialized closed costed trace.
+
+That condition is sufficient for global optimality, but it is stronger than a
+branch-and-bound SearchLoop needs.  If a certified lower bound proves that a
+frontier cannot beat the selected candidate, expanding every candidate in that
+frontier into a full inspect trace wastes:
+
+- semantic-search evidence tokens;
+- prompt tokens;
+- model/tool interaction rounds;
+- SearchLoop transitions;
+- trace storage and audit payload.
+
+Lean exposed a second problem: =ScheduleComplete= only states that the
+scheduler's =inspect= queue is empty.  It does not prove that all feasible
+realized candidates belong to any candidate universe.  Empty scheduler state
+and semantic universe completeness are independent obligations.
+
+The corrected global result therefore uses a certified search ledger instead
+of demanding a fully materialized realized trace catalog.
+
+* Snapshot identity
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-SNAPSHOT
+:END:
+
+A =RankedDAGSnapshot= pairs:
+
+- a snapshot digest;
+- the ranked DAG whose routes are being considered.
+
+The certified ledger MUST bind its =CandidateUniverse.snapshotDigest= to this
+snapshot digest.  Its =CoverageReceipt= MUST bind its claimed snapshot digest
+to the same candidate universe.
+
+The exact equality chain is =SnapshotBound= in the embedded Org-Babel Typst
+model: the coverage, universe, and graph-snapshot digests are equal.
+
+A coverage or frontier certificate from another snapshot MUST NOT be reused.
+The graph and digest are one typed proof input, rather than unrelated receipt
+fields which happen to carry equal strings.
+
+* Visible realized catalog
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-VISIBLE
+:END:
+
+Only visible candidates require full trace provenance.
+
+Every visible catalog entry contains:
+
+- =TraceRouteContext=;
+- =CostedClosedTraceReceipt=;
+- its exact =GraphCandidate= projection;
+- a =RankedDAG.Walk= realization witness.
+
+Every projected visible candidate MUST also satisfy =graphFeasibleB= for the
+active requirement and budget.
+
+The visible selector MUST prove both membership of the selected candidate and
+lexicographic dominance over every visible candidate.  The exact formula is
+=VisibleOptimal= in the embedded Org-Babel Typst model.  Its four-axis cost
+vector is defined once as =Cost= in the same block.
+
+The selected entry therefore retains semantic-search cache provenance, model
+prefix cache provenance, trace closure, graph realization, and exact cost.
+
+* Candidate-universe completeness
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-UNIVERSE
+:END:
+
+The candidate universe MUST be complete for the active:
+
+- ranked DAG snapshot;
+- source and target;
+- route requirement;
+- graph and route budget.
+
+The formal quantified obligation is =UniverseComplete= in the embedded
+Org-Babel Typst model.
+
+This is =CandidateComplete= over the candidate universe, not over the visible
+trace catalog.
+
+The distinction is essential:
+
+- =U= contains compact candidate values required for the completeness proof;
+- =V= contains visible candidates with full costed trace provenance;
+- deferred frontiers cover the candidates in =U= which are not visible in =V=
+  without requiring full trace
+  materialization.
+
+The current mathematical model still represents =U= as a finite list of
+=GraphCandidate= values.  It removes full trace materialization for pruned
+candidates, but it does not yet prove a symbolic or Merkle-addressed universe
+whose candidate values are generated only on demand.  That is a later proof
+boundary.
+
+* Coverage ledger
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-COVERAGE
+:END:
+
+The ledger contains:
+
+- candidate universe =U=;
+- visible realized catalog =E=, whose projection is =V=;
+- deferred certified partial frontiers =F=;
+- a snapshot-bound =CoverageReceipt=;
+- an equality between receipt frontiers and scheduler frontiers.
+
+The exact coverage conservation formula is =Coverage= in the embedded
+Org-Babel Typst model.
+
+Each frontier carries a lower bound which is valid for every candidate it
+covers.  Coverage is not a ranking claim; it is the conservation law ensuring
+that no universe member disappears between visible and deferred state.
+
+The receipt MUST keep visible and deferred ownership disjoint at the protocol
+level even though the current theorem does not require list disjointness.
+Duplicate coverage is safe for optimality but increases receipt size and should
+be diagnosed as an efficiency defect.
+
+* Scheduler closure
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-CLOSURE
+:END:
+
+=ScheduleComplete selected frontiers= means the scheduler has no frontier left
+in the =inspect= partition.
+
+For every deferred frontier, scheduler closure proves that the selected cost
+is no worse than the frontier lower bound, while bound validity proves that
+the lower bound is no worse than every candidate covered by that frontier.
+The exact statements are =ScheduleClosed= and =FrontierBoundValid= in the
+embedded Org-Babel Typst model.
+
+Closure means that all deferred frontiers are safely prunable.  It does not
+mean that the universe is complete, that a selected trace exists, or that the
+snapshot identities match.  Those remain independent ledger fields.
+
+* Certified global driver theorem
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-GLOBAL
+:END:
+
+Given a certified trace ledger with:
+
+1. snapshot binding;
+2. complete candidate universe;
+3. feasible visible realized catalog;
+4. successful visible selector;
+5. universe coverage by visible candidates or deferred frontiers;
+6. valid frontier lower bounds;
+7. scheduler closure;
+
+the selected candidate has visible trace provenance, realizes the requested
+DAG route, and is no worse than every feasible realized candidate.  The exact
+quantified theorem and its premises are defined once as =GlobalDriver= in the
+embedded Org-Babel Typst model.
+
+The proof route is candidate-universe completeness, followed by coverage
+conservation, followed by either visible optimality or safe frontier pruning.
+
+This theorem preserves RFC 10.05.24's global result without requiring every
+pruned candidate to carry a materialized =CostedClosedTraceReceipt=.
+
+* Non-implication counterexample
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SCL-NONIMPLICATION
+:END:
+
+An empty frontier list satisfies scheduler closure.
+
+Yet an independently incomplete candidate list can omit a feasible realized
+route.  Lean constructs this counterexample using the one-node graph and the
+existing graph-only route catalog.
+
+The non-implication is represented exactly by =NonImplication= in the embedded
+Org-Babel Typst model: =ScheduleComplete= does not imply
+=CandidateComplete=.
+
+Any protocol which treats an empty inspect queue as proof of semantic search
+completeness is unsound.
+
+* SearchLoop wire consequences
+
+The agent-facing loop should expose one compact ledger state rather than a
+large set of graph-search commands.
+
+A closed response should contain or address:
+
+- graph snapshot identity;
+- selected visible trace identity;
+- selected cost vector;
+- visible selector receipt;
+- candidate-universe completeness identity;
+- coverage receipt identity;
+- deferred frontier summary;
+- scheduler closure;
+- semantic-search cache provenance;
+- model prefix cache provenance.
+
+Large trace bodies, candidate lists, and frontier memberships SHOULD be
+content-addressed and progressively inspectable.  The default response should
+provide digests, counts, cost bounds, and the next meaningful inspect action.
+
+The protocol should report at least:
+
+- visible trace count;
+- universe candidate count;
+- deferred frontier count;
+- pruned candidate count;
+- bytes/tokens of materialized visible traces;
+- bytes/tokens avoided by deferred trace materialization;
+- SearchLoop rounds and transitions;
+- semantic-search cache hits;
+- model prefix cache hits.
+
+* Mathematical model
+
+The mathematical projection is embedded in this Org document.  =orgize eval
+plan= extracts the named block and =typst eval --in -= parses it through stdin.
+
+#+name: searchroute-certified-search-ledger-model
+#+begin_src typst
+#let Cost = $ K(c) =
+  (h(c), u(c), r(c), t(c)) $
+
+#let RankedDAGSnapshot = (
+  digest: "SnapshotDigest",
+  graph: "RankedDAG",
+)
+
+#let VisibleEntry = (
+  trace_context: "TraceRouteContext",
+  receipt: "CostedClosedTraceReceipt",
+  candidate: "GraphCandidate",
+  realization: "Walk(graph, source, target, graph_hops(candidate))",
+)
+
+#let SnapshotBound = $ d_"coverage" = d_"universe"
+  = d_"graph snapshot" $
+
+#let UniverseComplete = $ forall c,
+  ("Realizes"(G, s, t, c) "and" "Feasible"(q, b, c))
+    "implies" c in U $
+
+#let Coverage = $ forall c in U,
+  c in V "or"
+  exists f in F, c in "candidates"(f) $
+
+#let VisibleOptimal = $ cases(
+  c^* in V,
+  forall c in V, K(c^*) <=_"lex" K(c),
+) $
+
+#let FrontierBoundValid = $ forall f in F, forall c in "candidates"(f),
+  "lower_bound"(f) <=_"lex" K(c) $
+
+#let ScheduleClosed = $ forall f in F,
+  K(c^*) <=_"lex" "lower_bound"(f) $
+
+#let GlobalDriver = $ cases(
+  SnapshotBound,
+  UniverseComplete,
+  Coverage,
+  VisibleOptimal,
+  FrontierBoundValid,
+  ScheduleClosed,
+) "implies" cases(
+  exists e in E, pi(e) = c^*,
+  "Realizes"(G, s, t, c^*),
+  forall c,
+    ("Realizes"(G, s, t, c) "and" "Feasible"(q, b, c))
+      "implies" K(c^*) <=_"lex" K(c),
+) $
+
+#let NonImplication = $ "ScheduleComplete"(c^*, ())
+  "does not imply" "CandidateComplete"(U) $
+
+#let TraceMaterializationBoundary = $ cases(
+  V = "map"(pi, E),
+  "full_trace_required"(V),
+  "frontier_certificate_only"(U without V),
+) $
+
+#let Main = (
+  Cost,
+  RankedDAGSnapshot,
+  VisibleEntry,
+  SnapshotBound,
+  UniverseComplete,
+  Coverage,
+  VisibleOptimal,
+  FrontierBoundValid,
+  ScheduleClosed,
+  GlobalDriver,
+  NonImplication,
+  TraceMaterializationBoundary,
+)
+
+"ok"
+#+end_src
+
+Expected evaluation:
+
+#+begin_example
+orgize eval plan --json \
+  searchroute-certified-search-ledger-model \
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.25-searchroute-certified-search-ledger.org
+
+typst eval --in - '"ok"'
+#+end_example
+
+The executor forwards the =.body= value from the Org plan to Typst stdin.  No
+=:file= header, standalone =.typ= file, or PDF artifact is required.
+
+* Lean theorem mapping
+
+| RFC clause | Lean declaration |
+|-
+| ASP-RFC-10.05-SCL-SNAPSHOT | =RankedDAGSnapshot= |
+| ASP-RFC-10.05-SCL-SNAPSHOT | =certified_trace_ledger_snapshot_is_bound= |
+| ASP-RFC-10.05-SCL-VISIBLE | =certified_trace_ledger_visible_is_optimal= |
+| ASP-RFC-10.05-SCL-VISIBLE | =certified_trace_ledger_selected_has_provenance= |
+| ASP-RFC-10.05-SCL-VISIBLE | =certified_trace_ledger_selected_realizes= |
+| ASP-RFC-10.05-SCL-UNIVERSE | =CertifiedTraceLedger.universeComplete= |
+| ASP-RFC-10.05-SCL-COVERAGE | =CertifiedTraceLedger.coverage= |
+| ASP-RFC-10.05-SCL-CLOSURE | =CertifiedTraceLedger.scheduleComplete= |
+| ASP-RFC-10.05-SCL-GLOBAL | =certified_trace_ledger_selects_global_driver= |
+| ASP-RFC-10.05-SCL-NONIMPLICATION | =schedule_closure_does_not_imply_candidate_completeness= |
+
+* Audit requirements
+
+The Lean JSON audit MUST classify theorem declarations under:
+
+- =snapshot-binding=
+- =visible-optimality=
+- =trace-provenance=
+- =trace-realization=
+- =ledger-global-optimality=
+- =scheduler-boundary=
+- =counterexample=
+
+The AXLE audit MUST require every RFC clause in this document and fail closed
+for undeclared axioms.
+
+* Non-goals
+
+This RFC does not:
+
+- implement Rust provider behavior;
+- require every pruned candidate to carry a full costed trace;
+- claim scheduler closure implies candidate-universe completeness;
+- prove a symbolic or Merkle candidate universe;
+- make semantic-search cache and model prefix cache interchangeable;
+- prescribe a complex public CLI command tree;
+- require standalone Typst sources or PDFs.
+
+* Remaining proof boundary
+
+The next layer should replace the explicit finite =CandidateUniverse.candidates=
+list with a content-addressed or symbolic universe whose completeness is
+derived from constructive DAG and route enumeration.
+
+That layer must prove that a compact universe commitment supports:
+
+- membership or exclusion proofs for feasible realized candidates;
+- frontier coverage without listing every candidate in the prompt;
+- deterministic snapshot identity;
+- incremental inspection;
+- the same global driver theorem.

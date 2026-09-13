@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/source-index-materialization.v1.schema.json",
+  "title": "Source Index Materialization Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "workspaceIdentity",
+    "providerId",
+    "requestedSnapshotRoot",
+    "materializedSnapshotRoot",
+    "providerDigest",
+    "queryPackDigest",
+    "schemaDigest",
+    "harnessDigest",
+    "artifactDigest",
+    "artifactPath",
+    "cacheState",
+    "membershipChangeSet",
+    "writebackStatus",
+    "latencyMs",
+    "evidenceState"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.source-index-materialization" },
+    "schemaVersion": { "const": "1" },
+    "languageId": { "type": "string", "minLength": 1 },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "requestedSnapshotRoot": { "$ref": "#/$defs/digest" },
+    "materializedSnapshotRoot": { "$ref": "#/$defs/digest" },
+    "providerDigest": { "$ref": "#/$defs/digest" },
+    "queryPackDigest": { "$ref": "#/$defs/digest" },
+    "schemaDigest": { "$ref": "#/$defs/digest" },
+    "harnessDigest": { "$ref": "#/$defs/digest" },
+    "artifactDigest": { "$ref": "#/$defs/digest" },
+    "artifactPath": { "type": "string", "minLength": 1 },
+    "cacheState": { "enum": ["warm-hit", "cold-built"] },
+    "membershipChangeSet": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "writebackStatus": { "enum": ["unchanged", "persisted"] },
+    "latencyMs": { "type": "integer", "minimum": 0 },
+    "evidenceState": { "enum": ["materialized", "stale-snapshot", "failed"] },
+    "failureReason": { "type": "string" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-db-definitions.v1.schema.json",
+  "title": "Semantic DB Family Definitions v1",
+  "$defs": {
+    "tursoFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asyncIo",
+        "concurrentWrites",
+        "fts",
+        "ftsIndexMethod",
+        "vector",
+        "overlaySearch",
+        "sync",
+        "encryption",
+        "mvcc",
+        "beginConcurrent"
+      ],
+      "properties": {
+        "asyncIo": {"const": true},
+        "concurrentWrites": {"const": true},
+        "fts": {"const": true},
+        "ftsIndexMethod": {"const": true},
+        "vector": {"const": false},
+        "overlaySearch": {"const": true},
+        "sync": {"const": false},
+        "encryption": {"const": false},
+        "mvcc": {"const": true},
+        "beginConcurrent": {"const": false}
+      }
+    }
+  }
+}

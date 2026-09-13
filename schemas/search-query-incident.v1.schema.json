@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-query-incident.v1.schema.json",
+  "title": "ASP Search Query Incident",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "incidentId",
+    "workspaceIdentity",
+    "languageId",
+    "surface",
+    "canonicalRequestDigest",
+    "requestedProjection",
+    "codeProjectionPresent",
+    "stage",
+    "reasonKind",
+    "state",
+    "occurrenceCount",
+    "transitionSequence",
+    "firstSeenUnixMicros",
+    "lastSeenUnixMicros"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-query-incident"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "incidentId": {
+      "$ref": "#/$defs/digest"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "surface": {
+      "enum": ["search", "query"]
+    },
+    "canonicalRequestDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "requestedProjection": {
+      "enum": ["none", "seeds", "source", "callable-skeleton", "packet"]
+    },
+    "codeProjectionPresent": {
+      "type": "boolean"
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reasonKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "enum": [
+        "open",
+        "repairing",
+        "verification-pending",
+        "failed-verification",
+        "resolved",
+        "superseded",
+        "compacted"
+      ]
+    },
+    "occurrenceCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "transitionSequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "firstSeenUnixMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lastSeenUnixMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "budgetMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtimeArtifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "providerContractDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "repairArtifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "verificationReceipt": {
+      "$ref": "#/$defs/verificationReceipt"
+    },
+    "resourceObservation": {
+      "$ref": "#/$defs/resourceObservation"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 160
+    },
+    "verificationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptDigest",
+        "canonicalRequestDigest",
+        "runtimeArtifactDigest",
+        "generationDigest",
+        "codeProjectionPresent",
+        "withinBudget",
+        "verifiedAtUnixMicros"
+      ],
+      "properties": {
+        "receiptDigest": { "$ref": "#/$defs/digest" },
+        "canonicalRequestDigest": { "$ref": "#/$defs/digest" },
+        "runtimeArtifactDigest": { "$ref": "#/$defs/digest" },
+        "generationDigest": { "$ref": "#/$defs/digest" },
+        "codeProjectionPresent": { "const": true },
+        "withinBudget": { "const": true },
+        "verifiedAtUnixMicros": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "resourceObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "residentMemoryBytes": { "type": "integer", "minimum": 0 },
+        "peakResidentMemoryBytes": { "type": "integer", "minimum": 0 },
+        "diskReadBytes": { "type": "integer", "minimum": 0 },
+        "diskWriteBytes": { "type": "integer", "minimum": 0 },
+        "eventLoopLagMicros": { "type": "integer", "minimum": 0 },
+        "activeTaskCount": { "type": "integer", "minimum": 0 },
+        "activeChildCount": { "type": "integer", "minimum": 0 },
+        "writerQueueDepth": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Exact Selector Provider Generation Authority
+#+startup: overview
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Status
+
+Implemented for the v1 exact-selector source envelope contract.
+
+* Problem
+
+An owner-scoped source snapshot was published as though it were a complete
+provider generation.  Its internally consistent leaf count, owner count, and
+root depth could not prove that sibling owners were present.  A selector whose
+definition moved to a sibling owner therefore produced =item-not-in-live-owner=
+even though the definition was live in the same provider generation.
+
+* V1 authority contract
+
+The v1 contract has one authority boundary:
+
+#+begin_example
+activated provider registry
+  -> complete provider source scope
+  -> one atomic WorkspaceSnapshot
+  -> provider envelope
+  -> exact-selector relocation
+#+end_example
+
+An owner-only snapshot MUST NOT be labeled =ownerCoverage=complete= and MUST
+NOT authorize relocation.
+
+The envelope producer MUST derive =owners=, =leafCount=, =rootDepth=, and
+=rootDigest= from the same provider-scoped generation.
+
+The provider consumer MUST reconstruct the workspace Merkle root from every
+owner path and source content digest.  Equality between self-reported counts is
+not sufficient evidence.
+
+* Query behavior
+
+=query= remains deterministic and accepts only a parser-owned canonical item
+selector.  When the requested owner is stale, relocation searches the complete
+pinned provider generation by canonical item identity.  A unique match returns
+=live-relocated=.  Ambiguous, kind-mismatched, and genuinely missing identities
+remain typed failures.
+
+No warning, legacy selector adapter, owner-local compatibility envelope, or
+filesystem fallback is permitted.
+
+* Resident projection repair
+
+The resident generation owns source bytes and admitted selector projections as
+one memory authority.  An owner with current bytes but no requested selector
+projection is not a terminal =item-not-in-live-owner= result.
+
+On a resident projection miss, ASP MUST:
+
+1. lease the owner bytes from the active workspace generation;
+2. bind them to a typed =provider-native-exact-request= containing the active
+   generation, parser, query-pack, provider, selector, and source identities;
+3. invoke the activated provider through stdin JSON, never through a path or
+   direct file read;
+4. validate that the returned byte span and owner digest refer to the leased
+   bytes;
+5. publish the admitted selector as a selector-only overlay through the
+   Runtime Server writer lane and typed workspace IPC; and
+6. serve the projection only after overlay publication succeeds.
+
+The provider response is a repair candidate, not a fallback result.  Failure
+of provider identity, byte-range validation, or overlay publication remains
+fail-closed.  The next identical warm query MUST hit the resident generation
+without provider invocation or database access.
+
+Before either a resident hit or a repair candidate may serve, the Runtime
+Server MUST reconcile the selector's normalized owner path against the current
+workspace file.  The reconciliation is a typed IPC operation owned by the
+Runtime Server: it validates workspace identity and path containment, compares
+the current owner content digest, atomically replaces a changed owner through
+the writer lane, or tombstones a removed owner.  A CLI, Hook, or Search client
+MUST NOT serve a resident hit merely because its generation state is =Ready=,
+and MUST NOT open the owner file directly.  A changed owner invalidates all
+selector projections derived from the previous owner digest.
+
+Selector-only repair MUST NOT rewrite the canonical workspace generation,
+advance its source epoch, or make the CLI decode the workspace mmap.  The
+overlay is admitted only when the active owner path, owner content digest, and
+byte range match.  The overlay key MUST bind both =projectionKind= and
+=structuralSelector=, and the resident value MUST be the validated provider
+projection bytes.  A =source= projection additionally MUST equal the admitted
+owner byte range; a =callable-skeleton= projection MUST remain distinct from
+the source entry even when both use the same structural selector.  A source
+generation transition invalidates all projection overlays.
+
+Every query lease MUST capture an immutable resident snapshot.  Publishing a
+new owner generation advances the current source epoch and invalidates the
+changed owner's derived selectors, but MUST NOT alter bytes, selectors, epoch,
+or generation identity observed through a previously checked-out lease.  This
+is the Runtime Server's MVCC boundary; sharing a mutable overlay store directly
+through leases is forbidden.
+
+When a canonical generation is already resident, generation admission MUST
+return a typed Ready receipt directly from that memory authority.  It MUST NOT
+open Turso, reload the canonical materialization, republish the generation, or
+reset selector overlays.  Durable restoration is the process-cold transition,
+not the per-query path.
+
+The immutable exact-projection segment MUST contain two independently sorted
+indexes over the same selector rows: the exact selector key and the
+owner-independent canonical item identity key.  The latter is
+=projection kind + language id + canonical identity fragment=, including every
+enclosing scope and exact descendant segment, but excluding only the owner
+path.  A selector whose owner moved inside the admitted generation is resolved
+through this second index in logarithmic time.  Exactly one match is served
+from its admitted owner bytes; multiple matches are an =ambiguous= typed
+failure.  An absent identity alone is =selector-stale=.  Query MUST NOT turn a
+moved owner into =selector-not-in-active-generation=, scan all owners, contact
+the workspace owner endpoint, or invoke a provider.
+
+One Git worktree is one workspace authority and has one canonical semantic
+source scope per generation.  Package-manager entry files are provider
+resolution inputs inside that workspace; they MUST NOT create child project
+scopes, workspace identities, or independent generation authorities.  Their
+typed resolution receipts compose the single workspace generation.
+
+When durable restoration finds a missing or schema-incompatible generation,
+the Runtime Server MAY ask the provider/client preparation plane to construct a
+typed generation candidate.  The candidate contains the source-index refresh
+and canonical materialization, but it is not published.  The Runtime Server
+writer lane alone validates and commits that candidate to Turso and resident
+memory.  The preparation plane MUST NOT reconnect to the same daemon through
+workspace IPC, directly open Turso, or publish a second authority.  External
+CLI, Hook, Search, and provider clients remain restricted to typed IPC.
+
+These requirements are named:
+
+- =ASP-RFC-10.05-ESGA-OVERLAY-ADMISSION=
+- =ASP-RFC-10.05-ESGA-PROJECTION-BINDING=
+- =ASP-RFC-10.05-ESGA-NO-SERVE-BEFORE-PUBLISH=
+- =ASP-RFC-10.05-ESGA-SELECTOR-ONLY-EPOCH-PRESERVATION=
+- =ASP-RFC-10.05-ESGA-MEMORY-PLANE-IPC=
+- =ASP-RFC-10.05-ESGA-OWNER-FRESHNESS=
+- =ASP-RFC-10.05-ESGA-OWNER-INVALIDATES-SELECTORS=
+- =ASP-RFC-10.05-ESGA-LEASE-SNAPSHOT-ISOLATION=
+- =ASP-RFC-10.05-ESGA-OWNER-EPOCH-ADVANCE=
+- =ASP-RFC-10.05-ESGA-RESIDENT-READY-MEMORY-FIRST=
+- =ASP-RFC-10.05-ESGA-CANONICAL-IDENTITY-RELOCATION-INDEX=
+- =ASP-RFC-10.05-ESGA-ONE-WORKTREE-ONE-WORKSPACE-SCOPE=
+- =ASP-RFC-10.05-ESGA-SERVER-OWNED-GENERATION-COMMIT=
+
+* Performance contract
+
+Generation identity and owner topology SHOULD be served from the active
+in-memory/source-index generation.  Source bytes SHOULD be materialized only
+for the requested or uniquely relocated owner.  Cold and warm performance gates
+must report metadata lookup, byte materialization, provider invocation, and
+cache write/read separately.

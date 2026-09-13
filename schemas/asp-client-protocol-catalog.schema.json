@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-protocol-catalog.schema.json",
+  "title": "ASP Client Protocol Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "catalogGeneration",
+    "workspaceGeneration",
+    "transports",
+    "capabilities",
+    "methods"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.client.protocol-catalog" },
+    "schemaVersion": { "const": "1" },
+    "protocolId": { "const": "agent.semantic-protocols.client" },
+    "protocolVersion": { "const": "1" },
+    "catalogGeneration": { "$ref": "#/$defs/digest" },
+    "workspaceGeneration": { "$ref": "#/$defs/digest" },
+    "transports": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "const": "runtime-ipc" }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestCancellation", "events", "streaming", "traceContext"],
+      "properties": {
+        "requestCancellation": { "type": "boolean" },
+        "events": { "type": "boolean" },
+        "streaming": { "type": "boolean" },
+        "traceContext": { "type": "boolean" }
+      }
+    },
+    "methods": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/method" }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^(blake3-256|sha256):[0-9a-f]{64}$" },
+    "schemaIdentifier": { "type": "string", "minLength": 1 },
+    "schemaReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion"],
+      "properties": {
+        "schemaId": { "$ref": "#/$defs/schemaIdentifier" },
+        "schemaVersion": { "const": "1" }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "routeId",
+        "requestSchema",
+        "responseSchema",
+        "errorSchemas",
+        "parameters",
+        "cancellable",
+        "streaming"
+      ],
+      "properties": {
+        "method": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+        "routeId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+        "requestSchema": { "$ref": "#/$defs/schemaReference" },
+        "responseSchema": { "$ref": "#/$defs/schemaReference" },
+        "errorSchemas": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/schemaReference" }
+        },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "cancellable": { "type": "boolean" },
+        "streaming": { "type": "boolean" }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "valueType", "cardinality", "source"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "valueType": {
+          "enum": [
+            "string",
+            "string-array",
+            "workspace-relative-path",
+            "structural-selector",
+            "presentation",
+            "boolean",
+            "unsigned-integer",
+            "json"
+          ]
+        },
+        "cardinality": { "enum": ["required", "optional", "many"] },
+        "source": { "enum": ["request", "runtime-context"] }
+      }
+    }
+  }
+}

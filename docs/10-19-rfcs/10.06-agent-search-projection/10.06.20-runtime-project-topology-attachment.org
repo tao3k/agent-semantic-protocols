@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.06.20 - Runtime Project Topology Attachment
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:query:runtime:topology:mrr:gql:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Runtime Project Topology Attachment
+:PROPERTIES:
+:ID: 7014e376-cfeb-4ca8-a2f5-922170eb22cb
+:CUSTOM_ID: asp-runtime-project-topology-attachment-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: immutable Runtime attachment of admitted Project Topology to Search Playbook
+:SDD_SCOPE: runtime generation topology admission Search settlement and Query independence
+:SDD_OWNER: ASP Runtime and shared topology contract
+:TRACEABILITY_STATUS: formal-model-mapped
+:EVIDENCE_STATUS: RFC and Lean candidate
+:REVIEW_STATUS: architecture-candidate
+:END:
+
+** Decision
+
+Every Runtime Search generation that serves =search playbook= MUST own one
+immutable =RuntimeProjectTopologyAttachment=. The attachment binds the admitted
+=ProjectTopologyLibrary= and its independently admitted MRR inference receipt to
+the exact Runtime execution, source snapshot, provider catalog, and project
+workspace product.
+
+The attachment is constructed and admitted while the Runtime generation is
+built. It is never synthesized by a Search request, by the Client renderer, or
+by a language provider. A Search request borrows the attachment through the
+already admitted Runtime generation and produces one request-local settlement.
+
+The following are not topology freshness evidence:
+
+- an activation generation or process-local epoch;
+- a matching repository path without the Project Workspace identity;
+- a matching source digest without the provider catalog identity;
+- a GQL graph whose display text resembles an earlier settlement;
+- a provider-private cache, request-local parser run, or Client reconstruction.
+
+** Attachment Product
+
+The attachment identity is the product of:
+
+1. Project Workspace binding;
+2. Runtime Search generation digest;
+3. Runtime artifact digest;
+4. source snapshot digest;
+5. provider catalog digest;
+6. parser catalog digest;
+7. MRR program, bundle, compiled ABI, and Ascent program identities;
+8. topology root and immutable library identity;
+9. the complete independently admitted inference receipt.
+
+Every repeated field MUST equal the corresponding field in the Runtime
+generation or Project Topology binding. Equality of only a digest-shaped value
+is insufficient across identity domains. Receipt identifier membership is also
+insufficient: the complete receipt record MUST occur in the independently
+admitted set.
+
+The Rust domain type is named =RuntimeProjectTopologyAttachment=. Wire schema
+and schema version own protocol evolution; Rust type names do not carry a =V1=
+suffix.
+
+** Single Authority And Publication
+
+The only admitted construction path is:
+
+#+begin_example
+complete source and provider generation
+  -> daemon-owned Runtime workspace execution publication
+  -> parser-owned topology fact delta, including canonical Owner CONTAINS Item
+  -> admitted MRR fixed-point evaluation
+  -> immutable ProjectTopologyLibrary
+  -> RuntimeProjectTopologyAttachment admission
+  -> atomic RuntimeQueryGeneration publication
+#+end_example
+
+The Runtime generation and attachment become visible atomically. A generation
+without an attachment may still support lower-level exact resident reads, but
+it is not Search Playbook ready. There is no optional Search fallback that
+converts flat evidence into GQL.
+
+An admission-terminal callback is not a publication path.  Project Topology
+construction requires the daemon-observed workspace execution publication, so
+a source-only callback cannot install a partial Runtime generation or compete
+with the daemon publication observer.
+
+A missing or mismatched attachment produces exactly one typed Search failure.
+The failure MUST distinguish at least missing attachment, Runtime binding
+mismatch, topology binding mismatch, independently admitted receipt mismatch,
+and inference terminal failure. It MUST NOT return a partial GQL settlement.
+
+Target-provider, explicit-owner, and request-local projections cannot publish
+or replace this complete-generation attachment. They may contribute evidence
+only after the complete generation has been admitted.
+
+** Search Settlement
+
+Search Playbook imports the attached topology library automatically. Its
+request-local acquisition evidence is joined with the immutable library and
+evaluated by the admitted MRR program. The admitted result is rendered as one
+Org response containing one GQL block.
+
+The resident Graph evaluator and the attached Project Topology MUST consume the
+same parser-owned =Owner -[:CONTAINS]-> Item= facts from the exact generation.
+It is invalid for Graph fan-in to accept a containment query while the
+settlement library lacks those edges, or for the settlement to display
+containment that the executable Graph filter could not observe.
+
+The public settlement contains evidence, topology relations, modalities,
+proof-connected derivations, coverage boundaries, natural-language annotations
+with their admission state, and the exact queryable selectors. It contains no
+Ascent program source and no Agent-facing planner state, next action, or
+recommended action.
+
+The Client is a renderer only. It MUST accept an admitted settlement and invoke
+the canonical settlement renderer. It MUST NOT derive topology, invent edges,
+repair selectors, or fall back to the historical flat =E1 | owner=...= format.
+
+An empty Search result is valid. It has no selector-bearing result node and
+creates no Query handoff. It MUST NOT fabricate a selector or empty handoff
+object merely to satisfy a schema.
+
+** Query Independence
+
+Query Playbook consumes exact selectors against its own current Runtime
+execution binding. It does not accept a Search settlement handle, opaque hash,
+or =from-search= parameter. An Agent learns selectors from Search evidence and
+uses the public native selector grammar directly.
+
+Consequently:
+
+- the same selector may be queried without a preceding Search;
+- two concurrent Searches cannot select a hidden latest settlement for Query;
+- a missing Topology attachment blocks Search Playbook settlement but does not
+  add a topology dependency to exact Query materialization;
+- Query admission still rejects stale Runtime, source, provider, or workspace
+  bindings according to its own immutable execution contract.
+
+** Performance Contract
+
+Topology construction, parser traversal, MRR compilation, and full closure
+evaluation are generation work, not request work. The hot Search path may:
+
+- borrow one =Arc<ProjectTopologyLibrary>= from the generation;
+- add bounded request-local evidence deltas;
+- execute the precompiled admitted inference program over that bounded delta;
+- rank and render a bounded settlement.
+
+It MUST NOT launch provider processes, parse the workspace, read Git metadata,
+compile Scheme or Ascent, or rebuild the topology library per request. The
+attachment therefore makes topology reasoning compatible with the Tokio
+resident Search architecture rather than creating a second request-time index.
+
+** Formal Obligations
+
+The refinement model MUST prove:
+
+1. missing attachment cannot mint a ready Search settlement;
+2. stale source, provider, Runtime generation, artifact, or Project Workspace
+   identity rejects the attachment;
+3. equal activation generations cannot establish topology freshness;
+4. flat evidence without an admitted attachment cannot mint GQL authority;
+5. one immutable attachment can support multiple independent Search
+   projections without mutation;
+6. Query materialization remains independent of Search attachment presence;
+7. planner fields and exposed Ascent source are rejected from the public
+   settlement.
+
+The formal model is
+[[file:../../../packages/proofs/ASPProof/RuntimeProjectTopologyAttachment.lean][RuntimeProjectTopologyAttachment]].
+Its executable adversarial witnesses are
+[[file:../../../packages/proofs/ASPProof/Audit/RuntimeProjectTopologyAttachment.lean][RuntimeProjectTopologyAttachment Audit]].
+
+** Implementation Order
+
+#+begin_example
+RFC and executable countermodels
+  -> shared attachment schema
+  -> topology builder and independently admitted inference receipt
+  -> RuntimeQueryGeneration atomic attachment
+  -> Search settlement construction and canonical Org/GQL rendering
+  -> removal of flat evidence rendering and optional topology fallbacks
+  -> multi-language, sandtable, and representative-project validation
+#+end_example
+
+No Rust Runtime attachment implementation precedes acceptance of this RFC and
+its formal refinement. Live Runtime installation or restart is not part of the
+source implementation gate.

@@ -1,0 +1,35 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryCrossRuntimeReplay
+
+namespace ASPProof.Audit.AgentSessionHostRegistryCrossRuntimeReplay
+
+open ASPProof.AgentSessionHostRegistryCrossRuntimeReplay
+
+#print axioms suite_conformance_replays_declared_vector
+#print axioms zero_effects_are_effect_free
+#print axioms accepted_replay_uses_independent_executor
+#print axioms accepted_replay_binds_artifact
+#print axioms accepted_replay_binds_vector_suite
+#print axioms accepted_replay_matches_reference_semantics
+#print axioms accepted_replay_binds_stdout
+#print axioms accepted_replay_binds_stderr
+#print axioms accepted_replay_binds_exit_code
+#print axioms accepted_replay_is_warm_effect_free
+#print axioms accepted_replay_launches_no_provider
+#print axioms accepted_replay_performs_no_persistent_write
+#print axioms accepted_replay_adds_no_agent_round
+#print axioms same_executor_replay_is_rejected
+#print axioms exit_zero_does_not_imply_semantic_conformance
+#print axioms stdout_match_does_not_hide_stderr_mismatch
+#print axioms wrong_artifact_replay_is_rejected
+#print axioms wrong_vector_suite_replay_is_rejected
+#print axioms provider_launch_breaks_warm_path
+#print axioms persistent_write_breaks_warm_path
+#print axioms agent_round_breaks_warm_path
+#print axioms fast_execution_does_not_imply_conformance
+#print axioms timing_bound_is_parametric
+
+end ASPProof.Audit.AgentSessionHostRegistryCrossRuntimeReplay

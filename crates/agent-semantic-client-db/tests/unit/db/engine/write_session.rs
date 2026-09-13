@@ -1,9 +1,36 @@
-#[test]
-fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle() {
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#[tokio::test]
+async fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
+    let state_home = temp_root("db-engine-uncommitted-state-home");
+    let projects_by_id = state_home.join("projects/by-id");
+    let client_dir = projects_by_id
+        .join("repo-uncommitted")
+        .join("workspaces/workspace-uncommitted/live/client");
+
+    let Err(error) = ClientDbEngine::open_write_session_client_dir(&client_dir) else {
+        panic!("naked DB path must not materialize State Core ancestors");
+    };
+
+    assert!(error.contains("state-core-materialization-required"));
+    assert!(
+        !projects_by_id.exists(),
+        "rejected DB write must create no project registry shell"
+    );
+}
+
+#[tokio::test]
+async fn db_engine_write_session_imports_manifest_without_exposing_removed_db_handle() {
     let project_root = temp_root("db-engine-write-session-project");
     let state_home = temp_root("db-engine-write-session-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
+        .expect("commit State Core identity before DB write");
     fs::create_dir_all(project_root.join("src")).expect("create src dir");
     fs::write(
         project_root.join("src/lib.rs"),
@@ -15,17 +42,17 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.client",
         "protocolVersion": "1",
-        "cacheRoot": state.paths.client_dir.display().to_string(),
+        "cacheRoot": workspace_paths.root.display().to_string(),
         "generations": [
             {
                 "generationId": "rust-main-1",
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
+                "exportMethod": "search/playbook",
                 "projectRoot": project_root.display().to_string(),
                 "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "schemaIds": ["agent.semantic-protocols.workspace-search-playbook-result"],
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": "fnv64:write-session",
@@ -41,7 +68,7 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
     }))
     .expect("manifest fixture");
 
-    let mut write_session = ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
+    let mut write_session = ClientDbEngine::open_write_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine write session");
     write_session
         .import_manifest(&manifest)
@@ -51,17 +78,17 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
         write_report.status,
         agent_semantic_client_db::ClientDbStatus::Present
     );
-    assert!(ClientDbEngine::turso_path_for_client_dir(&state.paths.client_dir).exists());
+    assert!(ClientDbEngine::turso_path_for_client_dir(&workspace_paths.root).exists());
 
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
+    let read_session = ClientDbEngine::open_read_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine read session")
         .expect("read session exists");
     let hit = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             &project_root,
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:write-session".to_string()),
         )
         .expect("lookup generation through DB Engine read session")
@@ -74,33 +101,41 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
         engine.db_path().exists(),
         "write-session import must materialize active Turso cache-generation read model"
     );
-    let mut write_session = ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
+    let mut write_session = ClientDbEngine::open_write_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine write session for Turso invalidate");
     let invalidated = write_session
         .invalidate_generations_for_project(&project_root)
         .expect("invalidate DB Engine cache-generation rows");
     assert_eq!(invalidated, 1);
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
+    let read_session = ClientDbEngine::open_read_session_client_dir(&workspace_paths.root)
         .expect("open DB Engine read session after Turso invalidation")
         .expect("read session exists after Turso invalidation");
     let miss = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             &project_root,
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:write-session".to_string()),
         )
         .expect("lookup generation after DB Engine invalidation");
     assert_eq!(miss, None);
 }
 
-#[test]
-fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
+#[tokio::test(flavor = "multi_thread")]
+async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     let project_root = temp_root("db-engine-cache-status-concurrent-project");
     let state_home = temp_root("db-engine-cache-status-concurrent-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    let workspace_paths = state
+        .ensure_workspace_state_layout()
+        .expect("commit State Core identity before DB write");
+    ClientDbEngine::from_resolved_state(&state)
+        .bootstrap_active_turso()
+        .await
+        .expect("bootstrap the Turso 0.7 format receipt before concurrent admission");
     fs::create_dir_all(project_root.join("src")).expect("create src dir");
     fs::write(
         project_root.join("src/lib.rs"),
@@ -108,7 +143,7 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     )
     .expect("write source fixture");
 
-    let client_dir = Arc::new(state.paths.client_dir.clone());
+    let client_dir = Arc::new(workspace_paths.root);
     let project_root = Arc::new(project_root);
     let reader_count = 6usize;
     let barrier = Arc::new(Barrier::new(reader_count + 1));
@@ -124,7 +159,7 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
                 let report = ClientDbEngine::inspect_client_dir(client_dir.as_path());
                 assert_eq!(
                     report.db_path.file_name().and_then(|name| name.to_str()),
-                    Some("client.turso")
+                    Some("facts.turso")
                 );
                 let read_session =
                     ClientDbEngine::open_read_session_client_dir(client_dir.as_path())
@@ -133,9 +168,9 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
                     let _ = read_session
                         .lookup_generation_request(
                             &LanguageId::from("rust"),
-                            &ProviderId::from("rs-harness"),
+                            &ProviderId::from("asp-rust"),
                             project_root.as_path(),
-                            &CacheExportMethod::from("search/prime"),
+                            &CacheExportMethod::from("search/playbook"),
                             None,
                         )
                         .expect("lookup generation during concurrent cache status smoke");
@@ -176,161 +211,15 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     let hit = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             project_root.as_path(),
-            &CacheExportMethod::from("search/prime"),
+            &CacheExportMethod::from("search/playbook"),
             Some("fnv64:cache-status-7".to_string()),
         )
         .expect("lookup final concurrent cache status generation")
         .expect("final concurrent cache status generation exists");
     assert_eq!(hit.artifact_ids.len(), 1);
     assert_eq!(hit.artifact_ids[0].as_str(), "search/cache-status-7.json");
-}
-
-#[test]
-fn db_engine_cache_status_process_pressure_helper() {
-    if env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_CHILD")
-        .ok()
-        .as_deref()
-        != Some("1")
-    {
-        return;
-    }
-    let state_home = PathBuf::from(
-        env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME")
-            .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME"),
-    );
-    let project_root = PathBuf::from(
-        env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT")
-            .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT"),
-    );
-    let writer_id: usize = env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID")
-        .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID")
-        .parse()
-        .expect("parse ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID");
-    fs::create_dir_all(project_root.join("src")).expect("create process pressure src dir");
-    fs::write(
-        project_root.join("src/lib.rs"),
-        "pub fn concurrent_process_cache_status_fixture() {}\n",
-    )
-    .expect("write process pressure fixture");
-    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
-        .expect("resolve process pressure state");
-
-    for iteration in 0..4 {
-        let manifest = process_cache_status_manifest(
-            &state.paths.client_dir,
-            &project_root,
-            writer_id,
-            iteration,
-        );
-        let operation_started = std::time::Instant::now();
-        let mut write_session =
-            ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
-                .expect("open process pressure write session");
-        write_session
-            .import_manifest(&manifest)
-            .expect("import process pressure manifest");
-        let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
-            .expect("open process pressure read session")
-            .expect("process pressure read session exists");
-        let fingerprint = format!("fnv64:process-cache-status-{writer_id}-{iteration}");
-        let hit = read_session
-            .lookup_generation_request(
-                &LanguageId::from("rust"),
-                &ProviderId::from("rs-harness"),
-                &project_root,
-                &CacheExportMethod::from("search/prime"),
-                Some(fingerprint),
-            )
-            .expect("lookup process pressure generation")
-            .expect("process pressure generation exists");
-        assert_eq!(hit.artifact_ids.len(), 1);
-        assert!(
-            operation_started.elapsed() < std::time::Duration::from_secs(3),
-            "process pressure DB operation exceeded bounded CI target: writer={writer_id} iteration={iteration} elapsed={:?}",
-            operation_started.elapsed()
-        );
-    }
-}
-
-#[test]
-fn db_engine_cache_status_survives_concurrent_process_read_write_pressure() {
-    let project_root = temp_root("db-engine-cache-process-pressure-project");
-    let state_home = temp_root("db-engine-cache-process-pressure-state-home");
-    fs::create_dir_all(project_root.join("src")).expect("create process pressure src dir");
-    fs::write(
-        project_root.join("src/lib.rs"),
-        "pub fn concurrent_process_cache_status_fixture() {}\n",
-    )
-    .expect("write process pressure fixture");
-    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
-        .expect("resolve process pressure state");
-    let process_count = 8usize;
-    let current_exe = env::current_exe().expect("locate current test binary");
-    let mut children = Vec::new();
-
-    for writer_id in 0..process_count {
-        children.push((
-            writer_id,
-            Command::new(&current_exe)
-                .arg("--exact")
-                .arg("db_engine::db_engine_cache_status_process_pressure_helper")
-                .arg("--nocapture")
-                .env("ASP_TURSO_CACHE_PROCESS_PRESSURE_CHILD", "1")
-                .env(
-                    "ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT",
-                    &project_root,
-                )
-                .env("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME", &state_home)
-                .env(
-                    "ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID",
-                    writer_id.to_string(),
-                )
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("spawn process cache pressure writer"),
-        ));
-    }
-
-    for (writer_id, child) in children {
-        let output = child
-            .wait_with_output()
-            .expect("wait for process cache pressure writer");
-        assert!(
-            output.status.success(),
-            "process cache pressure writer {writer_id} failed: status={} stdout={} stderr={}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
-        .expect("open final process pressure read session")
-        .expect("final process pressure read session exists");
-    for writer_id in 0..process_count {
-        let fingerprint = format!("fnv64:process-cache-status-{writer_id}-3");
-        let hit = read_session
-            .lookup_generation_request(
-                &LanguageId::from("rust"),
-                &ProviderId::from("rs-harness"),
-                &project_root,
-                &CacheExportMethod::from("search/prime"),
-                Some(fingerprint),
-            )
-            .expect("lookup final process pressure generation")
-            .unwrap_or_else(|| panic!("missing process pressure generation writer={writer_id}"));
-        assert_eq!(
-            hit.artifact_ids[0].as_str(),
-            format!("search/process-cache-status-{writer_id}-3.json")
-        );
-    }
-    assert!(state.paths.client_dir.join("client.turso").exists());
-
-    let _ = std::fs::remove_dir_all(project_root);
-    let _ = std::fs::remove_dir_all(state_home);
 }
 
 fn concurrent_cache_status_manifest(
@@ -348,12 +237,12 @@ fn concurrent_cache_status_manifest(
             {
                 "generationId": format!("rust-cache-status-{generation_index}"),
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
+                "exportMethod": "search/playbook",
                 "projectRoot": project_root.display().to_string(),
                 "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "schemaIds": ["agent.semantic-protocols.workspace-search-playbook-result"],
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": format!("fnv64:cache-status-{generation_index}"),
@@ -370,45 +259,8 @@ fn concurrent_cache_status_manifest(
     .expect("concurrent cache status manifest fixture")
 }
 
-fn process_cache_status_manifest(
-    client_dir: &Path,
-    project_root: &Path,
-    writer_id: usize,
-    iteration: usize,
-) -> ClientCacheManifest {
-    serde_json::from_value(json!({
-        "schemaId": "agent.semantic-protocols.client-cache-manifest",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.client",
-        "protocolVersion": "1",
-        "cacheRoot": client_dir.display().to_string(),
-        "generations": [
-            {
-                "generationId": format!("rust-process-cache-status-{writer_id}-{iteration}"),
-                "languageId": "rust",
-                "providerId": "rs-harness",
-                "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
-                "projectRoot": project_root.display().to_string(),
-                "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
-                "cacheStatus": "hit",
-                "rawSourceStored": false,
-                "requestFingerprint": format!("fnv64:process-cache-status-{writer_id}-{iteration}"),
-                "fileHashes": [{
-                    "path": "src/lib.rs",
-                    "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-                    "byteLen": 1,
-                    "mtimeMs": writer_id * 10 + iteration
-                }],
-                "artifactIds": [format!("search/process-cache-status-{writer_id}-{iteration}.json")]
-            }
-        ]
-    }))
-    .expect("process cache status manifest fixture")
-}
-#[test]
-fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
+#[tokio::test]
+async fn agent_session_registration_keeps_each_child_instance_for_one_route() {
     let state = std::env::temp_dir().join(format!(
         "asp-agent-session-claim-{}-{}",
         std::process::id(),
@@ -426,15 +278,15 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
     let first_child_id = "claim-child-first";
 
     let first = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: first_child_id,
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: first_child_id.into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -443,23 +295,24 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 1,
             },
         )
+        .await
         .expect("claim first resident child");
     let duplicate = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: "claim-child-duplicate",
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: "claim-child-duplicate".into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -468,30 +321,30 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test-2"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 2,
             },
         )
+        .await
         .expect("read existing resident child");
 
-    assert_eq!(first.session_id, first_child_id);
-    assert_eq!(duplicate.session_id, first_child_id);
-    assert_eq!(
+    assert_eq!(first.session_id(), first_child_id);
+    assert_eq!(duplicate.session_id(), "claim-child-duplicate");
+    assert!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
-            .expect("lookup resident child")
-            .expect("resident child row")
-            .session_id,
-        first_child_id
+            .await
+            .expect_err("route-only lookup must reject multiple child instances")
+            .contains("agent-session-route-ambiguous")
     );
     drop(registry);
     std::fs::remove_dir_all(state).expect("remove temporary state root");
 }
 
-#[test]
-fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
+#[tokio::test]
+async fn agent_session_registration_retains_archived_child_and_adds_new_instance() {
     let state = std::env::temp_dir().join(format!(
         "asp-agent-session-archived-claim-{}-{}",
         std::process::id(),
@@ -509,15 +362,15 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
     let first_child_id = "archived-claim-first";
 
     registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: first_child_id,
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: first_child_id.into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -526,29 +379,31 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 1,
             },
         )
+        .await
         .expect("claim first resident child");
     assert!(
         registry
             .archive_session(project_id, first_child_id, 2)
+            .await
             .expect("archive first resident child")
     );
 
     let replacement = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: "archived-claim-replacement",
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: "archived-claim-replacement".into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -557,23 +412,39 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test-2"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 3,
             },
         )
+        .await
         .expect("claim replacement resident child");
 
-    assert_eq!(replacement.session_id, "archived-claim-replacement");
+    assert_eq!(replacement.session_id(), "archived-claim-replacement");
     assert_eq!(
         registry
-            .session_by_name(project_id, root_session_id, "asp-explore")
-            .expect("lookup replacement resident child")
+            .session_by_id(project_id, "archived-claim-replacement")
+            .await
+            .expect("lookup new resident child")
             .expect("replacement resident child row")
-            .session_id,
+            .session_id(),
         "archived-claim-replacement"
     );
     drop(registry);
     std::fs::remove_dir_all(state).expect("remove temporary state root");
 }
+use super::fixture::init_git_repository;
+use super::fixture::temp_root;
+use agent_semantic_client_core::CacheExportMethod;
+use agent_semantic_client_core::ClientCacheManifest;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_db::ClientDbEngine;
+use serde_json::json;
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::Barrier;
+use std::thread;

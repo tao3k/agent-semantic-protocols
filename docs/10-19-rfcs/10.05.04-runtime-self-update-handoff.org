@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Self-Update Handoff and Transport Authority
+#+startup: overview
+
+* Status
+
+V1 implementation contract.  This RFC refines the existing resident transaction
+without changing its schema version.
+
+* Problem
+
+The Runtime lifecycle already publishes a =ready= resident transaction bound to
+one publication nonce, one launcher/applied/endpoint binary digest, one owner
+epoch, one Runtime generation digest, and concrete control, data, and provider
+endpoints.  The legacy client discarded that capability and independently
+derived an endpoint pathname from its own executable and temporary-directory
+rules.
+
+During self-update, launcher A may commit and start artifact B.  A then continues
+the original command.  If A recomputes the endpoint path, its local algorithm can
+name a different path from the one used by B even though B is healthy and the
+resident transaction is =ready=.  Reporting =transport-unavailable= in this state
+confuses a client handoff defect with Runtime termination.
+
+The first divergence is therefore after the resident transaction commits and
+before the client opens the data transport: an exact capability exists, but the
+caller replaces it with a pathname lookup.
+
+* Authority
+
+The Runtime lifecycle is the only authority for a serving transport.  Its
+resident transaction mints an immutable client handoff containing:
+
+- the publication nonce;
+- the exact Runtime artifact digest shared by launcher, applied activation, and
+  endpoint binary identity;
+- the owner epoch and Runtime generation digest;
+- validated loopback control, data, and provider endpoints.
+
+=activationGeneration= is not part of this product identity.  It remains a
+monotonic publication fence and observability field only.
+
+The client may receive the handoff directly from the bootstrap call.  A legacy
+call site that has not yet been migrated must ask the same Runtime lifecycle
+authority to observe the resident transaction.  It must not read endpoint files
+or derive temporary paths itself.
+
+* Admission
+
+A handoff is admitted only when all of the following hold:
+
+1. schema identity is the V1 resident-transaction receipt;
+2. state is =ready=;
+3. publication nonce equals the applied publication nonce;
+4. launcher artifact digest equals applied artifact digest;
+5. applied artifact digest equals endpoint binary content digest;
+6. owner epoch is nonzero and Runtime generation digest is a canonical BLAKE3
+   digest;
+7. all three endpoints are nonzero loopback TCP endpoints.
+
+Any mismatch fails closed with
+=runtime-client-handoff-identity-mismatch=.  The client does not retry, fall back
+to a pathname, or mutate active Runtime state.
+
+* Failure taxonomy
+
+- Failure to obtain a resident transaction is
+  =runtime-client-handoff-unavailable= at the =runtime-resident-transaction=
+  layer.
+- Failure to connect an admitted endpoint is
+  =runtime-verified-endpoint-connect-failed= at the
+  =runtime-verified-endpoint-transport= layer.
+- Host sandbox denial remains =host-operation-not-permitted= at the verified
+  endpoint transport layer.
+- Invalid, consumed, or replayed inherited descriptors remain Host capability
+  failures: =host-runtime-transport-capability-invalid=,
+  =host-runtime-transport-capability-consumed=, or
+  =host-runtime-transport-capability-replayed= at
+  =host-transport-capability=.
+
+None of these states means that the Runtime process terminated unless a separate
+Runtime lifecycle terminal proves termination.
+
+* Rejected alternatives
+
+** Normalize temporary directories
+
+Making every executable derive =/tmp= reduces one observed mismatch but leaves
+two endpoint authorities.  A stale launcher can still disagree with a new
+artifact after any future layout change.
+
+** Retry endpoint discovery in the client
+
+Retry hides the handoff defect, duplicates lifecycle policy, and can cross a
+publication boundary during one request.
+
+** Select by activation generation
+
+The generation orders publication actors but cannot prove executable content or
+endpoint ownership.  Republishing identical content legitimately advances it.
+
+** Cache the last endpoint in the client
+
+A client-private cache becomes another serving authority and cannot prove that
+its endpoint belongs to the admitted artifact.
+
+* Deterministic obligations
+
+- exact ready receipt mints one handoff;
+- cross-artifact and cross-publication receipts are rejected;
+- a pinned handoff never consults State Home endpoint paths;
+- an unpinned compatibility call obtains a lifecycle transaction rather than
+  resolving a path;
+- verified endpoint connection failure never degrades to
+  =transport-unavailable=;
+- session reuse is keyed by project, workspace, publication nonce, and artifact
+  digest;
+- cancellation and terminal delivery remain exactly once.
+
+* Migration and removal
+
+First, all client operations consume the handoff abstraction and direct endpoint
+resolution is removed from the client crate.  Bootstrap call sites pass the
+already-returned handoff into =AspClient=.  Provider inventory and Live Corpus
+operations use the provider endpoint from that same handoff.  The former Runtime
+serving-endpoint path module is then deleted; endpoint-file interpretation stays
+inside the client-db lifecycle and daemon owners.  The temporary compatibility
+constructor asks that lifecycle authority for a resident transaction and never
+interprets endpoint files.  No install, restart, or State Home rewrite is a
+migration step.

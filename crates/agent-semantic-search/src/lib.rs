@@ -1,256 +1,365 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 //! Search orchestration services for ASP agent-facing queries.
 
-mod document_candidates;
+pub mod command_diagnostics;
+mod content_generation;
+mod derived_attachment_lifecycle;
 mod dynamic_candidates;
 mod dynamic_overlay;
-mod dynamic_search;
 mod evidence_graph_rank;
+mod generation_graph_protocol;
+mod graph_action_frontier;
 mod graph_candidate_projection;
+mod resident_grep_corpus;
+pub use graph_action_frontier::DependencyActionNodeV1;
+pub use graph_action_frontier::matched_dependency_action_targets;
 mod graph_candidate_sparsity;
 mod graph_evidence_projection;
+pub mod graph_generation_authority;
 mod graph_node_projection;
 mod graph_owner_rank;
-pub use graph_owner_rank::{
-    GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
-    GraphOwnerRankedOwner, rank_graph_owner_report,
-};
-mod graph_query_owner_seed;
-mod graph_seed_decision;
+pub use graph_owner_rank::GraphOwnerRankCandidate;
+pub use graph_owner_rank::GraphOwnerRankReport;
+pub use graph_owner_rank::GraphOwnerRankRequest;
+pub use graph_owner_rank::GraphOwnerRankScore;
+pub use graph_owner_rank::GraphOwnerRankedOwner;
+pub use graph_owner_rank::rank_graph_owner_report;
+pub mod exact_selector_generation_fixture;
 mod graph_topology_projection;
+mod lexical_accelerator;
+mod lexical_generation_plan;
 mod lexical_overlay;
-mod lexical_search_frame;
-mod owner_items_source_index_trace;
-mod pipe_candidates;
-mod pipe_source;
-mod pipe_source_index_projection;
-mod pipe_source_lexical_frame;
-pub use pipe_source::SearchPipeSelectorPayloadProof;
-mod graph_owner_item_route;
-mod prompt_output_replay;
-mod provider_candidate_annotations;
-mod query_packet_replay;
-mod query_wrapper_candidates;
-mod query_wrapper_quality;
-mod query_wrapper_scan;
-mod query_wrapper_scan_source;
-mod search_candidate;
-mod search_language_files;
-mod search_lexical_replay;
-mod search_overlay;
-mod search_packet_replay;
-mod search_pipe_evidence;
-mod search_pipe_quality;
-mod search_pipe_query_pack;
-mod search_query_budget;
-mod search_subagent_receipt;
-mod source_index_lookup;
+pub mod memory_search;
+#[cfg(feature = "tantivy-accelerator")]
+mod merkle_search_generation;
+pub use memory_search::MemorySearchGeneration;
+pub use memory_search::MemorySearchGenerationReceipt;
+pub use memory_search::MemorySearchItem;
+pub use memory_search::MemorySearchPerformanceReceipt;
+pub use memory_search::MemorySearchRequest;
+pub use memory_search::MemorySearchResolution;
+pub use memory_search::MemorySearchResolutionState;
+pub use memory_search::MemorySearchSourceLeaf;
 
-pub use graph_owner_item_route::{
-    GraphOwnerItemEvidence, GraphOwnerItemRenderRequest, GraphOwnerItemRoute,
-    GraphOwnerItemRouteRequest, GraphSemanticKind, rank_graph_owner_items,
-    render_graph_owner_item_frontier,
-};
+mod progressive_query;
+mod provider_candidate_annotations;
+pub mod provider_relation_memory;
+#[cfg(feature = "tantivy-accelerator")]
+mod resident_byte_coverage;
+mod resident_graph_search;
+#[cfg(feature = "tantivy-accelerator")]
+mod resident_grep_candidate_plan;
+#[cfg(feature = "tantivy-accelerator")]
+mod resident_source_index;
+mod runtime_search_receipt;
+mod scheme_playbook_source;
+mod search_candidate;
+mod search_generation_segment;
+mod search_language_files;
+mod sorted_record_table;
+#[cfg(feature = "tantivy-accelerator")]
+mod tantivy_lexical;
+mod workspace_playbook_plan;
+mod workspace_playbook_result;
 
 mod source_index_rank;
-pub use source_index_rank::{
-    SourceIndexRankReport, SourceIndexRankRequest, SourceIndexRankScore,
-    SourceIndexRankedCandidate, rank_source_index_report,
-};
-mod structural_index_search;
+pub use agent_semantic_search_projection::source_index_artifact_digest;
+pub use agent_semantic_shell_parser::TantivyQueryAnalysis;
+pub use agent_semantic_shell_parser::TantivyQueryDiagnostic;
+pub use agent_semantic_shell_parser::TantivyQueryMetrics;
+pub use agent_semantic_shell_parser::analyze_tantivy_query;
+pub use source_index_rank::SourceIndexRankReport;
+pub use source_index_rank::SourceIndexRankRequest;
+pub use source_index_rank::SourceIndexRankScore;
+pub use source_index_rank::SourceIndexRankedCandidate;
+pub use source_index_rank::rank_source_index_report;
 pub mod syntax_query_replay;
-mod turso_overlay_search;
 
-pub use document_candidates::{
-    DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
-    collect_document_search_candidates,
+#[cfg(test)]
+#[path = "../tests/unit/content_generation.rs"]
+mod content_generation_tests;
+#[cfg(test)]
+#[path = "../tests/unit/generation_graph_protocol.rs"]
+mod generation_graph_protocol_tests;
+#[cfg(test)]
+#[path = "../tests/unit/lexical_accelerator.rs"]
+mod lexical_accelerator_tests;
+#[cfg(test)]
+#[path = "../tests/unit/lexical_generation_plan.rs"]
+mod lexical_generation_plan_tests;
+#[cfg(test)]
+#[path = "../tests/unit/playbook_pipeline_performance.rs"]
+#[cfg(feature = "tantivy-accelerator")]
+mod playbook_pipeline_performance_tests;
+#[cfg(test)]
+#[path = "../tests/unit/resident_graph_search.rs"]
+mod resident_graph_search_tests;
+#[cfg(test)]
+#[path = "../tests/unit/resident_source_index.rs"]
+#[cfg(feature = "tantivy-accelerator")]
+mod resident_source_index_tests;
+#[cfg(test)]
+#[path = "../tests/unit/runtime_search_receipt.rs"]
+mod runtime_search_receipt_tests;
+#[cfg(test)]
+#[path = "../tests/unit/scheme_playbook_source.rs"]
+mod scheme_playbook_source_tests;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_playbook_plan.rs"]
+mod workspace_playbook_plan_tests;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_playbook_result.rs"]
+mod workspace_playbook_result_tests;
+
+pub use agent_semantic_search_playbook::{
+    GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
+    ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
+    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
+    parse_search_playbook_producer_declaration,
 };
-pub use dynamic_candidates::{
-    DynamicSearchCandidate, DynamicSearchCandidateRequest, DynamicSearchRootCandidateRequest,
-    IngestSearchCandidate, collect_dynamic_lexical_overlay_candidates,
-    collect_dynamic_lexical_overlay_candidates_from_roots, collect_ingest_search_candidates,
-};
-pub use dynamic_overlay::{
-    DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE,
-};
-pub use dynamic_search::{
-    DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
-    DynamicSearchLanguage, DynamicSearchRoots, render_dynamic_owner_items_code,
-    render_dynamic_owner_items_frontier,
-};
-pub use evidence_graph_rank::{
-    EvidenceGraphRankNode, EvidenceGraphRankScore, EvidenceGraphRankedNode,
-    evidence_graph_rank_terms, rank_evidence_graph_nodes,
-};
-pub use graph_candidate_projection::{
-    GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
-    graph_candidate_hot_node_id, graph_candidate_hot_nodes, graph_candidate_item_node_id,
-    graph_candidate_item_nodes,
-};
-pub use graph_candidate_sparsity::{
-    GraphCandidateSparsityInput, select_sparse_graph_candidate_indices,
-};
+pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
+pub use content_generation::CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID;
+pub use content_generation::ContentSearchGenerationReceipt;
+pub use content_generation::NativeSyntaxDiagnostic;
+pub use content_generation::NativeSyntaxProjection;
+pub use content_generation::NativeSyntaxRelation;
+pub use content_generation::NativeSyntaxSelector;
+pub use content_generation::SearchGenerationConstructionStage;
+pub use content_generation::SearchGenerationIdentity;
+pub use content_generation::SearchGenerationStageReceipt;
+pub use content_generation::SourceByteOwner;
+pub use content_generation::build_native_syntax_stage;
+pub use content_generation::build_native_syntax_stage_with_diagnostics;
+pub use content_generation::build_source_byte_acquisition_stage;
+pub use content_generation::canonical_blake3_digest;
+pub use derived_attachment_lifecycle::RUNTIME_SEARCH_ATTACHMENT_EVENT_CAPACITY;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentEvent;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentHub;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentIdentity;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentKey;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentKind;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentSnapshot;
+pub use derived_attachment_lifecycle::RuntimeSearchDerivedAttachmentState;
+pub use dynamic_candidates::DynamicSearchCandidate;
+pub use dynamic_candidates::DynamicSearchCandidateCollection;
+pub use dynamic_candidates::DynamicSearchRootCandidateRequest;
+pub use dynamic_candidates::IngestSearchCandidate;
+pub use dynamic_candidates::RgCoverageBudget;
+pub use dynamic_candidates::RgCoverageOwner;
+pub use dynamic_candidates::RgCoverageReceipt;
+pub use dynamic_candidates::RgCoverageRequest;
+pub use dynamic_candidates::RgCoverageResult;
+pub use dynamic_candidates::collect_dynamic_lexical_overlay_candidates_from_roots;
+pub use dynamic_candidates::collect_rg_coverage_candidates;
+pub use dynamic_overlay::DynamicOverlayLane;
+pub use dynamic_overlay::QUERY_OVERLAY_ROUTE_SOURCE;
+pub use dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE;
+pub use evidence_graph_rank::EvidenceGraphNodeId;
+pub use evidence_graph_rank::EvidenceGraphNodeKind;
+pub use evidence_graph_rank::EvidenceGraphRankNode;
+pub use evidence_graph_rank::EvidenceGraphRankScore;
+pub use evidence_graph_rank::EvidenceGraphRankedNode;
+pub use evidence_graph_rank::evidence_graph_rank_terms;
+pub use evidence_graph_rank::rank_evidence_graph_nodes;
+pub use generation_graph_protocol::SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID;
+pub use generation_graph_protocol::SEARCH_GENERATION_GRAPH_REQUEST_SCHEMA_ID;
+pub use generation_graph_protocol::SearchGenerationGraphReceipt;
+pub use generation_graph_protocol::SearchGenerationGraphRequest;
+pub use graph_candidate_projection::GraphCandidateHotNodesRequest;
+pub use graph_candidate_projection::GraphCandidateItemNodesRequest;
+pub use graph_candidate_projection::GraphProjectionCandidate;
+pub use graph_candidate_projection::graph_candidate_hot_node_id;
+pub use graph_candidate_projection::graph_candidate_hot_nodes;
+pub use graph_candidate_projection::graph_candidate_item_node_id;
+pub use graph_candidate_projection::graph_candidate_item_nodes;
+pub use graph_candidate_sparsity::GraphCandidateSparsityInput;
+pub use graph_candidate_sparsity::select_sparse_graph_candidate_indices;
 pub use graph_evidence_projection::graph_frontier_has_only_owner_or_topology_nodes;
-pub use graph_node_projection::{owner_path_graph_nodes, stable_graph_node_id};
-pub use graph_owner_rank::{
-    ranked_graph_owner_paths_for_submodule_paths, ranked_graph_owner_paths_with_topology,
+pub use graph_node_projection::owner_path_graph_nodes;
+pub use graph_node_projection::stable_graph_node_id;
+pub use graph_owner_rank::ranked_graph_owner_paths_for_submodule_paths;
+pub use graph_owner_rank::ranked_graph_owner_paths_with_topology;
+pub use graph_topology_projection::GraphOwnerMissingTopologyRequest;
+pub use graph_topology_projection::GraphTopologyProjection;
+pub use graph_topology_projection::GraphTopologyProjectionRequest;
+pub use graph_topology_projection::graph_owner_missing_topology_projection;
+pub use graph_topology_projection::graph_path_is_under;
+pub use graph_topology_projection::graph_project_submodule_paths;
+pub use graph_topology_projection::graph_project_submodule_paths_from_content;
+pub use graph_topology_projection::graph_project_topology_projection;
+pub use graph_topology_projection::graph_submodule_owner_edges;
+pub use lexical_accelerator::LEXICAL_ACCELERATOR_RECEIPT_SCHEMA_ID;
+pub use lexical_accelerator::LexicalAcceleratorReceipt;
+pub use lexical_accelerator::LexicalRecallRoute;
+pub use lexical_accelerator::LexicalRouteEquivalenceCase;
+pub use lexical_accelerator::plan_lexical_recall_route;
+pub use lexical_generation_plan::AdmittedLexicalOwner;
+pub use lexical_generation_plan::LEXICAL_GENERATION_PLAN_SCHEMA_ID;
+pub use lexical_generation_plan::LexicalGenerationPlan;
+pub use lexical_generation_plan::LexicalOwnerFact;
+pub use lexical_generation_plan::LexicalShardArtifact;
+pub use lexical_generation_plan::LexicalShardDisposition;
+pub use lexical_generation_plan::LexicalShardPlanEntry;
+pub use lexical_generation_plan::plan_lexical_generation;
+pub use lexical_overlay::LexicalOverlayCandidateHit;
+pub use lexical_overlay::LexicalOverlayDocument;
+pub use lexical_overlay::LexicalOverlaySearchHit;
+pub use lexical_overlay::LexicalOverlaySearchRequest;
+pub use lexical_overlay::search_lexical_overlay;
+pub use lexical_overlay::search_lexical_overlay_candidates;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::MerkleSearchGeneration;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::SearchOwnerChange;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::SearchOwnerFragment;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::SearchProjectionIdentity;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::search_owner_graph_fragment_digest;
+#[cfg(feature = "tantivy-accelerator")]
+pub use merkle_search_generation::search_projection_analyzer_digest;
+pub use progressive_query::{
+    ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args, query_output_format,
 };
-pub use graph_query_owner_seed::{graph_has_package_path_candidate, graph_query_owner_seed_paths};
-pub use graph_seed_decision::{
-    GraphTurboSeedPlanInput, SearchActionSelection, SearchEvidenceState, SeedActionIntent,
-    SeedPhaseDecision, graph_turbo_seed_plan, recommended_action_for_seed_risk,
+pub use provider_candidate_annotations::ProviderFactsEnvelope;
+pub use provider_candidate_annotations::compact_provider_fact_nodes;
+pub use provider_candidate_annotations::compact_provider_fact_value;
+pub use provider_candidate_annotations::provider_candidate_annotation_nodes;
+pub use provider_candidate_annotations::provider_facts_envelope_from_stdout;
+pub use provider_candidate_annotations::provider_facts_envelope_from_value;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::RESIDENT_BYTE_GRAM_WIDTH;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageIndex;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageInput;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageOwner;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageQueryReceipt;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_byte_coverage::ResidentByteCoverageStats;
+pub use resident_graph_search::ResidentGraphBuildMetrics;
+pub use resident_graph_search::ResidentGraphEvaluatedEdge;
+pub use resident_graph_search::ResidentGraphEvaluation;
+pub use resident_graph_search::ResidentGraphEvaluationBudget;
+pub use resident_graph_search::ResidentGraphEvaluationRequest;
+pub use resident_graph_search::ResidentGraphGeneration;
+pub use resident_graph_search::ResidentGraphRankedNode;
+pub use resident_graph_search::ResidentGraphRelationDirection;
+pub use resident_graph_search::ResidentGraphRelationPattern;
+pub use resident_graph_search::ResidentGraphSearchBudget;
+pub use resident_graph_search::ResidentGraphSearchRequest;
+pub use resident_graph_search::ResidentGraphSearchStage;
+pub use resident_graph_search::ResidentGraphSearchWork;
+pub use resident_graph_search::build_resident_graph_generation;
+pub use resident_graph_search::canonical_resident_graph_generation_digest;
+pub use resident_graph_search::evaluate_resident_graph_generation;
+pub use resident_graph_search::evaluate_resident_graph_relation_patterns;
+pub use resident_graph_search::open_resident_graph_generation;
+pub use resident_graph_search::rank_resident_graph_generation;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_grep_candidate_plan::{
+    ResidentGrepCandidatePlan, build_resident_grep_candidate_plan,
 };
-pub use graph_topology_projection::{
-    GraphTopologyProjection, GraphTopologyProjectionRequest, graph_path_is_under,
-    graph_project_submodule_paths, graph_project_submodule_paths_from_content,
-    graph_project_topology_projection, graph_submodule_owner_edges,
+pub use resident_grep_corpus::RESIDENT_GREP_CORPUS_RECEIPT_SCHEMA_ID;
+pub use resident_grep_corpus::ResidentGrepCorpusArtifact;
+pub use resident_grep_corpus::ResidentGrepCorpusOwner;
+pub use resident_grep_corpus::ResidentGrepCorpusReceipt;
+pub use resident_grep_corpus::ResidentGrepMappedCorpusOwner;
+pub use resident_grep_corpus::ResidentGrepOwnerSpan;
+pub use resident_grep_corpus::build_resident_grep_corpus;
+pub use resident_grep_corpus::open_mapped_resident_grep_corpus;
+pub use resident_grep_corpus::owner_for_corpus_line;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentIndexBuildResources;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentIndexBuildStrategy;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentLexicalCoverageInput;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentSearchAuthority;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentSourceDocument;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentSourceIndex;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::resident_index_engine_digest;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::resident_lexical_coverage_batch;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::resident_lexical_coverage_keys;
+#[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::resident_navigation_keys;
+pub use runtime_search_receipt::RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT;
+pub use runtime_search_receipt::RUNTIME_SEARCH_SOURCE_CAPACITY;
+pub use runtime_search_receipt::RUNTIME_SEARCH_SOURCE_LIMIT;
+pub use runtime_search_receipt::RuntimeSearchResult;
+pub use runtime_search_receipt::RuntimeSearchSource;
+pub use runtime_search_receipt::bounded_ranked_selector_owner_paths;
+pub use runtime_search_receipt::bounded_runtime_search_source;
+pub use runtime_search_receipt::build_runtime_provider_search_receipt;
+pub use runtime_search_receipt::build_runtime_provider_search_receipt_with_graph;
+pub use scheme_playbook_source::{
+    DEFAULT_SEARCH_PLAYBOOK_SOURCE, admit_default_search_playbook_source,
+    admit_search_playbook_source,
 };
-pub use lexical_overlay::{
-    LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,
-    LexicalOverlaySearchRequest, search_lexical_overlay, search_lexical_overlay_candidates,
-};
-pub use lexical_search_frame::{
-    LexicalAcquisitionRoute, LexicalEvidenceState, LexicalQueryRelation,
-    LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
-    plan_lexical_search_frame,
-};
-pub use owner_items_source_index_trace::{
-    OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
-    owner_items_source_index_trace, render_owner_items_source_index_lookup_trace,
-    render_owner_items_source_index_trace, source_index_owner_query,
-};
-pub use pipe_candidates::{
-    SearchPipeCandidate, SearchPipeCandidateRequest, collect_search_pipe_candidates,
-};
-pub use pipe_source::{
-    SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
-    SearchPipeFailureAcquisitionRequest, SearchPipeSearchOverlayAcquisition,
-    SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
-    SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
-    SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
-    SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
-    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
-    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
-    failure_candidate_query,
-};
-pub use prompt_output_replay::{
-    PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,
-    prompt_output_artifact_replay_safe, prompt_output_request_fingerprint,
-};
-pub use provider_candidate_annotations::{
-    ProviderFactsEnvelope, compact_provider_fact_nodes, compact_provider_fact_value,
-    provider_candidate_annotation_nodes, provider_facts_envelope_from_stdout,
-    provider_facts_envelope_from_value,
-};
-pub use query_packet_replay::{
-    QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
-};
-pub use query_wrapper_candidates::{
-    QueryWrapperCandidateCollection, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
-    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
-    QueryWrapperSourceIndexTraceProjection, collect_query_wrapper_candidate_collection,
-    query_wrapper_ranked_search_candidates, query_wrapper_search_stage_trace_projection,
-    query_wrapper_source_index_trace_projection,
-};
-pub use query_wrapper_quality::{
-    QueryWrapperClauseCoverage, QueryWrapperQuality, QueryWrapperQualityCandidate,
-    QueryWrapperSearchClause, analyze_query_wrapper_quality, query_wrapper_axis_terms,
-    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters, query_wrapper_package_clusters_from_paths,
-    query_wrapper_package_key, query_wrapper_rg_scope_next, query_wrapper_terms,
-    query_wrapper_unique_clause_terms,
-};
-pub use query_wrapper_scan::{
-    QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
-    QueryWrapperCandidateSurface, QueryWrapperScanConfig, QueryWrapperSearchCandidateCollection,
-    QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexCandidate,
-    QueryWrapperSourceIndexCandidateRequest, QueryWrapperSourceIndexCollection,
-    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, append_query_candidates,
-    augment_package_path_candidates,
-};
-pub use query_wrapper_scan_source::{
-    collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
-};
+pub use search_candidate::FieldHit;
+pub use search_candidate::RankFeature;
+pub use search_candidate::RankedSearchCandidate;
+pub use search_candidate::SearchCandidate;
+pub use search_candidate::SearchCandidateMergeReceipt;
+pub use search_candidate::SearchStageReceipt;
+pub use search_candidate::StructuralIndexSearchHit;
+pub use search_candidate::lexical_overlay_hit_to_search_candidate;
+pub use search_candidate::merge_search_candidates;
+pub use search_candidate::merge_search_candidates_with_receipt;
+pub use search_candidate::search_candidate_has_executable_line_identity;
+pub use search_candidate::source_index_candidate_to_search_candidate;
 pub use search_candidate::structural_index_hit_to_search_candidate;
-pub use search_candidate::{
-    FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
-    SearchStageReceipt, lexical_overlay_hit_to_search_candidate, merge_search_candidates,
-    merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
-    source_index_candidate_to_search_candidate,
-};
-pub use search_language_files::{
-    LanguageFileSpec, language_file_spec, language_neutral_search_file_spec,
-};
-pub use search_lexical_replay::{
-    SearchLexicalReplayRequest, search_lexical_packet_matches_request,
-};
-pub use search_overlay::{
-    SearchOverlayCandidate, SearchOverlayCandidates, SearchOverlayCollectionRequest,
-    SearchOverlayConfig, SearchOverlayProvenance, SearchOverlaySurface,
-    collect_search_overlay_candidates,
-};
-pub use search_packet_replay::{
-    output_with_delegation_hint_lines, search_output_artifact_replay_safe,
-};
-pub use search_pipe_evidence::{
-    SearchPipeEvidenceCandidate, search_pipe_declaration_header_match, search_pipe_handle_paths,
-    search_pipe_high_value_matches, search_pipe_high_value_missing, search_pipe_is_high_value_term,
-    search_pipe_parser_handles, search_pipe_path_exact_match, search_pipe_search_overlay_handles,
-    search_pipe_strong_match, search_pipe_weak_match, search_pipe_weak_reason,
-};
-pub use search_pipe_quality::{
-    SearchPipeCohesionTerm, is_search_pipe_package_axis_term, search_pipe_candidate_packages,
-    search_pipe_fd_owner_axis_term, search_pipe_fd_query_terms, search_pipe_missing_path_terms,
-    search_pipe_owner_seed_terms, search_pipe_package_cohesion, search_pipe_package_key,
-    search_pipe_quality_risks, search_pipe_query_pack_quality,
-};
-pub use search_pipe_query_pack::{
-    SearchPipeClauseCoverage, SearchPipeLanguageId, SearchPipeQueryClause,
-    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryTerm,
-    SearchPipeQueryText, SearchPipeTermRole, search_pipe_clause_coverages,
-    search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
-    search_pipe_query_candidate_matches_term, search_pipe_query_clause_texts,
-    search_pipe_query_clauses, search_pipe_role_terms, search_pipe_unique_query_terms,
-};
-pub use search_query_budget::{
-    SearchQueryBudgetBlock, search_query_budget_block, search_query_terms,
-    search_rg_terms_budget_block, search_terms_budget_block, specific_search_term,
-};
-pub use search_subagent_receipt::{
-    SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
-    search_subagent_graph_route_receipt_is_compact,
-};
-pub use source_index_lookup::{
-    SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,
-    SourceIndexLookupRequest, lookup_source_index, lookup_source_index_for_language,
-    lookup_source_index_in_cache, lookup_source_index_in_client_cache_dir,
-    lookup_source_index_in_client_cache_dir_with_planner,
-};
-pub use source_index_rank::{
-    SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
-    source_index_lookup_terms,
-};
-pub use structural_index_search::{
-    TursoStructuralIndexCandidateRequest, TursoStructuralIndexSearchHit,
-    collect_turso_structural_index_ranked_candidates,
-    collect_turso_structural_index_ranked_candidates_async,
-    collect_turso_structural_index_ranked_candidates_from_engine_async,
-    search_turso_structural_index_documents,
-};
-pub use syntax_query_replay::{
-    SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
-    render_semantic_tree_sitter_query_stdout,
-};
-pub use turso_overlay_search::{
-    TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
-    search_turso_overlay_documents, upsert_turso_overlay_search_document,
+pub use search_generation_segment::SearchGenerationSection;
+pub use search_generation_segment::SearchGenerationSectionKind;
+pub use search_generation_segment::SearchGenerationSectionRepresentation;
+pub use search_generation_segment::ValidatedSearchGenerationSegment;
+pub use search_generation_segment::encode_search_generation_segment;
+pub use search_language_files::LanguageFileSpec;
+pub use search_language_files::language_file_spec;
+pub use search_language_files::language_neutral_search_file_spec;
+pub use sorted_record_table::ValidatedSortedRecordTable;
+pub use sorted_record_table::encode_sorted_record_table;
+pub use source_index_rank::SourceIndexRankCandidate;
+pub use source_index_rank::rank_source_index_candidates;
+pub use source_index_rank::reorder_source_index_candidates;
+pub use source_index_rank::source_index_lookup_terms;
+pub use syntax_query_replay::SyntaxQueryReplayCapture;
+pub use syntax_query_replay::SyntaxQueryRowsReplay;
+pub use syntax_query_replay::render_semantic_tree_sitter_query_rows_stdout;
+pub use syntax_query_replay::render_semantic_tree_sitter_query_stdout;
+pub use workspace_playbook_plan::NormalizedWorkspaceSearchPlaybookRequest;
+pub use workspace_playbook_plan::WorkspaceSearchPlanBinding;
+pub use workspace_playbook_plan::WorkspaceSearchPlaybookPlan;
+pub use workspace_playbook_plan::WorkspaceSearchPlaybookRoute;
+pub use workspace_playbook_plan::WorkspaceSearchProducerAxis;
+pub use workspace_playbook_plan::WorkspaceSearchProgressivePlan;
+pub use workspace_playbook_plan::WorkspaceSearchProvider;
+pub use workspace_playbook_plan::build_workspace_search_playbook_plan;
+pub use workspace_playbook_result::{
+    WORKSPACE_SEARCH_PLAYBOOK_RESULT_SCHEMA_ID, WorkspaceSearchAxisKind,
+    WorkspaceSearchClauseReceipt, WorkspaceSearchGraphFanIn, WorkspaceSearchHitProjection,
+    WorkspaceSearchPlaybookEvidence, WorkspaceSearchPlaybookResult,
+    WorkspaceSearchPlaybookResultKind, WorkspaceSearchProgressiveExecutionWitness,
+    WorkspaceSearchSyntaxCandidate, build_workspace_search_playbook_result,
+    synthesize_workspace_search_playbook_result,
 };
 
 #[cfg(test)]
-#[path = "../tests/unit/document_auto_lexical_overlay_scenario.rs"]
-mod document_auto_lexical_overlay_scenario_tests;
+#[path = "../tests/unit/dynamic_overlay_index.rs"]
+mod dynamic_overlay_index_tests;
 #[cfg(test)]
 #[path = "../tests/unit/dynamic_search_candidates.rs"]
 mod dynamic_search_candidates_tests;
@@ -271,64 +380,48 @@ mod graph_node_projection_tests;
 #[path = "../tests/unit/graph_owner_rank.rs"]
 mod graph_owner_rank_tests;
 #[cfg(test)]
-#[path = "../tests/unit/graph_query_owner_seed.rs"]
-mod graph_query_owner_seed_tests;
-#[cfg(test)]
-#[path = "../tests/unit/graph_seed_decision.rs"]
-mod graph_seed_decision_tests;
-#[cfg(test)]
 #[path = "../tests/unit/graph_topology_projection.rs"]
 mod graph_topology_projection_tests;
 #[cfg(test)]
-#[path = "../tests/unit/owner_items_source_index_trace.rs"]
-mod owner_items_source_index_trace_tests;
-#[cfg(test)]
-#[path = "../tests/unit/pipe_candidates.rs"]
-mod pipe_candidates_tests;
-#[cfg(test)]
-#[path = "../tests/unit/prompt_output_replay.rs"]
-mod prompt_output_replay_tests;
+#[path = "../tests/unit/merkle_search_generation.rs"]
+#[cfg(feature = "tantivy-accelerator")]
+mod merkle_search_generation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_candidate_annotations.rs"]
 mod provider_candidate_annotations_tests;
 #[cfg(test)]
-#[path = "../tests/unit/query_packet_replay.rs"]
-mod query_packet_replay_tests;
-#[cfg(test)]
-#[path = "../tests/unit/query_wrapper_candidates.rs"]
-mod query_wrapper_candidates_tests;
-#[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;
-pub mod search_command_preflight;
 #[cfg(test)]
 #[path = "../tests/unit/search_language_files.rs"]
 mod search_language_files_tests;
 #[cfg(test)]
-#[path = "../tests/unit/search_lexical_replay.rs"]
-mod search_lexical_replay_tests;
-#[cfg(test)]
 #[path = "../tests/unit/search_package_scenarios.rs"]
 mod search_package_scenarios_tests;
-#[cfg(test)]
-#[path = "../tests/unit/search_packet_replay.rs"]
-mod search_packet_replay_tests;
-#[cfg(test)]
-#[path = "../tests/unit/search_pipe_evidence.rs"]
-mod search_pipe_evidence_tests;
-#[cfg(test)]
-#[path = "../tests/unit/search_pipe_quality.rs"]
-mod search_pipe_quality_tests;
-#[cfg(test)]
-#[path = "../tests/unit/search_pipe_query_pack.rs"]
-mod search_pipe_query_pack_tests;
-pub mod search_planner;
-#[cfg(test)]
-#[path = "../tests/unit/search_query_budget.rs"]
-mod search_query_budget_tests;
 #[cfg(test)]
 #[path = "../tests/unit/source_index_rank.rs"]
 mod source_index_rank_tests;
 #[cfg(test)]
-#[path = "../tests/unit/syntax_query_replay.rs"]
-mod syntax_query_replay_tests;
+#[path = "../tests/unit/source_snapshot_fixture.rs"]
+mod source_snapshot_fixture;
+
+#[cfg(test)]
+extern crate self as agent_semantic_search;
+
+pub mod load_once_generation;
+pub use load_once_generation::LoadOnceGenerationV1;
+pub mod active_exact_selector_fixture;
+pub mod exact_selector_fixture_memory;
+pub use exact_selector_fixture_memory::ExactSelectorFixtureArtifactV1;
+pub use exact_selector_fixture_memory::ExactSelectorFixtureBackendV1;
+pub use exact_selector_fixture_memory::ExactSelectorFixtureFileBackendV1;
+pub use exact_selector_fixture_memory::ExactSelectorFixtureProjectionV1;
+pub use exact_selector_fixture_memory::ExactSelectorFixtureResidentV1;
+pub use exact_selector_fixture_memory::exact_selector_fixture_lookup_v1;
+pub use exact_selector_fixture_memory::exact_selector_fixture_projection_range_v1;
+pub use exact_selector_fixture_memory::exact_selector_fixture_projection_v1;
+pub mod exact_selector_fixture_publication;
+pub use exact_selector_fixture_publication::EXACT_SELECTOR_FIXTURE_ARTIFACT_KIND;
+pub use exact_selector_fixture_publication::ExactSelectorFixturePublicationReceiptV1;
+pub use exact_selector_fixture_publication::build_exact_selector_fixture_from_projection_records_v1;
+pub use exact_selector_fixture_publication::publish_exact_selector_fixture_v1;

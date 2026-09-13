@@ -1,0 +1,298 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Runtime Server owner receipt, owned by client-db lifecycle composition.
+use serde::{Deserialize, Serialize};
+
+pub const RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-owner-spawn.v1";
+pub const RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION: &str = "1";
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerSpawnReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub process_id: u32,
+    pub nonce: String,
+    pub state_home: String,
+    pub publication_nonce: String,
+    pub launcher_artifact_path: String,
+    pub launcher_artifact_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub spawn_argv: Vec<String>,
+    pub previous_serving_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    #[serde(default)]
+    pub previous_owner_epoch: Option<u64>,
+}
+
+/// The original stable-v1 observation shape. It is intentionally decoded only
+/// far enough to distinguish a well-formed legacy observation from corrupted
+/// state. It never becomes current launcher authority.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyRuntimeServerSpawnReceiptV1 {
+    schema_id: String,
+    schema_version: String,
+    process_id: u32,
+    nonce: String,
+    state_home: String,
+    runtime_artifact_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyGenerationBoundSpawnObservation {
+    schema_id: String,
+    schema_version: String,
+    process_id: u32,
+    nonce: String,
+    state_home: String,
+    launcher_artifact_path: String,
+    #[serde(rename = "launcherArtifactDigest")]
+    _launcher_artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    spawn_argv: Vec<String>,
+    #[serde(rename = "previousServingDigest")]
+    _previous_serving_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    #[serde(default, rename = "previousOwnerEpoch")]
+    _previous_owner_epoch: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StaleRuntimeServerSpawnReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub reason_kind: String,
+}
+
+#[derive(Clone, Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "preserve the public V1 typed receipt shape"
+)]
+pub enum RuntimeServerSpawnReceiptRead {
+    Current(RuntimeServerSpawnReceipt),
+    Stale(StaleRuntimeServerSpawnReceipt),
+}
+
+pub fn decode_runtime_server_spawn_receipt(
+    bytes: &[u8],
+) -> Result<RuntimeServerSpawnReceiptRead, String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        owner_spawn_decode_error("runtime-server-owner-spawn-malformed", error.to_string())
+    })?;
+    let object = value.as_object().ok_or_else(|| {
+        owner_spawn_decode_error(
+            "runtime-server-owner-spawn-malformed",
+            "owner-spawn receipt must be a JSON object",
+        )
+    })?;
+    let schema_id = object
+        .get("schemaId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            owner_spawn_decode_error(
+                "runtime-server-owner-spawn-malformed",
+                "owner-spawn receipt requires schemaId",
+            )
+        })?;
+    let schema_version = object
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            owner_spawn_decode_error(
+                "runtime-server-owner-spawn-malformed",
+                "owner-spawn receipt requires schemaVersion",
+            )
+        })?;
+    if schema_id != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID
+        || schema_version != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION
+    {
+        return Err(owner_spawn_decode_error(
+            "runtime-server-owner-spawn-unknown-schema",
+            format!("unsupported owner-spawn schema {schema_id}@{schema_version}"),
+        ));
+    }
+
+    const LAUNCHER_AUTHORITY_FIELDS: [&str; 5] = [
+        "publicationNonce",
+        "launcherArtifactPath",
+        "launcherArtifactDigest",
+        "spawnArgv",
+        "previousServingDigest",
+    ];
+    let present = LAUNCHER_AUTHORITY_FIELDS
+        .iter()
+        .filter(|field| object.contains_key(**field))
+        .count();
+    if present == 0 {
+        let legacy: LegacyRuntimeServerSpawnReceiptV1 = serde_json::from_value(value.clone())
+            .map_err(|error| {
+                owner_spawn_decode_error(
+                    "runtime-server-owner-spawn-malformed-legacy-v1",
+                    error.to_string(),
+                )
+            })?;
+        if legacy.schema_id != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID
+            || legacy.schema_version != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION
+            || legacy.process_id == 0
+            || legacy.nonce.is_empty()
+            || !std::path::Path::new(&legacy.state_home).is_absolute()
+            || !std::path::Path::new(&legacy.runtime_artifact_path).is_absolute()
+        {
+            return Err(owner_spawn_decode_error(
+                "runtime-server-owner-spawn-invalid-legacy-v1",
+                "legacy v1 owner-spawn observation is incomplete or non-canonical",
+            ));
+        }
+        return Ok(RuntimeServerSpawnReceiptRead::Stale(
+            StaleRuntimeServerSpawnReceipt {
+                schema_id: schema_id.to_owned(),
+                schema_version: schema_version.to_owned(),
+                reason_kind: "runtime-server-owner-spawn-launcher-authority-stale".to_owned(),
+            },
+        ));
+    }
+    if present != LAUNCHER_AUTHORITY_FIELDS.len() {
+        const LEGACY_GENERATION_BOUND_KEYS: [&str; 11] = [
+            "activationGeneration",
+            "launcherArtifactDigest",
+            "launcherArtifactPath",
+            "nonce",
+            "previousOwnerEpoch",
+            "previousServingDigest",
+            "processId",
+            "schemaId",
+            "schemaVersion",
+            "spawnArgv",
+            "stateHome",
+        ];
+        let observed = object
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = LEGACY_GENERATION_BOUND_KEYS
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        if observed == expected {
+            let mut discarded = value.clone();
+            discarded
+                .as_object_mut()
+                .expect("validated owner-spawn object")
+                .remove("activationGeneration");
+            let legacy: LegacyGenerationBoundSpawnObservation = serde_json::from_value(discarded)
+                .map_err(|error| {
+                owner_spawn_decode_error(
+                    "runtime-server-owner-spawn-malformed-generation-bound-observation",
+                    error.to_string(),
+                )
+            })?;
+            if legacy.schema_id != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID
+                || legacy.schema_version != RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION
+                || legacy.process_id == 0
+                || legacy.nonce.is_empty()
+                || !std::path::Path::new(&legacy.state_home).is_absolute()
+                || !std::path::Path::new(&legacy.launcher_artifact_path).is_absolute()
+                || legacy.spawn_argv.is_empty()
+            {
+                return Err(owner_spawn_decode_error(
+                    "runtime-server-owner-spawn-invalid-generation-bound-observation",
+                    "generation-bound owner-spawn observation is incomplete or non-canonical",
+                ));
+            }
+            return Ok(RuntimeServerSpawnReceiptRead::Stale(
+                StaleRuntimeServerSpawnReceipt {
+                    schema_id: schema_id.to_owned(),
+                    schema_version: schema_version.to_owned(),
+                    reason_kind: "runtime-server-owner-spawn-activation-generation-discarded"
+                        .to_owned(),
+                },
+            ));
+        }
+        return Err(owner_spawn_decode_error(
+            "runtime-server-owner-spawn-partial-launcher-authority",
+            "owner-spawn receipt has a partial launcher authority",
+        ));
+    }
+
+    let receipt: RuntimeServerSpawnReceipt = serde_json::from_value(value).map_err(|error| {
+        owner_spawn_decode_error("runtime-server-owner-spawn-malformed", error.to_string())
+    })?;
+    if receipt.publication_nonce.is_empty() {
+        return Err(owner_spawn_decode_error(
+            "runtime-server-owner-spawn-invalid-launcher-authority",
+            "publicationNonce must be non-empty",
+        ));
+    }
+    if !std::path::Path::new(&receipt.launcher_artifact_path).is_absolute()
+        || receipt.spawn_argv.is_empty()
+    {
+        return Err(owner_spawn_decode_error(
+            "runtime-server-owner-spawn-invalid-launcher-authority",
+            "launcherArtifactPath must be absolute and spawnArgv must be non-empty",
+        ));
+    }
+    Ok(RuntimeServerSpawnReceiptRead::Current(receipt))
+}
+
+fn owner_spawn_decode_error(reason_kind: &str, message: impl Into<String>) -> String {
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-server-owner-spawn-read-receipt",
+        "schemaVersion": "1",
+        "state": "failed",
+        "reasonKind": reason_kind,
+        "message": message.into(),
+    })
+    .to_string()
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerExitReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub owner_epoch: u64,
+    pub clean_drain: bool,
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerDrainReceipt {
+    pub owner_epoch: u64,
+    pub services: serde_json::Value,
+    pub remaining_task_count: usize,
+    pub remaining_child_count: usize,
+    pub clean_drain: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(serde::Deserialize)]
+pub struct RuntimeServerResidentTransactionReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub state: String,
+    pub publication_nonce: String,
+    pub launcher_artifact_path: String,
+    pub launcher_artifact_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub spawn_argv: Vec<String>,
+    pub applied_artifact_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub applied_publication_nonce: String,
+    pub endpoint_owner_epoch: u64,
+    pub endpoint_binary_content_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub endpoint_runtime_generation_digest: String,
+    pub control_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
+    pub data_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
+    pub provider_endpoint: crate::runtime_server_control::RuntimeServerLoopbackEndpoint,
+    pub previous_serving_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    pub previous_owner_epoch: Option<u64>,
+    pub previous_drain_state: String,
+}

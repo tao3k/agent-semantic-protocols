@@ -1,10 +1,15 @@
-use std::{
-    cmp::Reverse,
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use crate::{GraphProjectionCandidate, graph_path_is_under, graph_project_submodule_paths};
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+
+use crate::GraphProjectionCandidate;
+use crate::graph_path_is_under;
+use crate::graph_project_submodule_paths;
 
 /// Request for the Rust graph-owner ranking engine.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,6 +20,27 @@ pub struct GraphOwnerRankRequest {
     pub query_terms: Vec<String>,
     /// Workspace submodule or package-root paths used as topology evidence.
     pub submodule_paths: Vec<String>,
+    /// Merkle source authority from which graph candidates were derived.
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+}
+
+impl GraphOwnerRankRequest {
+    /// Build a rank request only from a previously admitted graph generation.
+    pub fn from_admitted_generation(
+        candidates: Vec<GraphOwnerRankCandidate>,
+        query_terms: Vec<String>,
+        submodule_paths: Vec<String>,
+        generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
+    ) -> Self {
+        Self {
+            candidates,
+            query_terms,
+            submodule_paths,
+            source_snapshot: generation.source_snapshot().clone(),
+            workspace_generation: generation.generation().clone(),
+        }
+    }
 }
 
 /// Public candidate shape for graph-owner ranking reports.
@@ -71,6 +97,13 @@ pub struct GraphOwnerRankReport {
     pub query_axes: Vec<String>,
     /// Owners with computed scores in final order.
     pub ranked_owners: Vec<GraphOwnerRankedOwner>,
+    /// Merkle source authority used for this graph projection.
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// Complete active generation admitted before graph ranking.
+    pub workspace_generation:
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+    /// Content address for this disposable graph/rank artifact.
+    pub graph_artifact_digest: String,
 }
 
 /// Ranked owner path with graph-owner score evidence attached.
@@ -125,16 +158,17 @@ struct OwnerRank {
     local_hits: usize,
     parser_finder_local_hits: usize,
     path_hits: usize,
-    query_axis_terms: HashSet<String>,
-    path_query_axis_terms: HashSet<String>,
-    symbols: HashSet<String>,
+    path_is_test: bool,
+    query_axis_terms: Vec<String>,
+    path_query_axis_count: usize,
+    symbols: Vec<String>,
 }
 
 struct PreparedGraphOwnerRankCandidate<'a> {
     candidate: &'a GraphOwnerRankCandidate,
     package_root: String,
     matched_query_axes: Vec<String>,
-    matched_path_query_axes: Vec<String>,
+    matched_path_query_axis_count: usize,
     matching_submodule_path: Option<&'a str>,
 }
 
@@ -142,11 +176,17 @@ pub fn ranked_graph_owner_paths_with_topology(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
+    generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
 ) -> Vec<String> {
     let submodule_paths = workspace_root
         .map(graph_project_submodule_paths)
         .unwrap_or_default();
-    ranked_graph_owner_paths_for_submodule_paths(candidates, query_terms, &submodule_paths)
+    ranked_graph_owner_paths_for_submodule_paths(
+        candidates,
+        query_terms,
+        &submodule_paths,
+        generation,
+    )
 }
 
 /// Rank graph-owner candidates and return a complete Rust score report.
@@ -157,13 +197,38 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
         &request.candidates,
         query_axes.as_slice(),
         &request.submodule_paths,
+    );
+    ranks.sort_unstable_by(owner_rank_compare);
+    // Candidate rows are admitted from this immutable generation. Re-hashing
+    // and sorting their full text on every query duplicated publication work
+    // and made the warm rank path scale with source payload size.
+    let candidates_digest = request.workspace_generation.root_digest.as_str();
+    let query_digest =
+        agent_semantic_content_identity::hash_blob(query_axes.join("\0").as_bytes()).value;
+    let mut submodule_paths = request.submodule_paths.clone();
+    submodule_paths.sort_unstable();
+    let submodule_digest =
+        agent_semantic_content_identity::hash_blob(submodule_paths.join("\0").as_bytes()).value;
+    let graph_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
+        agent_semantic_content_identity::DerivedArtifactKeyInput {
+            artifact_kind: "graph-owner-rank",
+            schema_id: "asp.graph-owner-rank.v1",
+            snapshot_root: &request.source_snapshot.root_digest,
+            provider_digest: &request.source_snapshot.provider_digest,
+            parameters: &[
+                ("candidatesDigest", candidates_digest),
+                ("queryAxesDigest", query_digest.as_str()),
+                ("submodulePathsDigest", submodule_digest.as_str()),
+            ],
+        },
     )
-    .into_values()
-    .collect::<Vec<_>>();
-    ranks.sort_by(owner_rank_compare);
+    .value;
     GraphOwnerRankReport {
         query_axes,
         ranked_owners: ranks.into_iter().map(graph_owner_ranked_owner).collect(),
+        source_snapshot: request.source_snapshot,
+        workspace_generation: request.workspace_generation,
+        graph_artifact_digest,
     }
 }
 
@@ -171,15 +236,17 @@ pub fn ranked_graph_owner_paths_for_submodule_paths(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
     submodule_paths: &[String],
+    generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
 ) -> Vec<String> {
-    rank_graph_owner_report(GraphOwnerRankRequest {
-        candidates: candidates
+    rank_graph_owner_report(GraphOwnerRankRequest::from_admitted_generation(
+        candidates
             .iter()
             .map(GraphOwnerRankCandidate::from)
             .collect(),
-        query_terms: query_terms.to_vec(),
-        submodule_paths: submodule_paths.to_vec(),
-    })
+        query_terms.to_vec(),
+        submodule_paths.to_vec(),
+        generation,
+    ))
     .ranked_owners
     .into_iter()
     .map(|owner| owner.path)
@@ -190,58 +257,69 @@ fn owner_rank_entries(
     candidates: &[GraphOwnerRankCandidate],
     query_axes: &[String],
     submodule_paths: &[String],
-) -> HashMap<String, OwnerRank> {
-    let mut owner_ranks: HashMap<String, OwnerRank> = HashMap::new();
+) -> Vec<OwnerRank> {
+    let mut owner_ranks: HashMap<&str, OwnerRank> = HashMap::with_capacity(candidates.len());
     let prepared_candidates = candidates
         .iter()
         .map(|candidate| prepare_owner_rank_candidate(candidate, query_axes, submodule_paths))
         .collect::<Vec<_>>();
-    let package_axes = package_query_axes(&prepared_candidates);
-    let topology_axes = topology_query_axes(&prepared_candidates);
+    let package_axis_counts = package_query_axis_counts(&prepared_candidates);
+    let topology_axis_counts = topology_query_axis_counts(&prepared_candidates);
     prepared_candidates
-        .iter()
+        .into_iter()
         .enumerate()
         .for_each(|(index, prepared_candidate)| {
-            let rank = owner_ranks
-                .entry(prepared_candidate.candidate.path.clone())
-                .or_insert_with(|| new_owner_rank(prepared_candidate, index));
-            update_owner_rank(rank, prepared_candidate);
+            match owner_ranks.entry(prepared_candidate.candidate.path.as_str()) {
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(new_owner_rank(prepared_candidate, index));
+                }
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    update_owner_rank(entry.get_mut(), &prepared_candidate);
+                }
+            }
         });
     owner_ranks.values_mut().for_each(|rank| {
-        rank.package_query_axis_count = package_axes
+        rank.package_query_axis_count = package_axis_counts
             .get(&rank.package_root)
-            .map(HashSet::len)
+            .copied()
             .unwrap_or_default();
         rank.topology_query_axis_count = rank
             .topology_submodule_path
             .as_deref()
-            .and_then(|submodule_path| topology_axes.get(submodule_path))
-            .map(HashSet::len)
+            .and_then(|submodule_path| topology_axis_counts.get(submodule_path))
+            .copied()
             .unwrap_or_default();
     });
-    owner_ranks
+    owner_ranks.into_values().collect()
 }
 
 fn new_owner_rank(
-    prepared_candidate: &PreparedGraphOwnerRankCandidate<'_>,
+    prepared_candidate: PreparedGraphOwnerRankCandidate<'_>,
     first_index: usize,
 ) -> OwnerRank {
+    let candidate = prepared_candidate.candidate;
+    let symbols = if candidate.symbol.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![candidate.symbol.clone()]
+    };
     OwnerRank {
-        path: prepared_candidate.candidate.path.clone(),
-        package_root: prepared_candidate.package_root.clone(),
+        path: candidate.path.clone(),
+        package_root: prepared_candidate.package_root,
         topology_submodule_path: prepared_candidate
             .matching_submodule_path
             .map(str::to_owned),
         package_query_axis_count: 0,
         topology_query_axis_count: 0,
-        topology_local_hits: 0,
+        topology_local_hits: usize::from(prepared_candidate.matching_submodule_path.is_some()),
         first_index,
-        local_hits: 0,
-        parser_finder_local_hits: 0,
-        path_hits: 0,
-        query_axis_terms: HashSet::new(),
-        path_query_axis_terms: HashSet::new(),
-        symbols: HashSet::new(),
+        local_hits: 1,
+        parser_finder_local_hits: usize::from(is_parser_finder_local_candidate(candidate)),
+        path_hits: usize::from(is_path_evidence_candidate(candidate)),
+        path_is_test: owner_path_is_test(&candidate.path),
+        query_axis_terms: prepared_candidate.matched_query_axes,
+        path_query_axis_count: prepared_candidate.matched_path_query_axis_count,
+        symbols,
     }
 }
 
@@ -255,7 +333,7 @@ fn update_owner_rank(
         rank.topology_local_hits += 1;
     }
     if !candidate.symbol.trim().is_empty() {
-        rank.symbols.insert(candidate.symbol.clone());
+        push_unique(&mut rank.symbols, &candidate.symbol);
     }
     if is_parser_finder_local_candidate(candidate) {
         rank.parser_finder_local_hits += 1;
@@ -266,27 +344,35 @@ fn update_owner_rank(
     prepared_candidate
         .matched_query_axes
         .iter()
-        .cloned()
-        .for_each(|axis| {
-            rank.query_axis_terms.insert(axis);
-        });
-    prepared_candidate
-        .matched_path_query_axes
-        .iter()
-        .cloned()
-        .for_each(|axis| {
-            rank.path_query_axis_terms.insert(axis);
-        });
+        .for_each(|axis| push_unique(&mut rank.query_axis_terms, axis));
+    rank.path_query_axis_count = rank
+        .path_query_axis_count
+        .max(prepared_candidate.matched_path_query_axis_count);
 }
 
-fn matched_query_axes(candidate: &GraphOwnerRankCandidate, query_axes: &[String]) -> Vec<String> {
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|existing| existing == value) {
+        values.push(value.to_string());
+    }
+}
+
+fn matched_query_axes(
+    candidate: &GraphOwnerRankCandidate,
+    normalized_path: &str,
+    query_axes: &[String],
+) -> Vec<String> {
     if query_axes.is_empty() {
         return Vec::new();
     }
-    let evidence = owner_rank_evidence(candidate);
+    let normalized_symbol = candidate.symbol.to_ascii_lowercase();
+    let normalized_text = candidate.text.to_ascii_lowercase();
     query_axes
         .iter()
-        .filter(|axis| evidence.contains(axis.as_str()))
+        .filter(|axis| {
+            normalized_path.contains(axis.as_str())
+                || normalized_symbol.contains(axis.as_str())
+                || normalized_text.contains(axis.as_str())
+        })
         .cloned()
         .collect()
 }
@@ -306,19 +392,17 @@ type OwnerRankSortKey<'a> = (
     &'a str,
 );
 
-fn graph_owner_ranked_owner(rank: OwnerRank) -> GraphOwnerRankedOwner {
+fn graph_owner_ranked_owner(mut rank: OwnerRank) -> GraphOwnerRankedOwner {
     let score = graph_owner_rank_score(&rank);
-    let mut matched_query_axes = rank.query_axis_terms.iter().cloned().collect::<Vec<_>>();
-    matched_query_axes.sort();
-    let mut symbols = rank.symbols.iter().cloned().collect::<Vec<_>>();
-    symbols.sort();
+    rank.query_axis_terms.sort();
+    rank.symbols.sort();
     GraphOwnerRankedOwner {
         path: rank.path,
         package_root: rank.package_root,
         topology_submodule_path: rank.topology_submodule_path,
         score,
-        matched_query_axes,
-        symbols,
+        matched_query_axes: rank.query_axis_terms,
+        symbols: rank.symbols,
     }
 }
 
@@ -360,8 +444,8 @@ fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey<'_> {
         Reverse(rank.package_query_axis_count.min(16)),
         Reverse(rank.topology_query_axis_count.min(16)),
         Reverse(rank.query_axis_terms.len()),
-        owner_path_is_test(&rank.path),
-        Reverse(rank.path_query_axis_terms.len()),
+        rank.path_is_test,
+        Reverse(rank.path_query_axis_count),
         Reverse(rank.topology_local_hits.min(12)),
         Reverse(rank.parser_finder_local_hits.min(12)),
         Reverse(rank.path_hits.min(8)),
@@ -377,11 +461,12 @@ fn prepare_owner_rank_candidate<'a>(
     query_axes: &[String],
     submodule_paths: &'a [String],
 ) -> PreparedGraphOwnerRankCandidate<'a> {
+    let normalized_path = candidate.path.to_ascii_lowercase();
     PreparedGraphOwnerRankCandidate {
         candidate,
         package_root: owner_rank_package_root(&candidate.path),
-        matched_query_axes: matched_query_axes(candidate, query_axes),
-        matched_path_query_axes: matched_path_query_axes(&candidate.path, query_axes),
+        matched_query_axes: matched_query_axes(candidate, &normalized_path, query_axes),
+        matched_path_query_axis_count: matched_path_query_axis_count(&normalized_path, query_axes),
         matching_submodule_path: submodule_paths
             .iter()
             .find(|submodule_path| graph_path_is_under(&candidate.path, submodule_path))
@@ -389,13 +474,11 @@ fn prepare_owner_rank_candidate<'a>(
     }
 }
 
-fn matched_path_query_axes(path: &str, query_axes: &[String]) -> Vec<String> {
-    let evidence = path.to_ascii_lowercase();
+fn matched_path_query_axis_count(normalized_path: &str, query_axes: &[String]) -> usize {
     query_axes
         .iter()
-        .filter(|axis| evidence.contains(axis.as_str()))
-        .cloned()
-        .collect()
+        .filter(|axis| normalized_path.contains(axis.as_str()))
+        .count()
 }
 
 fn owner_path_is_test(path: &str) -> bool {
@@ -405,57 +488,59 @@ fn owner_path_is_test(path: &str) -> bool {
         || path.ends_with("_tests.rs")
 }
 
-fn package_query_axes(
+fn package_query_axis_counts(
     candidates: &[PreparedGraphOwnerRankCandidate<'_>],
-) -> HashMap<String, HashSet<String>> {
-    let mut package_axes: HashMap<String, HashSet<String>> = HashMap::new();
+) -> HashMap<String, usize> {
+    let mut package_axes: HashMap<&str, HashSet<&str>> = HashMap::new();
     candidates.iter().for_each(|candidate| {
-        candidate
-            .matched_query_axes
-            .iter()
-            .cloned()
-            .for_each(|axis| {
-                package_axes
-                    .entry(candidate.package_root.clone())
-                    .or_default()
-                    .insert(axis);
-            });
+        candidate.matched_query_axes.iter().for_each(|axis| {
+            package_axes
+                .entry(candidate.package_root.as_str())
+                .or_default()
+                .insert(axis.as_str());
+        });
     });
     package_axes
+        .into_iter()
+        .map(|(package_root, axes)| (package_root.to_owned(), axes.len()))
+        .collect()
 }
 
-fn topology_query_axes(
+fn topology_query_axis_counts(
     candidates: &[PreparedGraphOwnerRankCandidate<'_>],
-) -> HashMap<String, HashSet<String>> {
-    let mut topology_axes: HashMap<String, HashSet<String>> = HashMap::new();
+) -> HashMap<String, usize> {
+    let mut topology_axes: HashMap<&str, HashSet<&str>> = HashMap::new();
     candidates.iter().for_each(|candidate| {
         let Some(submodule_path) = candidate.matching_submodule_path else {
             return;
         };
-        candidate
-            .matched_query_axes
-            .iter()
-            .cloned()
-            .for_each(|axis| {
-                topology_axes
-                    .entry(submodule_path.to_owned())
-                    .or_default()
-                    .insert(axis);
-            });
+        candidate.matched_query_axes.iter().for_each(|axis| {
+            topology_axes
+                .entry(submodule_path)
+                .or_default()
+                .insert(axis.as_str());
+        });
     });
     topology_axes
+        .into_iter()
+        .map(|(submodule_path, axes)| (submodule_path.to_owned(), axes.len()))
+        .collect()
 }
 
 fn owner_rank_package_root(path: &str) -> String {
-    let segments = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    match segments.as_slice() {
-        ["packages", ecosystem, package, ..] => format!("packages/{ecosystem}/{package}"),
-        [root, package, ..] if !is_single_root_owner_segment(root) => format!("{root}/{package}"),
-        [root, ..] => (*root).to_string(),
-        [] => ".".to_string(),
+    let mut segments = path.split('/').filter(|segment| !segment.is_empty());
+    let Some(root) = segments.next() else {
+        return ".".to_owned();
+    };
+    let second = segments.next();
+    if root == "packages"
+        && let (Some(ecosystem), Some(package)) = (second, segments.next())
+    {
+        return format!("packages/{ecosystem}/{package}");
+    }
+    match second {
+        Some(package) if !is_single_root_owner_segment(root) => format!("{root}/{package}"),
+        _ => root.to_owned(),
     }
 }
 
@@ -464,10 +549,6 @@ fn is_single_root_owner_segment(segment: &str) -> bool {
         segment,
         "." | "src" | "tests" | "test" | "docs" | "schemas" | "fixtures"
     )
-}
-
-fn owner_rank_evidence(candidate: &GraphOwnerRankCandidate) -> String {
-    format!("{} {} {}", candidate.path, candidate.symbol, candidate.text).to_ascii_lowercase()
 }
 
 fn owner_rank_query_axes(query_terms: &[String]) -> Vec<String> {

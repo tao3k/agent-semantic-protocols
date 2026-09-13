@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/resident-query-performance-receipt.v1.schema.json",
+  "title": "Resident query performance receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspace",
+    "generationRoot",
+    "rootDepth",
+    "phase",
+    "elapsedMicros",
+    "budgetMicros",
+    "concurrency",
+    "io"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.resident-query-performance-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspace": {
+      "$ref": "https://agent-semantic-protocols.local/schemas/workspace-reference.v1.schema.json"
+    },
+    "generationRoot": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rootDepth": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": 1
+        },
+        {
+          "const": 0
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "phase": {
+      "enum": [
+        "cold-selector-cache-miss",
+        "warm-exact-query"
+      ]
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "budgetMicros": {
+      "const": 1000
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceCount",
+        "sessionCount",
+        "requestCount"
+      ],
+      "properties": {
+        "workspaceCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sessionCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requestCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fsReads",
+        "dbOpens",
+        "manifestReads",
+        "processSpawns",
+        "lockProbes",
+        "schemaBootstraps",
+        "workspaceCanonicalizations"
+      ],
+      "properties": {
+        "fsReads": {
+          "const": 0
+        },
+        "dbOpens": {
+          "const": 0
+        },
+        "manifestReads": {
+          "const": 0
+        },
+        "processSpawns": {
+          "const": 0
+        },
+        "lockProbes": {
+          "const": 0
+        },
+        "schemaBootstraps": {
+          "const": 0
+        },
+        "workspaceCanonicalizations": {
+          "const": 0
+        }
+      }
+    }
+  }
+}

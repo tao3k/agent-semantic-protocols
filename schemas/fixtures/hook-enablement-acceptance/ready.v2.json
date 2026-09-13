@@ -1,0 +1,31 @@
+{
+  "schemaId": "agent.semantic-protocols.hook-enablement-acceptance",
+  "schemaVersion": "2",
+  "status": "ready",
+  "reasonKind": "none",
+  "projectRoot": "/workspace",
+  "pluginLauncher": "/workspace/asp-codex-plugin/bin/asp-hook-exec",
+  "activeDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "healthyDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "retentionProtectedDigests": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "policyDecisionSamples": 16,
+  "policyDecisionMaxCpuMicros": 500,
+  "policyDecisionBudgetMicros": 1000,
+  "launcherSamples": 16,
+  "launcherP99Micros": 20000,
+  "launcherMaxMicros": 25000,
+  "hostAcceptance": {
+    "schemaId": "agent.semantic-protocols.hook-host-acceptance",
+    "schemaVersion": "1",
+    "state": "accepted",
+    "reasonKind": "normal-task-hook-policy-bundle-bound-deny-observed",
+    "pluginLoaded": true,
+    "probeCallObserved": true,
+    "hookEventObserved": true,
+    "generationBoundDenyObserved": true,
+    "sourceBytesReturned": false
+  }
+}

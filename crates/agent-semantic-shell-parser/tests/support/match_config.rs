@@ -1,0 +1,228 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use agent_semantic_shell_parser::BashCommandMatch;
+use agent_semantic_shell_parser::match_bash_command_prefix;
+use agent_semantic_shell_parser::match_bash_wrapped_command_prefix;
+
+const HOOK_CONFIG_TEMPLATE: &str =
+    include_str!("../../../agent-semantic-config/templates/hooks/config.toml");
+
+#[derive(Debug)]
+pub struct RulePrefix {
+    pub rule_id: String,
+    pub argv_prefix: Vec<String>,
+    pub wrapped_command: bool,
+}
+
+fn document() -> toml::Value {
+    let rendered = HOOK_CONFIG_TEMPLATE
+        .replace("@ARGV_SOURCE_GLOBS@", "\"**/*.rs\"")
+        .replace("@REGISTERED_PROVIDER_ROUTES@", "");
+    toml::from_str::<toml::Value>(&rendered).expect("renderable hooks/config.toml template")
+}
+
+pub fn rule_prefixes() -> Vec<RulePrefix> {
+    let document = document();
+    let mut prefixes = document["rules"]
+        .as_array()
+        .expect("rules array")
+        .iter()
+        .flat_map(|rule| {
+            let rule_id = rule["id"].as_str().expect("rule id").to_string();
+            let wrapped_command = rule
+                .get("matcherPolicies")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|policies| {
+                    policies
+                        .iter()
+                        .any(|policy| policy.as_str() == Some("wrapped_command"))
+                });
+            ["argvPrefixAny", "argvPatternAny"]
+                .into_iter()
+                .flat_map(move |key| {
+                    let rule_id = rule_id.clone();
+                    rule.get("match")
+                        .and_then(|matcher| matcher.get(key))
+                        .and_then(toml::Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .map(move |prefix| RulePrefix {
+                            rule_id: rule_id.clone(),
+                            wrapped_command,
+                            argv_prefix: prefix
+                                .as_array()
+                                .expect("argv match pattern")
+                                .iter()
+                                .map(|token| {
+                                    let token = token.as_str().expect("argv token");
+                                    if token == "<registered-language>" {
+                                        "rust".to_string()
+                                    } else {
+                                        token.to_string()
+                                    }
+                                })
+                                .collect(),
+                        })
+                })
+        })
+        .collect::<Vec<_>>();
+
+    let profiles = document["commandProfiles"]
+        .as_array()
+        .expect("command profiles array");
+    for rule in document["rules"].as_array().expect("rules array") {
+        let rule_id = rule["id"].as_str().expect("rule id");
+        let wrapped_command = rule
+            .get("matcherPolicies")
+            .and_then(toml::Value::as_array)
+            .is_some_and(|policies| {
+                policies
+                    .iter()
+                    .any(|policy| policy.as_str() == Some("wrapped_command"))
+            });
+        let Some(references) = rule
+            .get("match")
+            .and_then(|matcher| matcher.get("commandProfileAny"))
+            .and_then(toml::Value::as_array)
+        else {
+            continue;
+        };
+        for reference in references {
+            let profile_id = reference["profile"].as_str().expect("profile id");
+            let category = reference["category"].as_str().expect("profile category");
+            let profile = profiles
+                .iter()
+                .find(|profile| profile["id"].as_str() == Some(profile_id))
+                .expect("referenced command profile");
+            for prefix in profile["categories"][category]
+                .as_array()
+                .expect("command profile category")
+            {
+                prefixes.push(RulePrefix {
+                    rule_id: rule_id.to_string(),
+                    wrapped_command,
+                    argv_prefix: prefix
+                        .as_array()
+                        .expect("command profile prefix")
+                        .iter()
+                        .map(|token| token.as_str().expect("command profile token").to_string())
+                        .collect(),
+                });
+            }
+        }
+    }
+    prefixes
+}
+
+pub fn positive_commands(case: &RulePrefix) -> Vec<String> {
+    if case.argv_prefix.len() == 1
+        && matches!(
+            case.argv_prefix[0].as_str(),
+            "bash" | "dash" | "fish" | "sh" | "zsh"
+        )
+    {
+        return Vec::new();
+    }
+
+    let command = format!(
+        "{} --asp-match-probe crates/example/src/lib.rs",
+        case.argv_prefix.join(" ")
+    );
+    let mut commands = vec![
+        command.clone(),
+        format!(
+            "{} -p downstream-alpha -p downstream-beta",
+            case.argv_prefix.join(" ")
+        ),
+        format!("ASP_MATCH=1 {command}"),
+        format!("printf x | {command}"),
+        format!("true && {command}"),
+        format!("/opt/asp-toolchain/bin/{command}"),
+        format!("CARGO_TARGET_DIR=/tmp/asp-match /opt/asp-toolchain/bin/{command}"),
+    ];
+    if case.wrapped_command {
+        commands.extend([
+            format!("env ASP_MATCH=1 {command}"),
+            format!("direnv exec . {command}"),
+            format!("rtk {command}"),
+            format!("timeout 30s {command}"),
+            format!("timeout 30s direnv exec . {command}"),
+            format!("direnv exec . timeout 30s /opt/asp-toolchain/bin/{command}"),
+        ]);
+    }
+    if case.wrapped_command && case.argv_prefix[0] != "bash" {
+        commands.push(format!("bash -lc '{command}'"));
+    }
+    commands
+}
+
+pub fn invalid_commands(case: &RulePrefix) -> Vec<String> {
+    vec![format!("{} &&", case.argv_prefix.join(" "))]
+}
+
+pub fn negative_commands(case: &RulePrefix) -> Vec<String> {
+    let command = format!(
+        "{} --asp-match-probe crates/example/src/lib.rs",
+        case.argv_prefix.join(" ")
+    );
+    let mut similar = case.argv_prefix.clone();
+    similar[0] = format!("not-{}", similar[0]);
+    vec![
+        format!("echo '{command}'"),
+        format!("{} --asp-match-probe", similar.join(" ")),
+    ]
+}
+
+pub fn outcome(case: &RulePrefix, command: &str) -> BashCommandMatch {
+    let prefix = case
+        .argv_prefix
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if case.wrapped_command {
+        match_bash_wrapped_command_prefix(command, &prefix)
+    } else {
+        match_bash_command_prefix(command, &prefix)
+    }
+}
+
+pub fn assert_case(case: &RulePrefix) {
+    let bare = outcome(case, &case.argv_prefix.join(" "));
+    assert!(
+        !matches!(&bare, BashCommandMatch::InvalidSyntax { .. }),
+        "rule={} prefix={:?}",
+        case.rule_id,
+        case.argv_prefix
+    );
+    for command in positive_commands(case) {
+        assert_eq!(
+            outcome(case, &command),
+            bare,
+            "rule={} command={command}",
+            case.rule_id
+        );
+    }
+
+    for command in invalid_commands(case) {
+        assert!(
+            matches!(
+                outcome(case, &command),
+                BashCommandMatch::InvalidSyntax { .. }
+            ),
+            "rule={} command={command}",
+            case.rule_id
+        );
+    }
+
+    let negative = outcome(case, "asp-shell-parser-negative-control");
+    for command in negative_commands(case) {
+        assert_eq!(
+            outcome(case, &command),
+            negative,
+            "rule={} command={command}",
+            case.rule_id
+        );
+    }
+}

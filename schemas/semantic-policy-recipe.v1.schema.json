@@ -87,16 +87,10 @@
       }
     },
     "expectedFacts": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/factRef"
-      }
+      "$ref": "#/$defs/factRefList"
     },
     "expectedEvidence": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/evidenceExpectation"
-      }
+      "$ref": "#/$defs/evidenceList"
     },
     "failureModes": {
       "type": "array",
@@ -108,7 +102,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/agentUse"
+        "$ref": "semantic-policy-definitions.v1.schema.json#/$defs/agentUse"
       },
       "uniqueItems": true
     },
@@ -116,7 +110,7 @@
       "$ref": "#/$defs/stability"
     },
     "provenance": {
-      "$ref": "#/$defs/provenance"
+      "$ref": "semantic-policy-definitions.v1.schema.json#/$defs/provenance"
     },
     "fields": {
       "$ref": "#/$defs/fields"
@@ -152,53 +146,12 @@
         "$ref": "#/$defs/scalar"
       }
     },
-    "agentUse": {
-      "enum": [
-        "before-search",
-        "search-routing",
-        "before-write",
-        "during-write",
-        "edit-strategy",
-        "review",
-        "test-selection",
-        "repair",
-        "documentation",
-        "architecture-context",
-        "plan-selection",
-        "suppress-route"
-      ]
-    },
     "stability": {
       "enum": [
         "stable",
         "overlay",
         "session",
         "research"
-      ]
-    },
-    "factKind": {
-      "enum": [
-        "architecture-boundary",
-        "api-contract",
-        "code-quality",
-        "control-flow",
-        "cross-language-capability",
-        "dependency",
-        "documentation",
-        "edit-strategy",
-        "error-resource",
-        "macro-boundary",
-        "migration",
-        "native-idiom",
-        "performance",
-        "profile",
-        "runtime-boundary",
-        "schema-boundary",
-        "security",
-        "testing",
-        "topology-context",
-        "verification",
-        "custom"
       ]
     },
     "applicability": {
@@ -229,7 +182,7 @@
         "factKinds": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/factKind"
+            "$ref": "semantic-policy-definitions.v1.schema.json#/$defs/factKind"
           },
           "uniqueItems": true
         },
@@ -249,6 +202,18 @@
         "fields": {
           "$ref": "#/$defs/fields"
         }
+      }
+    },
+    "factRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factRef"
+      }
+    },
+    "evidenceList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceExpectation"
       }
     },
     "factRef": {
@@ -279,10 +244,7 @@
           "minLength": 1
         },
         "factRefs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/factRef"
-          }
+          "$ref": "#/$defs/factRefList"
         },
         "command": {
           "type": "string",
@@ -329,16 +291,10 @@
           "minLength": 1
         },
         "requiredFactRefs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/factRef"
-          }
+          "$ref": "#/$defs/factRefList"
         },
         "expectedEvidence": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceExpectation"
-          }
+          "$ref": "#/$defs/evidenceList"
         },
         "nextCommand": {
           "type": "string",
@@ -355,37 +311,7 @@
       "required": ["kind", "summary"],
       "properties": {
         "kind": {
-          "enum": [
-            "parser-fact",
-            "compiler-fact",
-            "provider-fact",
-            "criterion-catalog",
-            "extension-report",
-            "scenario-benchmark",
-            "behavior-snapshot",
-            "runtime-source",
-            "compiler-evidence",
-            "language-rule",
-            "standard-library",
-            "macro-pattern",
-            "evidence-graph",
-            "graph-route",
-            "topology-update",
-            "quality-frame",
-            "provider-capability",
-            "prior-failure",
-            "reasoning-step",
-            "route-receipt",
-            "test-receipt",
-            "verification-receipt",
-            "db-generation",
-            "overlay",
-            "artifact",
-            "org-contract",
-            "manual",
-            "research",
-            "heuristic"
-          ]
+          "$ref": "semantic-policy-definitions.v1.schema.json#/$defs/evidenceKind"
         },
         "summary": {
           "type": "string",
@@ -418,32 +344,6 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "provenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "producer": {
-          "type": "string",
-          "minLength": 1
-        },
-        "providerVersion": {
-          "type": "string",
-          "minLength": 1
-        },
-        "generatedAt": {
-          "type": "string",
-          "minLength": 1
-        },
-        "command": {
-          "type": "string",
-          "minLength": 1
-        },
-        "sourceHash": {
-          "type": "string",
-          "minLength": 1
         }
       }
     }

@@ -1,19 +1,21 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Shared semantic agent hook protocol models and renderers.
 
+use serde::Deserialize;
+use serde::Serialize;
 use serde::de;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+
+pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "1";
+use serde_json::Value;
+use serde_json::json;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-/// Schema identifier for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.activation";
-/// Schema version for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "1";
-/// Schema identifier for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.hook.provider-manifest";
-/// Schema version for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const CANONICAL_SCHEMA_AUTHORITY: &str =
+    "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 /// Schema identifier for shared hook decision packets.
 pub const HOOK_DECISION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.decision";
 /// Schema version for shared hook decision packets.
@@ -53,55 +55,11 @@ impl Default for HookPolicy {
     }
 }
 
-impl HookPolicy {
-    pub(crate) fn blocks_direct_source_read(&self) -> bool {
-        action_blocks(self.direct_source_read)
-    }
+impl HookPolicy {}
 
-    pub(crate) fn blocks_bulk_source_dump(&self) -> bool {
-        action_blocks(self.bulk_source_dump)
-    }
-
-    pub(crate) fn blocks_raw_source_search(&self) -> bool {
-        action_blocks(self.raw_source_search)
-    }
-
-    pub(crate) fn blocks_agent_search_json(&self) -> bool {
-        action_blocks(self.agent_search_json)
-    }
-}
-
-fn action_blocks(action: ActionPolicy) -> bool {
-    match action {
-        ActionPolicy::Block => true,
-        ActionPolicy::Allow | ActionPolicy::Advisory => false,
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Command templates that route denied tool use into semantic search.
-pub struct HookRoutes {
-    pub prime: CommandTemplate,
-    pub owner: CommandTemplate,
-    pub lexical: CommandTemplate,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<CommandTemplate>,
-    pub ingest: CommandTemplate,
-    pub check_changed: CommandTemplate,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dependency_topology_metadata: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub export_index: Option<CommandTemplate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guide: Option<CommandTemplate>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Argument template for a provider-owned semantic search command.
+/// Argument template for an explicit decision route.
 pub struct CommandTemplate {
     pub argv: Vec<String>,
     #[serde(
@@ -112,8 +70,7 @@ pub struct CommandTemplate {
     pub stdin_mode: Option<StdinMode>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 /// Shared decision packet emitted before platform-specific hook rendering.
 pub struct HookDecision {
     pub schema_id: &'static str,
@@ -124,15 +81,170 @@ pub struct HookDecision {
     pub event: String,
     pub decision: DecisionKind,
     pub reason_kind: ReasonKind,
-    pub language_ids: Vec<String>,
+    pub language_ids: Vec<agent_semantic_config::LanguageId>,
     pub subject: DecisionSubject,
     pub routes: Vec<DecisionRoute>,
     pub message: String,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, Value>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[path = "protocol_compact_decision.rs"]
+mod compact_decision;
+
+impl HookDecision {
+    /// Encode an immutable matcher shard without JSON tokenization on the
+    /// one-shot reader path.
+    pub fn to_compact_binary(&self) -> Result<Vec<u8>, String> {
+        compact_decision::encode(self)
+    }
+
+    /// Decode the policy compiler's immutable decision shard.
+    pub fn from_compact_binary(bytes: &[u8]) -> Result<Self, String> {
+        compact_decision::decode(bytes)
+    }
+
+    /// Substitute the one source identity minted by the shard compiler.
+    pub fn replace_template_marker(&mut self, marker: &str, source_path: &str) -> bool {
+        compact_decision::replace_template_marker(self, marker, source_path)
+    }
+}
+impl serde::Serialize for HookDecision {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SerializedHookDecision<'a> {
+            schema_id: &'a str,
+            schema_version: &'a str,
+            protocol_id: &'a str,
+            protocol_version: &'a str,
+            platform: &'a str,
+            event: &'a str,
+            decision: &'a DecisionKind,
+            reason_kind: &'a ReasonKind,
+            language_ids: &'a [agent_semantic_config::LanguageId],
+            subject: &'a DecisionSubject,
+            routes: &'a [DecisionRoute],
+            message: &'a str,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            fields: &'a BTreeMap<String, Value>,
+        }
+
+        SerializedHookDecision {
+            schema_id: self.schema_id,
+            schema_version: self.schema_version,
+            protocol_id: self.protocol_id,
+            protocol_version: self.protocol_version,
+            platform: &self.platform,
+            event: &self.event,
+            decision: &self.decision,
+            reason_kind: &self.reason_kind,
+            language_ids: &self.language_ids,
+            subject: &self.subject,
+            routes: &self.routes,
+            message: &self.message,
+            fields: &self.fields,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for HookDecision {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct DeserializedHookDecision {
+            schema_id: String,
+            schema_version: String,
+            protocol_id: String,
+            protocol_version: String,
+            platform: String,
+            event: String,
+            decision: DecisionKind,
+            reason_kind: ReasonKind,
+            language_ids: Vec<agent_semantic_config::LanguageId>,
+            subject: DecisionSubject,
+            routes: Vec<DecisionRoute>,
+            message: String,
+            #[serde(default)]
+            fields: BTreeMap<String, Value>,
+        }
+
+        let wire = DeserializedHookDecision::deserialize(deserializer)?;
+        validate_hook_decision_identity::<D::Error>(
+            "schemaId",
+            &wire.schema_id,
+            HOOK_DECISION_SCHEMA_ID,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "schemaVersion",
+            &wire.schema_version,
+            HOOK_DECISION_SCHEMA_VERSION,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "protocolId",
+            &wire.protocol_id,
+            HOOK_PROTOCOL_ID,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "protocolVersion",
+            &wire.protocol_version,
+            HOOK_PROTOCOL_VERSION,
+        )?;
+        Ok(Self {
+            schema_id: HOOK_DECISION_SCHEMA_ID,
+            schema_version: HOOK_DECISION_SCHEMA_VERSION,
+            protocol_id: HOOK_PROTOCOL_ID,
+            protocol_version: HOOK_PROTOCOL_VERSION,
+            platform: wire.platform,
+            event: wire.event,
+            decision: wire.decision,
+            reason_kind: wire.reason_kind,
+            language_ids: wire.language_ids,
+            subject: wire.subject,
+            routes: wire.routes,
+            message: wire.message,
+            fields: wire.fields,
+        })
+    }
+}
+
+fn validate_hook_decision_identity<E>(field: &str, actual: &str, expected: &str) -> Result<(), E>
+where
+    E: de::Error,
+{
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(E::custom(format!(
+            "invalid Hook decision {field}: expected {expected}, found {actual}"
+        )))
+    }
+}
+
+impl HookDecision {
+    /// Whether a config rule emitted a complete registered-Agent dispatch.
+    pub fn has_registered_agent_dispatch(&self) -> bool {
+        self.fields
+            .get("agentSessionAction")
+            .and_then(Value::as_str)
+            == Some("dispatch-registered-agent")
+            && self.fields.get("transport").and_then(Value::as_str) == Some("host-agent")
+            && ["receiptKind", "targetAgent"].into_iter().all(|field| {
+                self.fields
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Allow or deny result emitted by the hook classifier.
 pub enum DecisionKind {
@@ -141,20 +253,23 @@ pub enum DecisionKind {
     Deny,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Reason category for a hook decision.
 pub enum ReasonKind {
     None,
-    DirectSourceRead,
+    HostActionAuthorityUnavailable,
+    ActivationUnavailable,
+    RegisteredSourceRouteRequired,
+    StructuredSourceRead,
     BulkSourceDump,
     RawBroadSearch,
     AspReasoningRouted,
     SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,
-    ReadOnlySubagentWrite,
-    SubagentReceiptRequired,
+    AgentChoiceRequired,
+    FocusedSubagentNestedStart,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -171,6 +286,9 @@ fn deserialize_optional_stdin_mode<'de, D>(deserializer: D) -> Result<Option<Std
 where
     D: de::Deserializer<'de>,
 {
+    if !deserializer.is_human_readable() {
+        return Option::<StdinMode>::deserialize(deserializer);
+    }
     let value = Value::deserialize(deserializer)?;
     if value.is_null() {
         return Err(de::Error::custom("stdinMode must be omitted, not null"));
@@ -180,23 +298,17 @@ where
         .map_err(de::Error::custom)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Semantic route kind suggested by a hook denial.
 pub enum DecisionRouteKind {
-    Prime,
-    Owner,
+    Playbook,
     Query,
-    Lexical,
     Read,
-    Deps,
-    Api,
-    Ingest,
-    Tests,
     CheckChanged,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Tool name, command, and paths that triggered a hook decision.
 pub struct DecisionSubject {
@@ -204,16 +316,16 @@ pub struct DecisionSubject {
     pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Provider command route that the agent should run instead of denied tool use.
 pub struct DecisionRoute {
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     pub kind: DecisionRouteKind,
     pub argv: Vec<String>,
@@ -230,9 +342,79 @@ pub enum AgentHookError {
     InvalidOutput(serde_json::Error),
 }
 
+impl AgentHookError {
+    #[must_use]
+    pub const fn reason_kind(&self) -> &'static str {
+        match self {
+            Self::InvalidActivation(_) => "invalid-activation",
+            Self::InvalidActivationConfig(_) => "invalid-activation-config",
+            Self::InvalidPayload(_) => "invalid-payload",
+            Self::InvalidOutput(_) => "invalid-output",
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::InvalidActivation(error) => format!("invalid activation JSON: {error}"),
+            Self::InvalidActivationConfig(message) => message.clone(),
+            Self::InvalidPayload(error) => format!("invalid hook payload JSON: {error}"),
+            Self::InvalidOutput(error) => format!("invalid hook output JSON: {error}"),
+        }
+    }
+}
+
+impl std::fmt::Display for AgentHookError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.reason_kind(), self.message())
+    }
+}
+
+impl std::error::Error for AgentHookError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidActivation(error)
+            | Self::InvalidPayload(error)
+            | Self::InvalidOutput(error) => Some(error),
+            Self::InvalidActivationConfig(_) => None,
+        }
+    }
+}
+
 /// Parse a platform hook payload as JSON.
 pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
+}
+
+/// Render the only Codex PreToolUse deny wire shape emitted by ASP.
+pub fn render_codex_pre_tool_deny(_decision_value: &Value, message: &str) -> Value {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": message,
+            "additionalContext": message,
+        },
+        "systemMessage": message,
+    })
+}
+
+/// Render a Codex PermissionRequest decision without leaking ASP receipt fields.
+pub fn render_codex_permission_request(behavior: &str, message: Option<&str>) -> Value {
+    let mut decision = json!({ "behavior": behavior });
+    if let Some(message) = message {
+        decision["message"] = Value::String(message.to_owned());
+    }
+    let mut envelope = json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": decision,
+        }
+    });
+    if let Some(message) = message {
+        envelope["systemMessage"] = Value::String(message.to_owned());
+    }
+    envelope
 }
 
 /// Render a shared hook decision into the selected platform response envelope.
@@ -248,12 +430,33 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
             Value::String(message.as_ref().to_string()),
         );
     }
-    let decision_context = format!(
-        "[agent-hook-decision] {}",
-        serde_json::to_string(&decision_value).map_err(AgentHookError::InvalidOutput)?
-    );
+    let decision_context = message.as_ref().to_owned();
+    if decision.platform == "codex"
+        && decision.event == "post-tool"
+        && !matches!(decision.decision, DecisionKind::Allow)
+    {
+        return Ok(json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": decision_context,
+            },
+            "systemMessage": message.as_ref(),
+        }));
+    }
     match decision.decision {
         DecisionKind::Deny => {
+            if decision.platform == "codex" && decision.event == "permission-request" {
+                return Ok(render_codex_permission_request(
+                    "deny",
+                    Some(message.as_ref()),
+                ));
+            }
+            if decision.platform == "codex" && decision.event == "pre-tool" {
+                return Ok(render_codex_pre_tool_deny(
+                    &decision_value,
+                    message.as_ref(),
+                ));
+            }
             return Ok(json!({
                 "hookSpecificOutput": {
                     "hookEventName": platform_hook_event_name(&decision.event),
@@ -282,6 +485,9 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
         }
         DecisionKind::Allow => {
             if decision.event == "permission-request" {
+                if decision.platform == "codex" {
+                    return Ok(render_codex_permission_request("allow", None));
+                }
                 return Ok(json!({
                     "hookSpecificOutput": {
                         "hookEventName": platform_hook_event_name(&decision.event),
@@ -321,6 +527,7 @@ fn decision_has_warning(decision: &HookDecision) -> bool {
     decision
         .fields
         .contains_key("agentOrgArtifactsArchiveWarning")
+        || decision.fields.contains_key("bootstrapReceipt")
 }
 
 fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {
@@ -341,10 +548,13 @@ pub fn subagent_deny_message(message: &str) -> String {
     let mut lines = Vec::new();
     let mut inserted_subagent_instruction = false;
     for line in message.lines() {
-        if line.contains("spawn_agent") || line.contains("send_input") {
+        if line.contains("collaboration.spawn_agent")
+            || line.contains("collaboration.followup_task")
+            || line.contains("collaboration.send_message")
+        {
             if !inserted_subagent_instruction {
                 lines.push(
-                    "Codex: already running inside a subagent; run the safe route below directly and return selector-only `[asp-search-subagent]` evidence with owner/read/next. Do not return source bodies, snippets, or line-range selectors.",
+                    "Codex: already running inside a subagent; run the safe route below directly and return Search success as exactly one Org/GQL source block with `:profile search-evidence.v1 :eval never`. Do not return prose, source bodies, snippets, a flat receipt, command grammar, or a prescribed next action.",
                 );
                 inserted_subagent_instruction = true;
             }
@@ -362,9 +572,9 @@ pub fn subagent_deny_message(message: &str) -> String {
 
 fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
     if locator_only {
-        return "ASP evidence-state search routing is active for this prompt. This is a locator/frontier question: answer where to look before editing, not by reading source code. Search is not a mandatory pipeline. Choose the narrowest ASP route whose preconditions are already satisfied. If an exact selector, owner path, symbol, dependency, test/failure, changed file, or previous recommendedNext exists, use that anchor and skip `search prime`. Use `search prime --workspace <workspace-root> --view seeds` only when the workspace, project, or owner map is unknown. Use `search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds` only when the evidence state is ambiguous and needs query refinement. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Use owner/frontier/locator metadata from search output. Subagents should return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next, never source bodies or line-range selectors. Do not run `query --code` unless the user explicitly asks for code contents. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
+        return "ASP Search playbook routing is active for this locator question. Compose one public `asp search playbook '<scheme-expression>'` request. Put code and document producers in `(producers (language ...) (documents ...))`; begin V1 composition with `(intersect (rg ...) (tantivy ...))`, then add optional `syntax` or `native-syntax` leaves through `chain`, with `graph` leaves last. Preserve every native argv token as a Scheme string rather than embedding a command or shell pipeline. The Runtime executes the normalized request against one admitted immutable workspace generation and returns bounded evidence without prescribing the Agent's next action. Materialize only Agent-chosen canonical selectors through one `asp query playbook` request using the matching producer-axis flags and `--selector <exact-selector>`; Query has no implicit Search state or implicit projection.";
     }
-    "ASP evidence-state search routing is active for this prompt. Before reading source or running raw grep/find, use parser-owned ASP discovery. Search is not a mandatory pipeline. Choose the narrowest ASP route whose preconditions are already satisfied. If an exact selector, owner path, symbol, dependency, test/failure, changed file, or previous recommendedNext exists, use that anchor and skip `search prime`. Use `search prime --workspace <workspace-root> --view seeds` only when the workspace, project, or owner map is unknown. Use `search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds` only when the evidence state is ambiguous and needs query refinement. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Follow `recommendedNext` or `nextCommand` from ASP output. Subagents perform owner/frontier/search work and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next, never source bodies or line-range selectors. Use one `asp <language> query --selector <exact-selector> --workspace . --code` only after ASP provides exact parser-owned identity, then answer from that selector plus search metadata. Treat display line ranges and sourceLocatorHint as hints, not executable selectors. Do not use direct source reads as the first step. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
+    "ASP Search playbook routing is active for this prompt. Compose one public `asp search playbook '<scheme-expression>'` request. Put code and document producers in `(producers (language ...) (documents ...))`; begin V1 composition with `(intersect (rg ...) (tantivy ...))`, then add optional `syntax` or `native-syntax` leaves through `chain`, with `graph` leaves last. Preserve every native argv token as a Scheme string rather than embedding a command or shell pipeline. The Runtime executes the normalized request against one admitted immutable workspace generation and returns bounded evidence without prescribing the Agent's next action. Materialize only Agent-chosen canonical selectors through one `asp query playbook` request using the matching producer-axis flags and `--selector <exact-selector>`; Query has no implicit Search state or implicit projection."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

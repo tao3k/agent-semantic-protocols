@@ -1,0 +1,19 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
+  "schemaVersion": "1",
+  "languageId": "rust",
+  "providerId": "asp-rust",
+  "ownerPath": "src/moved.rs",
+  "requestedStructuralSelector": "rust://src/moved.rs#item/function/inventory",
+  "resolutionState": "owner-missing",
+  "reasonKind": "owner-not-in-workspace",
+  "activeGenerationDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rootDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "itemKind": "function",
+  "itemName": "inventory",
+  "candidates": [],
+  "actualKinds": [],
+  "recommendedNext": {
+    "command": "asp search playbook --language rust --rg -n -F inventory . --tantivy 'title:inventory^2 OR body:inventory' --workspace ."
+  }
+}

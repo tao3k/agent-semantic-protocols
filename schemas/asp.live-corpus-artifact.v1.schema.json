@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-artifact.v1.schema.json",
+  "title": "ASP live corpus artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactDigest",
+    "lockDigest",
+    "resourceId",
+    "providerId",
+    "languageId",
+    "builderId",
+    "git",
+    "sourceMerkleRoot"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-artifact"
+    },
+    "schemaVersion": { "const": "1" },
+    "artifactDigest": { "$ref": "#/$defs/blake3Digest" },
+    "lockDigest": { "$ref": "#/$defs/blake3Digest" },
+    "resourceId": { "$ref": "#/$defs/identifier" },
+    "providerId": { "$ref": "#/$defs/identifier" },
+    "languageId": { "$ref": "#/$defs/identifier" },
+    "builderId": { "$ref": "#/$defs/identifier" },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "remote",
+        "canonicalRemoteIdentity",
+        "remoteDigest",
+        "revision",
+        "tree"
+      ],
+      "properties": {
+        "remote": { "type": "string", "pattern": "^\\S+$" },
+        "canonicalRemoteIdentity": { "type": "string", "minLength": 3 },
+        "remoteDigest": { "$ref": "#/$defs/blake3Digest" },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" }
+      }
+    },
+    "sourceMerkleRoot": { "$ref": "#/$defs/blake3Digest" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

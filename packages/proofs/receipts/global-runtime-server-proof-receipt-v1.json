@@ -1,0 +1,263 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-proof-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.formal-verification",
+  "protocolVersion": "1",
+  "receiptId": "proof-receipt:global-runtime-server:v1",
+  "obligationId": "proof-obligation:global-runtime-server:v1",
+  "recipeId": "proof-recipe:global-runtime-server:axle:v1",
+  "checker": "axle.check",
+  "environment": "lean-4.32.2+axiom-axle-1.4.0",
+  "okay": true,
+  "trustLevel": "axiom-audited",
+  "failedDeclarations": [],
+  "formalStatementDigest": "sha256:8880adc66587b99df2e1f7dc8ebe6ad00bb8c33d05e369ddbd3a0dc50a158285",
+  "candidateDigest": "sha256:7ab2667056e2d744db200ac09d64ddb7e6cde9321d10ad3cefc49ae0cc583e1d",
+  "timings": {
+    "total_ms": 0
+  },
+  "schemaProjection": {
+    "sourceSchema": "schemas/semantic-proof-obligation.v1.schema.json",
+    "formalLeanPath": "packages/proofs/ASPProof/GlobalRuntimeServer.lean",
+    "candidateLeanPath": "packages/proofs/ASPProof/Audit/GlobalRuntimeServer.lean",
+    "facts": [
+      {
+        "id": "ServerIdentity.stateHome",
+        "owner": "ASPProof.GlobalRuntimeServer.ServerIdentity",
+        "field": "stateHome",
+        "role": "executable-selector"
+      },
+      {
+        "id": "Request.projectId",
+        "owner": "ASPProof.GlobalRuntimeServer.Request",
+        "field": "projectId",
+        "role": "executable-selector"
+      },
+      {
+        "id": "SocketObservation.authenticated",
+        "owner": "ASPProof.GlobalRuntimeServer.SocketObservation",
+        "field": "authenticated",
+        "role": "executable-selector"
+      },
+      {
+        "id": "SecureHandshake.kernelPeerUidMatches",
+        "owner": "ASPProof.GlobalRuntimeServer.SecureHandshake",
+        "field": "kernelPeerUidMatches",
+        "role": "executable-selector"
+      },
+      {
+        "id": "NonceLedger.ownerEpoch",
+        "owner": "ASPProof.GlobalRuntimeServer.NonceLedger",
+        "field": "ownerEpoch",
+        "role": "executable-selector"
+      }
+    ]
+  },
+  "packetProjection": {
+    "sourceKind": "provider-output",
+    "sourcePacket": "packages/proofs/receipts/global-runtime-server-audit-v1.json",
+    "formalLeanPath": "packages/proofs/ASPProof/GlobalRuntimeServer.lean",
+    "candidateLeanPath": "packages/proofs/ASPProof/Audit/GlobalRuntimeServer.lean",
+    "identityKind": "selector-owned",
+    "contractValid": true,
+    "facts": [
+      {
+        "id": "global-server-state-home",
+        "path": "ServerIdentity.stateHome",
+        "role": "executable-selector",
+        "value": "asp-state-home",
+        "meaning": "State Home is the complete modeled server identity."
+      },
+      {
+        "id": "project-id-internal-only",
+        "path": "Request.projectId",
+        "role": "identity-kind",
+        "value": "internal-dispatch-key",
+        "meaning": "projectId selects a queue and provider partition, never a server identity."
+      },
+      {
+        "id": "lean-audit-contract-valid",
+        "path": "hasSorryAx",
+        "role": "contract-valid",
+        "value": "true",
+        "meaning": "The Lean audit contains no sorryAx declaration."
+      },
+      {
+        "id": "socket-liveness-authority",
+        "path": "SocketObservation",
+        "role": "contract-valid",
+        "value": "authenticated-matching-handshake",
+        "meaning": "Hints and file presence do not substitute for authenticated socket liveness."
+      }
+    ]
+  },
+  "validatedClaims": [
+    {
+      "id": "global-server-identity",
+      "verified": true,
+      "meaning": "Server identity is unique per State Home and independent of projectId.",
+      "theorem": "identity_unique_per_state_home"
+    },
+    {
+      "id": "ensure-idempotence",
+      "verified": true,
+      "meaning": "Repeated ensure converges after one application.",
+      "theorem": "ensure_is_idempotent"
+    },
+    {
+      "id": "internal-project-dispatch-isolation",
+      "verified": true,
+      "meaning": "Dispatch leaves every non-target project queue unchanged.",
+      "theorem": "dispatch_updates_only_the_target_project"
+    },
+    {
+      "id": "graceful-stop-gate",
+      "verified": true,
+      "meaning": "A completed stop requires zero active requests and a committed checkpoint.",
+      "theorem": "completed_stop_requires_drain_and_checkpoint"
+    },
+    {
+      "id": "restart-convergence-assumptions",
+      "verified": true,
+      "meaning": "Restart reaches ready under explicit drain, checkpoint, and startup assumptions.",
+      "theorem": "restart_converges_under_explicit_assumptions"
+    },
+    {
+      "id": "typed-provider-failure-isolation",
+      "verified": true,
+      "meaning": "Provider failure is typed and leaves global lifecycle and other projects unchanged.",
+      "theorem": "provider_failure_isolated_from_other_projects"
+    },
+    {
+      "id": "fixed-hook-contract-preservation",
+      "verified": true,
+      "meaning": "Runtime ensure preserves the installed hook digest.",
+      "theorem": "runtime_ensure_preserves_fixed_hook_contract"
+    },
+    {
+      "id": "authenticated-socket-liveness",
+      "verified": true,
+      "meaning": "A connected, authenticated, protocol-matching, identity-matching handshake admits liveness.",
+      "theorem": "authenticated_matching_handshake_admits_liveness"
+    },
+    {
+      "id": "socket-liveness-handshake-necessity",
+      "verified": true,
+      "meaning": "Admitted liveness requires connected, authenticated, protocol-matching, identity-matching handshake evidence.",
+      "theorem": "liveness_requires_authenticated_matching_handshake"
+    },
+    {
+      "id": "socket-election-boundary",
+      "verified": true,
+      "meaning": "Missing or refused transport permits election while mismatch does not permit spawn or cleanup.",
+      "theorem": "protocol_mismatch_fails_closed_without_spawn_or_cleanup"
+    },
+    {
+      "id": "operator-stop-precedence",
+      "verified": true,
+      "meaning": "Operator stop suppresses all election and endpoint mutation decisions.",
+      "theorem": "operator_stop_has_precedence"
+    },
+    {
+      "id": "kernel-peer-uid-admission",
+      "verified": true,
+      "meaning": "Secure socket admission requires a kernel-authenticated peer UID match.",
+      "theorem": "secure_admission_requires_kernel_peer_uid_match"
+    },
+    {
+      "id": "owner-epoch-nonce-single-use",
+      "verified": true,
+      "meaning": "Accepted nonce is fresh in the matching owner epoch.",
+      "theorem": "accepted_nonce_belongs_to_owner_epoch_and_is_fresh"
+    },
+    {
+      "id": "recorded-nonce-replay-fail-closed",
+      "verified": true,
+      "meaning": "Recording an accepted nonce makes its next use fail closed.",
+      "theorem": "recorded_nonce_replay_fails_closed"
+    },
+    {
+      "id": "nonce-capacity-fail-closed",
+      "verified": true,
+      "meaning": "Nonce capacity remains bounded and exhaustion rejects without eviction.",
+      "theorem": "nonce_capacity_exhaustion_fails_closed_without_eviction"
+    },
+    {
+      "id": "nonce-capacity-exhaustion-no-mutation",
+      "verified": true,
+      "meaning": "Exhausted nonce capacity leaves the ledger unchanged.",
+      "theorem": "nonce_capacity_exhaustion_causes_no_mutation"
+    },
+    {
+      "id": "private-runtime-path-security",
+      "verified": true,
+      "meaning": "Secure runtime paths are current-UID non-symlink directories with 0700 and 0600 modes.",
+      "theorem": "secure_runtime_paths_require_private_modes"
+    },
+    {
+      "id": "socket-resource-bounds",
+      "verified": true,
+      "meaning": "Admitted use satisfies frame, connection, hook-worker, and draining-request bounds.",
+      "theorem": "bounded_admission_requires_all_resource_bounds"
+    },
+    {
+      "id": "secret-redaction",
+      "verified": true,
+      "meaning": "Sensitive log values render only the redaction marker.",
+      "theorem": "secret_log_field_is_redacted"
+    }
+  ],
+  "defensiveEngineeringAssessment": {
+    "result": "blocked",
+    "blockedBranch": "workspace-or-project-server-identity",
+    "whyBlocked": "The formal identity contains only State Home and projectId is erased by identityForRequest.",
+    "correctBoundary": "global-runtime-server-control-and-dispatch-boundary",
+    "replacementBranches": [
+      "state-home-global-server",
+      "internal-project-dispatch",
+      "assumption-bounded-restart",
+      "authenticated-socket-liveness",
+      "missing-or-refused-election",
+      "uid-bound-single-use-nonce-admission",
+      "private-runtime-paths-and-bounded-resources",
+      "redacted-security-evidence"
+    ]
+  },
+  "branchLegalityUpdate": {
+    "illegal": [
+      "workspace-or-project-server-identity",
+      "stop-with-active-requests-or-missing-checkpoint",
+      "provider-failure-mutates-global-lifecycle",
+      "endpoint-hint-or-file-implies-ready",
+      "mismatch-spawn-or-cleanup",
+      "peer-uid-mismatch-admission",
+      "nonce-replay-or-eviction",
+      "insecure-runtime-path-permissions",
+      "unbounded-socket-resource-admission",
+      "secret-in-log-output"
+    ],
+    "legal": [
+      "state-home-global-server",
+      "internal-project-dispatch",
+      "assumption-bounded-restart",
+      "authenticated-socket-liveness",
+      "missing-or-refused-election",
+      "uid-bound-single-use-nonce-admission",
+      "private-runtime-paths-and-bounded-resources",
+      "redacted-security-evidence"
+    ]
+  },
+  "summaryForAgent": "Lean and AXLE admission verify the global server, authenticated socket liveness, UID/nonce hardening, private paths, resource bounds, and secret redaction; restart remains assumption-bounded.",
+  "fields": {
+    "leanAuditSha256": "sha256:181db878795f7148ad5af1fa90f26a79d4ab5a4cb5ee29b5be8ba9d15624fc6b",
+    "axleAdmissionSha256": "sha256:7ab2667056e2d744db200ac09d64ddb7e6cde9321d10ad3cefc49ae0cc583e1d",
+    "allowedAxioms": [
+      "Quot.sound",
+      "propext"
+    ],
+    "hasSorryAx": false,
+    "declarationCount": "40",
+    "axiomFreeDeclarationCount": "18",
+    "axiomDependentDeclarationCount": "22"
+  }
+}

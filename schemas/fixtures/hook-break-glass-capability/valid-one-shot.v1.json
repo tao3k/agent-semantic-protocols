@@ -1,0 +1,12 @@
+{
+  "schemaId": "agent.semantic-protocols.hook-break-glass-capability",
+  "schemaVersion": "1",
+  "nonce": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "workspaceRoot": "/workspace/project",
+  "rootSessionId": "root-session-1",
+  "protectedCommandDigest": "blake3-256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+  "denyEvidenceRef": "hook-deny:0123456789abcdef",
+  "defectKind": "exhausted-non-progress-cycle",
+  "issuedAtUnixMs": 1000,
+  "expiresAtUnixMs": 31000
+}

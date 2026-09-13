@@ -1,19 +1,6 @@
-#[path = "unit/dynamic_owner_items.rs"]
-mod dynamic_owner_items;
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#[path = "unit/graph_owner_item_route.rs"]
-mod graph_owner_item_route;
-#[path = "unit/lexical_search_frame.rs"]
-mod lexical_search_frame;
-#[path = "unit/pipe_source_query_gate.rs"]
-mod pipe_source_query_gate;
-#[path = "unit/search_command_preflight.rs"]
-mod search_command_preflight;
-#[path = "unit/search_flow_scenarios.rs"]
-mod search_flow_scenarios;
-#[path = "unit/search_query_budget.rs"]
-mod search_query_budget;
-#[path = "unit/syntax_query_replay.rs"]
-mod syntax_query_replay;
-#[path = "unit/unit_test_smoke.rs"]
-mod unit_test_smoke;
+#[path = "unit/mod.rs"]
+mod unit;

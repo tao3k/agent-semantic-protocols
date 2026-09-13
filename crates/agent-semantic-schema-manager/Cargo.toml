@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-schema-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["runtime"]
+runtime = [
+    "dep:agent-semantic-content-identity",
+    "dep:serde",
+    "dep:tempfile",
+    "dep:tokio",
+]
+
+[dependencies]
+agent-semantic-content-identity = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json.workspace = true
+tempfile = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

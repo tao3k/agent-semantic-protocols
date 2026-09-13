@@ -1,0 +1,37 @@
+{
+  "auditSha256": "ec1110983c9de9aa75dfb9db2763024a362f3b73e1e3a81fb76de40accbc83a8",
+  "axiomDependentDeclarationCount": 6,
+  "axiomFreeDeclarationCount": 13,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 19,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SRC-ADMISSIBLE-ROUTE",
+    "ASP-RFC-10.05-SRC-FAIL-CLOSED-CACHE",
+    "ASP-RFC-10.05-SRC-GRAPH-ESCALATION",
+    "ASP-RFC-10.05-SRC-LEX-OPTIMAL",
+    "ASP-RFC-10.05-SRC-MODEL-PREFIX-CACHE",
+    "ASP-RFC-10.05-SRC-ROUND-COMPRESSION",
+    "ASP-RFC-10.05-SRC-ROUTER-JUMP",
+    "ASP-RFC-10.05-SRC-SEARCH-CACHE",
+    "ASP-RFC-10.05-SRC-TOKEN-BOUND",
+    "ASP-RFC-10.05-SRC-TOKEN-COST"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "cost-dominance",
+    "cost-receipt",
+    "counterexample",
+    "graph-routing",
+    "joint-cache-dominance",
+    "model-prefix-cache",
+    "route-admissibility",
+    "route-optimizer",
+    "route-order",
+    "semantic-search-cache"
+  ]
+}

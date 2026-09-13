@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Ranked DAG Proof Receipt v1
+#+date: 2026-07-30
+#+options: toc:nil num:nil
+
+* Scope
+
+This receipt covers the distinction between graph-edge hops, SearchLoop
+transitions, and LLM rounds; ranked-DAG walk properties; graph-path
+validation; and the candidate-completeness bridge from local to conditional
+global optimality.
+
+RFC:
+
+=docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.17-searchroute-ranked-dag-global-optimality.org=
+
+Lean:
+
+=packages/proofs/ASPProof/SearchRouteDAG.lean=
+
+* Lean Result
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteDAGAudit.lean
+#+end_src
+
+Result:
+
+- Lake build: 15 jobs passed
+- audited declarations: 7
+- axiom-free declarations: 4
+- axiom-dependent declarations: 3
+- axiom inventory: =Quot.sound=, =propext=
+- =hasSorryAx=false=
+
+The ranked-DAG theorems prove:
+
+- =rank(source) + graphHops <= rank(target)=;
+- a ranked-DAG walk from a node to itself has zero graph hops;
+- =graphHops + rank(source) <= maxRank=.
+
+The completeness bridge proves:
+
+#+begin_quote
+Candidate completeness and local optimality prove that the selected candidate
+itself realizes the source-to-target ranked-DAG walk and imply global no-worse
+ordering over every validated feasible candidate that realizes such a walk.
+#+end_quote
+
+* Counterexample and Corrected Router
+
+The executable counterexample contains:
+
+- candidate A: =graphHops=5=, =transitionCount=3=;
+- candidate B: =graphHops=2=, =transitionCount=5=.
+
+The transition-first router selects candidate A. The corrected graph-first
+router selects candidate B.
+
+An unvalidated one-hop candidate is rejected and cannot displace the validated
+two-hop candidate.
+
+* AXLE Result
+
+AXLE without an axiom allowlist failed closed:
+
+#+begin_src text
+axle lean audit: axioms are not admitted by policy:
+['Quot.sound', 'propext']
+#+end_src
+
+The admitted audit required both axioms, all theorem families, and all five
+RFC clauses.
+
+Canonical AXLE digest:
+
+=2069d03bafaa0fa336ad01859dba0e52f28c5a3c722f319527bd18056a4d9a0e=
+
+* Org-Babel Typst Result
+
+The named Org block
+=searchroute-ranked-dag-global-optimality-model= compiled through stdin:
+
+#+begin_src sh
+asp query playbook --documents org \
+  --workspace . exact \
+  --kind block \
+  --term searchroute-ranked-dag-global-optimality-model \
+  --content |
+  typst compile - /tmp/searchroute-ranked-dag-global-optimality-v3.pdf
+#+end_src
+
+Compiled PDF size: 65,663 bytes.
+
+* Artifact Digests
+
+- Lean source SHA-256:
+  =e027ca5063173c019aae25bac08b27f977cb5472034f12ed786d101531d0d855=
+- Lean JSON SHA-256:
+  =4529e62efa3e4362f11fd716bc98df51b17174f03f2a75bc94a35176b7ca4239=
+- AXLE receipt SHA-256:
+  =db9f3a1661f589cfa42300e6d71ecf88149673b03eba585cb7c410d6c850d24a=
+- RFC SHA-256:
+  =3315efa5d2d4771c33dcc1569dd58b3523817019b749f89ca38ec285a0903f51=
+- PDF SHA-256:
+  =be79a3721db41e645817fba1e74334b3d10e60ff27e5c5a1e3c3ef95f4faa3c6=
+
+* Remaining Boundary
+
+RFC 10.05.18 now constructs and proves the complete fuel-bounded graph-walk
+enumerator, the budget-derived finite step-instance catalog, and the bounded
+route catalog. Bounded candidate completeness no longer has an external
+catalog-coverage premise. The remaining optimization boundary is a lazy
+frontier proof that avoids materializing the complete Cartesian product.

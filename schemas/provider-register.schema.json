@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-register.schema.json",
+  "title": "ASP Provider Register",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "providers"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-register"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "provider-definitions.v1.schema.json#/$defs/providerReference"
+      }
+    }
+  }
+}

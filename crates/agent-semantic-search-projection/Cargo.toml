@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-search-projection"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+description = "Typed language-neutral search projection model, resident result contract, and renderer for ASP"
+
+[dependencies]
+blake3.workspace = true
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+agent-semantic-topology = { path = "../agent-semantic-topology" }
+orgize.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-search-storage-route.v1.schema.json",
+  "title": "Semantic Search Storage Route",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "profile", "storageClass", "queryRoute"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.semantic-search-storage-route" },
+    "schemaVersion": { "const": "1" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "storageClass": {
+      "enum": ["static-shared-database", "generation-shallow-database", "owner-local-resident", "exact-resident"]
+    },
+    "queryRoute": {
+      "enum": ["static-database-index", "shallow-database-index", "resident-memory", "exact-mmap"]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "queryRoute": { "const": "static-database-index" } } },
+      "then": {
+        "properties": {
+          "storageClass": { "const": "static-shared-database" },
+          "profile": {
+            "properties": {
+              "mutationClass": { "enum": ["immutable", "low-mutation"] },
+              "sharingScope": { "enum": ["global", "toolchain-version", "package-version"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "queryRoute": { "const": "shallow-database-index" } } },
+      "then": {
+        "properties": {
+          "storageClass": { "const": "generation-shallow-database" },
+          "profile": {
+            "properties": {
+              "mutationClass": { "const": "generation-bound" },
+              "sharingScope": { "const": "workspace-generation" },
+              "algorithmEvidence": {
+                "properties": {
+                  "treeDepth": { "maximum": 1 },
+                  "traversalRadius": { "maximum": 1 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "queryRoute": { "const": "resident-memory" } } },
+      "then": { "properties": { "storageClass": { "const": "owner-local-resident" } } }
+    },
+    {
+      "if": { "properties": { "queryRoute": { "const": "exact-mmap" } } },
+      "then": { "properties": { "storageClass": { "const": "exact-resident" } } }
+    }
+  ],
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mutationClass", "sharingScope", "identityDigest", "algorithmEvidence"],
+      "properties": {
+        "mutationClass": { "enum": ["immutable", "low-mutation", "generation-bound", "owner-dynamic"] },
+        "sharingScope": { "enum": ["global", "toolchain-version", "package-version", "workspace-generation", "owner-content"] },
+        "identityDigest": { "type": "string", "minLength": 1 },
+        "algorithmEvidence": { "$ref": "#/$defs/algorithmEvidence" }
+      }
+    },
+    "algorithmEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["treeDepth", "traversalRadius", "graphNodeCount", "graphEdgeCount", "merkleDeltaOwnerCount", "dependencyFanOut", "crossWorkspaceReuseCount"],
+      "properties": {
+        "treeDepth": { "type": "integer", "minimum": 0 },
+        "traversalRadius": { "type": "integer", "minimum": 0 },
+        "graphNodeCount": { "type": "integer", "minimum": 0 },
+        "graphEdgeCount": { "type": "integer", "minimum": 0 },
+        "merkleDeltaOwnerCount": { "type": "integer", "minimum": 0 },
+        "dependencyFanOut": { "type": "integer", "minimum": 0 },
+        "crossWorkspaceReuseCount": { "type": "integer", "minimum": 0 },
+        "componentCount": { "type": "integer", "minimum": 0 },
+        "cutVertexCount": { "type": "integer", "minimum": 0 },
+        "providerGraphEvidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/providerGraphEvidence" }
+        }
+      }
+    },
+    "providerGraphEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "algorithmId", "evidenceDigest"],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "algorithmId": { "type": "string", "minLength": 1 },
+        "evidenceDigest": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

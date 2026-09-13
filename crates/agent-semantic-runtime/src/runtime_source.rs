@@ -1,15 +1,17 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Runtime-source checkout management for ASP-managed language source facts.
 
-use std::{
-    env, fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::env;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
 
-use crate::project_runtime_state;
-
-/// Source checkout request derived from a provider-owned runtime-source packet.
+/// Source checkout request admitted by the ASP Server from a runtime-source packet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceSpec {
     pub language_id: String,
@@ -30,14 +32,14 @@ pub struct RuntimeSourceCheckout {
     pub checkout_dir: PathBuf,
 }
 
-/// Runtime-source identity prepared for source-index refresh.
+/// Runtime-source identity prepared by the ASP Server for source-index refresh.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceIndexContext {
     pub checkout_root: PathBuf,
     pub registry_fingerprint: String,
 }
 
-/// Runtime-source file prepared for source-index import.
+/// Runtime-source file prepared for ASP Server-owned source-index import.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSourceIndexFile {
     pub path: PathBuf,
@@ -47,25 +49,26 @@ pub struct RuntimeSourceIndexFile {
 
 /// Resolve the ASP-managed checkout directory for a runtime source version.
 pub fn runtime_source_checkout_dir(
-    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
     state_namespace: &str,
     version_key: &str,
 ) -> Result<PathBuf, String> {
-    let state = project_runtime_state(project_root)?;
-    runtime_source_checkout_dir_in_client_cache(
-        state.client_cache_dir,
+    runtime_source_checkout_dir_in_runtime_root(
+        agent_semantic_artifacts::StateHomeLayout::new(state_home)
+            .runtime_state()
+            .root(),
         state_namespace,
         version_key,
     )
 }
 
-/// Resolve a runtime source checkout below an already-resolved client cache directory.
-pub fn runtime_source_checkout_dir_in_client_cache(
-    client_cache_dir: impl AsRef<Path>,
+/// Resolve a runtime source checkout below the unique State Home runtime root.
+pub fn runtime_source_checkout_dir_in_runtime_root(
+    runtime_root: impl AsRef<Path>,
     state_namespace: &str,
     version_key: &str,
 ) -> Result<PathBuf, String> {
-    let mut dir = client_cache_dir.as_ref().to_path_buf();
+    let mut dir = runtime_root.as_ref().to_path_buf();
     for segment in state_namespace.split('/') {
         dir.push(safe_path_segment(segment)?);
     }
@@ -75,21 +78,21 @@ pub fn runtime_source_checkout_dir_in_client_cache(
 
 /// Clone or fetch a runtime source repository and checkout the requested version.
 pub fn ensure_runtime_source_checkout(
-    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
     spec: &RuntimeSourceSpec,
 ) -> Result<RuntimeSourceCheckout, String> {
     let checkout_dir =
-        runtime_source_checkout_dir(project_root, &spec.state_namespace, &spec.checkout)?;
+        runtime_source_checkout_dir(state_home, &spec.state_namespace, &spec.checkout)?;
     ensure_runtime_source_checkout_at(checkout_dir, spec)
 }
 
-/// Clone or fetch a runtime source below an already-resolved client cache directory.
-pub fn ensure_runtime_source_checkout_in_client_cache(
-    client_cache_dir: impl AsRef<Path>,
+/// Clone or fetch a runtime source below the unique State Home runtime root.
+pub fn ensure_runtime_source_checkout_in_runtime_root(
+    runtime_root: impl AsRef<Path>,
     spec: &RuntimeSourceSpec,
 ) -> Result<RuntimeSourceCheckout, String> {
-    let checkout_dir = runtime_source_checkout_dir_in_client_cache(
-        client_cache_dir,
+    let checkout_dir = runtime_source_checkout_dir_in_runtime_root(
+        runtime_root,
         &spec.state_namespace,
         &spec.checkout,
     )?;
@@ -99,7 +102,7 @@ pub fn ensure_runtime_source_checkout_in_client_cache(
 /// Request for resolving runtime-source index identity.
 pub struct RuntimeSourceIndexContextRequest<'a> {
     checkout_root: &'a Path,
-    client_cache_dir: &'a Path,
+    runtime_root: &'a Path,
     language_id: &'a str,
     provider_id: &'a str,
 }
@@ -144,7 +147,7 @@ impl<'a> From<(&'a Path, &'a str, &'a str)> for RuntimeSourceRegistryFingerprint
 
 impl<'a> From<(&'a Path, &'a Path, &'a str, &'a str)> for RuntimeSourceIndexContextRequest<'a> {
     fn from(
-        (checkout_root, client_cache_dir, language_id, provider_id): (
+        (checkout_root, runtime_root, language_id, provider_id): (
             &'a Path,
             &'a Path,
             &'a str,
@@ -153,14 +156,14 @@ impl<'a> From<(&'a Path, &'a Path, &'a str, &'a str)> for RuntimeSourceIndexCont
     ) -> Self {
         Self {
             checkout_root,
-            client_cache_dir,
+            runtime_root,
             language_id,
             provider_id,
         }
     }
 }
 
-/// Resolve runtime-source index identity under an ASP-managed client cache.
+/// Resolve runtime-source index identity under the unique State Home runtime root.
 pub fn runtime_source_index_context(
     request: RuntimeSourceIndexContextRequest<'_>,
 ) -> Result<RuntimeSourceIndexContext, String> {
@@ -170,17 +173,17 @@ pub fn runtime_source_index_context(
             request.checkout_root.display()
         )
     })?;
-    let canonical_cache_dir = fs::canonicalize(request.client_cache_dir).map_err(|error| {
+    let canonical_runtime_root = fs::canonicalize(request.runtime_root).map_err(|error| {
         format!(
-            "failed to resolve ASP client cache dir {}: {error}",
-            request.client_cache_dir.display()
+            "failed to resolve ASP runtime root {}: {error}",
+            request.runtime_root.display()
         )
     })?;
-    if !checkout_root.starts_with(&canonical_cache_dir) {
+    if !checkout_root.starts_with(&canonical_runtime_root) {
         return Err(format!(
-            "runtime source checkout {} is outside ASP client cache {}",
+            "runtime source checkout {} is outside ASP runtime root {}",
             checkout_root.display(),
-            canonical_cache_dir.display()
+            canonical_runtime_root.display()
         ));
     }
 

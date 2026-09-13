@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Render RFC 011 syntax real-project evidence records."""
 
 from __future__ import annotations
@@ -9,7 +13,7 @@ from pathlib import Path
 
 
 COMMANDS = (
-    "search-prime",
+    "search-playbook",
     "syntax-frontier",
     "exact-selector-code",
     "hook-recovery",

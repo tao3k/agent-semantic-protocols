@@ -20,7 +20,6 @@
     "softOverrunMicrobursts",
     "inferredSubagentStarts",
     "repeatSearches",
-    "suppressiblePrimeSearches",
     "promotableTypedFrontierSearches",
     "collapsibleOwnerSearches",
     "routableFanoutBursts",
@@ -40,7 +39,6 @@
     "fanoutHotspots",
     "repeatGroups",
     "optimizationTargets",
-    "primeSuppression",
     "typedFrontierPromotion",
     "ownerCollapse",
     "fanoutPlanning",
@@ -96,9 +94,6 @@
       "$ref": "#/$defs/nonNegativeInteger"
     },
     "repeatSearches": {
-      "$ref": "#/$defs/nonNegativeInteger"
-    },
-    "suppressiblePrimeSearches": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
     "promotableTypedFrontierSearches": {
@@ -172,9 +167,6 @@
       "items": {
         "$ref": "#/$defs/actionRow"
       }
-    },
-    "primeSuppression": {
-      "$ref": "#/$defs/actionGroup"
     },
     "typedFrontierPromotion": {
       "$ref": "#/$defs/actionGroup"
@@ -603,7 +595,7 @@
         "observedRounds",
         "repeatSearches",
         "routableFanoutBursts",
-        "typedFrontierAvoidableSearches",
+        "avoidableSearches",
         "avoidableFanoutBranches",
         "estimatedAvoidableActionsUpperBound",
         "estimatedActionReductionRatioUpperBound",
@@ -630,7 +622,7 @@
         "routableFanoutBursts": {
           "$ref": "#/$defs/nonNegativeInteger"
         },
-        "typedFrontierAvoidableSearches": {
+        "avoidableSearches": {
           "$ref": "#/$defs/nonNegativeInteger"
         },
         "avoidableFanoutBranches": {

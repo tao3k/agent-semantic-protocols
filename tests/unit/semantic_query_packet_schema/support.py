@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shared fixtures for semantic query packet schema tests."""
 
 from __future__ import annotations
@@ -16,9 +20,9 @@ def semantic_query_minimal_packet() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+        "providerId": "asp-rust",
+        "binary": "asp-rust",
+        "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         "method": "query/owner-items",
         "projectRoot": "/workspace/project",
         "ownerPath": "src/lib.rs",

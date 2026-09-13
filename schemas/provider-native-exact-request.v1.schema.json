@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-native-exact-request.v1.schema.json",
+  "title": "ASP Provider Native Exact Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "projectionKind",
+    "structuralSelector",
+    "ownerPath",
+    "generationIdentityDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "sourceDigest",
+    "sourceByteLength",
+    "sourceEncoding",
+    "sourceBytesBase64",
+    "transport"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-native-exact-request"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionKind": {
+      "enum": [
+        "source",
+        "callable-skeleton"
+      ]
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationIdentityDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "parserIdentityDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "queryPackDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceByteLength": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceEncoding": {
+      "const": "base64"
+    },
+    "sourceBytesBase64": {
+      "type": "string"
+    },
+    "transport": {
+      "const": "stdin-json"
+    }
+  }
+}

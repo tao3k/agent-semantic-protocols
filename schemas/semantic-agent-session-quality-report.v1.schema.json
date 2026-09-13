@@ -97,11 +97,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "searchPrimeCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "searchPipeCommands": {
+        "searchPlaybookCommands": {
           "type": "integer",
           "minimum": 0
         },
@@ -110,10 +106,6 @@
           "minimum": 0
         },
         "querySelectorCommands": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "checkCommands": {
           "type": "integer",
           "minimum": 0
         },
@@ -313,30 +305,7 @@
           "$ref": "#/$defs/turnMetrics"
         },
         "qualitySignals": {
-          "type": "array",
-          "items": {
-            "enum": [
-              "intent-recorded",
-              "assistant-visible",
-                            "tool-requested",
-                            "tool-result-observed",
-                            "command-started",
-                            "command-recorded",
-                            "search-prime",
-              "search-followup",
-              "query-selector",
-              "check-command",
-              "guide-command",
-              "repeated-command",
-              "direct-read-risk",
-              "hook-denied",
-              "answer-grounded",
-              "answer-weak",
-              "answer-missing",
-              "session-complete",
-              "session-partial"
-            ]
-          }
+          "$ref": "#/$defs/qualitySignalList"
         },
         "findingIds": {
           "$ref": "#/$defs/stringList"
@@ -477,38 +446,7 @@
       }
     },
     "tokenCost": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["unit", "totalTokens", "basis"],
-      "properties": {
-        "unit": {
-          "enum": ["token-estimate", "token-count"]
-        },
-        "inputTokens": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "outputTokens": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "cacheReadInputTokens": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "totalTokens": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "costUsd": {
-          "type": "number",
-          "minimum": 0
-        },
-        "basis": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+      "$ref": "semantic-agent-definitions.schema.json#/$defs/tokenCost"
     },
     "stringList": {
       "type": "array",
@@ -526,8 +464,7 @@
           "tool-result-observed",
           "command-started",
           "command-recorded",
-          "search-prime",
-          "search-followup",
+          "search-playbook",
           "query-selector",
           "check-command",
           "guide-command",

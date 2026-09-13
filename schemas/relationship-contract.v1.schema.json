@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/relationship-contract.v1.schema.json",
+  "title": "Org-native Relationship Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "authority",
+    "artifacts",
+    "relationships"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "contractId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationship"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documentPath",
+        "documentSha256",
+        "contractPath",
+        "orgContractId",
+        "contractSha256",
+        "canonicalization",
+        "assertionCount"
+      ],
+      "properties": {
+        "documentPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "documentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "contractPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "orgContractId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "contractSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "canonicalization": {
+          "const": "org-contract-source-raw-lf-utf8-v1"
+        },
+        "assertionCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "kind",
+        "path",
+        "canonicalization"
+      ],
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "kind": {
+          "enum": [
+            "org-document",
+            "org-section",
+            "org-contract",
+            "source-file",
+            "proof-module",
+            "schema",
+            "receipt",
+            "rendered-document"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "selector": {
+          "type": "object"
+        },
+        "canonicalization": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relationshipId",
+        "subject",
+        "predicate",
+        "object",
+        "impact",
+        "evidenceGate"
+      ],
+      "properties": {
+        "relationshipId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "subject": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "predicate": {
+          "enum": [
+            "governed-by",
+            "depends-on",
+            "references",
+            "realizes",
+            "proves",
+            "audits",
+            "conforms-to",
+            "renders"
+          ]
+        },
+        "object": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "impact": {
+          "enum": [
+            "invalidates-subject",
+            "invalidates-object",
+            "informational"
+          ]
+        },
+        "evidenceGate": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}

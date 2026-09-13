@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-hook-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = ["compiler"]
+compiler = [
+    "dep:agent-semantic-hook",
+    "agent-semantic-hook/compiler",
+    "dep:agent-semantic-config",
+    "dep:agent-semantic-shell-parser",
+    "dep:asp-rust-project-harness-policy",
+    "dep:globset",
+    "dep:jsonschema",
+    "dep:toml",
+]
+
+[dependencies]
+agent-semantic-hook = { path = "../agent-semantic-hook", default-features = false, optional = true }
+agent-semantic-config = { path = "../agent-semantic-config", optional = true }
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser", optional = true }
+asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy", default-features = false, optional = true }
+globset = { workspace = true, optional = true }
+jsonschema = { workspace = true, optional = true }
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts", default-features = false }
+fs2.workspace = true
+tempfile.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
+
+# Developer publication exercises only the evaluator launcher and the Artifacts
+# transaction. Keep it outside the compiler-heavy integration target so its
+# focused gate can run with `--no-default-features`.
+[[test]]
+name = "developer_hook_runtime"
+path = "tests/integration/developer_hook_runtime.rs"
+
+[lints]
+workspace = true

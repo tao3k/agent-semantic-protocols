@@ -1,0 +1,230 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Multi-Authority Fault Aggregation
+#+subtitle: Conservative authority coverage and safe progressive-loop termination
+#+options: toc:3 num:t
+
+* Status
+
+This proof-backed RFC follows RFC 10.05.93 and is the first new proof document
+placed directly under the canonical Interactive Graph-First Progressive
+SearchLoop tree.
+
+It specifies protocol semantics, Lean proofs, and Org-Babel Typst mathematics.
+Rust and Python implementation remain out of scope.
+
+* Problem
+
+RFC 10.05.93 validates one fault-bound snapshot against authority, membership,
+epoch, time, and attestation policy.
+
+A multi-authority deployment has a different problem. Several authorized
+authorities can issue authentic reports for the same membership epoch, while
+the resilience policy guarantees only that a required candidate set contains
+at least one conservative authority.
+
+Authenticity alone is not soundness. A Byzantine authority can authentically
+report a bound below actual faulty weight.
+
+The interactive SearchLoop also sees candidates progressively. A low partial
+aggregate can pass the quorum threshold before a later required candidate
+raises the conservative aggregate and makes the threshold fail.
+
+* Normative clauses
+
+** MAFA-AUTHENTIC: authenticity is not conservatism
+
+An authentic authority report proves origin and integrity. It MUST NOT by
+itself establish that actual faulty weight is at most the reported bound.
+
+The graph MUST represent authenticity and conservative-witness evidence as
+different predicates.
+
+** MAFA-COVERAGE: complete candidate coverage
+
+The active multi-authority policy MUST define the required candidate coverage
+for one membership epoch.
+
+Before aggregation is final, the SearchLoop MUST establish that:
+
+- all policy-required candidate positions are resolved; and
+- the included candidate set contains at least one conservative witness under
+  the policy's resilience assumption.
+
+The loop MUST NOT infer coverage merely from the number of received reports.
+
+** MAFA-WITNESS: conservative witness
+
+A conservative witness is an included candidate whose declared bound is at
+least actual faulty voting weight.
+
+The witness need not be identified to the runtime if the authority resilience
+proof establishes that at least one included candidate is conservative.
+
+** MAFA-MAX: safe maximum aggregation
+
+When candidate coverage guarantees at least one conservative witness, the
+aggregate bound MUST be at least every included candidate bound. Concrete
+maximum aggregation satisfies this requirement.
+
+It follows that actual faulty weight is at most the aggregate maximum.
+
+If every individual admitted authority is independently proven sound, smaller
+aggregates may also be safe. This RFC addresses the weaker Byzantine-authority
+assumption where only one included witness is guaranteed.
+
+** MAFA-MONOTONE: progressive aggregation
+
+Adding a candidate MUST NOT decrease maximum aggregation.
+
+This monotonicity means an early low aggregate is not a stable final verdict.
+The threshold can move only toward failure as required higher candidates are
+added.
+
+** MAFA-LOOP: safe termination
+
+The interactive loop may finalize the fault aggregate only after:
+
+#+begin_example
+required authority coverage complete
+  + conservative-witness guarantee established
+  + maximum computed over the complete required candidate set
+  -> final aggregate receipt
+#+end_example
+
+Arithmetic threshold success on a partial candidate set is not a stopping
+condition.
+
+** MAFA-REJECT: adversarial counterexamples
+
+The proof surface MUST retain both counterexamples:
+
+- minimum aggregation can select a Byzantine low report below actual faulty
+  weight; and
+- a partial low aggregate can pass the threshold before the expanded aggregate
+  fails it.
+
+** MAFA-CACHE: aggregate receipt identity
+
+The aggregate receipt MUST bind:
+
+- authority-policy identity;
+- membership and epoch identity;
+- complete required candidate-set identity;
+- aggregation algorithm version; and
+- ordered or canonicalized input snapshot identities.
+
+Changing coverage or any required input invalidates the aggregate receipt.
+
+* Executable mathematical model
+
+#+name: searchroute-multi-authority-fault-aggregation-model
+#+begin_src typst
+#let maximum(left, right) = calc.max(left, right)
+#let conservative(actual, witness, aggregate) = (
+  actual <= witness and witness <= aggregate
+)
+#let threshold(total, bound, quorum) = (
+  total + bound < quorum + quorum
+)
+#assert(maximum(0, 1) == 1)
+#assert(conservative(1, 1, maximum(0, 1)))
+#assert(threshold(3, 0, 2))
+#assert(not threshold(3, 1, 2))
+#assert(calc.min(0, 1) < 1)
+"ok"
+#+end_src
+
+The conservative-witness implication is:
+
+#+name: searchroute-multi-authority-fault-aggregation-proposition
+#+begin_src typst
+#let witness-safety = $
+  B_w in C
+  and F_"actual" <= B_w
+  and B_w <= max_(B_i in C) B_i
+  arrow.r.double
+  F_"actual" <= max_(B_i in C) B_i
+$
+#assert(type(witness-safety) == content)
+"ok"
+#+end_src
+
+Both blocks are extracted by =orgize eval plan= and sent through stdin to
+=typst eval=. They create no generated Typst source or PDF.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.lean
+#+end_example
+
+The model defines:
+
+- =AuthorityBoundCandidate=; and
+- =maximumCandidateBound= as a concrete finite fold.
+
+The focused proof establishes:
+
+1. every included candidate bound is at most the maximum;
+2. one included conservative witness makes the maximum safe;
+3. adding a candidate cannot decrease the maximum;
+4. minimum aggregation can understate actual faulty weight;
+5. partial authority search can pass before the final bound fails; and
+6. authentic reports without a conservative witness are insufficient.
+
+* Modular audit
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregationAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-multi-authority-fault-aggregation-audit-v1.json
+#+end_example
+
+* Interactive and graph consequence
+
+The graph router must expose authority aggregation as a frontier, not one
+opaque query:
+
+#+begin_example
+discover required authority positions
+  -> validate candidate snapshots independently
+  -> prove policy coverage
+  -> derive conservative-witness guarantee
+  -> compute final maximum
+  -> evaluate quorum-intersection threshold
+#+end_example
+
+Each step produces a compact receipt and may terminate early on a failed
+predicate. Successful arithmetic before coverage completion remains
+provisional and MUST NOT be cached as a final verdict.
+
+This is progressive-first search with a proof-aware stopping rule: the loop
+returns the minimum evidence needed for the current step, but it does not omit
+an unresolved coverage obligation merely to reduce interaction rounds.
+
+* Safety and liveness boundary
+
+Maximum aggregation is conservative under the one-honest-witness assumption,
+but a Byzantine authority can report an arbitrarily high bound and prevent the
+quorum threshold from passing.
+
+This is a liveness failure, not a safety failure.
+
+* Proof-discovered next boundary
+
+The next proof boundary must model a concrete authority-set resilience policy:
+
+- authority quorum or weighted authority threshold;
+- maximum Byzantine authorities;
+- order-statistic aggregation;
+- equivocation;
+- authority-set rotation; and
+- the conditions under which an aggregate is both safe and live.
+
+It must also prove that the progressive SearchLoop has enough coverage evidence
+to apply that policy before declaring the aggregation frontier complete.

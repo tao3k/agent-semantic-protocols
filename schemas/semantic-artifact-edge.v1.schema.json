@@ -41,85 +41,10 @@
   },
   "$defs": {
     "artifactHash": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "algorithm",
-        "value"
-      ],
-      "properties": {
-        "algorithm": {
-          "const": "blake3"
-        },
-        "value": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      }
+      "$ref": "semantic-artifact-definitions.v1.schema.json#/$defs/artifactHash"
     },
     "artifactRootRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "repoId",
-        "workspaceId",
-        "scopeId",
-        "generation",
-        "rootKind",
-        "rootHash",
-        "nodeHash"
-      ],
-      "properties": {
-        "repoId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "workspaceId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "scopeId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "generation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rootKind": {
-          "enum": [
-            "artifactExport",
-            "changeSet",
-            "compactGraph",
-            "dynamicOverlay",
-            "eventLogCheckpoint",
-            "evidenceGraph",
-            "graphDiff",
-            "howFixFrame",
-            "howFromFrame",
-            "proofReceipt",
-            "providerOutput",
-            "searchReceipt",
-            "sourceIndexBundle",
-            "sourceSnapshot"
-          ]
-        },
-        "rootHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "nodeHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "producerHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "schemaHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "contentHash": {
-          "$ref": "#/$defs/artifactHash"
-        }
-      }
+      "$ref": "semantic-artifact-definitions.v1.schema.json#/$defs/artifactRootRef"
     }
   }
 }

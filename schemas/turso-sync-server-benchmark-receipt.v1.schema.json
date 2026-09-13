@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.client-db.turso-sync-server-benchmark-receipt.v1",
+  "title": "Turso 0.7 local sync-server benchmark receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "tursoVersion",
+    "iterations",
+    "pushedRows",
+    "pulledRows",
+    "pushLatencyMicros",
+    "pullLatencyMicros",
+    "checkpointLatencyMicros",
+    "networkReceivedBytes",
+    "networkSentBytes",
+    "mainWalSize"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-db.turso-sync-server-benchmark-receipt.v1"
+    },
+    "tursoVersion": { "const": "0.7.0" },
+    "iterations": { "type": "integer", "minimum": 1 },
+    "pushedRows": { "type": "integer", "minimum": 1 },
+    "pulledRows": { "type": "integer", "minimum": 1 },
+    "pushLatencyMicros": { "$ref": "#/$defs/latency" },
+    "pullLatencyMicros": { "$ref": "#/$defs/latency" },
+    "checkpointLatencyMicros": { "type": "integer", "minimum": 0 },
+    "networkReceivedBytes": { "type": "integer", "minimum": 0 },
+    "networkSentBytes": { "type": "integer", "minimum": 0 },
+    "mainWalSize": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "latency": {
+      "$ref": "client-storage-definitions.v1.schema.json#/$defs/latency"
+    }
+  }
+}

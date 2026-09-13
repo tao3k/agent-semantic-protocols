@@ -1,0 +1,12 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "spawn_agent",
+  "toolInput": {
+    "task_name": "asp_testing",
+    "message": "Run the exact test and return a compact receipt.",
+    "agent_type": "asp_testing",
+    "fork_turns": "3"
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for agent semantic client cache manifests."""
 
 from __future__ import annotations
@@ -7,6 +11,7 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from tests.unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -41,8 +46,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
             / "schemas"
             / "agent-semantic-client-cache-manifest.v1.schema.json"
         )
-        with schema_path.open("r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, manifest: dict) -> list[str]:
         return [error.message for error in self.validator.iter_errors(manifest)]
@@ -58,13 +62,13 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "providerVersion": "0.1.0",
-                    "exportMethod": "search/prime",
+                    "exportMethod": "search/playbook",
                     "projectRoot": "/repo",
                     "packageRoot": ".",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                     "cacheStatus": "miss",
                     "rawSourceStored": False,
@@ -75,7 +79,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                             "sha256": "a" * 64,
                         }
                     ],
-                    "artifactIds": ["search/rust-main-1.json"],
+                    "artifactIds": ["search-playbook/rust-main-1.json"],
                     "artifactRoots": [
                         artifact_root("sourceSnapshot"),
                         artifact_root("sourceIndexBundle"),
@@ -97,10 +101,10 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "projectRoot": "/repo",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                     "cacheStatus": "miss",
                     "rawSourceStored": True,
@@ -123,7 +127,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "projectRoot": "/repo",
                     "schemaIds": [
                         "agent.semantic-protocols.client-prompt-output"

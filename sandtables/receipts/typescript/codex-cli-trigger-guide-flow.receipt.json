@@ -9,7 +9,7 @@
     "source": "checkout",
     "workdir": ".data/codex"
   },
-  "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact ts-harness search before reading or requesting JSON",
+  "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact asp-typescript search before reading or requesting JSON",
   "recordedAt": "2026-06-01",
   "editBoundary": "before-edit",
   "commands": [
@@ -17,7 +17,7 @@
       "id": "json-search-deny-guide",
       "kind": "hook-deny",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "buildSemanticSearchPacket",
@@ -51,7 +51,7 @@
       "id": "direct-sdk-read-deny-guide",
       "kind": "hook-deny",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "owner",
         "sdk/typescript/src/codex.ts",
@@ -80,7 +80,7 @@
       "id": "safe-prime-allow",
       "kind": "other",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "prime",
         "--view",
@@ -108,7 +108,7 @@
       "id": "sdk-prime-search",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "prime",
         "--view",
@@ -158,7 +158,7 @@
     {
       "kind": "safe-search",
       "severity": "info",
-      "message": "safe compact ts-harness prime search is allowed and replayed"
+      "message": "safe compact asp-typescript prime search is allowed and replayed"
     }
   ]
 }

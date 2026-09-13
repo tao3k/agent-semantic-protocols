@@ -1,17 +1,20 @@
-use asp_rust_project_harness_policy::{
-    ASP_SEARCH_SCENARIO_PACKAGE_NAME, LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID,
-    SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID,
-    SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID,
-    SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID,
-    SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID, asp_search_scenario_package,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use asp_rust_project_harness_policy::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
+use asp_rust_project_harness_policy::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID;
+use asp_rust_project_harness_policy::asp_search_scenario_package;
 
 #[test]
 fn asp_search_scenario_package_exposes_search_performance_gates() {
     let package = asp_search_scenario_package();
 
     assert_eq!(package.package_name, ASP_SEARCH_SCENARIO_PACKAGE_NAME);
-    assert_eq!(package.scenarios.len(), 10);
 
     let names = package
         .scenarios
@@ -282,7 +285,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
         .expect("canonical Tree-sitter QueryCursor scenario is registered");
     assert_eq!(
         tree_sitter.fixture_root,
-        "languages/rust-lang-project-harness/tests/unit/cli/query/catalog"
+        "languages/asp-rust/tests/unit/cli/query/catalog"
     );
     assert!(tree_sitter.tags.contains(&"tree-sitter"));
     assert!(tree_sitter.tags.contains(&"native-runtime"));

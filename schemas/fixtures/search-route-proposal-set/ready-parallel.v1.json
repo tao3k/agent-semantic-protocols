@@ -1,0 +1,121 @@
+{
+  "schemaId": "agent.semantic-protocols.search-route-proposal-set",
+  "schemaVersion": "1",
+  "proposalSetId": "PS-PARALLEL",
+  "runId": "R1",
+  "basedOnRevision": 0,
+  "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plannerBackendId": "graph-turbo",
+  "plannerBackendDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "ready",
+  "proposals": [
+    {
+      "proposalId": "P-PARALLEL",
+      "runId": "R1",
+      "basedOnRevision": 0,
+      "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "proposedBy": "graph-turbo",
+      "agentReasoningReceiptRef": "reasoning.agent.parallel",
+      "graphDerivationReceiptRef": "derivation.graph.parallel",
+      "obligationIds": ["O-IMPL", "O-TEST", "O-POLICY"],
+      "nodes": [
+        {
+          "nodeId": "N-IMPL",
+          "actionClass": "provider-search",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "owner-items.v1",
+          "inputTemplateDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "coversObligationIds": ["O-IMPL"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP-IMPL",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 10
+          }
+        },
+        {
+          "nodeId": "N-TEST",
+          "actionClass": "provider-search",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "test-reachability.v1",
+          "inputTemplateDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "coversObligationIds": ["O-TEST"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP-TEST",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 10
+          }
+        },
+        {
+          "nodeId": "N-POLICY",
+          "actionClass": "provider-search",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "policy-reachability.v1",
+          "inputTemplateDigest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "coversObligationIds": ["O-POLICY"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP-POLICY",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 10
+          }
+        }
+      ],
+      "edges": [],
+      "executionGroups": [
+        {
+          "groupId": "G-PARALLEL",
+          "mode": "parallel",
+          "nodeIds": ["N-IMPL", "N-TEST", "N-POLICY"],
+          "joinPolicy": "all-required",
+          "maxParallel": 3,
+          "derivationReceiptRef": "derivation.group.parallel",
+          "independenceProofRef": "proof.independent.impl-test-policy"
+        }
+      ],
+      "joins": [],
+      "estimateReceiptRefs": ["estimate.parallel"],
+      "budgetProposal": {
+        "maxCommands": 3,
+        "maxElapsedMs": 1000,
+        "maxPacketBytes": 30000,
+        "maxChoiceDepth": 1,
+        "maxParallel": 3,
+        "maxAggregateProviderLatencyMs": 3000,
+        "maxParentVisibleBytes": 4000
+      },
+      "proposalDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "recommendedProposalId": "P-PARALLEL",
+  "setDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

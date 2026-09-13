@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+* ASP resident agent profiles
+
+This directory owns platform projections for configured ASP Agents.
+=*_codex.toml= and =*_claude.md= prompts describe only a role, its authority
+boundary, and its executable Playbook flow.  Protocol schemas, receipt fields,
+search ranking, graph topology, router policy, and current implementation state
+belong to their respective owners and must not be copied into Agent prompts.
+
+The protocol installer substitutes only the configured model token.  It MUST
+NOT duplicate or redefine agent behavior in hook/runtime source.  =asp sync=
+refreshes canonical state-home profiles from these assets and projects them
+into client-owned agent directories such as =~/.codex/agents/=.
+
+State-home profiles and client links are generated artifacts, not independent
+prompt authorities.

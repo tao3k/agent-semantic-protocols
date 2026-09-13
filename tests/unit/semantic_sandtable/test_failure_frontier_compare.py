@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Failure-frontier receipt comparison tests."""
 
 from __future__ import annotations
@@ -62,8 +66,8 @@ def test_compare_receipts_accepts_failure_frontier_round_reduction() -> None:
     output = stdout.getvalue()
     assert exit_code == 0
     assert "[failure-frontier] status=pass" in output
-    assert "baselineCommands=10 candidateCommands=5" in output
-    assert "commandReductionRatio=0.500" in output
+    assert "baselineCommands=10 candidateCommands=4" in output
+    assert "commandReductionRatio=0.600" in output
     assert "candidateDirectSourceReadCode=4" in output
     assert "candidateDuplicateSelectors=0" in output
     assert "coveredHotBlocks=4 expectedHotBlocks=4 missingHotBlocks=0" in output
@@ -76,8 +80,7 @@ def test_compare_receipts_rejects_window_scan_candidate(tmp_path: Path) -> None:
         json.dumps(
             _receipt(
                 "rust.cache-replay-baseline",
-                [_frontier_check("check", _HOT_BLOCKS)]
-                + [
+                [
                     _direct_read(
                         f"window-{index}",
                         f"src/cache.rs:{index * 10}-{index * 10 + 20}",
@@ -85,6 +88,7 @@ def test_compare_receipts_rejects_window_scan_candidate(tmp_path: Path) -> None:
                     for index in range(1, 11)
                 ],
                 stdout_bytes=1_000,
+                policy_receipts=[_frontier_policy_receipt(_HOT_BLOCKS)],
             )
         ),
         encoding="utf-8",
@@ -171,8 +175,9 @@ def test_compare_receipts_rejects_declared_but_unread_frontier(tmp_path: Path) -
         json.dumps(
             _receipt(
                 "rust.cache-replay-declared-only",
-                [_frontier_check("check", [_TEST_BLOCK])],
+                [],
                 stdout_bytes=100,
+                policy_receipts=[_frontier_policy_receipt([_TEST_BLOCK])],
             )
         ),
         encoding="utf-8",
@@ -271,7 +276,7 @@ def test_real_trigger_replay_scenario_runs_comparison_gate() -> None:
     assert result.status == "pass"
     assert [step.status for step in result.steps] == ["pass"]
     assert comparison["status"] == "pass"
-    assert comparison["delta"]["commandReductionRatio"] == 0.5
+    assert comparison["delta"]["commandReductionRatio"] == 0.6
     assert comparison["frontier"]["coverageRatio"] == 1.0
 
 
@@ -291,8 +296,8 @@ def test_real_trigger_replay_scenario_report_prints_comparison() -> None:
     output = stdout.getvalue()
     assert exit_code == 0
     assert "|failureFrontier status=pass" in output
-    assert "baselineCommands=10 candidateCommands=5" in output
-    assert "commandReductionRatio=0.500" in output
+    assert "baselineCommands=10 candidateCommands=4" in output
+    assert "commandReductionRatio=0.600" in output
     assert "directSourceReadCode=4 duplicateSelectors=0" in output
     assert "sameFileWindowFanout=0 missingHotBlocks=0" in output
 
@@ -381,6 +386,7 @@ def _receipt(
     commands: list[dict[str, object]],
     *,
     stdout_bytes: int,
+    policy_receipts: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     for command in commands:
         metrics = command["metrics"]
@@ -395,6 +401,7 @@ def _receipt(
         "intent": "Compare baseline source-window scan with failure-frontier flow.",
         "editBoundary": "before-edit",
         "commands": commands,
+        "policyReceipts": policy_receipts or [],
         "summary": {
             "commandCount": len(commands),
             "stdoutBytes": sum(
@@ -406,14 +413,12 @@ def _receipt(
     }
 
 
-def _frontier_check(command_id: str, next_items: list[str]) -> dict[str, object]:
+def _frontier_policy_receipt(next_items: list[str]) -> dict[str, object]:
     return {
-        "id": command_id,
-        "kind": "check",
-        "argv": ["asp", "rust", "check", "changed", "--view", "seeds", "."],
-        "outputMode": "compact",
+        "receiptId": "rust.policy.failure-frontier",
+        "authority": "asp-rust-build-dependency-api",
         "next": next_items,
-        "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
+        "failureFrontier": [],
     }
 
 

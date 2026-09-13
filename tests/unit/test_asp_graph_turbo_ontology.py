@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Graph-turbo projection tests for semantic fact ontology fixtures."""
 
 from __future__ import annotations
@@ -5,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asp_graph_turbo import (
+from asp_python_graphs import (
     TypedGraph,
     ontology_catalog_to_graph_request,
     rank_frontier,
@@ -50,7 +54,7 @@ def test_ontology_catalog_projects_to_valid_graph_turbo_request() -> None:
     result = rank_frontier(
         graph,
         profile=request["profile"],
-        seeds=request["seedIds"],
+        seeds=request["entryNodeIds"],
         limit=request["budget"],
         kind_budgets=request["kindBudgets"],
         cache_enabled=False,
@@ -81,7 +85,7 @@ def test_ontology_fixture_matrix_is_queryable_as_homologous_graph_facts() -> Non
         result = rank_frontier(
             graph,
             profile=request["profile"],
-            seeds=request["seedIds"],
+            seeds=request["entryNodeIds"],
             limit=request["budget"],
             kind_budgets=request["kindBudgets"],
             cache_enabled=False,

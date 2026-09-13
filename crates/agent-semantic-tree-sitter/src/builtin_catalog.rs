@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Built-in tree-sitter-compatible query catalogs shipped inside the ASP binary.
 
 /// Public language id used to resolve an embedded tree-sitter query catalog.
@@ -61,19 +65,19 @@ pub fn builtin_catalog_source(
 fn rust_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/calls.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/calls.scm"
         )),
         "cfg" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/cfg.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/cfg.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/declarations.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/imports.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/imports.scm"
         )),
         "macros" => Some(include_str!(
-            "../../../languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/macros.scm"
+            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/macros.scm"
         )),
         _ => None,
     }
@@ -82,13 +86,13 @@ fn rust_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn typescript_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/calls.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/calls.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/declarations.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/queries/imports.scm"
+            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/imports.scm"
         )),
         _ => None,
     }
@@ -97,19 +101,19 @@ fn typescript_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/calls.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/calls.scm"
         )),
         "control-flow" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/control-flow.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/control-flow.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/declarations.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/declarations.scm"
         )),
         "decorators" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/decorators.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/decorators.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/imports.scm"
+            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/imports.scm"
         )),
         _ => None,
     }
@@ -118,13 +122,13 @@ fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
 fn julia_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
         "calls" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
         )),
         "declarations" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
         )),
         "imports" => Some(include_str!(
-            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
+            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
         )),
         _ => None,
     }

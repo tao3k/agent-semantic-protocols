@@ -239,7 +239,7 @@
   "providerMappings": [
     {
       "languageId": "python",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -249,10 +249,10 @@
         "native-idiom.manual-transform-loop"
       ],
       "sourceOwners": [
-        "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_policy_catalog.py",
-        "languages/python-lang-project-harness/src/python_lang_project_harness/agent_readability/algorithm_shape.py",
-        "languages/python-lang-project-harness/src/python_lang_parser/_control_flow.py",
-        "languages/python-lang-project-harness/src/python_lang_parser/_native_collection_loops.py"
+        "languages/asp-python/src/asp_python/_agent_policy_catalog.py",
+        "languages/asp-python/src/asp_python/agent_readability/algorithm_shape.py",
+        "languages/asp-python/src/python_lang_parser/_control_flow.py",
+        "languages/asp-python/src/python_lang_parser/_native_collection_loops.py"
       ],
       "factKeys": [
         "PythonFunctionControlFlow",
@@ -262,7 +262,7 @@
     },
     {
       "languageId": "rust",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -272,8 +272,8 @@
         "native-idiom.manual-transform-loop"
       ],
       "sourceOwners": [
-        "languages/rust-lang-project-harness/src/rules/agent_policy/algorithm_shape.rs",
-        "languages/rust-lang-project-harness/src/parser/native_syntax/control_flow.rs"
+        "languages/asp-rust/src/rules/agent_policy/algorithm_shape.rs",
+        "languages/asp-rust/src/parser/native_syntax/control_flow.rs"
       ],
       "factKeys": [
         "agent_policy.algorithm_shape",
@@ -282,7 +282,7 @@
     },
     {
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -292,11 +292,11 @@
         "native-idiom.manual-transform-loop"
       ],
       "sourceOwners": [
-        "languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts",
-        "languages/typescript-lang-project-harness/src/rules/agent_policy/software_criteria.ts",
-        "languages/typescript-lang-project-harness/src/parser/function-shape.ts",
-        "languages/typescript-lang-project-harness/src/parser/native_syntax/control_flow.ts",
-        "languages/typescript-lang-project-harness/src/cli/semantic-search/api.ts"
+        "languages/asp-typescript/src/rules/agent_policy/pack.ts",
+        "languages/asp-typescript/src/rules/agent_policy/software_criteria.ts",
+        "languages/asp-typescript/src/parser/function-shape.ts",
+        "languages/asp-typescript/src/parser/native_syntax/control_flow.ts",
+        "languages/asp-typescript/src/cli/semantic-search/api.ts"
       ],
       "factKeys": [
         "TypeScriptPublicFunctionControlFlowFact",
@@ -308,7 +308,7 @@
     },
     {
       "languageId": "julia",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "status": "planned",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -319,8 +319,8 @@
         "error-resource.hidden-boundary"
       ],
       "sourceOwners": [
-        "languages/JuliaLangProjectHarness.jl/src/agent_registry.jl",
-        "languages/JuliaLangProjectHarness.jl/src/agent_snapshot.jl"
+        "languages/AspJulia.jl/src/agent_registry.jl",
+        "languages/AspJulia.jl/src/agent_snapshot.jl"
       ],
       "factKeys": [
         "JuliaSyntax",

@@ -1,0 +1,769 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/search-topology-settlement.v1.schema.json",
+  "title": "Search topology single-GQL settlement V1",
+  "description": "A request-bound Search projection whose selector-bearing GQL nodes, direct and derived relations, and frontiers are the complete Agent-facing reasoning surface. Query selectors remain on their owning GQL nodes; there is no duplicate MaterializationSet handoff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "resultState",
+    "binding",
+    "inference",
+    "nodes",
+    "edges",
+    "coverageCertificates",
+    "frontiers",
+    "rendering",
+    "terminal"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-topology-settlement"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.search-playbook"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "resultState": {
+      "enum": [
+        "queryable",
+        "empty",
+        "incomplete",
+        "blocked"
+      ]
+    },
+    "binding": {
+      "$ref": "#/$defs/binding"
+    },
+    "inference": {
+      "$ref": "#/$defs/inference"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "coverageCertificates": {
+      "$ref": "project-topology-library.v1.schema.json#/properties/coverageCertificates"
+    },
+    "frontiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontier"
+      }
+    },
+    "rendering": {
+      "$ref": "#/$defs/rendering"
+    },
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$(?![\\s\\S])"
+    },
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$(?![\\s\\S])"
+    },
+    "selector": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+#item/[^\\s]+$(?![\\s\\S])"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectWorkspaceIdentity",
+        "sourceGenerationDigest",
+        "providerCatalogDigest",
+        "topologyLibraryDigest",
+        "topologyGenerationDigest",
+        "structuralTopologyDigest",
+        "semanticTopologyDigest",
+        "inferenceProgramDigest",
+        "topologyClosureDigest",
+        "evidenceBindingDigest",
+        "decisionCoreDigest",
+        "topologyDeltaDigest"
+      ],
+      "properties": {
+        "projectWorkspaceIdentity": {
+          "$ref": "project-workspace-binding.v1.schema.json#/$defs/projectWorkspaceIdentity"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyLibraryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "structuralTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "semanticTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyClosureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "evidenceBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "decisionCoreDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyDeltaDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "programId",
+        "engineProfile",
+        "scope",
+        "state",
+        "terminationKind",
+        "iterationCount",
+        "traversalDepth",
+        "derivedRelationCount",
+        "proofDagDigest",
+        "proofArtifactLocator",
+        "rankingReceiptDigest",
+        "candidateClosureReceiptDigest",
+        "candidateRelationSetDigest",
+        "nextRelationSetDigest",
+        "postRankingCertified"
+      ],
+      "properties": {
+        "programId": {
+          "const": "project-topology-inference.v1"
+        },
+        "engineProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "bounded",
+            "complete"
+          ]
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "blocked"
+          ]
+        },
+        "terminationKind": {
+          "enum": [
+            "fixed-point",
+            "budget-exhausted",
+            "blocked"
+          ]
+        },
+        "iterationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "traversalDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "derivedRelationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proofDagDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proofArtifactLocator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rankingReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidateClosureReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidateRelationSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nextRelationSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "postRankingCertified": {
+          "type": "boolean"
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "complete"
+            },
+            "terminationKind": {
+              "const": "fixed-point"
+            },
+            "postRankingCertified": {
+              "const": true
+            }
+          },
+          "not": {
+            "required": [
+              "reasonKind"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "incomplete"
+            },
+            "terminationKind": {
+              "const": "budget-exhausted"
+            },
+            "postRankingCertified": {
+              "const": false
+            }
+          },
+          "required": [
+            "reasonKind"
+          ]
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "blocked"
+            },
+            "terminationKind": {
+              "const": "blocked"
+            },
+            "postRankingCertified": {
+              "const": false
+            }
+          },
+          "required": [
+            "reasonKind"
+          ]
+        }
+      ]
+    },
+    "hitProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rg": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
+        "tantivy": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "native": {
+          "type": "boolean"
+        }
+      },
+      "minProperties": 1
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "depth"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hit": {
+          "$ref": "#/$defs/hitProjection"
+        },
+        "jq": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "hit"
+          ]
+        },
+        {
+          "required": [
+            "jq"
+          ]
+        }
+      ]
+    },
+    "semanticAnnotation": {
+      "$ref": "project-topology-library.v1.schema.json#/$defs/annotation"
+    },
+    "sourceExcerpt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "match",
+        "read",
+        "witness"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*\\\\)[^\\s]+$(?![\\s\\S])"
+        },
+        "match": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
+        "read": {
+          "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"
+        },
+        "witness": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "language",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "ownerLocator": {
+          "$ref": "project-topology-library.v1.schema.json#/$defs/ownerLocator"
+        },
+        "projection": {
+          "$ref": "#/$defs/projection"
+        },
+        "annotation": {
+          "$ref": "#/$defs/semanticAnnotation"
+        },
+        "excerpt": {
+          "$ref": "#/$defs/sourceExcerpt"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "selector"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "ownerLocator"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "annotation"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "excerpt"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "excerpt"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "selector"
+                ]
+              },
+              {
+                "required": [
+                  "ownerLocator"
+                ]
+              },
+              {
+                "required": [
+                  "annotation"
+                ]
+              },
+              {
+                "required": [
+                  "projection"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "relation",
+        "modality",
+        "producerAuthority",
+        "evidenceAuthority",
+        "witnesses"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "to": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "modality": {
+          "enum": [
+            "parser-direct",
+            "declared",
+            "derived",
+            "proposed"
+          ]
+        },
+        "producerAuthority": {
+          "enum": [
+            "provider-parser",
+            "source-contract",
+            "project-topology-inference.v1",
+            "model-proposal"
+          ]
+        },
+        "evidenceAuthority": {
+          "enum": [
+            "provider-witness",
+            "contract-witness",
+            "proof-dag",
+            "model-premises"
+          ]
+        },
+        "witnesses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "derivedBy": {
+          "const": "project-topology-inference.v1"
+        },
+        "proofRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "modality": {
+                "const": "derived"
+              }
+            },
+            "required": [
+              "modality"
+            ]
+          },
+          "then": {
+            "required": [
+              "derivedBy",
+              "proofRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "derivedBy"
+                  ]
+                },
+                {
+                  "required": [
+                    "proofRef"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "coverageCertificate": {
+      "$ref": "project-topology-library.v1.schema.json#/$defs/coverage"
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor",
+        "target",
+        "relation",
+        "targetKind",
+        "depth",
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "anchor": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+        },
+        "targetKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "certified-missing"
+          ]
+        },
+        "reason": {
+          "$ref": "search-topology-settlement.v1.schema.json#/$defs/identifier"
+        },
+        "coverageRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "certified-missing"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "coverageRef"
+            ]
+          }
+        }
+      ]
+    },
+    "rendering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "gqlBlockCount",
+        "ascentSourceExposed"
+      ],
+      "properties": {
+        "format": {
+          "const": "org-gql"
+        },
+        "gqlBlockCount": {
+          "const": 1
+        },
+        "ascentSourceExposed": {
+          "const": false
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "terminalCount"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "ready",
+            "incomplete",
+            "failed"
+          ]
+        },
+        "terminalCount": {
+          "const": 1
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "ready"
+            }
+          },
+          "not": {
+            "required": [
+              "reasonKind"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "state": {
+              "enum": [
+                "incomplete",
+                "failed"
+              ]
+            }
+          },
+          "required": [
+            "reasonKind"
+          ]
+        }
+      ]
+    }
+  }
+}

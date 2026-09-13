@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-opentelemetry-performance-event.v1.schema.json",
+  "$comment": "Generated projection authority: schemas/telemetry/model/asp-performance.yaml",
+  "title": "Runtime Server OpenTelemetry performance event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "traceId",
+    "spanId",
+    "spanName",
+    "startTimeUnixNanos",
+    "endTimeUnixNanos",
+    "surface",
+    "stage",
+    "elapsedMicros",
+    "budgetMicros",
+    "budgetStatus",
+    "statusCode",
+    "attributes"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-opentelemetry-performance-event"
+    },
+    "schemaVersion": { "const": "1" },
+    "traceId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "spanId": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "parentSpanId": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$" },
+    "spanName": { "type": "string", "minLength": 1 },
+    "startTimeUnixNanos": { "type": "integer", "minimum": 0 },
+    "endTimeUnixNanos": { "type": "integer", "minimum": 0 },
+    "surface": { "enum": ["query", "search", "runtime-server", "graph-turbo"] },
+    "stage": { "type": "string", "minLength": 1 },
+    "workspaceIdentity": { "type": ["string", "null"] },
+    "languageId": { "type": ["string", "null"] },
+    "generationDigest": { "type": ["string", "null"] },
+    "runtimeArtifactDigest": { "type": ["string", "null"] },
+    "transportContractDigest": { "type": ["string", "null"] },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "budgetMicros": { "type": "integer", "minimum": 1 },
+    "budgetStatus": { "enum": ["within-budget", "budget-exceeded"] },
+    "statusCode": { "enum": ["unset", "ok", "error"] },
+    "reasonKind": { "type": ["string", "null"] },
+    "retryAfterMs": { "type": ["integer", "null"], "minimum": 0 },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "integer", "number", "boolean"]
+      }
+    }
+  }
+}

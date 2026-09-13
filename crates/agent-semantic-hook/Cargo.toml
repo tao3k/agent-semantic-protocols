@@ -1,26 +1,95 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-hook"
 version = "0.1.0"
 edition = "2024"
-description = "Root semantic agent hook runtime for provider manifests and project activations."
-license = "MIT"
+license.workspace = true
+description = "Compiled semantic Hook policy evaluator for normalized Host invocations."
+build = "build-support/main.rs"
 
-[dependencies]
-agent-semantic-config = { path = "../agent-semantic-config" }
-agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-aho-corasick = "1.1.4"
-fs2 = { workspace = true }
-globset = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-sha2 = { workspace = true }
-toml = { workspace = true }
-tree-sitter = { workspace = true }
-tree-sitter-bash = { workspace = true }
+[features]
+default = ["compiler", "evaluator"]
+compiler = [
+    "evaluator",
+    "dep:agent-semantic-schema-manager",
+    "dep:agent-semantic-provider-protocol",
+    "dep:agent-semantic-shell-parser",
+    "dep:agent-semantic-config",
+    "dep:agent-semantic-content-identity",
+    "dep:agent-semantic-runtime",
+    "dep:blake3",
+    "dep:aho-corasick",
+    "dep:base64",
+    "dep:fs2",
+    "dep:globset",
+    "dep:memmap2",
+    "dep:postcard",
+    "dep:sha2",
+    "dep:toml",
+    "dep:libc",
+    "dep:tokio",
+    "dep:which",
+]
+evaluator = [
+    "dep:agent-semantic-artifacts",
+    "dep:arc-swap",
+    "dep:agent-semantic-shell-parser",
+    "dep:agent-semantic-search-playbook",
+    "dep:blake3",
+    "dep:fs2",
+    "dep:globset",
+    "dep:orgize",
+    "dep:libc",
+    "dep:which",
+]
 
+[[bin]]
+name = "asp-hook"
+path = "src/bin/asp_hook.rs"
+required-features = ["evaluator"]
 
-[dev-dependencies]
-asp-rust-project-harness-policy.workspace = true
+[[test]]
+name = "aot_evaluator_dependency_boundary"
+path = "tests/integration/aot_evaluator_dependency_boundary.rs"
+
+[[test]]
+name = "hook_binary_process"
+path = "tests/integration/hook_binary_process.rs"
 
 [build-dependencies]
+agent-semantic-schema-manager = { workspace = true, optional = true }
 asp-rust-project-harness-policy.workspace = true
+
+[dependencies]
+arc-swap = { workspace = true, optional = true }
+agent-semantic-artifacts = { workspace = true, optional = true }
+agent-semantic-provider-protocol = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser", optional = true }
+agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook", optional = true }
+agent-semantic-config = { path = "../agent-semantic-config", optional = true }
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity", optional = true }
+agent-semantic-runtime = { path = "../agent-semantic-runtime", optional = true }
+aho-corasick = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+fs2 = { workspace = true, optional = true }
+globset = { workspace = true, optional = true }
+memmap2 = { workspace = true, optional = true }
+orgize = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+sha2 = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["io-util", "macros", "process", "rt", "time"] }
+which = { workspace = true, optional = true }
+
+[dev-dependencies]
+gix.workspace = true
+gix-config.workspace = true
+jsonschema.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/project-workspace-binding.v1.schema.json",
+  "title": "Project Workspace Binding V1",
+  "description": "A GitOps-owned logical workspace identity and repository-relative containment boundary. Source snapshots and host-local worktree instances are deliberately excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectWorkspaceIdentity",
+    "workspaceRootPath",
+    "portability",
+    "repositoryAliases"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.project-workspace-binding"},
+    "schemaVersion": {"const": "1"},
+    "projectWorkspaceIdentity": {"$ref": "#/$defs/projectWorkspaceIdentity"},
+    "workspaceRootPath": {"$ref": "#/$defs/workspaceRootPath"},
+    "portability": {"enum": ["cross-machine", "local-only"]},
+    "repositoryAliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/repositoryLocator"}
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "portability": {"const": "cross-machine"},
+        "projectWorkspaceIdentity": {"$ref": "#/$defs/crossMachineIdentity"}
+      }
+    },
+    {
+      "properties": {
+        "portability": {"const": "local-only"},
+        "projectWorkspaceIdentity": {"$ref": "#/$defs/localIdentity"},
+        "repositoryAliases": {"maxItems": 0}
+      }
+    }
+  ],
+  "$defs": {
+    "projectWorkspaceIdentity": {
+      "oneOf": [
+        {"$ref": "#/$defs/crossMachineIdentity"},
+        {"$ref": "#/$defs/localIdentity"}
+      ]
+    },
+    "workspaceKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]*(?:/[a-z][a-z0-9._-]*)*$(?![\\s\\S])"
+    },
+    "workspaceRootPath": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[^\\s#]+)$(?![\\s\\S])"
+    },
+    "repositoryLocator": {
+      "type": "string",
+      "pattern": "^git\\+(?:https|ssh)://[^\\s#]+\\.git$(?![\\s\\S])"
+    },
+    "crossMachineIdentity": {
+      "type": "string",
+      "pattern": "^git\\+(?:https|ssh)://[^\\s#]+\\.git#workspace/[a-z][a-z0-9._-]*(?:/[a-z][a-z0-9._-]*)*$(?![\\s\\S])"
+    },
+    "localIdentity": {
+      "type": "string",
+      "pattern": "^git\\+file:///[^\\s#]+#workspace/[a-z][a-z0-9._-]*(?:/[a-z][a-z0-9._-]*)*$(?![\\s\\S])"
+    }
+  }
+}

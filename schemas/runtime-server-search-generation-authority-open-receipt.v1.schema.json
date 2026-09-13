@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-search-generation-authority-open-receipt.v1.schema.json",
+  "title": "Runtime Server Search Generation Authority Open Receipt v1",
+  "description": "Cold-path receipt that binds compact search authority to the stable resident generation pointer used by warm readers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "authority",
+    "generationPointerPath"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-search-generation-authority-open-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "authority": {
+      "$ref": "runtime-server-search-generation-authority.v1.schema.json"
+    },
+    "generationPointerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "(^|/)active-generation\\.pointer$"
+    }
+  }
+}

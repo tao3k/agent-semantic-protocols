@@ -1,0 +1,74 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryAuthorizationStamp.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {snapshot : ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.AuthorizationSnapshot}\n  {decision : ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.AuthorizationDecision},\n  ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease snapshot decision →\n    decision.authorizedAtDecision = true ∧\n      decision.authorizationGeneration = snapshot.generation ∧ snapshot.grantActive decision.grant = true",
+   "theoremFamily": "release-stamp safety",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RAS-ACTIVITY",
+    "ASP-RFC-10.05-RAS-GENERATION",
+    "ASP-RFC-10.05-RAS-RELEASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.safe_release_preserves_decision_generation_and_current_activity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Winner : Type u} (snapshot : ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.AuthorizationSnapshot)\n  (decision : ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.AuthorizationDecision) (winner : Winner),\n  ¬ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease snapshot decision →\n    ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.releaseWithAuthorizationRecheck snapshot decision winner =\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.denied",
+   "theoremFamily": "fail-closed freshness recheck",
+   "rfcClauseIds": ["ASP-RFC-10.05-RAS-RELEASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.failed_freshness_recheck_denies_release",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease\n    ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationSnapshot\n    ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision ∧\n  ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.releaseWithAuthorizationRecheck\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationSnapshot\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision true =\n    ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.released true",
+   "theoremFamily": "current-generation release",
+   "rfcClauseIds": ["ASP-RFC-10.05-RAS-RELEASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.original_active_generation_allows_release",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision.authorizedAtDecision = true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease\n        ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.revokedAuthorizationSnapshot\n        ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision ∧\n    ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.releaseWithAuthorizationRecheck\n        ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.revokedAuthorizationSnapshot\n        ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision true =\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.denied",
+   "theoremFamily": "revocation counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RAS-ACTIVITY", "ASP-RFC-10.05-RAS-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.same_generation_revocation_invalidates_prior_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.nextGenerationAuthorizationSnapshot.grantActive\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision.grant =\n    true ∧\n  ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision.authorizationGeneration <\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.nextGenerationAuthorizationSnapshot.generation ∧\n    ¬ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease\n          ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.nextGenerationAuthorizationSnapshot\n          ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision ∧\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.releaseWithAuthorizationRecheck\n          ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.nextGenerationAuthorizationSnapshot\n          ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision true =\n        ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.denied",
+   "theoremFamily": "generation-replay counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RAS-GENERATION",
+    "ASP-RFC-10.05-RAS-NONIMPLICATION",
+    "ASP-RFC-10.05-RAS-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.generation_advance_invalidates_reactivated_grant_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.unsafeReleaseFromDecisionBit\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision true =\n    ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.released true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.SafeToRelease\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.nextGenerationAuthorizationSnapshot\n      ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.originalAuthorizationDecision",
+   "theoremFamily": "TOCTOU counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RAS-ATOMICITY", "ASP-RFC-10.05-RAS-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryAuthorizationStamp.decision_bit_without_freshness_recheck_releases_stale_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 1}

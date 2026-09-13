@@ -1,0 +1,29 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.CodexMultiAgentV2Lifecycle
+
+open ASPProof.ASPAgentSessionCodexV2Refinement
+
+#print axioms closedSpawnContainsEveryDurableEdge
+#print axioms hostAcceptBeforeDeliveryIsNotClosed
+#print axioms sendMessageDoesNotTriggerIdleTurn
+#print axioms followupOnIdleQueuesOneTurn
+#print axioms followupOnRunningPreservesRunningTurn
+#print axioms interruptReturnsAgentToReusableIdle
+#print axioms completionIsTurnTerminalNotAgentTerminal
+#print axioms failureIsRecoverableByFollowup
+#print axioms waitObservationDoesNotMutateAuthority
+#print axioms serverHealthDoesNotDetermineSessionBinding
+#print axioms registeredNameDoesNotProveTypedResident
+#print axioms canonicalChildPathIsStable
+#print axioms closeRequiresReleaseReceipt
+#print axioms sessionCloseDoesNotDependOnServerHealth
+#print axioms everyStepStartsFromMutableSession
+#print axioms idempotentAcceptReusesAgentId
+#print axioms turnPhaseHasOneRunningValue
+#print axioms hostCapabilitiesAloneDoNotAdmitASPBinding
+#print axioms admissibleASPUseHasDurableAuthority
+#print axioms drainingRejectsNewExternalFollowup
+#print axioms drainingOrphanCanBeReleased

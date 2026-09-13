@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/client-db-artifact-pointer-cas-receipt.v1.schema.json",
+  "title": "ASP Client DB Artifact Pointer CAS Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "outcome",
+    "expectedRootHash",
+    "expectedRevision",
+    "observedRootHash",
+    "observedRevision",
+    "current"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.client-db-artifact-pointer-cas-receipt.v1" },
+    "outcome": { "enum": ["applied", "conflict"] },
+    "expectedRootHash": { "type": ["string", "null"] },
+    "expectedRevision": { "type": "integer", "minimum": 0 },
+    "observedRootHash": { "type": ["string", "null"] },
+    "observedRevision": { "type": "integer", "minimum": 0 },
+    "current": {
+      "type": ["object", "null"]
+    }
+  }
+}

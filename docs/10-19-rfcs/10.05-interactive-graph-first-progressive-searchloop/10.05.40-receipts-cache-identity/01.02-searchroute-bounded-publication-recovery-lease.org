@@ -1,0 +1,442 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.40.01.02 - Bounded Publication Recovery Lease
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module adds bounded ownership and fenced recovery to RFC 01.01 atomic
+joint-decision publication. It changes protocol, receipt, and recovery
+semantics only. It does not authorize Rust or Python implementation.
+
+* Abstract
+
+A publication owner must not retain authority indefinitely after crashing or
+becoming partitioned. A replacement publisher must also be unable to race a
+still-valid owner.
+
+For authoritative logical time \(t\) and lease expiry \(e\):
+
+#+name: searchroute-bounded-publication-recovery-lease-model
+#+begin_src typst
+#let active(now, expires) = now < expires
+#let expired(now, expires) = expires <= now
+#let duration-bounded(issued, expires, maximum) = (
+  expires <= issued + maximum
+)
+#assert(active(4, 5))
+#assert(not expired(4, 5))
+#assert(expired(5, 5))
+#assert(not active(5, 5))
+#assert(duration-bounded(10, 15, 5))
+"ok"
+#+end_src
+
+The boundary has no overlap and no uncovered instant:
+
+\[
+t<e
+\quad\text{or}\quad
+e\le t.
+\]
+
+* Lease model
+
+A recovery lease binds:
+
+- =transitionId=;
+- =holderId=;
+- =leaseEpoch=;
+- =publicationRevision=;
+- =issuedAt=;
+- =expiresAt=;
+- =maximumLeaseDuration=;
+- =verificationSnapshotId=;
+- =clockAuthorityId=;
+- =logicalTimeEpoch=.
+
+The lease is active only when:
+
+#+begin_example
+authoritativeNow < expiresAt
+#+end_example
+
+It is expired when:
+
+#+begin_example
+expiresAt <= authoritativeNow
+#+end_example
+
+Local process time, model-generated timestamps, response arrival time, and
+cache age MUST NOT determine lease validity.
+
+* Bounded ownership
+
+The issuer MUST enforce:
+
+\[
+\mathsf{expiresAt}
+\le
+\mathsf{issuedAt}+\mathsf{maximumLeaseDuration}.
+\]
+
+Therefore once:
+
+\[
+\mathsf{issuedAt}+\mathsf{maximumLeaseDuration}
+\le
+\mathsf{authoritativeNow},
+\]
+
+the lease cannot remain active.
+
+#+name: searchroute-bounded-publication-recovery-lease-proposition
+#+begin_src typst
+#let bounded-expiry = $
+  e <= i + Delta
+  and i + Delta <= t
+  arrow.r.double
+  not (t < e)
+$
+#let takeover-fence = $
+  e <= t
+  and lambda_"expected" = lambda_"current"
+  and r_"expected" = r_"current"
+  and V_"expected" = V_"current"
+$
+#let generation-change = $
+  lambda_"new" = lambda_"old" + 1
+  and r_"new" = r_"old" + 1
+$
+#assert(type(bounded-expiry) == content)
+#assert(type(takeover-fence) == content)
+#assert(type(generation-change) == content)
+"ok"
+#+end_src
+
+Here \(\lambda\) is the lease epoch, \(r\) is the publication revision, and
+\(V\) is the verification snapshot identity.
+
+* Active holder command fence
+
+An active publisher command is authorized only when all fields match:
+
+#+begin_example
+candidateHolderId == lease.holderId
+candidateLeaseEpoch == lease.leaseEpoch
+expectedPublicationRevision == lease.publicationRevision
+candidateVerificationSnapshotId == lease.verificationSnapshotId
+authoritativeNow < lease.expiresAt
+#+end_example
+
+Failure of any field rejects the command. A matching holder name or process
+identity alone is insufficient.
+
+After takeover, an old command is fenced by =leaseEpoch= even if:
+
+- the old process resumes;
+- the same machine or service account is reused;
+- the publication revision appears otherwise compatible;
+- the fused value and decision receipt are unchanged.
+
+* Takeover authorization
+
+Takeover requires:
+
+#+begin_example
+lease.expiresAt <= authoritativeNow
+expectedLeaseEpoch == lease.leaseEpoch
+expectedPublicationRevision == lease.publicationRevision
+expectedVerificationSnapshotId == lease.verificationSnapshotId
+#+end_example
+
+Expiry is necessary but not sufficient.
+
+A successful takeover atomically creates:
+
+#+begin_example
+holderId = newHolderId
+leaseEpoch = previousLeaseEpoch + 1
+publicationRevision = previousPublicationRevision + 1
+issuedAt = authoritativeNow
+verificationSnapshotId = previousVerificationSnapshotId
+#+end_example
+
+The new expiry MUST independently satisfy the maximum-duration bound.
+
+* Lease extension policy
+
+This RFC does not permit in-place extension of =expiresAt=. A publisher needing
+more time must acquire a new bounded lease generation. Re-acquisition:
+
+- revalidates the verification snapshot;
+- increments =leaseEpoch=;
+- increments publication revision;
+- emits a new lease receipt;
+- fences commands from the previous generation.
+
+This avoids an unbounded sequence of invisible deadline extensions under one
+lease identity.
+
+A later RFC may define a renewal optimization, but it must preserve the same
+boundedness and fencing properties.
+
+* Authoritative logical time
+
+Lease safety depends on a monotone, authority-scoped logical time source.
+
+The time observation receipt MUST bind:
+
+- =clockAuthorityId=;
+- =logicalTimeEpoch=;
+- =observedLogicalTime=;
+- =observationRevision=;
+- =issuedAtEvidence=;
+- =signatureOrConsensusEvidence=.
+
+All comparisons within one lease decision MUST use the same clock authority and
+logical-time epoch.
+
+If the clock authority or logical-time epoch changes:
+
+- the current observation cannot be compared silently with the old expiry;
+- takeover fails with =logical-time-authority-mismatch=;
+- a transition-specific time migration receipt is required.
+
+Wall-clock skew MUST NOT be hidden by increasing =maximumLeaseDuration=.
+
+* Recovery command identity
+
+The recovery command key is:
+
+#+begin_example
+recoveryCommandKey = H(
+  transitionId,
+  holderId,
+  leaseEpoch,
+  expectedPublicationRevision,
+  verificationSnapshotId,
+  jointDecisionReceiptId
+)
+#+end_example
+
+An exact replay may return the previous recovery result. Changing lease epoch,
+revision, snapshot, holder, or decision receipt produces a different command.
+
+The same =holderId= in a new epoch is not the same recovery command.
+
+* Recovery receipts
+
+** Lease acquisition receipt
+
+#+begin_example
+publicationRecoveryLeaseId = H(
+  transitionId,
+  holderId,
+  leaseEpoch,
+  publicationRevision,
+  issuedAt,
+  expiresAt,
+  maximumLeaseDuration,
+  verificationSnapshotId,
+  clockAuthorityId,
+  logicalTimeEpoch
+)
+#+end_example
+
+** Takeover receipt
+
+#+begin_example
+publicationRecoveryTakeoverReceiptId = H(
+  transitionId,
+  previousLeaseId,
+  newLeaseId,
+  previousHolderId,
+  newHolderId,
+  previousLeaseEpoch,
+  committedLeaseEpoch,
+  previousPublicationRevision,
+  committedPublicationRevision,
+  expiryObservationReceiptId,
+  verificationSnapshotId,
+  committedAt
+)
+#+end_example
+
+The takeover receipt MUST preserve the previous lease identity. Replacing the
+old lease record in place destroys the fencing evidence.
+
+* Recovery procedure
+
+#+begin_example
+read transition publication state
+  -> read current recovery lease
+  -> obtain authoritative time observation
+  -> if active, route to current holder or wait
+  -> if expired, verify epoch/revision/snapshot fences
+  -> CAS new holder, epoch, and revision
+  -> emit takeover receipt
+  -> resume RFC 01.01 recovery
+#+end_example
+
+If the verification snapshot changes before takeover CAS, the recovery command
+fails. A new attempt must decide whether the durable joint decision remains
+usable.
+
+* Search and model cache semantics
+
+A recovery or takeover cache hit is valid only when:
+
+- recovery command identity matches;
+- lease epoch and publication revision match;
+- authoritative time observation is still applicable;
+- verification snapshot remains current;
+- lease and takeover receipts remain valid.
+
+A model prefix-cache hit on a previously rendered lease receipt is not a lease
+validity proof.
+
+The search cache MUST invalidate when:
+
+- lease epoch changes;
+- holder changes;
+- publication revision changes;
+- verification snapshot changes;
+- clock authority or logical-time epoch changes;
+- lease expires.
+
+* SearchLoop and graph-router consequences
+
+The compact recovery path is:
+
+#+begin_example
+inspect lease summary
+  -> inspect authoritative time receipt
+  -> choose active-holder or expired-takeover edge
+  -> verify exact fences
+  -> emit lease/takeover receipt
+  -> resume publication state machine
+#+end_example
+
+Default projections SHOULD expose:
+
+- holder and lease epoch;
+- publication revision;
+- active/expired result;
+- verification snapshot identity;
+- clock authority and logical-time epoch;
+- next authorized transition.
+
+Full publication history, old/new concrete cuts, and raw authority reports stay
+behind progressive inspect edges.
+
+This avoids polling through complex CLI commands. The agent follows typed graph
+edges such as =wait-for-holder=, =retry-current-holder=,
+=attempt-expired-takeover=, or =inspect-fence-failure=.
+
+* Failure receipts
+
+The protocol adds:
+
+- =active-lease-takeover-rejected=;
+- =stale-lease-epoch=;
+- =stale-publication-revision=;
+- =recovery-verification-snapshot-mismatch=;
+- =logical-time-authority-mismatch=;
+- =logical-time-epoch-mismatch=;
+- =lease-duration-bound-violation=;
+- =cross-epoch-recovery-replay=.
+
+Every receipt MUST bind observed and expected fence identities.
+
+* Proof-discovered gaps
+
+** Expiry alone is not takeover authorization
+
+Two candidates can observe the same expired deadline. Epoch and revision CAS
+select the actual successor.
+
+** An expiry field does not imply bounded ownership
+
+Without =expiresAt <= issuedAt + maximumLeaseDuration=, an issuer can create a
+practically permanent lease.
+
+** Holder identity is weaker than holder generation
+
+A restarted service may retain the same holder name. Lease epoch, not name,
+fences commands from the old process generation.
+
+** Publication revision and lease epoch are different
+
+Lease epoch identifies ownership generation. Publication revision identifies
+the transition state observed by that owner. Neither substitutes for the
+other.
+
+** Local time is not evidence
+
+Different publishers can disagree about wall time. Lease decisions must bind an
+authoritative monotone time observation.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.lean
+#+end_example
+
+It proves:
+
+- active and expired lease states are disjoint;
+- maximum duration bounds active ownership;
+- an active lease blocks takeover;
+- an expired lease with exact fences authorizes takeover;
+- stale epoch, revision, or verification snapshot blocks takeover;
+- takeover increments lease epoch and publication revision;
+- the old lease epoch is fenced after takeover;
+- a changed snapshot blocks active-holder commands;
+- recovery compatibility binds lease epoch;
+- cross-epoch replay is rejected.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLeaseAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-bounded-publication-recovery-lease-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- deterministic selection among multiple takeover candidates;
+- starvation freedom under repeated contention;
+- replicated clock-authority consensus;
+- bounded retry count;
+- renewal optimization;
+- multi-region lease propagation.
+
+* Next proof boundary
+
+The next module should prove deterministic recovery contention. When several
+candidates observe the same expired lease, exactly one candidate must win the
+next epoch, while losers receive a compact receipt pointing to the winner and
+new lease generation.
+
+The proof should separate single-winner safety from starvation or fairness
+liveness.

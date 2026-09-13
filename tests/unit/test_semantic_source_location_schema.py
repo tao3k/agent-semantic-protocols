@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate shared semantic source-location schema references."""
 
 import json
@@ -5,6 +9,8 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
+from unit.schema_validation import schema_validator_for
 
 
 _SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"
@@ -18,7 +24,9 @@ def _load_schema(name: str) -> dict[str, object]:
 class SemanticSourceLocationSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         self.schema = _load_schema("semantic-source-location.v1.schema.json")
-        self.validator = Draft202012Validator(self.schema)
+        self.validator = schema_validator_for(
+            _SCHEMA_DIR / "semantic-source-location.v1.schema.json"
+        )
 
     def test_valid_source_location_bundle(self) -> None:
         packet = {
@@ -55,10 +63,6 @@ class SemanticSourceLocationSchemaTests(unittest.TestCase):
                 "projectPath": "projectPath",
                 "location": "location",
                 "sourceLocator": "sourceSpanLocator",
-            },
-            "semantic-search-packet.v1.schema.json": {
-                "projectPath": "projectPath",
-                "location": "location",
             },
             "semantic-read-packet.v1.schema.json": {
                 "projectPath": "projectPath",

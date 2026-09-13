@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 # Optional user hook config.
 # Hook defaults are compiled into the runtime; this file exposes the user-level
 # overrides that should be easy to audit.
@@ -5,223 +9,577 @@ schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
 schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
+contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
-# Parser-owned `asp <language>` command intent taxonomy. These entries drive
-# runtime matching; they are not documentation-only command examples.
-[aspCommandIntentPolicy.controlPlane]
-rootCommands = [
-  "guide",
-  "providers",
-  "tools",
-  "wrap",
-  "cache",
-  "cloud",
-  "hook",
-  "agent",
-  "install",
-  "sync",
-  "paths",
-  "healthcheck",
-  "source-access",
-  "ast-patch",
-  "graph",
+# Upstream-maintained command semantics. The tree-sitter shell parser emits
+# normalized argv stages; this table is the only policy authority that labels
+# them. Unknown shapes are not classified at runtime.
+[[commandActionPatterns]]
+action = "read"
+argvPatternAny = [
+  ["cat"],
+  ["head"],
+  ["tail"],
+  ["bat", "*"],
+  ["batcat", "*"],
+  ["less"],
+  ["more"],
+  ["awk"],
+  ["nl"],
+  ["Get-Content"],
+  ["sed", "-n"],
+  # `git` is not a Reader as a whole.  These patterns require the arguments
+  # that select source content; their trailing tokens use glob syntax.
+  ["git", "show", "*:*.?*"],
+  ["git", "diff", "**"],
 ]
 
-[aspCommandIntentPolicy.reasoning]
-rootCommands = ["fd", "rg"]
-guideCommand = true
-searchRoutes = [
-  "prime",
-  "pipe",
-  "owner",
-  "lexical",
-  "deps",
-  "dependency",
-  "failure",
-  "reasoning",
-  "ingest",
-  "guide",
+[[commandActionPatterns]]
+action = "search"
+argvPatternAny = [
+  ["rg"], ["rga"], ["ripgrep-all"], ["grep"], ["egrep"], ["fgrep"],
+  ["ag"], ["ack"], ["pt"], ["fd"], ["find"], ["git", "grep", "**"],
 ]
-queryFlags = ["--term"]
-unprojectedQuery = true
 
-[aspCommandIntentPolicy.exactEvidence]
-queryProjectionFlags = ["--code", "--content", "--names-only"]
-queryProjectionViews = ["metadata"]
-selectorKinds = ["item"]
-requireSameLanguage = true
+[agentCalling]
+defaultPattern = "@{name}"
 
-[aspCommandIntentPolicy.directReadFallback]
-fromHookValues = ["direct-source-read"]
+[agentCalling.platformPatterns]
+claude = "@agent-{name-kebab}"
 
-[aspCommandIntentPolicy.invalidEvidence]
-rejectProjectedQueryWithoutExactSelector = true
-rejectCrossLanguageSelector = true
+# Generated from schemas/provider-register.json at build time. This list owns
+# provider facade routing only; source-extension policy stays in profiles.
+@REGISTERED_PROVIDER_ROUTES@
 
-# Deterministic testing/build work is not a reasoning-agent lifecycle.  The
-# hook permits only these exact token prefixes and emits a command-digest
-# receipt for each current-session execution.
-[executionLanes.testing]
-enabled = true
-transport = "current-session"
+[profiles.rust]
+languageId = "rust"
+providerId = "asp-rust"
+extensionAny = ["rs", "rsx"]
+sourceRootAny = ["crates", "languages/asp-rust"]
+
+[profiles.typescript]
+languageId = "typescript"
+providerId = "asp-typescript"
+extensionAny = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]
+sourceRootAny = ["languages/asp-typescript"]
+
+[profiles.python]
+languageId = "python"
+providerId = "asp-python"
+extensionAny = ["py", "pyi"]
+sourceRootAny = ["languages/asp-python"]
+
+[profiles.julia]
+languageId = "julia"
+providerId = "asp-julia"
+extensionAny = ["jl"]
+sourceRootAny = ["languages/AspJulia.jl"]
+
+[profiles.gerbil-scheme]
+languageId = "gerbil-scheme"
+providerId = "asp-gerbil-scheme"
+extensionAny = ["ss", "ssi", "scm", "sld"]
+sourceRootAny = ["languages/asp-gerbil-scheme"]
+
+[profiles.org]
+languageId = "org"
+providerId = "asp-org"
+extensionAny = ["org"]
+sourceRootAny = ["languages/orgize"]
+
+[profiles.markdown]
+languageId = "md"
+providerId = "asp-md"
+extensionAny = ["md", "markdown"]
+sourceRootAny = ["docs"]
+
+[[commandProfiles]]
+id = "rust-cargo"
+languageIds = ["rust"]
+
+[commandProfiles.categories]
+testing = [
+  ["cargo", "test"],
+  ["cargo", "check"],
+  ["cargo", "build"],
+  ["just", "test"],
+  ["asp", "rust", "check"],
+]
+review = [["cargo", "clippy"]]
+format-check = [["cargo", "fmt"]]
+
+[[commandProfiles]]
+id = "typescript-node"
+languageIds = ["typescript"]
+
+[commandProfiles.categories]
+testing = [
+  ["npm", "test"],
+  ["npm", "run", "test"],
+  ["npm", "run", "build"],
+  ["pnpm", "test"],
+  ["pnpm", "run", "test"],
+  ["pnpm", "run", "build"],
+  ["yarn", "test"],
+  ["yarn", "build"],
+  ["bun", "test"],
+  ["bun", "run", "build"],
+  ["node", "--test"],
+]
+review = [
+  ["npm", "run", "lint"],
+  ["pnpm", "run", "lint"],
+  ["yarn", "lint"],
+  ["bun", "run", "lint"],
+]
+
+[[commandProfiles]]
+id = "python-uv"
+languageIds = ["python"]
+
+[commandProfiles.categories]
+testing = [["pytest"], ["uv", "run", "pytest"]]
+review = [["ruff", "check"], ["uv", "run", "ruff", "check"]]
+
+[[commandProfiles]]
+id = "julia-pkg"
+languageIds = ["julia"]
+
+[commandProfiles.categories]
+testing = [["julia", "--project=test"]]
+
+[[commandProfiles]]
+id = "c-cmake"
+languageIds = ["c", "cpp", "objective-c"]
+
+[commandProfiles.categories]
+testing = [["ctest"], ["cmake", "--build"]]
+
+[[commandProfiles]]
+id = "gerbil-gxpkg"
+languageIds = ["gerbil-scheme"]
+
+[commandProfiles.categories]
+testing = [
+  ["gxpkg", "test"],
+  ["gxtest"],
+  ["just", "test-gerbil-provider-http-json"],
+  ["just", "check-gerbil-owner-items-fast-path"],
+]
+
+[[commandProfiles]]
+id = "gerbil-gxi"
+languageIds = ["gerbil-scheme"]
+
+[commandProfiles.categories]
+building = [["gxi"], ["gxc"]]
+
+[[commandProfiles]]
+id = "lean-lake"
+languageIds = ["lean"]
+
+[commandProfiles.categories]
+testing = [["lake", "env", "lean"], ["lake", "build"]]
+
+# Repository-wide inspection families are independent of language profiles.
+# Source-search commands such as `git grep` and `git ls-files` deliberately do
+# not belong here; they remain governed by registered-source search routing.
+[[commandSets]]
+id = "git-history-inspection"
+argvPrefixAny = [
+  ["git", "log"],
+  ["git", "show"],
+  ["git", "diff"],
+  ["git", "reflog"],
+  ["git", "shortlog"],
+  ["git", "blame"],
+]
+
+# Codex thread lifecycle and message transport are Host coordination actions,
+# not shell commands or generic MCP execution. Keep their native tool names
+# exact so policy receipts retain the action that the Host actually invoked.
+[[rules]]
+id = "allow-codex-thread-control"
+priority = 190000
+matcher = "mcp__codex_app__create_thread|mcp__codex_app__fork_thread|mcp__codex_app__list_threads|mcp__codex_app__list_archived_threads|mcp__codex_app__read_thread|mcp__codex_app__read_thread_terminal|mcp__codex_app__send_message_to_thread|mcp__codex_app__wait_threads|mcp__codex_app__handoff_thread|mcp__codex_app__get_handoff_status|mcp__codex_app__navigate_to_codex_page|mcp__codex_app__open_in_codex|mcp__codex_app__set_thread_archived|mcp__codex_app__set_thread_pinned|mcp__codex_app__set_thread_title|mcp__codex_app__share_thread"
+intent = "host-thread-control"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an exact Codex thread-control action after native Host matching."
+
+[[rules]]
+id = "allow-codex-workspace-observation"
+priority = 190000
+matcher = "mcp__codex_app__list_projects|mcp__codex_app__load_workspace_dependencies"
+intent = "host-workspace-observation"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an exact Codex workspace-observation action after native Host matching."
+
+[[rules]]
+id = "allow-codex-automation-control"
+priority = 190000
+matcher = "mcp__codex_app__automation_update"
+intent = "host-automation-control"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed an exact Codex automation control action; the Host remains the mutation authority."
+
+# Native Host Edit actions with an explicit workspace path receive a stable
+# mutation intent. Agent registration profiles remain the authority that may
+# admit or deny that intent; this rule does not duplicate agent names.
+[[rules]]
+id = "allow-owner-scoped-mutation"
+priority = 150000
+matcher = "apply_patch"
+intent = "owner-scoped-mutation"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed a path-bearing native Edit action in the registered coding lane."
+
+[rules.match]
+pathGlobAny = ["**"]
+
+# Runtime-owned reasoning search dispatch. The public playbook carries its
+# producer-set union in `--language`; provider admission remains inside Runtime. The
+# rule owns the complete match, intent, decision, and Host role-dispatch policy. Exact selector-bearing
+# query is the main-thread QueryHandoff materialization boundary and is not
+# dispatched back into the Explorer.
+[[rules]]
+id = "registered-asp-reasoning-search"
+matcherPolicies = ["wrapped_command"]
+priority = 100000
+intent = "reasoning-search"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "The current Agent cannot run this registered-source Search playbook. Delegate the exact `search playbook` request to ASP Explorer. ASP Server will use the admitted rg acquisition, Tantivy lexical, and asp-python-graphs generation. ASP Explorer returns bounded selector evidence without prescribing the parent Agent's next action. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [
+  ["asp", "search", "playbook"],
+]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+
+[[rules]]
+id = "registered-asp-structured-projection"
+matcherPolicies = ["wrapped_command"]
+priority = 100000
+intent = "structured-projection"
+decision = "deny"
+reasonKind = "agent-choice-required"
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [["asp", "query", "playbook"]]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
+
+[[rules]]
+id = "testing-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "test-build-command"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "This operation is denied only in the current Agent; ASP remains available. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "rust-cargo", category = "testing" },
+  { profile = "typescript-node", category = "testing" },
+  { profile = "python-uv", category = "testing" },
+  { profile = "julia-pkg", category = "testing" },
+  { profile = "c-cmake", category = "testing" },
+  { profile = "gerbil-gxpkg", category = "testing" },
+  { profile = "lean-lake", category = "testing" },
+]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
 receiptKind = "asp-testing-execution-v1"
-commandPrefixes = [
-  "cargo test",
-  "cargo check",
-  "cargo build",
-  "pytest",
-  "uv run pytest",
-  "just test",
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "testing"
+
+[[rules]]
+id = "rust-format-check-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 91000
+intent = "review-command"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "Rust formatting verification is denied only in the current Agent; run the non-mutating `cargo fmt ... -- --check` form in the ASP Testing lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "rust-cargo", category = "format-check" },
+]
+argvTokenAll = ["--check"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "review"
+
+[[rules]]
+id = "review-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "review-command"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "Static review is denied only in the current Agent; run it in the ASP Testing lane and return the typed receipt. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "rust-cargo", category = "review" },
+  { profile = "typescript-node", category = "review" },
+  { profile = "python-uv", category = "review" },
 ]
 
-[[agents.residentAgents]]
-enabled = true
-name = "asp-explore"
-role = "asp_explorer"
-roles = ["subagent", "search"]
-permissions = ["read-only"]
-codexAgentName = "asp_explorer"
-lifecycle = "asp-command"
-sessionLifetime = "resident"
-mainAllowedAspCommandPrefixes = [
-  "help",
-  "--help",
-  "-h",
-  "agent session",
-  "org recall",
-  "org capture",
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "review"
+
+[[rules]]
+id = "git-history-inspection-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "git-history-inspection"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "Git history inspection can emit large repository-object projections. Run this command in the ASP Testing lane and return a compact receipt. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandSetAny = ["git-history-inspection"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "git-history-inspection"
+
+[[rules]]
+id = "live-corpus-qualification-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "live-corpus-qualification"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "Live Corpus qualification is denied only in the current Agent; run the formal qualification in the ASP Testing execution lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [
+  ["asp", "live-corpus", "qualify"],
 ]
 
-[agentSessionGuide]
-register = """
-asp agent session register guide
-Register is a low-level state write owned by the resident-child interactive loop.
-Detected host: {{hostLabel}}
-Session env: {{sessionEnv}}
-Canonical loop entry:
-   asp agent session bootstrap --name asp-explore
-After a hook deny, run only the loop entry. Choose exactly one number, perform the platform-native action for that choice, then re-enter the same loop until state=Ready.
-The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration. Only run register when a pane choice explicitly asks for it and provides both childSessionId and agentMessageTargetId.
-Configured resident child action: {{createAction}}
-Config source: {{configSource}}
-Host projection: {{hostProjection}}
-Do not run low-level session commands, thread reads, rollout scans, or generic subagent creation as independent fallback paths.
-"""
-list = """
-asp agent session list guide
-List registered child sessions for the current root session.
-"""
-show = """
-asp agent session show guide
-Show one registered child session by --name or --child-session-id.
-"""
-status = """
-asp agent session status guide
-Status is diagnostic only; do not use it as a fallback workflow after hook deny.
-If a resident child is missing, non-routable, or unclear, enter the canonical choice pane:
-   asp agent session bootstrap --name asp-explore
-Timeout is not a duplicate-worker trigger. The bootstrap pane owns recovery.
-"""
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
 
-[agentSessionMessages]
-sessionStartReuse = """
-ASP session-start reuse: this root session already has active resident {{residentChildName}} child session `{{childSessionId}}`.
-Use this exact child session for ASP search/query; do not spawn another {{residentChildName}} session and do not close it while the root session is active.
-If message delivery or wait state is unclear, re-enter the resident-child pane:
-   asp agent session bootstrap --name {{residentChildName}}
-Timeout is not a duplicate-worker trigger; the pane owns recovery.
-"""
-sessionStartBootstrap = """
-ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
-Do not run low-level session commands or create generic subagents outside the pane.
-After state=Ready, send the original denied command to the registered message-agent target and wait for its compact receipt.
-"""
-missingResidentExplore = """
-ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
-Do not run low-level session commands or create generic subagents outside the pane.
-After state=Ready, send the original denied command to the registered message-agent target and wait for its compact receipt.
-{{originalCommandLine}}
-"""
-mainRestrictedWithChild = """
-ASP denied main-session ASP command (`{{commandLabel}}`).
-Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
-Route ASP search/query/evidence work to resident {{residentChildName}} child session `{{childSessionId}}`.
-Command: {{command}}
-"""
-mainRestrictedWithoutChild = """
-ASP denied main-session ASP command (`{{commandLabel}}`).
-Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
-Do not run low-level session commands or create generic subagents outside the pane.
-After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
-Command: {{command}}
-"""
-binaryGateWithChild = """
-ASP query/search command denied in main agent session.
-Route this command to resident {{residentChildName}} child session `{{childSessionId}}`; do not spawn another {{residentChildName}} session.
-rootSessionId={{rootSessionId}}
-childSessionId={{childSessionId}}
-loopCommand=asp agent session bootstrap --name {{residentChildName}}
-command={{command}}
-"""
-binaryGateWithoutChild = """
-ASP query/search command denied in agent session because no active {{residentChildName}} child session is registered for this root session.
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-Do not run low-level session commands or create generic subagents outside the pane.
-After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
-rootSessionId={{rootSessionId}}
-loopCommand=asp agent session bootstrap --name {{residentChildName}}
-command={{command}}
-"""
-binaryGateInvalidChild = """
-ASP query/search command denied in agent session because the registered {{residentChildName}} child session is not routable.
-blockedState=validation-warning-or-non-routable-child
-rootSessionId={{rootSessionId}}
-childSessionId={{childSessionId}}
-childStatus={{childStatus}}
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-The pane owns status inspection, model alignment, message target recovery, cleanup, creation, and registration. Do not run low-level session commands as independent fallback workflows.
-After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
-command={{command}}
-"""
-binaryGateRegistryBlocked = """
-ASP query/search command denied in agent session because the ASP session registry is currently unavailable.
-blockedState=registry-locked
-rootSessionId={{rootSessionId}}
-Run the resident-child choice pane again after the registry lock clears.
-   asp agent session bootstrap --name {{residentChildName}}
-Do not fall back to raw source tools while the registry is locked.
-registryError={{registryError}}
-command={{command}}
-"""
-sourceAccessCompact = """
-ASP denied source access (`{{reason}}`).
-Use the resident-child interactive loop. Choose one number, perform that native platform action, then re-enter the loop until state=Ready:
-   asp agent session bootstrap --name {{residentChildName}}
-After state=Ready, send the denied command to the registered message-agent target and wait for a compact `[asp-search-subagent]` receipt.
-Do not use low-level session commands, generic subagents, normal thread reads, raw source reads, or rollout scans as fallback paths.
-recoveryRef={{recoveryRef}}
-"""
-sourceAccessCompactRepeated = """
-ASP denied source access again (`{{reason}}`).
-Stay in the resident-child interactive loop; choose one number and re-enter the loop until state=Ready:
-   asp agent session bootstrap --name {{residentChildName}}
-After state=Ready, use the registered message-agent target for ASP evidence work only.
-recoveryRef={{recoveryRef}}
-"""
-sourceAccessCompactSubagent = """
-ASP denied source access (`{{reason}}`) inside {{residentChildName}}.
-Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next.
-Do not return source bodies, snippets, line-range selectors, raw thread reads, or rollout log scans.
-recoveryRef={{recoveryRef}}
-"""
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "live-corpus-qualification"
+
+[[rules]]
+id = "gerbil-build-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "test-build-command"
+decision = "deny"
+reasonKind = "agent-choice-required"
+message = "This Gerbil build is denied only in the current Agent; run it in the ASP Testing execution lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "gerbil-gxi", category = "building" },
+]
+argvSourceGlobAny = ["*.ss", "**/*.ss"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "building"
+
+[[rules]]
+id = "deny-agent-search-json"
+matcherPolicies = ["wrapped_command"]
+priority = 110000
+intent = "reasoning-search"
+decision = "deny"
+reasonKind = "agent-search-json"
+message = "Agent-facing search JSON is denied; use the compact ASP search route."
+
+[rules.match]
+argvPatternAny = [
+  ["asp", "search", "playbook"],
+]
+commandContainsAny = ["--json"]
+
+[[rules]]
+id = "route-read-to-asp-languages"
+priority = 40000
+matcher = "Bash"
+actions = ["read"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme"]
+decision = "deny"
+reasonKind = "registered-source-route-required"
+message = "The current Agent cannot read this confirmed {{languageId}} source directly. Delegate the denied read to ASP Explorer and continue from its exact selector receipt. {{agentDispatchMessage}}"
+
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
+
+[[rules]]
+id = "deny-shell-search-before-execution"
+priority = 40001
+matcher = "Bash"
+actions = ["search"]
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Direct shell search is denied before execution because Codex renders it as Search. Use the ASP search playbook instead."
+
+[[rules]]
+id = "route-org-document-read-to-asp-explorer"
+priority = 40000
+matcher = "Bash"
+actions = ["read"]
+profilesList = ["org"]
+decision = "deny"
+reasonKind = "registered-source-route-required"
+message = "The current Agent cannot read this confirmed Org document directly. Delegate it to ASP Explorer through the `asp org` document route and continue from its exact selector receipt. {{agentDispatchMessage}}"
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+
+[[rules]]
+id = "route-markdown-document-read-to-asp-explorer"
+priority = 40000
+matcher = "Bash"
+actions = ["read"]
+profilesList = ["markdown"]
+decision = "deny"
+reasonKind = "registered-source-route-required"
+message = "Direct Markdown reads are denied because ASP Markdown retrieval must remain selector-bound. Use the registered Markdown Search Playbook route. {{agentDispatchMessage}}"
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+
+[[rules]]
+id = "route-shell-structured-document-read"
+actions = ["read"]
+priority = 40010
+matcher = "Bash"
+decision = "deny"
+reasonKind = "structured-source-read"
+message = "A Shell input redirection reads a structured document. Delegate the JSON/TOML read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
+
+[rules.match]
+pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+
+[[rules]]
+id = "allow-bounded-json-projection"
+matcherPolicies = ["wrapped_command"]
+priority = 40020
+intent = "structured-projection"
+decision = "allow"
+terminal = true
+fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
+
+[rules.match]
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "jq"
+documentFormat = "json"
+filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
+optionAny = ["-c", "--compact-output", "-r", "--raw-output", "-e", "--exit-status"]
+optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile" = 2, "--argfile" = 2, "--indent" = 1, "-L" = 1 }
+
+[[rules]]
+id = "allow-bounded-toml-projection"
+matcherPolicies = ["wrapped_command"]
+priority = 40020
+intent = "structured-projection"
+decision = "allow"
+terminal = true
+fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
+
+[rules.match]
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "yq"
+documentFormat = "toml"
+filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
+optionalSubcommandAny = ["eval", "e"]
+optionAny = ["-p=toml"]
+
+[[rules]]
+id = "deny-unbounded-structured-projection"
+matcherPolicies = ["wrapped_command"]
+priority = 40015
+intent = "structured-projection"
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Structured documents require one configured bounded projector path; identity, recursive, iterator, compound, unknown-option, multiple-input, and multi-stage projections are denied."
+
+[rules.match]
+commandAny = ["jq", "yq"]
+argvStructuredDocumentFile = true

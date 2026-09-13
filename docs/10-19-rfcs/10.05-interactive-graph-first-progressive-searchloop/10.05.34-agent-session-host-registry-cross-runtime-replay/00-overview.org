@@ -1,0 +1,277 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.34 — Agent Session Host Registry Cross-Runtime Replay
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.33-agent-session-host-registry-verifier-attestation/00-overview.org][RFC 10.05.33 — Agent Session Registry Verifier Attestation]]. The Lean source and direct audit compile, all 23 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+This closure proves the acceptance relation and its counterexamples. It does not claim that an installed verifier artifact has already produced a runtime replay receipt. The executable artifact command, canonical vector generator, and independent replay executor remain an implementation boundary. No Rust implementation is authorized in this session.
+
+The aggregate =lake build ASPProof= gate remains outside this focused claim; unrelated proof modules retain the recorded =Mathlib= and =Decidable= failures.
+
+* Problem
+
+RFC 10.05.33 binds canonical frames, decoder behavior, digest vectors, artifact identity, and AXLE identity. It still permits an implementation to call a local execution a “replay” while observing only a successful exit code.
+
+That is unsound. A cross-runtime replay receipt must close six independent gaps:
+
+- the replay executor must differ from the producer executor;
+- the runtime must consume the same canonical vector-suite identity as the Lean reference;
+- the installed verifier artifact identity must match exactly;
+- reference and runtime outcomes must agree, including semantic acceptance;
+- stdout, stderr, and exit status must be bound independently;
+- warm-path verification must add no provider launch, persistent write, or agent round.
+
+Timing is recorded, but speed is not correctness. A zero-duration execution with a same-executor replay or semantic mismatch remains invalid.
+
+* Evidence alignment
+
+The independent-executor rule reuses the executable verifier conformance boundary. Artifact identity reuses the active artifact Merkle receipt. Warm-path effects reuse the exact-selector warm-path vocabulary. This RFC composes them into one acceptance relation instead of treating transport success, performance, or a pass bit as conformance.
+
+* Canonical vector replay law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-VECTORS
+:END:
+
+#+name: registry-cross-runtime-vector-law
+#+begin_src typst
+#let Run(executor, vector) = $upright("run")(#executor, #vector)$
+#let Expected(vector) = $upright("expected")(#vector)$
+#let Member(vector, suite) = $upright("member")(#vector, #suite)$
+
+$
+  forall v,
+  Member(v, V) => Run(E, v) = Expected(v).
+$
+#+end_src
+
+One suite is generated once and addressed by one digest. Reference and runtime executors may not silently regenerate different cases under the same label.
+
+* Independent replay law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-EXECUTOR
+:END:
+
+#+name: registry-cross-runtime-executor-law
+#+begin_src typst
+#let Producer(r) = $upright("producerExecutorDigest")(#r)$
+#let Replayer(r) = $upright("replayExecutorDigest")(#r)$
+#let Accepted(r) = $upright("Accepted")(#r)$
+
+$
+  forall r,
+  Accepted(r) => Producer(r) != Replayer(r).
+$
+#+end_src
+
+Process separation alone is insufficient; the receipt binds executor identities so the same executable invocation cannot certify itself as independent replay.
+
+* Artifact and suite identity
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-IDENTITY
+:END:
+
+Acceptance binds the exact installed verifier artifact digest and canonical vector-suite digest. A semantically similar binary or regenerated suite is a different experiment and must receive a different receipt identity.
+
+* Channel and semantic agreement law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-CHANNELS
+:END:
+
+#+name: registry-cross-runtime-channel-law
+#+begin_src typst
+#let Ref(r) = $upright("referenceOutcome")(#r)$
+#let Run(r) = $upright("runtimeOutcome")(#r)$
+#let Out(r) = $upright("stdoutDigest")(#r)$
+#let Err(r) = $upright("stderrDigest")(#r)$
+#let Exit(r) = $upright("exitCode")(#r)$
+#let RunOut(r) = $upright("runtimeStdoutDigest")(#r)$
+#let RunErr(r) = $upright("runtimeStderrDigest")(#r)$
+#let RunExit(r) = $upright("runtimeExitCode")(#r)$
+#let Accepted(r) = $upright("Accepted")(#r)$
+
+$
+  forall r,
+  Accepted(r) =>
+  Ref(r) = Run(r) and
+  Out(r) = RunOut(r) and
+  Err(r) = RunErr(r) and
+  Exit(r) = RunExit(r).
+$
+#+end_src
+
+=exitCode = 0= is only one field. It cannot mask stdout drift, stderr diagnostics, or a different semantic acceptance decision.
+
+* Warm-path effect law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-WARM
+:END:
+
+#+name: registry-cross-runtime-warm-law
+#+begin_src typst
+#let Launch(e) = $upright("providerLaunchCount")(#e)$
+#let Write(e) = $upright("persistentWriteCount")(#e)$
+#let Round(e) = $upright("addedAgentRoundCount")(#e)$
+#let EffectFree(e) = $upright("EffectFree")(#e)$
+
+$
+  forall e,
+  EffectFree(e) <=>
+  Launch(e) = 0 and Write(e) = 0 and Round(e) = 0.
+$
+#+end_src
+
+The three counters are separate because a daemon-resident index can avoid provider launch while still mutating persistent state or adding another model interaction.
+
+* Timing separation
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASCR-TIMING
+:END:
+
+The receipt records =durationMs=. A deployment may supply a maximum duration, but neither a small duration nor satisfaction of that bound implies identity, channel, semantic, or effect conformance.
+
+* Stateful architecture
+
+#+name: registry-cross-runtime-replay-architecture
+#+begin_src mermaid
+flowchart LR
+  G["Vector generator\nstate: CanonicalSuite(digest)"]
+  L["Lean reference\nstate: ReferenceOutcome(stdout, stderr, exit, accepted)"]
+  A["Installed artifact\nstate: IdentityBound(digest)"]
+  R["Independent replayer\nstate: ExecutorDistinct"]
+  E["Effect observer\nstate: Counts(launch, write, round)"]
+  C["Receipt consumer\nstate: Pending | Accepted | Quarantined"]
+
+  G -->|"transition; state: CanonicalSuite -> ReferencePending; same vector digest"| L
+  G -->|"transition; state: CanonicalSuite -> RuntimePending; immutable vector bytes"| R
+  A -->|"guard; state: IdentityBound -> ArtifactAdmitted; exact digest"| R
+  R -->|"transition; state: ExecutorDistinct -> RuntimeOutcome; stdout/stderr/exit"| E
+  L -->|"guard; state: ReferenceOutcome -> ComparisonPending; semantic decision"| C
+  E -->|"guard; state: Counts -> Accepted; all zero and outcomes equal"| C
+  A -->|"prohibitedEffect; state: ArtifactDrift -> Quarantined"| C
+  R -->|"prohibitedEffect; state: SameExecutorOrChannelDrift -> Quarantined"| C
+  E -->|"prohibitedEffect; state: NonZeroEffect -> Quarantined"| C
+#+end_src
+
+* Replay state machine
+
+#+name: registry-cross-runtime-replay-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "Candidate\nstate: UnboundReplay" as Candidate
+  state "IdentityBound\nstate: ArtifactAndSuiteExact" as IdentityBound
+  state "Independent\nstate: ExecutorDigestsDistinct" as Independent
+  state "Compared\nstate: ReferenceEqualsRuntime" as Compared
+  state "Warm\nstate: EffectsZero" as Warm
+  state "Accepted\nstate: ReceiptClosed" as Accepted
+  state "Rejected\nstate: Quarantine(defect)" as Rejected
+
+  Candidate --> IdentityBound: "guard; state: UnboundReplay -> ArtifactAndSuiteExact"
+  Candidate --> Rejected: "prohibitedEffect; state: IdentityDrift -> Quarantine"
+  IdentityBound --> Independent: "guard; state: Bound -> ExecutorDigestsDistinct"
+  IdentityBound --> Rejected: "prohibitedEffect; state: SameExecutor -> Quarantine"
+  Independent --> Compared: "guard; state: Distinct -> OutcomesAndChannelsEqual"
+  Independent --> Rejected: "prohibitedEffect; state: ChannelOrSemanticDrift -> Quarantine"
+  Compared --> Warm: "guard; state: Equal -> EffectsZero"
+  Compared --> Rejected: "prohibitedEffect; state: LaunchOrWriteOrRound -> Quarantine"
+  Warm --> Accepted: "capability; state: EffectsZero -> ReceiptClosed"
+#+end_src
+
+* Replay sequence
+
+#+name: registry-cross-runtime-replay-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant G as "Generator [state: SuiteCanonical]"
+  participant L as "Lean Reference [state: AwaitingVector]"
+  participant R as "Replay Executor [state: Independent]"
+  participant A as "Installed Artifact [state: IdentityBound]"
+  participant O as "Effect Observer [state: CountersZero]"
+  participant C as "Consumer [state: ReceiptPending]"
+
+  G->>L: "transition; state: SuiteCanonical -> ReferenceRunning; vector bytes"
+  G->>R: "transition; state: SuiteCanonical -> ReplayRunning; same bytes"
+  R->>A: "guard; state: ReplayRunning -> ArtifactInvoked; exact digest"
+  A-->>R: "transition; state: ArtifactInvoked -> RuntimeOutcome; stdout/stderr/exit"
+  R->>O: "transition; state: RuntimeOutcome -> EffectsObserved; timing and counters"
+  L->>C: "transition; state: ReferenceRunning -> ComparisonPending; reference outcome"
+  O->>C: "guard; state: EffectsObserved -> AcceptedOrQuarantined; runtime receipt"
+  alt identities, outcomes, channels, and zero effects agree
+    C-->>G: "capability; state: Accepted -> ClosedReceipt"
+  else any mismatch or nonzero effect
+    C-->>G: "prohibitedEffect; state: Quarantined -> TypedFailure"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-cross-runtime-replay-lean-contract
+#+begin_src lean
+structure ReplayOutcome where
+  stdoutDigest : Nat
+  stderrDigest : Nat
+  exitCode : Nat
+  accepted : Bool
+
+structure WarmPathEffects where
+  providerLaunchCount : Nat
+  persistentWriteCount : Nat
+  addedAgentRoundCount : Nat
+
+def EffectFree (effects : WarmPathEffects) : Prop :=
+  effects.providerLaunchCount = 0 ∧
+  effects.persistentWriteCount = 0 ∧
+  effects.addedAgentRoundCount = 0
+
+def CrossRuntimeReplayAccepted
+    (expectedArtifactDigest expectedVectorSuiteDigest : Nat)
+    (receipt : CrossRuntimeReplayReceiptData) : Prop :=
+  receipt.producerExecutorDigest ≠ receipt.replayExecutorDigest ∧
+  receipt.verifierArtifactDigest = expectedArtifactDigest ∧
+  receipt.vectorSuiteDigest = expectedVectorSuiteDigest ∧
+  receipt.referenceOutcome = receipt.runtimeOutcome ∧
+  receipt.stdoutDigest = receipt.runtimeOutcome.stdoutDigest ∧
+  receipt.stderrDigest = receipt.runtimeOutcome.stderrDigest ∧
+  receipt.exitCode = receipt.runtimeOutcome.exitCode ∧
+  EffectFree receipt.effects
+#+end_src
+
+* Lean-discovered obligations
+
+Lean exposes four design errors that a process-level “replay passed” flag would hide:
+
+- same-executor replay is self-attestation, not independent conformance;
+- matching exit status does not imply matching stdout or semantic acceptance;
+- matching stdout does not hide stderr drift;
+- a fast execution can still violate identity or semantic conformance.
+
+The model also rejects artifact drift, vector-suite drift, provider launch, persistent write, and extra agent rounds independently. This separation matters for the resident server architecture: server residency may eliminate provider startup without proving that the verifier stayed read-only or interaction-free.
+
+The proof does not assign a universal latency threshold. =WithinTimingBound= is parametric, and duration is evidence rather than a correctness premise. A deployment may impose a bound without changing the semantic theorem family.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- admit the theorem families with the repository AXLE consumer;
+- evaluate every named Typst block through =typst eval= on parser-owned stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- do not claim executable replay until a real installed artifact command emits the bound runtime receipt.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryCrossRuntimeReplay.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryCrossRuntimeReplay.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-cross-runtime-replay-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-cross-runtime-replay-axle-audit-v1.json=
+- admitted audit SHA-256: =e436dc3f53ae68b69b2d5cc29f08619de70b5d064a82d597c81866d7cb698dc1=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.35-agent-session-host-registry-executable-receipt-materialization/00-overview.org][RFC 10.05.35 — Agent Session Host Registry Executable Receipt Materialization]].
+
+After the formal acceptance relation closes, the next boundary is executable receipt materialization: identify or define the installed verifier command, generate immutable canonical vectors, invoke it under an independently identified executor, capture exact stdout/stderr/exit/duration/effect counters, and admit that concrete receipt without weakening the theorem families above.

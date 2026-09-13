@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/fallback-reflection-receipt.v1.schema.json",
+  "title": "ASP Fallback Reflection Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "receiptId",
+    "state",
+    "primary",
+    "primaryFailure",
+    "proposedFallback",
+    "semanticReflection",
+    "scope",
+    "cost",
+    "admission",
+    "budget",
+    "expiry",
+    "counter"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.fallback-reflection-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "receiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "enum": [
+        "reflection-denied",
+        "reflection-admitted",
+        "fallback-completed",
+        "fallback-failed"
+      ]
+    },
+    "primary": {
+      "$ref": "#/$defs/capabilityIdentity"
+    },
+    "primaryFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasonKind",
+        "evidenceRef",
+        "typed"
+      ],
+      "properties": {
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "typed": {
+          "const": true
+        }
+      }
+    },
+    "proposedFallback": {
+      "$ref": "#/$defs/capabilityIdentity"
+    },
+    "semanticReflection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preservedSemantics",
+        "unpreservedSemantics"
+      ],
+      "properties": {
+        "preservedSemantics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unpreservedSemantics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceIdentity",
+        "candidateGeneration",
+        "subjects"
+      ],
+      "properties": {
+        "workspaceIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subjects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "additionalIoOperations",
+        "additionalProcessCount",
+        "additionalDatabaseOpenCount",
+        "estimatedAdditionalLatencyMicros"
+      ],
+      "properties": {
+        "additionalIoOperations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "additionalProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "additionalDatabaseOpenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimatedAdditionalLatencyMicros": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyRuleId",
+        "callerOptIn",
+        "decision"
+      ],
+      "properties": {
+        "policyRuleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "callerOptIn": {
+          "type": "boolean"
+        },
+        "decision": {
+          "enum": [
+            "deny",
+            "admit"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "limit",
+        "consumed"
+      ],
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consumed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "expiry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateGeneration"
+      ],
+      "properties": {
+        "candidateGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expiresAtUnixMillis": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "counter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "counterId",
+        "value"
+      ],
+      "properties": {
+        "counterId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "reflection-admitted",
+              "fallback-completed",
+              "fallback-failed"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semanticReflection": {
+            "properties": {
+              "unpreservedSemantics": {
+                "maxItems": 0
+              }
+            }
+          },
+          "admission": {
+            "properties": {
+              "callerOptIn": {
+                "const": true
+              },
+              "decision": {
+                "const": "admit"
+              }
+            }
+          },
+          "budget": {
+            "properties": {
+              "limit": {
+                "minimum": 1
+              },
+              "consumed": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "semanticReflection": {
+            "properties": {
+              "unpreservedSemantics": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "unpreservedSemantics"
+            ]
+          }
+        },
+        "required": [
+          "semanticReflection"
+        ]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "const": "reflection-denied"
+          },
+          "admission": {
+            "properties": {
+              "decision": {
+                "const": "deny"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "capabilityIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilityId",
+        "authority",
+        "artifactDigest",
+        "generation"
+      ],
+      "properties": {
+        "capabilityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

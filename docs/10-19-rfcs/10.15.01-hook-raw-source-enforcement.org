@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Hook Raw Source Enforcement
 #+STATUS: Draft
 #+PARENT: 10.15-agent-hook-interception-protocol.org
@@ -20,7 +24,7 @@ single provider can be selected.
   dumps must not bypass the policy merely because they target one file.
 - Precise model-visible source evidence is provider-authorized only after a
   parser-owned selector is known and the provider query projects it through
-  =asp <language> query --selector <selector> --workspace <root> --code= (or
+  =asp <language> query --selector <selector> --workspace <root> --projection source= (or
   =--content= for document providers).
 - Explicit user-approved filesystem access is a separate control-plane
   capability expressed through =asp source-access read-file --activation
@@ -51,3 +55,11 @@ Codex hook surface for:
 4. directory Read actions with and without a trailing slash;
 5. reasoning ASP commands, invalid facades, control-plane commands, and testing
    lanes as independent controls.
+* Config-owned permanent raw-source denial
+Raw source materialization policy is owned by the declarative hook rule engine and the canonical hook =config.toml= template.  Commands that can materialize provider-owned source MUST be matched by stable config rule ids and provider-derived source globs.  The Rust classifier MUST NOT maintain a parallel command allowlist or raw-read compatibility classifier.
+
+A source-access receipt, recovery replay, resident-child owner receipt, or successful parser projection changes only the next safe route.  It MUST NOT disable, consume, or otherwise unlock a raw-source deny rule.  Repeating the same raw command after recovery therefore remains denied by the same config rule id.
+
+The default config template MUST derive its source globs from the active provider source-extension set.  User and project rules may replace a built-in declaration only through the existing stable-id merge contract; runtime recovery state is not a rule override surface.
+
+Shell source access is projected into Action IR before rule evaluation.  Native Host =Read= actions and shell-derived semantic read capabilities use the same declarative boundary: =actions=["read"]= or a semantic capability predicate, plus =profilesList= or a registered-source subject policy.  Provider-owned routes are compiled from profiles; no separate materializer, command-family allowlist, interpreter API table, or compatibility intent participates in the decision.

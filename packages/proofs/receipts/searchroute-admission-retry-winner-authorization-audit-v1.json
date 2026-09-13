@@ -1,0 +1,70 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryWinnerAuthorization.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {grantActive : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryGrant → Prop}\n  {request : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryRequest}\n  {targetKey : ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey},\n  ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized grantActive request targetKey →\n    grantActive request.grant ∧\n      request.presentedKey = targetKey ∧\n        request.grant.workspaceIdentity = targetKey.workspaceIdentity ∧\n          request.grant.ledgerGeneration = targetKey.ledgerGeneration ∧\n            request.grant.contractVersion = targetKey.contractVersion ∧\n              request.grant.tenantScope = targetKey.tenantScope ∧ request.grant.retryIdentity = targetKey.retryIdentity",
+   "theoremFamily": "authorization scope preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWA-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.authorization_preserves_key_and_all_scope_dimensions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Certificate : Type u} (grantActive : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryGrant → Prop)\n  [inst : DecidablePred grantActive]\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey Certificate)\n  (request : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryRequest)\n  (targetKey : ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey),\n  ¬ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized grantActive request targetKey →\n    ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.authorizedRecover grantActive ledger request targetKey =\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.denied",
+   "theoremFamily": "authorization-before-lookup",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWA-ACTIVE-GRANT", "ASP-RFC-10.05-RWA-AUTH-BEFORE-LOOKUP"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.unauthorized_request_is_denied_before_winner_lookup",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Certificate : Type u} (grantActive : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryGrant → Prop)\n  [inst : DecidablePred grantActive]\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey Certificate)\n  (request : ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryRequest)\n  (targetKey : ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey) (winner : Certificate),\n  ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized grantActive request targetKey →\n    ledger targetKey = some winner →\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.authorizedRecover grantActive ledger request targetKey =\n        ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.RecoveryOutcome.released winner",
+   "theoremFamily": "authorized winner release",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWA-RELEASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.authorized_request_recovers_existing_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.exactKeyRequest.presentedKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ∧\n  ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.GrantMatchesKey\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.exactKeyRequest.grant\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ∧\n    ¬ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized\n        ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.inactiveGrant\n        ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.exactKeyRequest\n        ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey",
+   "theoremFamily": "inactive-grant counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWA-ACTIVE-GRANT", "ASP-RFC-10.05-RWA-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.known_key_and_matching_scope_without_active_grant_is_not_authorized",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.activeGrant\n    ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest.grant ∧\n  ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest.presentedKey =\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ∧\n    ¬ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.GrantMatchesKey\n          ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest.grant\n          ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ∧\n      ¬ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized\n          ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.activeGrant\n          ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest\n          ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey",
+   "theoremFamily": "tenant-scope counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWA-NONIMPLICATION", "ASP-RFC-10.05-RWA-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.active_grant_with_wrong_tenant_scope_is_not_authorized",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.unsafeLookupBeforeAuthorization\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.exampleWinnerLedger\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest =\n    some true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.Authorized\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.activeGrant\n      ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.wrongTenantRequest\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey",
+   "theoremFamily": "lookup-first leakage counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWA-AUTH-BEFORE-LOOKUP", "ASP-RFC-10.05-RWA-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerAuthorization.lookup_before_authorization_leaks_winner_to_wrong_tenant",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 3,
+ "axiomDependentDeclarationCount": 3}

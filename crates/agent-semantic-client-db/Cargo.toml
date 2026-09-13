@@ -1,31 +1,110 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-client-db"
 version = "0.1.0"
-edition = "2024"
-description = "Turso-backed DB Engine for the agent semantic client cache."
-license = "MIT"
+edition.workspace = true
+description = "ASP Server-owned Turso/Merkle DB Engine for semantic source generations."
+license.workspace = true
+
+[features]
+default = []
+turso-sync-server-e2e = []
 
 [dependencies]
+arc-swap.workspace = true
+agent-semantic-provider-protocol.workspace = true
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-search = { path = "../agent-semantic-search" }
+memmap2.workspace = true
+postcard.workspace = true
+agent-semantic-context-product = { path = "../agent-semantic-context-product" }
+agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 fs2 = { workspace = true }
+fs4 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-turso = { workspace = true }
-turso_sdk_kit = "=0.7.0-pre.18"
+tokio-stream.workspace = true
+futures-util.workspace = true
+tracing = "0.1.44"
+parking_lot.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+turso.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
+blake3.workspace = true
 which = { workspace = true }
+dashmap = "6.2.1"
+libc.workspace = true
+
+[[test]]
+name = "runtime_server_opentelemetry_test"
+path = "tests/performance/runtime_server_opentelemetry_harness.rs"
+
+[[test]]
+name = "runtime_search_invalidation"
+path = "tests/unit/runtime_server_overlay_admission/search_invalidation.rs"
+
+[[test]]
+name = "runtime_generation_readiness_request"
+path = "tests/unit/runtime_generation_readiness_request.rs"
+
+[[test]]
+name = "runtime_server_owner_receipt"
+path = "tests/unit/runtime_server_owner_receipt.rs"
 
 [[bench]]
-name = "turso_cache_hot_path"
+name = "turso_mvcc_concurrent_write"
 harness = false
+
+[[bench]]
+name = "turso_context_run_search_loop"
+harness = false
+
+[[bench]]
+name = "artifact_pointer_cas"
+harness = false
+
+[[bench]]
+name = "turso_sync_local"
+harness = false
+
+[[bench]]
+name = "schema_v1_lifecycle"
+harness = false
+
+[[bench]]
+name = "turso_cdc_profile"
+harness = false
+
+[[bench]]
+name = "turso_encryption_profile"
+harness = false
+
+[[bench]]
+name = "turso_storage_slo_matrix"
+harness = false
+
+[[bench]]
+name = "turso_sync_server_e2e"
+harness = false
+required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]
 criterion = { workspace = true }
-asp-rust-project-harness-policy.workspace = true
+gix = { workspace = true }
+tempfile.workspace = true
 tokio = { workspace = true }
 
 [build-dependencies]

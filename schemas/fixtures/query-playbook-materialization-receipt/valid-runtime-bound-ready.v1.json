@@ -1,0 +1,70 @@
+{
+  "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.query-playbook",
+  "protocolVersion": "1",
+  "requestId": "query-request-1",
+  "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+  "worktreeInstanceId": "workspace-23cc5ba784c605ae",
+  "runtimeExecutionBinding": {
+    "schemaId": "agent.semantic-protocols.runtime-execution-binding",
+    "schemaVersion": "2",
+    "projectWorkspace": {
+      "schemaId": "agent.semantic-protocols.project-workspace-binding",
+      "schemaVersion": "1",
+      "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+      "workspaceRootPath": ".",
+      "portability": "cross-machine",
+      "repositoryAliases": []
+    },
+    "worktreeInstanceId": "workspace-23cc5ba784c605ae",
+    "publicationNonce": "publication-1",
+    "contentBinding": {
+      "schemaId": "asp.content-binding",
+      "schemaVersion": "1",
+      "runtimeArtifactDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+      "workspaceSnapshotDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+      "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+      "sourceIndexDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+      "schemaDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555",
+      "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+      "authorityStamp": {
+        "keyId": "runtime-authority",
+        "canonicalDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "signature": "test-signature"
+      }
+    },
+    "runtimeArtifactDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "evaluatorPolicyDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "activeArtifactReceiptDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "evaluatorAbiDigest": "blake3-256:9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "runtimeWorkspaceExecutionPublicationDigest": "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "runtimeBundleDigest": "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "projection": "source",
+  "requestedSelectors": [
+    "org://docs/publication.org#item/heading/Publication",
+    "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
+  ],
+  "materializations": [
+    {
+      "selector": "org://docs/publication.org#item/heading/Publication",
+      "languageId": "org",
+      "providerId": "asp-org",
+      "ownerPath": "docs/publication.org",
+      "projection": "source",
+      "sourceContentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "bytes": [42, 32, 80, 117, 98, 108, 105, 99, 97, 116, 105, 111, 110]
+    },
+    {
+      "selector": "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry",
+      "languageId": "rust",
+      "providerId": "asp-rust",
+      "ownerPath": "src/registry.rs",
+      "projection": "source",
+      "sourceContentDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "bytes": [102, 110, 32, 114, 101, 102, 114, 101, 115, 104, 95, 114, 101, 103, 105, 115, 116, 114, 121, 40, 41]
+    }
+  ],
+  "terminal": {"state": "ready", "terminalCount": 1}
+}

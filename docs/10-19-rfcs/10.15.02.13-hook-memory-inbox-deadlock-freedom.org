@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Hook Memory Inbox and Deadlock Freedom
+#+property: schemaVersion 1
+#+property: inboxSchema agent.semantic-protocols.hook.memory-inbox
+
+* Status
+
+Normative refinement of the Hook execution plane and Codex Multi-Agent V2
+control plane.
+
+* Problem
+
+Codex invokes =SubagentStart= with a strict Hook timeout.  The Host payload
+owns =session_id=, =turn_id=, =agent_id=, =agent_type=, =model=, and the common
+Hook fields.  It does not own ASP Runtime Server admission, ASP namespace
+sequence allocation, or ASP workspace database availability.
+
+A Hook implementation that synchronously starts, health-checks, or calls the
+Runtime Server before acknowledging =SubagentStart= creates a circular wait:
+
+1. a denied tool requires a registered ASP agent;
+2. registration requires =SubagentStart=;
+3. =SubagentStart= waits for Runtime admission;
+4. recovery commands are denied because registration never completed.
+
+* Contract
+
+** Hook-side authority
+
+The Hook performs only bounded local work:
+
+- validate the official Host identity fields;
+- resolve the registered ASP route and profile;
+- derive a deterministic namespace and event identity;
+- allocate a monotonically increasing inbox sequence while holding the
+  lifecycle-inbox writer lock;
+- append one schema-valid, checksummed record to a preallocated file-backed
+  =memmap2= inbox and publish its write boundary last;
+- schedule an asynchronous page flush; the Hook MUST NOT wait for a disk
+  =fsync=;
+- return before the Host timeout.
+
+The Hook MUST NOT start, reconcile, health-check, or call the Runtime Server.
+The Hook MUST NOT require =host_event_id=, =host_event_sequence=, or
+=namespace_id= from Codex.  Those are ASP-owned projection fields.
+
+The same local inbox owns post-tool workspace-mutation and performance-failure
+observations.  Those one-shot Hook events MUST NOT use a Runtime socket either;
+their Runtime projection is performed by the reconcile authority.
+
+** Reconcile authority
+
+The ChoicePlane or Runtime owner consumes inbox events in sequence order.  It
+performs delegation admission and calls the existing Runtime Server lifecycle
+materializer.  An event is acknowledged only after the materializer returns a
+schema-valid terminal receipt.  Exact replay is idempotent; an unavailable
+Runtime leaves the event pending.
+
+** Failure contract
+
+Inbox lock, capacity, checksum, serialization, or validation failures are
+typed terminal Hook failures.  They are never rendered as ={}=.  A full inbox
+does not start Runtime recovery from the Hook; it fails immediately with
+=capacity-exhausted=.  Runtime unavailability is not a Hook failure because it
+is outside the Hook hot path.
+
+* Performance gates
+
+- p99 local lifecycle projection: at most 100 ms;
+- Runtime IPC count during =SubagentStart=: exactly zero;
+- Runtime process starts during =SubagentStart=: exactly zero;
+- Runtime IPC count during every Hook event: exactly zero;
+- event visibility after an acknowledged append: process-independent through
+  the file-backed mmap; power-loss durability is outside the Hook latency
+  boundary and is completed by the asynchronous page flush;
+- pending-event reconcile: bounded by the existing agent-facing Runtime
+  deadline, outside the Hook timeout.
+
+* Acceptance
+
+1. With no Runtime endpoint, =SubagentStart= appends an inbox event and exits
+   successfully within 100 ms.
+2. Starting the Runtime and opening the ChoicePlane materializes the same
+   event as generation 1.
+3. Replaying the same Host payload does not allocate a second generation.
+4. A fresh normal Codex task observes =generation > 0= and a direct
+   =Call/resume= route before parser-owned search.

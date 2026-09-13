@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Provider Source Scope and Document Git Scope
+#+startup: overview
+
+* Status
+
+Implemented in the worktree. Installed-provider and full performance evidence
+remain required.
+
+* Decision
+
+Programming-language source admission and document discovery are different
+contracts.
+
+- Programming-language owners come exclusively from the registered language
+  provider source snapshot produced by its harness.
+- Org and Markdown discovery begins with Git-visible candidates and is filtered
+  by the registered document resolution extensions.
+- Search must not reconstruct provider source scope from hard-coded extensions,
+  package-manager filenames, config filenames, or dependency markers.
+
+The provider manifest therefore has no generic =source defaults= compatibility
+surface. Search consumes =documentResolution.extensions= only for the document
+Git lane. Provider source snapshots remain the sole authority for programming
+languages.
+
+* Required gates
+
+1. Rust and other programming-language files are not admitted by the generic
+   Git file matcher.
+2. Registered Org and Markdown extensions are admitted by the document matcher.
+3. Package-manager and config filenames are not inferred by Search.
+4. Provider/harness source snapshots continue to admit programming-language
+   owners through the canonical generation path.
+5. Installed search exercises both lanes without raw filesystem fallback.

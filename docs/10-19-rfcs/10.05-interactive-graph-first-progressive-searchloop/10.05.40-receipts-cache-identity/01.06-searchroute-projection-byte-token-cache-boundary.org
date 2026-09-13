@@ -1,0 +1,324 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Encoded Projection, Token, and Cache Boundaries
+#+subtitle: RFC 10.05.40 / Proof stage 01.06
+#+startup: overview
+
+* Status
+
+Draft proof-bearing RFC.
+
+This stage refines the bounded-candidate result from stage 01.05. It does not
+define a Rust or Python implementation. Its owners are the RFC, the Lean model,
+the modular Lean JSON audit, and executable Org-Babel Typst mathematics.
+
+* Abstract
+
+The admitted-candidate capacity from stage 01.05 bounds graph work, but it does
+not by itself bound the bytes projected to an agent or the model tokens charged
+for those bytes. A byte theorem needs a canonical encoder contract. A token
+theorem additionally needs a tokenizer upper-bound contract. Neither theorem
+can be obtained from candidate count alone.
+
+This stage also splits the overloaded word =cache= into two independent
+validity domains:
+
+1. a search-result cache, whose validity is determined by the workspace
+   snapshot, query, search policy, and provider schema;
+2. a model prefix cache, whose validity is determined by model and prompt
+   context plus the rendered prefix and its boundary.
+
+Deterministic rendering improves the chance of a stable model prefix, but it is
+only one component of the model prefix key. It does not validate a search
+result, and it does not guarantee a model cache hit.
+
+* Problem statement
+
+Stage 01.05 proves the scalar form:
+
+#+name: projection-token-cache-boundary-math
+#+begin_src typst
+#let round-bound = $
+  n <= C
+  and k <= n
+  arrow.r.double
+  B_"projection"
+  <= F + C R_c + C R_e
+$
+#let token-bound = $
+  B <= B_"max"
+  and T(B) <= T_0 + B rho
+  arrow.r.double
+  T(B) <= T_0 + B_"max" rho
+$
+#let cache-separation = $
+  K_"search" != K_"model-prefix"
+$
+#assert(type(round-bound) == content)
+#assert(type(token-bound) == content)
+#assert(type(cache-separation) == content)
+"ok"
+#+end_src
+
+The symbols are:
+
+- =n=: admitted candidate count;
+- =k=: emitted comparison receipt count;
+- =C=: admitted-candidate capacity;
+- =F=: fixed encoded JSON bytes for the compact projection;
+- =R_c=: maximum encoded bytes per candidate receipt, including item framing;
+- =R_e=: maximum encoded bytes per comparison receipt, including item framing;
+- =B=: actual encoded projection bytes;
+- =T=: tokenizer count function;
+- =T_0=: tokenizer and prompt overhead;
+- =rho=: conservative token bound per encoded byte.
+
+The bound is deliberately stated over encoded bytes. A raw source string,
+identifier, path, or evidence payload is not an encoded JSON value.
+
+* Proof-discovered correction: two missing contracts
+
+** Raw payload length is not an encoded JSON bound
+
+JSON quoting, escaping, field names, commas, brackets, and canonical ordering
+consume bytes. In particular, one raw byte may require several encoded bytes.
+The Lean model uses the conservative witness:
+
+#+name: encoded-projection-byte-model
+#+begin_src typst
+#let projection-bytes(
+  fixed,
+  candidates,
+  candidate-bytes,
+  comparisons,
+  comparison-bytes,
+) = fixed + candidates * candidate-bytes + comparisons * comparison-bytes
+
+#let escaped-json-string-bytes(raw) = 2 + 6 * raw
+
+#assert(projection-bytes(10, 3, 4, 2, 5) == 32)
+#assert(escaped-json-string-bytes(1) > 1)
+#assert(escaped-json-string-bytes(4) == 26)
+"ok"
+#+end_src
+
+Therefore the protocol MUST choose one of these contracts:
+
+1. cap each already-encoded receipt, including its framing contribution; or
+2. publish and verify an encoder expansion theorem from every bounded raw field
+   to its canonical encoded representation.
+
+An implementation MUST NOT substitute a raw payload cap for =R_c= or =R_e=.
+
+** Encoded byte count is not a tokenizer theorem
+
+Different tokenizers and model configurations can assign different token
+counts to the same byte sequence. The protocol can derive a token bound only
+from an explicit contract:
+
+#+begin_example
+tokenCount(encodedBytes) <= tokenizerOverhead
+                         + encodedBytes * tokensPerEncodedByte
+#+end_example
+
+This contract is conservative. It is not a claim that token count is linear in
+normal operation. It is a proof boundary that makes the maximum charge
+auditable.
+
+* Canonical compact projection
+
+** Required encoded-byte accounting
+
+The compact default projection MUST expose or make auditable:
+
+- =fixedEncodedBytes=;
+- =candidateCount=;
+- =comparisonCount=;
+- =candidateReceiptEncodedByteMaximum=;
+- =comparisonReceiptEncodedByteMaximum=;
+- =totalEncodedBytes=;
+- =encoderSchemaDigest=;
+- =rendererVersion=;
+- =projectionPolicyDigest=.
+
+The per-item maxima MUST include the item's deterministic JSON framing and
+separator contribution. This prevents a hidden =O(n)= delimiter cost from being
+misclassified as fixed overhead.
+
+For =n <= C= and =k <= n=:
+
+#+begin_example
+totalEncodedBytes
+  <= fixedEncodedBytes
+     + C * candidateReceiptEncodedByteMaximum
+     + C * comparisonReceiptEncodedByteMaximum
+#+end_example
+
+If recovery can publish at most =M= round projections, the total recovery
+projection is bounded by =M= times the round bound. A retry MUST NOT silently
+change any capacity or projection identity component.
+
+** Direct comparison receipts
+
+For an explicit minimum certificate over =n > 0= candidates, the direct
+comparison construction uses =n - 1= comparison receipts. The RFC uses the
+weaker =k <= n= form for byte accounting so that the empty case and alternative
+certificate forms share one safe bound.
+
+A Merkle root or accumulator may reduce the default projected bytes, but it
+does not reduce logical verification work unless a separate aggregation proof
+establishes that reduction. Root-only projection and proof-work reduction are
+different claims.
+
+* Projection identity
+
+A projection identity is the tuple:
+
+#+begin_example
+(graphDigest,
+ rendererVersion,
+ projectionPolicyDigest,
+ encoderSchemaDigest)
+#+end_example
+
+All four components MUST match before two projections are considered
+byte-compatible. Equality of the logical graph digest is insufficient: a
+renderer or schema change can alter field order, escaping, framing, bytes,
+tokens, and the model prefix.
+
+Canonical serialization MUST fix:
+
+- field order;
+- omission versus explicit null rules;
+- string escaping;
+- number formatting;
+- newline convention;
+- array ordering;
+- schema and renderer versions.
+
+* Cache identity separation
+
+** Search-result cache
+
+The search-result cache key is:
+
+#+begin_example
+(workspaceSnapshotDigest,
+ queryDigest,
+ searchPolicyDigest,
+ providerSchemaDigest)
+#+end_example
+
+It answers: may the provider reuse semantic search results without re-running
+the search over a different logical world?
+
+A stable rendered prefix does not validate this key. The same output bytes can
+be stale after the workspace snapshot changes.
+
+** Model prefix cache
+
+The model prefix cache key is:
+
+#+begin_example
+(modelDigest,
+ systemPromptDigest,
+ toolSchemaDigest,
+ renderedPrefixDigest,
+ prefixBoundaryDigest)
+#+end_example
+
+It answers: may the model runtime reuse computation for an identical prefix
+under the same model-facing context?
+
+Deterministic rendering stabilizes =renderedPrefixDigest=. It does not stabilize
+the model, system prompt, tool schema, or prefix boundary. Therefore:
+
+#+begin_example
+deterministic rendering
+  != guaranteed model prefix-cache hit
+  != valid search-result cache entry
+#+end_example
+
+The two caches MAY share content digests as evidence, but MUST NOT share one
+undifferentiated validity key or one hit/miss metric.
+
+* Interactive SearchLoop consequences
+
+The agent-facing default remains compact and progressive:
+
+1. emit the bounded winner route and only the comparison receipts required by
+   the selected certificate form;
+2. emit accumulator roots and counts for overflow, not one graph node per
+   rejected request;
+3. expose byte and token-bound metadata without projecting full payloads;
+4. let =inspect= request one referenced receipt or graph neighborhood;
+5. charge each progressive expansion to a separately bounded interaction and
+   projection budget.
+
+This design minimizes the initial graph path, projected bytes, and model
+context while preserving a parser-owned route to deeper evidence. It does not
+turn the public CLI into a large search-command grammar; the primary consumer
+is the interactive agent loop.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.lean
+#+end_example
+
+The module proves:
+
+- zero candidates incur only fixed projection bytes;
+- candidate capacity and =k <= n= bound encoded projection bytes;
+- an explicit tokenizer contract lifts the encoded-byte bound to tokens;
+- bounded retry count lifts the round byte bound to recovery;
+- JSON escaping can exceed raw payload length;
+- no encoded bound follows from a raw cap without an encoder relation;
+- renderer changes invalidate projection identity;
+- stable rendered bytes do not validate a changed search snapshot;
+- stable rendered bytes do not validate a changed model;
+- search-result and model-prefix cache validity do not imply each other.
+
+These are mathematical protocol boundaries. They do not certify a particular
+serializer, tokenizer, provider binary, model runtime, or cache service.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.lean
+#+end_example
+
+The generated receipt MUST report every listed declaration, its axiom
+inventory, and whether =sorryAx= is present. The audit remains separate from the
+proof module so additional stages do not inflate one global audit owner.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and its audit module build;
+- every audited declaration is axiom-free;
+- =hasSorryAx= is false;
+- Org lint accepts the RFC;
+- Orgize extracts both Typst blocks;
+- both exact blocks pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Next proof boundary
+
+Stage 01.07 should bind the abstract per-item encoded maxima to a canonical
+receipt grammar. It should prove list/object framing for an actual compact
+projection shape, include overflow-summary bytes, and model progressive
+=inspect= expansions as a bounded sequence rather than treating all future
+interaction cost as zero.
+
+That stage must keep observed model token counts as runtime receipts while
+using the conservative tokenizer contract only for a worst-case theorem.

@@ -1,0 +1,17 @@
+{
+  "schemaId": "agent.semantic-protocols.resident-search-result",
+  "schemaVersion": "1",
+  "state": "Ready",
+  "generationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "rootDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "providerDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "indexArtifactDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+  "hits": [],
+  "workCounters": {
+    "databaseReadCount": 0,
+    "filesystemReadCount": 0,
+    "providerProcessCount": 0,
+    "socketOperationCount": 0,
+    "schedulerTaskCount": 0
+  }
+}

@@ -1,7 +1,10 @@
-//! Public value types for DB Engine-owned source index rows.
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Public value types for ASP Server-owned source index rows.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
@@ -17,39 +20,23 @@ pub const CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH: &str = "@scope/re
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
-static LAST_SOURCE_INDEX_GENERATION_NANOS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
-#[must_use]
-pub fn client_db_source_index_generation_id() -> CacheGenerationId {
-    let observed_nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0) as u64;
-    let nanos = loop {
-        let previous =
-            LAST_SOURCE_INDEX_GENERATION_NANOS.load(std::sync::atomic::Ordering::Acquire);
-        let candidate = observed_nanos.max(previous.saturating_add(1));
-        if LAST_SOURCE_INDEX_GENERATION_NANOS
-            .compare_exchange_weak(
-                previous,
-                candidate,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_ok()
-        {
-            break candidate;
-        }
-    };
-    CacheGenerationId::from(format!("source-index-{nanos}"))
-}
-
 #[must_use]
 pub fn client_db_source_index_file_count(file_count: usize) -> u32 {
     file_count.min(u32::MAX as usize) as u32
 }
 
+/// Deterministic generation identity; there is deliberately no timestamp fallback.
+#[must_use]
+pub fn client_db_source_index_generation_id_for_snapshot(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> CacheGenerationId {
+    CacheGenerationId::from(format!(
+        "source-index-{}",
+        agent_semantic_search_projection::source_index_artifact_digest(source_snapshot)
+    ))
+}
+
+/// Hash the provider registry fingerprint into canonical source-index evidence.
 #[must_use]
 pub fn client_db_source_index_registry_evidence_hash(
     registry_fingerprint: &str,
@@ -62,6 +49,7 @@ pub fn client_db_source_index_registry_evidence_hash(
     }
 }
 
+/// Build canonical directory-scope evidence for one relative source directory.
 #[must_use]
 pub fn client_db_source_index_scope_dir_evidence_hash(
     relative_dir: &str,
@@ -79,7 +67,17 @@ pub fn client_db_source_index_scope_dir_evidence_hash(
 macro_rules! source_index_value_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+        #[derive(
+            Clone,
+            Debug,
+            Eq,
+            PartialEq,
+            Ord,
+            PartialOrd,
+            Hash,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(String);
 
         impl $name {
@@ -107,32 +105,159 @@ macro_rules! source_index_value_type {
                 Self(value)
             }
         }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<$name> for &str {
+            fn eq(&self, other: &$name) -> bool {
+                *self == other.as_str()
+            }
+        }
     };
 }
 
+source_index_value_type!(ClientDbSourceIndexCandidatePath);
+source_index_value_type!(ClientDbSourceIndexStructuralSelector);
+source_index_value_type!(ClientDbSourceIndexSelectorPayloadKind);
+
 source_index_value_type!(
-    /// Project-relative path retained by the DB Engine source index.
+/// Project-relative path retained by the ASP Server source index.
     ClientDbSourceIndexPath
 );
+
+/// One parser-projected graph edge permanently attributed to its source owner.
+///
+/// Keeping ownership beside the edge lets Merkle tombstones invalidate lexical postings and
+/// graph facts with the same change set. Runtime code must not reconstruct ownership from an
+/// endpoint string.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClientDbSourceIndexOwnedRelation {
+    pub owner_path: ClientDbSourceIndexPath,
+    pub relation:
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+}
 source_index_value_type!(
     /// Query key used for index-first owner recall.
     ClientDbSourceIndexQueryKey
+);
+source_index_value_type!(
+    /// Stable structural selector identity retained by the source index.
+    ClientDbSourceIndexSelectorId
+);
+source_index_value_type!(
+    /// Optional symbol label projected by the language provider.
+    ClientDbSourceIndexSelectorSymbol
+);
+source_index_value_type!(
+    /// Optional item kind projected by the language provider.
+    ClientDbSourceIndexSelectorKind
 );
 source_index_value_type!(
     /// Source authority for a selector or owner row.
     ClientDbSourceIndexSource
 );
 
-/// One DB Engine-owned source index generation imported into the client DB.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One ASP Server-owned source index generation imported into the DB Engine.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexImport {
     pub generation_id: CacheGenerationId,
     pub project_root: PathBuf,
     pub schema_id: SemanticSchemaId,
     pub schema_version: SemanticSchemaVersion,
     pub file_hashes: Vec<ClientCacheFileHash>,
+    #[serde(skip)]
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
     pub owners: Vec<ClientDbSourceIndexOwner>,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<ClientDbSourceIndexOwnedRelation>,
+}
+
+/// Immutable source bytes captured by the same pass that produced snapshot evidence.
+///
+/// The normalized path newtype is required at construction. Consumers can
+/// borrow bytes without reopening workspace files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ClientDbSourceIndexSourceBlobs {
+    blobs: std::sync::Arc<std::collections::BTreeMap<String, std::sync::Arc<[u8]>>>,
+}
+impl ClientDbSourceIndexSourceBlobs {
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.blobs.len()
+    }
+
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.blobs.contains_key(key)
+    }
+}
+
+impl ClientDbSourceIndexSourceBlobs {
+    pub fn from_normalized(
+        blobs: impl IntoIterator<Item = (ClientDbSourceIndexPath, Vec<u8>)>,
+    ) -> Self {
+        Self {
+            blobs: std::sync::Arc::new(
+                blobs
+                    .into_iter()
+                    .map(|(path, bytes)| {
+                        (
+                            path.as_str().to_string(),
+                            std::sync::Arc::<[u8]>::from(bytes),
+                        )
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    pub fn get(&self, path: &ClientDbSourceIndexPath) -> Option<&[u8]> {
+        self.blobs
+            .get(path.as_str())
+            .map(std::convert::AsRef::as_ref)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &[u8])> {
+        self.blobs
+            .iter()
+            .map(|(path, bytes)| (path.as_str(), bytes.as_ref()))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blobs.is_empty()
+    }
+}
+
+/// Request-scoped live source-index facts bound to their authoritative snapshot.
+#[derive(Clone, Copy, Debug)]
+pub struct ClientDbLiveSourceIndexFacts<'a> {
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub import: &'a ClientDbSourceIndexImport,
 }
 
 /// Source file projection used to assemble a DB-owned source-index import
@@ -144,9 +269,12 @@ pub struct ClientDbSourceIndexImportFile {
     pub provider_id: ProviderId,
     pub text: String,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
 }
 
-/// Request for building one Rust-owned source-index import packet.
+/// Request for the ASP Server DB Engine to build one source-index import packet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexImportRequest {
     pub generation_id: CacheGenerationId,
@@ -155,6 +283,7 @@ pub struct ClientDbSourceIndexImportRequest {
     pub schema_version: SemanticSchemaVersion,
     pub selector_source: ClientDbSourceIndexSource,
     pub file_hashes: Vec<ClientCacheFileHash>,
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
     pub files: Vec<ClientDbSourceIndexImportFile>,
 }
 
@@ -168,14 +297,14 @@ pub struct ClientDbSourceIndexImportAssemblyRequest {
     pub schema_version: SemanticSchemaVersion,
     pub selector_source: ClientDbSourceIndexSource,
     pub file_text_bytes_limit: u64,
-    pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
     pub registry_fingerprint: String,
     pub extra_scope_dirs: Vec<String>,
     pub files: Vec<ClientDbSourceIndexScopeFile>,
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
 }
 
 /// Rust-owned owner row retained for index-first broad search.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexOwner {
     pub owner_path: ClientDbSourceIndexPath,
     pub language_id: Option<LanguageId>,
@@ -191,11 +320,31 @@ pub struct ClientDbSourceIndexScopeFile {
     pub path: PathBuf,
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
+    pub projection_coverage: ClientDbSourceIndexProjectionCoverage,
+    pub projection_diagnostic:
+        Option<agent_semantic_provider_transport::projection_batch::ProviderProjectionDiagnostic>,
     pub selector_receipts: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
+}
+
+/// Provider-owned semantic projection coverage for one source owner.
+///
+/// `Complete` is a typed receipt and can legitimately contain zero selectors.
+/// `NotDeclared` means the provider did not publish the shared projection
+/// capability; it must never be confused with a projected empty owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClientDbSourceIndexProjectionCoverage {
+    NotDeclared,
+    Complete,
+    SyntaxUnavailable,
 }
 
 /// Source-index lookup state for agent-facing search fallbacks.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ClientDbSourceIndexLookupState {
     MissingDb,
     EmptyIndex,
@@ -220,31 +369,25 @@ impl ClientDbSourceIndexLookupState {
 }
 
 /// Agent-facing source-index candidate row returned by the DB facade.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexCandidate {
-    pub path: String,
+    pub path: ClientDbSourceIndexCandidatePath,
     pub language_id: Option<LanguageId>,
     pub provider_id: Option<ProviderId>,
     pub source_kind: ClientDbSourceIndexSourceKind,
     pub line_count: Option<u32>,
-    pub query_keys: Vec<String>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     /// Parser-owned item identity associated with the bounded selector proof.
-    pub selector_symbol: Option<String>,
+    pub selector_symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     /// Parser-owned item kind associated with the bounded selector proof.
-    pub selector_kind: Option<String>,
-    pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
-}
-
-/// Provider/parser proof that a source-index candidate has a bounded payload.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ClientDbSourceIndexSelectorPayloadProof {
-    pub structural_selector: String,
-    pub payload_kind: String,
-    pub bounded: bool,
+    pub selector_kind: Option<ClientDbSourceIndexSelectorKind>,
+    pub selector_projection:
+        Option<agent_semantic_content_identity::ExactSelectorProjectionRecordV1>,
 }
 
 /// Typed source category for source-index candidate rows.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ClientDbSourceIndexSourceKind {
     File,
     Other(String),
@@ -274,27 +417,25 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
         Self {
             selector_symbol: None,
             selector_kind: None,
-            selector_proof: None,
-            path: owner.owner_path.as_str().to_string(),
+            selector_projection: None,
+            path: owner.owner_path.as_str().to_string().into(),
             language_id: owner.language_id,
             provider_id: owner.provider_id,
             source_kind: owner.source_kind.into(),
             line_count: owner.line_count,
-            query_keys: owner
-                .query_keys
-                .into_iter()
-                .map(|key| key.as_str().to_string())
-                .collect(),
+            query_keys: owner.query_keys,
         }
     }
 }
 
-/// Lookup result from the DB Engine-owned source index.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Lookup result from the ASP Server-owned source index.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
     pub state: ClientDbSourceIndexLookupState,
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub index_artifact_digest: Option<String>,
 }
 
 /// Request for looking up source-index candidates through a project state root.
@@ -304,16 +445,23 @@ pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
+    pub live_facts: Option<ClientDbLiveSourceIndexFacts<'a>>,
 }
 
 /// Request for looking up source-index candidates from an already resolved
-/// client cache directory.
+/// State Core directory. The directory is only a DB locator; the ASP Server
+/// DB Engine remains the source-index authority.
 pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
     pub client_dir: &'a Path,
     pub indexed_project_root: &'a Path,
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
+    pub live_facts: Option<ClientDbLiveSourceIndexFacts<'a>>,
 }
 
 /// DB-owned source-index candidate lookup result without path projection.
@@ -323,21 +471,24 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
 }
 
-/// Rust-owned selector row retained for exact owner-local expansion.
+/// Parser-owned selector row retained for exact owner-local materialization.
 ///
-/// `selector_id` is the stable structural selector identity. Line fields are
-/// compatibility/display hints and must not be used as selector identity.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// `projection_record` is the single complete identity and source projection
+/// contract. Consumers must not duplicate its canonical selector or reconstruct
+/// it from line numbers or source rereads.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
-    pub selector_id: String,
-    pub symbol: Option<String>,
-    pub kind: Option<String>,
-    pub start_line: u32,
-    pub end_line: u32,
+    pub provider_id: ProviderId,
+    pub selector_id: ClientDbSourceIndexSelectorId,
+    pub symbol: Option<ClientDbSourceIndexSelectorSymbol>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
-    pub payload_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
+    pub projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
+    #[serde(default)]
+    pub derived_projections:
+        Vec<crate::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot>,
 }
 
 /// Aggregate row counts for one source index generation.
@@ -346,21 +497,49 @@ pub struct ClientDbSourceIndexStats {
     pub generation_id: CacheGenerationId,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+impl ClientDbSourceIndexRefreshResult {
+    pub fn source_snapshot(&self) -> &agent_semantic_content_identity::SourceSnapshotEvidence {
+        &self.source_snapshot
+    }
+
+    /// Content address for the disposable index projection of this source snapshot.
+    #[must_use]
+    pub fn index_artifact_digest(&self) -> &str {
+        &self.index_artifact_digest
+    }
+}
+
+/// Membership authority used when applying a source-index snapshot.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ClientDbSourceIndexMembershipChangeSet {
+    /// Publish a complete cold snapshot and reconcile its full membership.
+    FullSnapshot,
+    /// Apply only the owner leaves committed by a Merkle overlay.
+    MerkleOverlay {
+        base_generation_id: String,
+        changed_owner_paths: Vec<ClientDbSourceIndexPath>,
+        removed_owner_paths: Vec<ClientDbSourceIndexPath>,
+    },
 }
 
 /// Request for applying a source-index import to the DB.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexRefreshRequest {
     pub import: ClientDbSourceIndexImport,
     pub file_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// DB-owned refresh result for source-index generation writes.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexRefreshReport {
     pub generation_id: CacheGenerationId,
     pub reused_generation: bool,
     pub file_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub owner_count: u32,
     pub selector_count: u32,
     /// Owners whose canonical rows were inserted or replaced by this refresh.
@@ -380,31 +559,27 @@ pub struct ClientDbSourceIndexRefreshResult {
     pub file_count: u32,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub index_artifact_digest: String,
 }
 
 impl ClientDbSourceIndexRefreshResult {
     #[must_use]
-    pub fn from_stats(
-        db_path: impl Into<PathBuf>,
-        stats: ClientDbSourceIndexStats,
-        file_count: usize,
-        reused_generation: bool,
-    ) -> Self {
-        Self {
-            db_path: db_path.into(),
-            generation_id: stats.generation_id,
-            reused_generation,
-            file_count: client_db_source_index_file_count(file_count),
-            owner_count: stats.owner_count,
-            selector_count: stats.selector_count,
-        }
-    }
-
-    #[must_use]
     pub fn from_report(
         db_path: impl Into<PathBuf>,
         report: ClientDbSourceIndexRefreshReport,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Self {
+        let index_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &source_snapshot.root_digest,
+                provider_digest: &source_snapshot.provider_digest,
+                parameters: &[],
+            },
+        )
+        .value;
         Self {
             db_path: db_path.into(),
             generation_id: report.generation_id,
@@ -412,6 +587,8 @@ impl ClientDbSourceIndexRefreshResult {
             file_count: report.file_count,
             owner_count: report.owner_count,
             selector_count: report.selector_count,
+            source_snapshot,
+            index_artifact_digest,
         }
     }
 }
@@ -448,7 +625,7 @@ impl ClientDbSourceIndexRefreshResult {
     }
 }
 
-/// Lookup request for DB Engine-owned source index rows.
+/// Lookup request for ASP Server-owned source-index rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
@@ -457,7 +634,7 @@ pub struct ClientDbSourceIndexLookup {
     pub limit: u32,
 }
 
-/// Lookup request for a multi-key Rust-owned source-index candidate query.
+/// Lookup request for a multi-key ASP Server DB source-index candidate query.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexCandidateLookup {
     pub project_root: PathBuf,
@@ -466,12 +643,12 @@ pub struct ClientDbSourceIndexCandidateLookup {
     pub limit: u32,
 }
 
-/// Lookup request for DB Engine-owned source index selector rows.
+/// Lookup request for ASP Server-owned source-index selector rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelectorLookup {
     pub project_root: PathBuf,
     pub language_id: Option<LanguageId>,
-    pub kind: Option<String>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub query: Option<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
 }

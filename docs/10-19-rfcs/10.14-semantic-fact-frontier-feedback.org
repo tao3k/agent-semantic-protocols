@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Semantic Fact Frontier Feedback
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-07
 #+RFC: 014
 #+STATUS: draft
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010), docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org (012)
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010), docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org (012)
 #+SEE_ALSO: docs/30-39-research/31.30-semantic-fact-frontier-real-project-evidence.org
 
 * One-sentence summary
@@ -137,7 +141,7 @@ The P0 ontology contract is schema-first:
 - =schemas/semantic-language-registry.providers.v1.json= advertises the
   ontology schema for the four source-language providers so future provider
   output alignment has a registry-visible contract.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/ontology.py= projects the
+- =packages/python/asp_python_graphs/src/asp_python_graphs/ontology.py= projects the
   fixture catalog into a schema-valid graph-turbo request by moving
   ontology-specific fields into graph node =fields= and preserving top-level
   request fields for selectors, paths, symbols, and actions.
@@ -148,11 +152,11 @@ The P0 ontology contract is schema-first:
 - =tests/unit/test_semantic_fact_protocol_vocabulary.py= validates RFC number
   uniqueness, relation boundary closure, graph-turbo profile-internal
   relations, and confidence/freshness mapping coverage.
-- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= emits
+- =languages/asp-rust/src/search/semantic_facts.rs= emits
   ontology-shaped Rust =field=/=type=/=collection= graph facts from =syn=
   parser facts while preserving the existing provider metadata fields used by
   compact rendering.
-- =crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/provider_ontology.rs=
+- =crates/agent-semantic-client/tests/unit/provider_command/facade/pipe/provider_ontology.rs=
   validates that ASP keeps provider-emitted ontology fields when it builds a
   =semantic-graph-turbo-request.v1= packet.
 
@@ -188,7 +192,7 @@ C=collection:sequence(Vec<Entry>)!evidence
 H=hot:fn(write_entry)@src/cache.rs:80:104!code
 T=test:case(cache_replay_roundtrip)!tests
 frontier=F.code,H.code,T.tests
-frontierActions=F.code=>asp rust query --selector src/cache.rs:18:24 --workspace . --code
+frontierActions=F.code=>asp query playbook --language rust --selector src/cache.rs:18:24 --workspace . --projection source
 profiles=collection-impact,test-selection
 omit=source,full-callgraph,unrelated-fields
 avoid=raw-read,manual-window-scan,broad-lexical
@@ -236,8 +240,8 @@ must remain inspectable.
 Profile-level calibration is a schema-owned sparse-bank input, not a hidden
 prompt hint. =schemas/semantic-graph-turbo-calibration.v1.schema.json= records
 per-profile =kindDeltas= and =relationDeltas= derived from feedback receipts.
-=asp-graph-turbo calibrate <feedback>... <request>= builds this packet, and
-=asp-graph-turbo rank --calibration <packet>= applies the deltas before sparse
+the =asp-python-graphs= calibration method builds this packet, and the ASP
+Server Graph-Turbo method applies the deltas before sparse
 backend construction. Calibrated =kindBonus= values drive node scoring and rank
 explanations; calibrated =relationWeightMultiplier= values drive CSR edge
 weights, relation-channel weight mass, oriented-edge weights, and the rank
@@ -300,7 +304,7 @@ validation frontier:
 
 #+begin_src text
 frontier=T.unit,T2.integration,P.package
-frontierActions=T.unit=>asp rust check --test cache_replay_roundtrip .
+frontierActions=T.unit=>asp query playbook --language rust --selector cache_replay_roundtrip --workspace . --projection source
 omit=full-suite,full-build-graph
 avoid=run-full-suite,manual-window-scan,raw-read
 #+end_src
@@ -343,11 +347,12 @@ instead of being omitted.  This keeps benchmark conversion able to distinguish
 "not applicable" from "not recorded".
 =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records the first
 real-project task-session fixture for this contract plus runtime capture
-fixtures for =asp-graph-turbo receipt= and the public =asp <language> search
+fixtures for the ASP Server resident graph receipt method and the public =asp <language> search
 --frontier-receipt-out= facade.
-The graph-turbo runtime exposes this capture path through
-=asp-graph-turbo receipt=, which ranks a graph-turbo request and emits the
-receipt schema using explicit followed/read/test facts from the caller.
+The Runtime exposes this capture path through the intent-only ASP Server
+=asp.graph.evaluate= method, which ranks the immutable resident generation in
+Rust and emits the receipt schema using explicit followed/read/test facts from
+the caller.  The Ready route never invokes the offline Graph-Turbo service.
 The ASP search runtime exposes a receipt trigger through
 =--frontier-receipt-out <path>= on graph-turbo frontier search commands, with
 optional =--frontier-receipt-follow-node=, =--frontier-receipt-read-selector=,
@@ -390,7 +395,7 @@ omit=source,full-field-list,full-callgraph
 avoid=raw-read,manual-window-scan
 #+end_src
 
-Capsule success means the agent can choose one exact =query --code= selector
+Capsule success means the agent can choose one exact =query --projection source= selector
 or one exact test action without reading wide source first.
 
 * Benchmark contract
@@ -454,7 +459,7 @@ recomputes scoring metrics from the source receipt fixtures so report rows
 cannot drift from recorded evidence.
 =schemas/semantic-graph-turbo-sandtable-summary.v1.schema.json= accepts the
 live scoring rows that consume calibration-ready report scenarios through
-=asp-graph-turbo sandtable-summary --benchmark-report ... --report-scenario ...=.
+the ASP Server =asp.graphs.sandtable-summary= method.
 
 * Lightweight scoring
 
@@ -530,10 +535,10 @@ P1 audit should answer:
 - =schemas/semantic-graph-turbo-result.v1.schema.json= exposes
   =profileMatrices= as a packet-visible profile matrix bank with relation,
   transition, supported edge, reachable edge, and density summaries.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profile_matrix.py=
+- =packages/python/asp_python_graphs/src/asp_python_graphs/profile_matrix.py=
   compiles the current graph against every registered profile without changing
   the existing default frontier contract.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profiles.py= registers
+- =packages/python/asp_python_graphs/src/asp_python_graphs/profiles.py= registers
   =field-impact=, =type-impact=, =collection-impact=, and =failure-evidence=
   as internal graph-turbo profiles that can be selected by existing surfaces.
 - =tests/unit/asp_graph_turbo_feedback_profiles/= validates
@@ -548,7 +553,7 @@ P1 audit should answer:
 - =schemas/semantic-graph-turbo-result.v1.schema.json= exposes
   =receiptAdjustments= plus =receiptBoostCount= and =receiptPenaltyCount= so
   receipt effects are inspectable instead of hidden inside scores.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/receipt.py= applies
+- =packages/python/asp_python_graphs/src/asp_python_graphs/receipt.py= applies
   deterministic boost/penalty deltas from =kind=receipt= nodes, receipt edges,
   and seen selector receipts while preserving parser-owned graph reachability.
 - =packages/python/tools/src/tools/semantic_sandtable/agent_observation_frontier.py=
@@ -557,7 +562,7 @@ P1 audit should answer:
 - =packages/python/tools/src/tools/semantic_sandtable/expectations.py= gates those
   metrics with =minFrontierFollowRate=, =minContextPrecision=, and
   =minContextUtilization=.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/receipt.py= derives
+- =packages/python/asp_python_graphs/src/asp_python_graphs/receipt.py= derives
   ranking penalties for duplicate selector, overlapping range, same-owner scan,
   and raw-read fallback after exact frontier from packet-visible receipt facts.
 - =tests/unit/asp_graph_turbo_feedback_profiles/= validates those receipt
@@ -569,7 +574,7 @@ P1 audit should answer:
 - =schemas/semantic-fact-graph.v1.schema.json= accepts =package=, =build=,
   and =dependency= nodes plus build/test/package metadata edges such as
   =belongs_to=, =builds=, =tests=, and =depends_on=.
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profiles.py= registers
+- =packages/python/asp_python_graphs/src/asp_python_graphs/profiles.py= registers
   =test-selection= and =affected= as deterministic profile masks for existing
   search/query/check surfaces.
 - =tests/unit/asp_graph_turbo_feedback_profiles/= validates
@@ -579,30 +584,30 @@ P1 audit should answer:
   =search/semantic-facts= for Rust, Python, TypeScript, and Julia with
   =semantic-fact-graph.v1= packet metadata, so agents can discover the fact
   graph surface from the provider registry instead of hard-coding it.
-- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= now emits
+- =languages/asp-rust/src/search/semantic_facts.rs= now emits
   parser-owned Cargo =package=, =build=, =dependency=, and =test= graph facts
   from manifest dependency facts and Cargo test target parsing. Runtime evidence:
   =cargo run --quiet --features search,cli -- search semantic-facts "cargo test dependency" --json .=
   produces schema-valid =semantic-fact-graph.v1= output with
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
-- =languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_graph_facts.py=
+- =languages/asp-python/src/asp_python/_semantic_graph_facts.py=
   now merges parser-owned Python field facts with project-level =package=,
   =build=, =dependency=, and =test= facts from =pyproject.toml= and AST-based
   test discovery. Runtime evidence through =run_cli(["search", "semantic-facts",
   "pytest dependency", "--json", "."])= produces schema-valid
   =semantic-fact-graph.v1= output with the same P3 edge vocabulary.
-- =languages/typescript-lang-project-harness/src/cli/semantic-graph-facts.ts=
+- =languages/asp-typescript/src/cli/semantic-graph-facts.ts=
   now merges parser-owned TypeScript field facts with project-level =package=,
   =build=, =dependency=, and =test= facts from =package.json= and AST-based
   test discovery. Runtime evidence:
   =node dist/src/cli/main.js search semantic-facts "npm test dependency" --json .=
   produces schema-valid =semantic-fact-graph.v1= output with the same
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
-- =languages/JuliaLangProjectHarness.jl/src/semantic_graph_facts.jl= now
+- =languages/AspJulia.jl/src/semantic_graph_facts.jl= now
   merges JuliaSyntax-owned field facts with project-level =package=, =build=,
   =dependency=, and =test= facts from =Project.toml= and JuliaSyntax test
   discovery. Runtime evidence:
-  =julia --project=. -e 'using JuliaLangProjectHarness; print(render_julia_semantic_graph_facts_json(pwd(), "Pkg test dependency", ""))'=
+  =julia --project=. -e 'using AspJulia; print(render_julia_semantic_graph_facts_json(pwd(), "Pkg test dependency", ""))'=
   produces schema-valid =semantic-fact-graph.v1= output with the same
   =builds=/=depends_on=/=tests=/=belongs_to= edges.
 - Provider packets must expose a visible source-to-package bridge instead of
@@ -676,7 +681,7 @@ The RFC is considered landed only when:
 | sandtables report context precision/utilization metrics | closed | =tests/unit/semantic_sandtable/test_expectations.py=, =test_agent_observation_pipe.py=, =test_agent_observation_read_loop.py=, and =test_deep_question_cases.py= |
 | read/failure/test receipt facts affect ranking | closed | =tests/unit/asp_graph_turbo_feedback_profiles/test_receipt_feedback.py=, =tests/unit/test_asp_graph_turbo_failure_frontier.py=, and read-loop memory gates in =tests/unit/test_asp_graph_turbo_read_loop.py= |
 | default agent-facing outputs stay compact with exact follow-up actions | closed | graph-turbo seed/render tests plus =tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py= enforcing primary selector actions without broad executable branch spam |
-| receipt runtime capture is schema-owned and public-facade reachable | closed | =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records task-session, =asp-graph-turbo receipt=, and =asp <language> search --frontier-receipt-out= fixtures validated by =tests/unit/test_semantic_fact_frontier_receipt_schema.py= |
+| receipt runtime capture is schema-owned and public-facade reachable | closed | =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records task-session, ASP Server graph receipt, and =asp <language> search --frontier-receipt-out= fixtures validated by =tests/unit/test_semantic_fact_frontier_receipt_schema.py= |
 | real-project receipt plus benchmark table fixes scoring input | closed | =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= fixes the four-scenario receipt+benchmark report, including a calibration-ready ASP runtime followed/read/test scenario; =tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py= recomputes gold context metrics from source receipts |
 | live sandtable scoring drives ranking-weight changes | closed | =tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py= covers =--benchmark-report --report-scenario=, and =docs/30-39-research/31.30-semantic-fact-frontier-real-project-evidence.org= records a schema-valid live row with =contextPrecision=0.1=, =contextRecall=1.0=, and =contextUtilization=0.1= |
-| feedback compiles into profile calibration packets | closed | =schemas/semantic-graph-turbo-calibration.v1.schema.json= plus =tests/unit/test_asp_graph_turbo_calibration.py= validate =asp-graph-turbo calibrate=, =rank --calibration=, calibrated =kindBonus= explanations, =relationWeightMultiplier= profile evidence, relation-channel weight mass, and cache-key profile inputs |
+| feedback compiles into profile calibration packets | closed | =schemas/semantic-graph-turbo-calibration.v1.schema.json= plus =tests/unit/test_asp_graph_turbo_calibration.py= validate the =asp-python-graphs= calibration and Graph-Turbo methods, calibrated =kindBonus= explanations, =relationWeightMultiplier= profile evidence, relation-channel weight mass, and cache-key profile inputs |

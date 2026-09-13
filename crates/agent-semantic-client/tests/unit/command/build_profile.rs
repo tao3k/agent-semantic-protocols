@@ -1,0 +1,127 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical workspace root")
+}
+
+#[test]
+fn version_reports_the_compiled_artifact_profile() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["--version", "--profile"])
+        .output()
+        .expect("run asp --version --profile");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let expected = if cfg!(debug_assertions) {
+        "debug\n"
+    } else {
+        "release\n"
+    };
+    assert_eq!(stdout, expected);
+}
+
+#[test]
+fn require_release_fails_closed_for_debug_artifacts() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["--version", "--require-release"])
+        .output()
+        .expect("run asp --version --require-release");
+
+    if cfg!(debug_assertions) {
+        assert!(!output.status.success());
+        let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+        assert!(
+            stderr.contains("[asp-build-profile-error] expected=release actual=debug"),
+            "stderr={stderr}"
+        );
+        assert!(
+            stderr.contains("nextCommand=just agent-tools-install-protocol"),
+            "stderr={stderr}"
+        );
+    } else {
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+        assert!(stdout.contains("profile=release"), "stdout={stdout}");
+    }
+}
+
+#[test]
+fn release_install_checks_release_profile_before_and_after_copy() {
+    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    assert!(
+        justfile.contains("agent-tools-install-protocol bin_dir=\"\": check-rust-workspace-policy"),
+        "release publication must admit the Cargo-derived workspace policy exactly once before building"
+    );
+    let recipe = justfile
+        .split("agent-tools-install-protocol bin_dir=\"\":")
+        .nth(1)
+        .and_then(|tail| tail.split("agent-tools-install-protocol-debug").next())
+        .expect("protocol install recipe");
+
+    assert_eq!(
+        recipe.matches("--version --require-release").count(),
+        2,
+        "release profile must be checked before and after installation"
+    );
+    assert!(recipe.contains("asp_artifact=\"${cargo_target_dir}/release/asp\""));
+    assert!(recipe.contains("\"${asp_artifact}\" install binary"));
+    assert!(!recipe.contains("target/debug/asp"));
+}
+
+#[test]
+fn debug_install_never_publishes_a_stale_target_after_build_failure() {
+    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    assert!(
+        justfile.contains("agent-tools-install-protocol-debug: check-rust-workspace-policy"),
+        "developer publication must admit the Cargo-derived workspace policy exactly once before building"
+    );
+    let recipe = justfile
+        .split("agent-tools-install-protocol-debug:")
+        .nth(1)
+        .and_then(|tail| tail.split("agent-tools-install-hook").next())
+        .expect("debug protocol install recipe");
+
+    assert!(
+        recipe.contains(
+            "cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?"
+        ),
+        "a failed debug build must stop before an older target/debug/asp can be published"
+    );
+    assert!(recipe.contains("asp_artifact=\"target/debug/asp\""));
+    assert!(!recipe.contains("CARGO_TARGET_DIR"));
+    assert!(recipe.contains("\"${asp_artifact}\" install binary"));
+}
+
+#[test]
+fn asp_recipe_delegates_freshness_to_the_content_addressed_installer() {
+    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let recipe = justfile
+        .split("agent-tools-install-protocol bin_dir=\"\"")
+        .nth(1)
+        .and_then(|tail| tail.split("# Install the debug protocol binary").next())
+        .expect("release protocol install recipe");
+
+    assert!(
+        recipe.contains("\"${asp_artifact}\" install binary || exit $?"),
+        "ASP recipe must delegate freshness to the content-addressed installer"
+    );
+    assert!(
+        !recipe.contains("target/release/asp -nt \"${protocol_bin}\"")
+            && !recipe.contains("! cmp -s target/release/asp \"${protocol_bin}\""),
+        "the recipe must not duplicate artifact identity with mtime or byte-comparison probes"
+    );
+    assert!(
+        !recipe.contains("find crates/agent-semantic-client/src"),
+        "recipe freshness must not hard-code one package's source layout"
+    );
+}

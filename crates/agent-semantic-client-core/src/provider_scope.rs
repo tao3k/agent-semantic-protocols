@@ -1,35 +1,27 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Provider manifest path rules shared by client services.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
-use crate::ResolvedProvider;
+use crate::RuntimeProvider;
 
 #[must_use]
-pub fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -> bool {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return false;
-    };
-    provider.source_extensions.iter().any(|candidate| {
-        candidate
-            .trim_start_matches('.')
-            .eq_ignore_ascii_case(extension)
-    })
+/// Return whether a provider owns the source-file extension at `path`.
+pub fn provider_supports_source_file(provider: &RuntimeProvider, path: &Path) -> bool {
+    agent_semantic_config::source_extension::source_extensions_support_file(
+        &provider.source_extensions,
+        path,
+    )
 }
 
+/// Return whether a provider excludes a path from its declared source scope.
 #[must_use]
-pub fn provider_ignores_path(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    path: &Path,
-) -> bool {
-    let relative = relative_project_path(project_root, path);
-    provider.ignored_path_prefixes.iter().any(|prefix| {
-        let prefix = normalize_project_path(prefix);
-        relative == prefix || relative.starts_with(&format!("{prefix}/"))
-    })
-}
-
-#[must_use]
+/// Resolve a project-scoped child path, including the project root itself.
 pub fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {
     if path == "." || path.is_empty() {
         return Some(project_root.to_path_buf());
@@ -37,6 +29,7 @@ pub fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {
     scoped_child_path(project_root, path)
 }
 
+/// Resolve a relative child without permitting absolute or parent traversal.
 #[must_use]
 pub fn scoped_child_path(root: &Path, path: &str) -> Option<PathBuf> {
     let path = Path::new(path);
@@ -51,6 +44,7 @@ pub fn scoped_child_path(root: &Path, path: &str) -> Option<PathBuf> {
 }
 
 #[must_use]
+/// Render `path` relative to the project root using canonical separators.
 pub fn relative_project_path(project_root: &Path, path: &Path) -> String {
     path.strip_prefix(project_root)
         .unwrap_or(path)
@@ -60,6 +54,7 @@ pub fn relative_project_path(project_root: &Path, path: &Path) -> String {
         .to_string()
 }
 
+/// Normalize a project-relative path to slash-separated canonical text.
 #[must_use]
 pub fn normalize_project_path(path: &str) -> String {
     path.replace('\\', "/").trim_start_matches("./").to_string()

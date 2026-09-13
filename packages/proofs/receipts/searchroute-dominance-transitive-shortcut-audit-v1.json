@@ -1,0 +1,172 @@
+{"sourcePath": "ASPProof/SearchRouteDominanceTransitiveShortcut.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteDominanceTransitiveShortcut",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : Bool), left = true → right = true → (left && right) = true",
+   "theoremFamily": "constructive-bool-and-construction",
+   "rfcClauseIds": ["DTS-CONSTRUCTIVE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.bool_and_true_of_parts",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type": "∀ (left right : Bool), left = true → (left || right) = true",
+   "theoremFamily": "constructive-bool-or-left",
+   "rfcClauseIds": ["DTS-CONSTRUCTIVE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.bool_or_true_of_left",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type": "∀ (left right : Bool), right = true → (left || right) = true",
+   "theoremFamily": "constructive-bool-or-right",
+   "rfcClauseIds": ["DTS-CONSTRUCTIVE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.bool_or_true_of_right",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : Nat), left ≤ right → ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.natLe left right = true",
+   "theoremFamily": "executable-natle-completeness",
+   "rfcClauseIds": ["DTS-COMPONENT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.le_implies_natLe_true",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.NoWorse left right = true →\n    ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse left right",
+   "theoremFamily": "noworse-to-componentwise-order",
+   "rfcClauseIds": ["DTS-COMPONENT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.noWorse_true_to_components",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse left right →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.NoWorse left right = true",
+   "theoremFamily": "componentwise-order-to-noworse",
+   "rfcClauseIds": ["DTS-COMPONENT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.components_to_noWorse_true",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictlyImproves left right = true →\n    ASPProof.SearchRouteDominanceTransitiveShortcut.CostStrictImprovement left right",
+   "theoremFamily": "strict-improvement-dimension-witness",
+   "rfcClauseIds": ["DTS-STRICT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.strictlyImproves_true_to_dimension",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteDominanceTransitiveShortcut.CostStrictImprovement left right →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictlyImproves left right = true",
+   "theoremFamily": "dimension-witness-to-strict-improvement",
+   "rfcClauseIds": ["DTS-STRICT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.dimension_to_strictlyImproves_true",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse first second →\n    ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse second third →\n      ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse first third",
+   "theoremFamily": "componentwise-noworse-transitivity",
+   "rfcClauseIds": ["DTS-NOWORSE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.costNoWorse_is_transitive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteDominanceTransitiveShortcut.CostStrictImprovement first second →\n    ASPProof.SearchRouteDominanceTransitiveShortcut.CostNoWorse second third →\n      ASPProof.SearchRouteDominanceTransitiveShortcut.CostStrictImprovement first third",
+   "theoremFamily": "strict-improvement-survives-noworse-composition",
+   "rfcClauseIds": ["DTS-STRICT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.strictImprovement_followed_by_noWorse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.NoWorse first second = true →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.NoWorse second third = true →\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.NoWorse first third = true",
+   "theoremFamily": "executable-noworse-transitivity",
+   "rfcClauseIds": ["DTS-NOWORSE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.noWorse_is_transitive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates first second = true →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates second third = true →\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates first third = true",
+   "theoremFamily": "strict-dominance-transitivity",
+   "rfcClauseIds": ["DTS-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.strict_dominance_is_transitive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate} {length : Nat},\n  ASPProof.SearchRouteBoundedDominanceWitnessChain.DescendingWitnessChain start endpoint length →\n    endpoint = start ∨ ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates endpoint start = true",
+   "theoremFamily": "chain-endpoint-equality-or-direct-dominance",
+   "rfcClauseIds": ["DTS-CHAIN"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.chain_endpoint_eq_or_strictly_dominates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) (length : Nat),\n  ASPProof.SearchRouteBoundedDominanceWitnessChain.DescendingWitnessChain start endpoint length.succ →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates endpoint start = true",
+   "theoremFamily": "nonempty-chain-endpoint-direct-dominance",
+   "rfcClauseIds": ["DTS-CHAIN", "DTS-NONEMPTY"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.nonempty_chain_endpoint_strictly_dominates_start",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) →\n  (length : Nat) →\n    ASPProof.SearchRouteBoundedDominanceWitnessChain.DescendingWitnessChain start endpoint length.succ →\n      ASPProof.SearchRouteDominanceTransitiveShortcut.TransitiveShortcut start endpoint",
+   "theoremFamily": "transitive-shortcut-construction",
+   "rfcClauseIds": ["DTS-SHORTCUT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.buildTransitiveShortcut",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (shortcut : ASPProof.SearchRouteDominanceTransitiveShortcut.TransitiveShortcut start endpoint),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates endpoint start = true",
+   "theoremFamily": "shortcut-preserves-removal-soundness",
+   "rfcClauseIds": ["DTS-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.shortcut_preserves_removal_soundness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.shortcutReceiptTokens = 6",
+   "theoremFamily": "shortcut-receipt-constant-shape",
+   "rfcClauseIds": ["DTS-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.shortcut_receipt_is_length_independent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (length : Nat),\n  ASPProof.SearchRouteDominanceTransitiveShortcut.shortcutReceiptTokens <\n    ASPProof.SearchRouteDominanceTransitiveShortcut.explicitChainReceiptTokens length.succ",
+   "theoremFamily": "shortcut-receipt-beats-explicit-nonempty-chain",
+   "rfcClauseIds": ["DTS-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteDominanceTransitiveShortcut.shortcut_receipt_beats_nonempty_explicit_chain",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 18,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 18,
+ "axiomDependentDeclarationCount": 0}

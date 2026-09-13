@@ -1,0 +1,32 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryBothValidAmbiguityRefinement
+
+namespace ASPProof.Audit.AgentSessionHostRegistryBothValidAmbiguityRefinement
+
+open ASPProof.AgentSessionHostRegistryBothValidAmbiguityRefinement
+
+#print axioms valid_equivalence_binds_accepted_root
+#print axioms valid_equivalence_binds_conflicting_root
+#print axioms valid_equivalence_requires_equal_semantics
+#print axioms false_equivalence_witness_is_rejected
+#print axioms valid_incompatibility_binds_both_roots
+#print axioms valid_incompatibility_requires_different_semantics
+#print axioms missing_discriminator_rejects_incompatibility
+#print axioms equivalence_entails_only_coalescence
+#print axioms incompatibility_entails_preferred_outcome
+#print axioms refinement_preserves_provenance_roots
+#print axioms refinement_strictly_reduces_ambiguity
+#print axioms refinement_consumes_evidence_budget
+#print axioms accepted_root_drift_rejects_refinement
+#print axioms conflicting_root_drift_rejects_refinement
+#print axioms unchanged_ambiguity_rejects_refinement
+#print axioms refinement_self_loop_is_rejected
+#print axioms resolved_ambiguity_has_no_refinement
+#print axioms refinement_run_length_bounded_by_initial_ambiguity
+#print axioms refinement_run_length_bounded_by_evidence_budget
+#print axioms provenance_interpretation_refines_without_root_rewrite
+
+end ASPProof.Audit.AgentSessionHostRegistryBothValidAmbiguityRefinement

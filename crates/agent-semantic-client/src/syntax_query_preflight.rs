@@ -1,31 +1,27 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! ASP-side preflight validation for query requests.
 
-use agent_semantic_client_core::{
-    ClientMethod, ClientRequest, builtin_catalog_source, compile_query_abi_source,
-};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use agent_semantic_client_core::ClientMethod;
+use agent_semantic_client_core::ClientRequest;
+use agent_semantic_client_core::builtin_catalog_source;
+use agent_semantic_client_core::compile_query_abi_source;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Validate client-side syntax query boundaries before provider execution.
 pub fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), String> {
-    validate_code_flag_boundary(request)?;
     if request.method != ClientMethod::Query {
         return Ok(());
     }
-    validate_code_selector_target(request)?;
+    validate_exact_projection_selector_target(request)?;
     validate_query_owner_path(request)?;
     let Some(source) = tree_sitter_query_source(request)? else {
         return Ok(());
     };
-    if requests_code_output(&request.forwarded_args) && !has_exact_selector(&request.forwarded_args)
-    {
-        return Err(
-            "tree-sitter query --code requires an exact --selector; run without --code for a capture frontier or add --selector <path-or-range> for pure code"
-                .to_string(),
-        );
-    }
     compile_query_abi_source(source).map_err(|error| {
         format!(
             "invalid tree-sitter query ABI source before provider execution: {}",
@@ -35,8 +31,8 @@ pub fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> {
-    if !requests_code_output(&request.forwarded_args) {
+fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<(), String> {
+    if option_value(&request.forwarded_args, "--projection").is_none() {
         return Ok(());
     }
     let Some(selector) = option_value(&request.forwarded_args, "--selector") else {
@@ -44,22 +40,22 @@ fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> 
     };
     let workspace = query_workspace(request);
     let selector_owner = selector_owner_path(selector);
-    let selector_path = resolve_under_workspace(&workspace, selector_owner.unwrap_or(selector));
+    let selector_path =
+        resolve_under_workspace(&workspace, selector_owner.as_deref().unwrap_or(selector));
     if selector_path.is_dir() {
         return Err(format!(
-            "query --selector with --code requires an exact file, range, or structural selector; `{selector}` is a directory. Use search lexical or search owner with --workspace for directory-scoped discovery"
+            "exact query requires a parser-owned structural selector; `{selector}` is a directory. Use ASP Search with --workspace for directory-scoped discovery"
         ));
     }
     if tree_sitter_query_source(request)?.is_some() {
         return Ok(());
     }
-    if let Some(language_id) = registered_source_selector_language(request, selector) {
-        let workspace_arg = query_workspace_arg(request).unwrap_or(".");
+    if let Some(language_id) = non_structural_selector_language(request, selector) {
         return Err(format!(
-            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=code\nallowed=false\nreason=file-selectors-are-not-code-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace_arg} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+            "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
         ));
     }
-    if let Some(owner) = selector_owner {
+    if let Some(owner) = selector_owner.as_deref() {
         if !selector_path.exists() {
             return Err(format!(
                 "stale-index selector path does not exist under --workspace: {owner} selector={selector} workspace={}",
@@ -78,14 +74,11 @@ fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> 
     Ok(())
 }
 
-fn selector_owner_path(selector: &str) -> Option<&str> {
-    let (_, rest) = selector.split_once("://")?;
-    let owner = rest
-        .split_once('#')
-        .map(|(owner, _)| owner)
-        .unwrap_or(rest)
-        .trim();
-    (!owner.is_empty()).then_some(owner)
+fn selector_owner_path(selector: &str) -> Option<String> {
+    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+        .ok()?
+        .owner_path()
+        .ok()
 }
 
 fn selector_path_before_range(selector: &str) -> &str {
@@ -94,51 +87,24 @@ fn selector_path_before_range(selector: &str) -> &str {
         .map_or(selector, |(path, _range)| path)
 }
 
-fn registered_source_selector_language<'a>(
+fn non_structural_selector_language<'a>(
     request: &'a ClientRequest,
     selector: &str,
 ) -> Option<&'a str> {
-    if selector.contains("://") {
-        return None;
-    }
     if selector_path_before_range(selector) != selector {
         return None;
     }
-    let language_id = request.language_id.as_ref()?.as_str();
-    let selector_path = selector_path_before_range(selector);
-    let extension = Path::new(selector_path)
-        .extension()
-        .and_then(|extension| extension.to_str())?;
-    agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == language_id)
-        .and_then(|manifest| {
-            manifest
-                .source
-                .default_extensions
-                .iter()
-                .any(|source| {
-                    source
-                        .trim_start_matches('.')
-                        .eq_ignore_ascii_case(extension)
-                })
-                .then_some(language_id)
-        })
-}
-
-fn validate_code_flag_boundary(request: &ClientRequest) -> Result<(), String> {
-    if !matches!(request.method, ClientMethod::Query | ClientMethod::Search) {
-        return Ok(());
+    if agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+        selector,
+    )
+    .is_ok()
+    {
+        return None;
     }
-    for window in request.forwarded_args.windows(2) {
-        if window[0] == "--code" && !window[1].starts_with('-') {
-            return Err(
-                "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
-                    .to_string(),
-            );
-        }
-    }
-    Ok(())
+    request
+        .language_id
+        .as_ref()
+        .map(|language| language.as_str())
 }
 
 fn validate_query_owner_path(request: &ClientRequest) -> Result<(), String> {
@@ -169,7 +135,7 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
     while index < args.len() {
         let arg = args[index].as_str();
         match arg {
-            "--catalog" | "--from-hook" | "--query" | "--selector" | "--term"
+            "--catalog" | "--from-hook" | "--projection" | "--query" | "--selector" | "--term"
             | "--treesitter-query" | "--workspace" => {
                 index += 2;
                 continue;
@@ -178,12 +144,9 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
                 index += optional_value_flag_width(args.get(index + 1).map(String::as_str));
                 continue;
             }
-            "--code" | "--names-only" => {
-                index += 1;
-                continue;
-            }
             _ if arg.starts_with("--catalog=")
                 || arg.starts_with("--from-hook=")
+                || arg.starts_with("--projection=")
                 || arg.starts_with("--query=")
                 || arg.starts_with("--json=")
                 || arg.starts_with("--selector=")
@@ -298,18 +261,6 @@ fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
         }
     }
     None
-}
-
-fn requests_code_output(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--code")
-}
-
-fn has_exact_selector(args: &[String]) -> bool {
-    args.windows(2)
-        .any(|window| window[0] == "--selector" && !window[1].starts_with('-'))
-        || args
-            .iter()
-            .any(|arg| arg.starts_with("--selector=") && arg.len() > "--selector=".len())
 }
 
 fn is_native_query_catalog(catalog_id: &str) -> bool {

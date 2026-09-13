@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Runtime Server Tokio Task Lifecycle and Telemetry Isolation
+#+RFC_ID: ASP-RFC-10.05.11.05
+#+STATUS: normative
+#+PROPERTY: rfc_layer runtime-lifecycle
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Purpose
+
+The Runtime Server is one long-lived Tokio daemon serving many workspaces and
+many agent sessions.  Throughput alone is insufficient: every background actor
+must have one owner, one cancellation path, one join path, and one terminal
+receipt.  Telemetry is observability and MUST NOT become data-plane authority
+or a source of read-only request latency.
+
+* Normative lifecycle
+
+The daemon and each resident component move monotonically through
+=accepting -> draining -> terminated=.  Once draining begins, no new owned task
+may be admitted.  Every admitted task must reach exactly one terminal outcome:
+=completed=, =cancelled=, or =failed=.
+
+A successful shutdown publishes
+=agent.semantic-protocols.runtime-server-task-lifecycle-receipt= version =1=
+and satisfies:
+
+#+begin_example
+started = completed + cancelled + failed
+active = 0
+leaked = 0
+#+end_example
+
+Dropping a task handle is cancellation, never detachment.  A component that
+cannot prove the equations above must fail shutdown and remain diagnostically
+visible; it must not claim a healthy terminal state.
+
+* Generation-attempt ownership
+
+=Queued= is the only non-terminal state before the admission dispatcher owns a
+build.  The dispatcher changes the same workspace attempt to =Building=
+immediately before invoking its builder and emits exactly one
+=generation-build-started= event.  =Building= is valid only while a supervised
+provider peer or source-index task owns that attempt.
+
+Every accepted build carries an entry-bound terminal authority coupling its
+workspace, attempt, receipt publisher, cancellation authority, and
+single-writer lane.  Normal completion consumes that authority.  Join failure,
+peer EOF, handshake failure, panic, abort, dispatcher closure, cancellation,
+and Runtime drain publish exactly one =Ready=, =Failed=, or =Cancelled=
+terminal before releasing the lane.  A later request can therefore never
+coalesce an orphaned =Building= entry.
+
+The exact =GenerationCancellation= authority travels through provider
+readiness, provider operation, source snapshot, projection, and
+materialization.  Each suspension is a Tokio event race over terminal state,
+response closure, and cancellation.  A nested future MUST NOT survive after
+its admission attempt has terminalized.  Request deadlines, sleeps, polling,
+and elapsed-time repair are not lifecycle transitions.
+
+* Bounded public request semantics
+
+=EnsureWorkspace= and public =search/query= requests submit or coalesce demand,
+read the current Tokio =watch= snapshot, and respond without awaiting a build
+terminal.  =Ready= continues to resident execution.  =Queued=, =Building=,
+=Failed=, and =Cancelled= return their typed current phase, provider and
+generation authority, service timing, work counters, and =recommendedNext=.
+The entry-owned build continues after a request handle is dropped.
+
+The shared ClientFrame gRPC transport has no operation deadline and invents no
+client-request-timeout terminal.  Per-request =oneshot= completion is bounded
+by the Runtime actor returning payload-bearing =Ready= or the typed current
+phase.  Cancellation is an explicit frame.  Connection failure cannot replace
+Runtime phase evidence or acquire provider/generation lifecycle authority.
+
+* Telemetry isolation
+
+Agent-facing control, search, and exact-query paths may only submit telemetry
+with a bounded non-blocking enqueue.  They MUST NOT await telemetry capacity,
+open a telemetry database, acquire its writer lock, flush an exporter, or probe
+process state.  Queue overflow is represented by an explicit dropped counter.
+
+The resident telemetry component owns its ingress, query, process sampler, and
+exporter tasks.  Shutdown first closes admission, then drains accepted
+observations, stops sampling and query admission, flushes the exporter, joins
+all owned tasks, removes sockets, and finally publishes the lifecycle receipt.
+
+* Required observations
+
+The resident telemetry store must expose success and failure distributions and
+the lifecycle dimensions needed to diagnose host stalls: enqueue latency,
+queue depth/high-water/drops, active and terminal task counts, Tokio event-loop
+lag, process RSS and peak RSS, disk bytes, page-ins, and open descriptors.
+Generation observations are attempt-bound and distinguish dispatcher enqueue,
+provider-artifact load, readiness, source collection, publication, and the
+terminal transition.  Live Corpus cannot qualify an attempt that has neither a
+later progress event nor one terminal event at corpus completion.
+
+* Empirical qualification
+
+The strong gate runs multiple sessions over multiple workspaces with telemetry
+enabled.  It requires sub-millisecond request-side telemetry enqueue p99,
+bounded event-loop lag and resource growth, zero lifecycle leaks after repeated
+start/stop cycles, and no surviving Runtime Server socket or task after the
+terminal receipt.  Passing a focused throughput test alone is not closure.

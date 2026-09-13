@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+-->
+
 # Semantic Search Schemas
 
 Policy boundary: ASP EvidenceGraph, DynamicTopology, and GraphRoute own least-search target localization and decide where to edit through stable selectors, owners, tests, dependency edges, snapshots, benchmarks, and topology context. Language policy receives that target context and tells the agent how to edit and validate safely; it does not own broad search or primary file selection.
@@ -6,8 +11,8 @@ Policy boundary: ASP EvidenceGraph, DynamicTopology, and GraphRoute own least-se
 Scenario benchmark evidence and behavior snapshot evidence are first-class policy evidence kinds: benchmarks project route quality, budget, dependency usage under the current architecture, resource pressure, failure mode, and expected resolution facts, while snapshots project observable behavior, output contract, and compact-render stability facts. Dependency-oriented scenarios are not dependency tutorials; they are benchmark-backed architecture facts that connect documentation, upstream source, research notes, benchmark artifacts, topology context, and verification receipts to the way this project should use the dependency.
 Normal agent rendering should expose these facts through a progressive `QualityFrame`: a small read-model for one intent and candidate edit boundary, with architecture pressure, decision rules, change shape, guardrails, and validation shown first and exact fact/recipe/snapshot/benchmark references expanded only on demand.
 Gerbil-style language policy evidence extends the same layer with runtime-source, compiler-evidence, language-rule, standard-library, and macro-pattern evidence kinds. These let a provider prove macro boundaries, active runtime constraints, medium-weight compiler evidence, module import rules, and native style policy without turning provider-specific details into root schema fields.
-Rust search-quality policy and Gerbil language-policy evidence are the first two mature practice cases for a single shared obligation: ASP EvidenceGraph, DynamicTopology, and GraphRoute decide where to edit through least-search target localization, while every language harness policy receives that target context and tells the agent how to edit and validate safely. Shared policy facts can now represent edit strategy, cross-language capability, topology context, graph-route evidence as target context, topology updates, provider capabilities, prior failures, and plan-selection or architecture-context use. Providers should map their strongest native facts into these shared families so the agent receives a compact QualityFrame while coding, not a full policy catalog.
-`semantic-task-frame-archive.v1.schema.json` owns the machine-readable archive packet for task/feature-scoped reasoning state. It records the completed, suspended, superseded, or handed-off TaskFrame plus the WhereFrame/HowFrame references, scope, edit groups, observations, promoted facts, and ephemeral evidence that must not cross task boundaries. The matching Org archive is the human-auditable and `asp org query` surface; the JSON packet is the replayable machine state for validation, project evidence promotion, and downstream Python/Julia analysis. Together they form the artifact lattice for long-running agent work: `taskFrameId`, `intentId`, `featureId`, `evidenceGeneration`, parser selectors, scenario ids, snapshot ids, benchmark ids, receipt ids, and artifact ids connect EvidenceGraph, topology Org, policy/scenario facts, observations, and archives without forcing those payloads into the prompt. Search/query commands must not create these archives as hidden side effects; an explicit archive action closes or hands off a TaskFrame.
+Rust search-quality policy and Gerbil language-policy evidence are the first two mature practice cases for a single shared obligation: ASP EvidenceGraph, DynamicTopology, and GraphRoute decide where to edit through least-search target localization, while every ASP language provider policy receives that target context and tells the agent how to edit and validate safely. Shared policy facts can now represent edit strategy, cross-language capability, topology context, graph-route evidence as target context, topology updates, provider capabilities, prior failures, and plan-selection or architecture-context use. Providers should map their strongest native facts into these shared families so the agent receives a compact QualityFrame while coding, not a full policy catalog.
+`semantic-task-frame-archive.v1.schema.json` owns the machine-readable archive packet for task/feature-scoped reasoning state. It records the completed, suspended, superseded, or handed-off TaskFrame plus the WhereFrame/HowFrame references, scope, edit groups, observations, promoted facts, and ephemeral evidence that must not cross task boundaries. The matching Org archive is the human-auditable and `asp query playbook --documents org` surface; the JSON packet is the replayable machine state for validation, project evidence promotion, and downstream Python/Julia analysis. Together they form the artifact lattice for long-running agent work: `taskFrameId`, `intentId`, `featureId`, `evidenceGeneration`, parser selectors, scenario ids, snapshot ids, benchmark ids, receipt ids, and artifact ids connect EvidenceGraph, topology Org, policy/scenario facts, observations, and archives without forcing those payloads into the prompt. Search/query commands must not create these archives as hidden side effects; an explicit archive action closes or hands off a TaskFrame.
 
 `semantic-proof-obligation.v1.schema.json`, `semantic-proof-recipe.v1.schema.json`,
 `semantic-proof-receipt.v1.schema.json`, and
@@ -37,23 +42,56 @@ navigation vocabulary; extension reports carry ecosystem-specific activation
 evidence, parser/compiler facts, source doctrine, and repair recipes without
 turning Effect, Tokio, Moshi, or SciML into cross-language mapping rules.
 
-`semantic-search-packet.v1.schema.json` is the shared JSON contract for search
-output across semantic language providers. Compact text stays the default
-prompt surface; JSON is the validation, cache, and artifact shape. Agent-facing
-interactive exploration should not request `search ... --json`; hooks should
-deny that output-mode error with `reasonKind=agent-search-json` and guide to
-the equivalent compact command. Providers should emit JSON in a compact
-machine-oriented form, leaving readability to validators and artifact viewers
-rather than spending terminal tokens on pretty-print whitespace.
-Document language providers such as `org` and `md` use document-specific packet
-shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
-facts for headings, TOC outlines, properties, tables, blocks, links, and
-selectors.
-`semantic-document-query-packet.v1.schema.json` owns document query metadata
-and filtered `--content` element projections, with explicit `queryKind`,
-`querySurface`, and `contentBlocks` fields. Document hook recovery must use
-document `query` routes, not source `search owner` or owner/items routes. These
-providers must not report document facts through source-language
+`semantic-agent-search-dispatch-receipt.v1.schema.json` owns the language-neutral
+resident dispatch lifecycle. It joins one exact command digest to the verified
+root, child, and message target; records monotonic dispatch state; marks resident
+execution terminal and non-redispatchable; and requires completed receipts to
+carry a materialized owner selector plus a placeholder-free executable command.
+
+`search-topology-settlement.v1.schema.json` owns the current single public
+Search Playbook result while the V1 contract is being stabilized. Runtime
+joins the Agent-authored acquisition evidence to the exact attached Project
+Topology generation, admits the binding, proof, coverage, fixed-point, and
+selector-ownership invariants, and returns that typed settlement. The Client
+invokes its canonical renderer, producing exactly one Org-owned GQL source
+block. Flat evidence rows, duplicate materialization sets, planner state, Query
+grammar, recommended commands, and parallel renderers are not public Search
+results.
+`project-topology-library.v1.schema.json` owns the reusable topology generation
+that supplies those settlements. It includes
+source-owned expected relations, relation-scoped coverage certificates, and an
+exact frontier for every unresolved expectation; a positive factual or derived
+edge and a frontier for the same relation endpoints are mutually exclusive.
+`project-topology-inference-receipt.v1.schema.json` owns the corresponding
+relation-preserving MRR/Ascent receipt, including typed rule identities and
+premise witnesses. These contracts remain V1 during the current stabilization and
+refactoring phase; no duplicate V2 family is published.
+`--syntax` carries a registered producer and its provider-native query argv;
+`--native-syntax` is a separate exact-selector axis and cannot carry a
+Tree-sitter query.
+
+`runtime-search-execution-budget.v1.schema.json` owns the generation-bound
+cardinality receipt used by Search Playbook execution. Runtime derives its
+limits from admitted owner/corpus/graph cardinalities and the public V1 graph
+envelope. It is not an Agent planner input and contains no Tokio task-count or
+concurrency control.
+
+`runtime-resident-request-plane-receipt.v1.schema.json` owns the strict
+sub-millisecond Search/Query request-plane receipt. It binds cold/warm lookup
+state and generation identity to one measured elapsed time and requires one
+resident lookup with zero waits, builds, filesystem/database reads, provider or
+parser work, secondary Runtime RPCs, socket discovery, and terminal waits.
+
+`project-resolution.v1.schema.json` owns provider-resolved package-manager
+workspace membership and source scope. Search and graph consumers use the
+ASP-projected source index from that receipt.
+Document language providers such as `org` and `md` use a document-specific
+Query packet. `semantic-document-query-packet.v1.schema.json` owns metadata
+and filtered element projections, with explicit `queryKind`, `querySurface`,
+and `contentBlocks` fields. Document discovery enters the same public
+`search playbook` operation as source discovery; exact document
+materialization consumes a returned selector through `query --selector`.
+Providers must not report document facts through source-language
 `nativeSyntaxFacts`.
 `semantic-org-elements-query-packet.v1.schema.json` owns the host-facing
 org-elements index query input used by `orgize elements-query --packet ...`.
@@ -67,16 +105,15 @@ judgments, and proof/evidence text. It records `contentKind`, `criticality`,
 `lossiness`, `trustLevel`, `validFor`, `notValidFor`, `preserved`, `omitted`,
 and exact-source requirements. This is a content payload transform, not a graph,
 frontier, rank, action, or command-materialization protocol.
-For tree-sitter-backed source query rendering, non-`--code` output is
-locator/frontier evidence only, while `--code` prints pure source code. Query
+For tree-sitter-backed exact query rendering, `--projection source` returns
+parser-authoritative source and `--projection callable-skeleton` returns the
+bounded callable structure. Query
 render profiles such as the `compact-graph-frontier` profile and
 `corpus-locator` profile project an ASP-compiled tree-sitter query plan over
 provider-native projection; they do not introduce a new packet surface.
-RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
-surface for `search prime` and `search reasoning <profile>`. Those entries
-describe profile names, selector slots, returns, and frontier actions; they
-deliberately reject natural-language `goal` or `intent` fields so planning stays
-in the agent.
+RFC 009 adds optional `reasoningProfiles` as typed internal planning facts.
+They are projected only through the single public `search playbook` receipt;
+they are not independently addressable command routes.
 
 `semantic-graph.v1.schema.json` is the shared embeddable graph vocabulary behind
 search packets. It owns parser-proved graph nodes, graph edges, bounded
@@ -132,65 +169,12 @@ and missed or recovered gold context. Its report summary may also carry
 until a new calibration-ready runtime receipt shows a frontier miss or missing
 gold selector action.
 
-`semantic-compact-graph-render.v1.schema.json` is the retired shared stdout
-render template for compact graph search output. It describes the view-native
-header contract, micro-legend grammar, role-typed alias line grammar, dense
-alias separator, combined `rank=... frontier=...` line, legend-declared search
-root, renderer ownership, and source-kind to node/target-role/action/relation
-vocabulary used by Rust, TypeScript, Python, and future providers. It is not
-the trusted machine protocol for graph/frontier/rank/action evidence; providers
-derive facts from `semantic-search-packet.v1.schema.json`,
-`semantic-graph-turbo-result.v1.schema.json`, or an explicit JSON projection.
-Language providers under `languages/` may call `asp graph render` for retired
-stdout compatibility instead of adding renderer library dependencies. Input
-packets use one canonical field vocabulary: query-set count comes from
-root-level `querySet`, and graph frontier source locators use
-`searchSynthesis.seeds[].read`; provider-specific field aliases are schema
-violations rather than renderer compatibility cases.
-Owner-local item search must retain `owner=`, `selector=items`, term count,
-and `view=seeds` in the header, declare every packet-local alias id in the
-legend, split search-match and owner-containment edges, rank matched symbols
-before the already-expanded owner, and emit `omit` / `avoid` facts that steer
-agents away from repeat owner searches, raw reads, and full JSON.
-Its `!code` symbol aliases must also carry parser-owned read locators:
-same-owner aliases use `@start:end`, while cross-owner aliases use
-`@path:start:end`.
-When a source packet carries `reasoningProfiles`, the shared compact graph
-renderer may
-emit `entries=<profile>(<ID>,...=><return>+...)` after the
-`rank=... frontier=...` line. Every selector in that line is a rendered
-packet-local alias id whose node kind matches the typed profile selector, so the
-line is a return-entry catalog for the current graph packet rather than an alias
-hint or a second action protocol.
-Profile names are not free-form compatibility aliases. The shared
-`reasoningProfileName` catalog currently accepts `owner-query`, `query-deps`,
-`owner-tests`, `finding-frontier`, and `feature-cfg`; adding a new prompt-facing
-entry name requires a schema update so Rust, TypeScript, Python, and future
-providers can compare the same returned entries.
-`semantic-compact-graph-render.v1.schema.json` exposes the prompt-facing
-`reasoningProfileContracts` catalog, including selector order, optional
-selectors, and return entries. `semantic-search-packet.v1.schema.json` validates
-implemented packet profiles against the same contract, so compatibility aliases
-or extra selectors are schema errors rather than model-inferred hints.
-Provider `guide` and `search guide` output should print the same catalog
-as a compact `reasoningProfiles=... entries=... routes=...` line. Runnable
-reasoning rows belong in `entries`; repair/direct-read flows belong in `routes`
-or command lines and must not be presented as reasoning-profile entries.
-Provider-specific `entries` can be a subset of the shared catalog. If a provider
-implements a profile through an existing selector slot such as `--query`, it
-should document that command directly instead of adding compatibility aliases
-that would create new drift points.
-Implemented selector profiles must also expose the selected value as a typed
-packet action, for example `nextActions.kind="feature"` or
-`nextActions.kind="finding"`, so compact graph `entries=` rows are matched from
-schema-visible facts instead of prompt inference.
-
 `agent-semantic-client-config.v1.schema.json`,
 `agent-semantic-client-cache-manifest.v1.schema.json`, and
 `agent-semantic-client-receipt.v1.schema.json` own the agent semantic client/backend
 envelope. They describe route mode, provider set, privacy policy, cache
 generation provenance, Turso client DB status, execution route, provider
-command counts, and native provider provenance. They do not duplicate `semantic-search-packet` or
+command counts, and native provider provenance. They do not duplicate
 `semantic-query-packet`, and they do not rename the lower layers:
 `agent-semantic-protocol` still owns shared protocol rendering and
 `agent-semantic-hook` still owns hook classification. agent semantic client is the
@@ -215,10 +199,9 @@ families and preserves manifest generations plus artifact provenance. In
 local-native receipts, `warm-provider`
 means a matching DB Engine generation was found but provider execution still
 supplied the output; only `hit` means the client served output from cache. The
-initial replay surface covers provider-owned `prompt-output/*.txt` artifacts,
-`search/*.json` semantic-search-packet artifacts rendered through shared compact
-graph output, and `query/*.json` semantic-query-packet artifacts for
-`query/owner-items` compact query replay under the protocol artifact root.
+replay surface covers identity-bound provider `prompt-output/*.txt` artifacts
+and `query/*.json` semantic-query-packet artifacts for exact Query replay under
+the protocol artifact root.
 `semantic-tree-sitter-query/*.json` artifacts and normalized syntax rows replay
 only through AST/ABI fingerprints plus freshness hashes. Syntax-query receipts
 surface the AST/ABI fingerprint, grammar id, grammar profile version, and
@@ -226,11 +209,10 @@ selector when present; artifact ids remain provenance rather than cache facts.
 Providers may supply
 `/cache/fileHashes`; when they do not, the client may hash validated syntax
 locator paths from the packet, storing only path+sha256 and no raw source.
-The client may also capture successful replay-safe `search --view seeds`
-provider stdout as `prompt-output/*.txt` write-back artifacts for the next
-identical request. `prompt-output/*.command.json` stores the matching
-provider-command provenance when stdout replay has no packet-level command
-field. This path deliberately excludes query/code windows.
+The client may cache only a typed, identity-bound `search playbook` receipt for
+an identical request. Legacy prompt stdout and provider-command replay are not
+search authorities. Exact query projections remain separately bound to their
+canonical selector and generation.
 `semantic-search-stage-receipt.v1.schema.json` owns search/router stage receipts
 such as `search-candidate-merge`. It records route sources, candidate counts,
 line-identity filtering, fallback reason, and optional latency/proof-gain fields
@@ -270,13 +252,14 @@ extension command allows that evidence path.
 `agent-semantic-project-config.v1.schema.json` owns the shared `asp.toml`
 project configuration surface. `discovery.ignoredDirNames` is the canonical
 directory-skip list, and `discovery.includeHiddenDirNames` is the only
-schema-owned way to opt hidden directories into provider project walks. The
-ASP facade applies activation-root config first and invocation-root config
-second; list assignments are normalized replacements, not prompt-time merges.
-The retired `[search] ignoreDirs/includeHiddenDirs` names remain runtime input
-compatibility only. Source-language providers, embedded document providers
-(`org`/`md`), fd/rg prefilters, and hook activation should consume the same
-normalized config before selecting provider facts or binaries. Built-in
+schema-owned way to opt hidden directories into the ASP repository candidate
+snapshot. The ASP facade applies activation-root config first and
+invocation-root config second; list assignments are normalized replacements,
+not prompt-time merges. Retired `[search] ignoreDirs/includeHiddenDirs` input
+is unsupported. ASP applies normalized discovery policy once before
+dispatching candidate-bounded project-resolution requests; source-language
+providers MUST NOT maintain or reapply private default ignore lists to those
+candidates. Built-in
 document providers are enabled by default and require no activation entry, but
 they still honor `providers.org.enabled=false` and
 `providers.md.enabled=false`. Hook activation also consumes
@@ -285,13 +268,19 @@ they still honor `providers.org.enabled=false` and
 Provider-specific policy config may stay in language-owned files, but source
 discovery and provider selection must not silently diverge from the nearest
 `asp.toml`.
+
+`runtime-dev-config.v1.schema.json` owns only the State Home
+`$ASP_STATE_HOME/asp.toml` `[dev]` table. Its canonical shape is
+`enabled = true` plus one absolute `root`. It is not part of project-local
+`.agents/asp.toml`, does not define a scope enum, and cannot authorize release
+locks or `PATH` artifacts while enabled.
 The same config owns extension activation under `extensions.*`. The CodeQL
 extension is default off and default experimental:
 `extensions.codeql.enabled=false`, `extensions.codeql.experimental=true`, and
 `extensions.codeql.mode="disabled"`. Enabling it changes only explicit
 extension/evidence paths unless a cache-only artifact is already available; the
 schema keeps `extensions.codeql.allowHotPath=false` so ordinary search, query,
-hook recovery, and `check --changed` cannot be configured to create CodeQL
+hook recovery, and dependency-owned policy evaluation cannot be configured to create CodeQL
 databases or run CodeQL queries.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
@@ -372,10 +361,13 @@ on retired lifecycle waiver/task objects.
 over reviewer evidence. P6.1 uses it to link review packets, invariant
 candidates, receipts, behavior snapshots, determinism readiness summaries,
 proof pilots, waivers, and review actions as explicit nodes and edges. It is an
-artifact contract, not a database or long-lived storage layer: providers can
-emit it from current evidence packets, reviewers can inspect it, and later
-assurance-case renderers can consume it without inventing a new evidence
-vocabulary.
+artifact contract, not a database or long-lived storage layer. Language
+providers emit only syntax/parser facts. The immutable Runtime generation uses
+the shared MRR Ascent/GQL program to derive this graph, reviewers can inspect
+it, and later assurance-case renderers can consume it without inventing a new
+evidence vocabulary. `semantic-evidence-graph-derivation-receipt.v1.schema.json`
+binds the graph digest to that source generation, the canonical fact digest,
+and the exact GQL plan digest for every admitted rule.
 
 `semantic-assurance-case.v1.schema.json` is the shared reviewer-first assurance
 artifact derived from an evidence graph. P6.2 uses it to turn graph nodes and
@@ -384,21 +376,15 @@ references, and open gaps. It deliberately keeps references by graph node id
 instead of embedding another full graph, so assurance rendering stays portable
 without becoming a storage or visualization layer.
 
-`semantic-query-packet.v1.schema.json` is the shared JSON contract for
-provider-native parser queries that return compact code by default. Query is a
-language-provider capability, not a root hook capability: Rust, TypeScript,
-Python, and future providers own AST/parser lookup, exact item matching,
-multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
-Document providers use `semantic-document-query-packet.v1.schema.json` instead
-of this source-language packet: `asp org query --term <term> --view metadata`
-and `asp md query --term <term> --view metadata` return bounded document fact
-frontiers, while `asp org query --term <term> --content` and
-`asp md query --selector <path:start-end> --content` keep stdout as pure
-matched element content. Source-preserved document reads stay on
-`query --from-hook direct-source-read --selector <path-or-range>` and must not
-be combined with `--content`.
-Root hooks should route source access back to provider `search owner <path>
-items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
+`semantic-query-packet.v1.schema.json` is the provider-to-Runtime data-plane
+contract for parser-owned facts. It is not a public provider CLI. Public
+discovery uses only `asp search playbook '<scheme-expression>'`: its
+`producers`, `rg`, `tantivy`, `syntax`, and optional `graph` forms establish
+the shared file and structural context. Exact
+materialization uses only `asp query playbook` with the matching producer-axis
+declaration, canonical `--selector`, and `--projection
+<source|callable-skeleton>`. Root hooks must use those two public operations
+and must not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
 `outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
 and bounded `candidateItems` explain missed terms and parser-owned repair
@@ -447,8 +433,8 @@ shape: `executionBackend=codeql` and `adapterMode=codeql-query` are allowed for
 CodeQL-projected semantic frontier packets. CodeQL is an optional semantic
 backend rather than a new command family or a requirement for basic syntax
 query. The first CodeQL-aligned target is `flow-lite` local source/sink/path frontier,
-still rendered through frontier-first packets and exact `--code` follow-up
-selectors.
+still rendered through frontier-first packets and exact
+`--projection source|callable-skeleton` follow-up selectors.
 Compact contract: CodeQL is an optional semantic backend for `flow-lite` local source/sink/path frontier.
 `docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org` owns the native relation catalog,
 flow-lite packet plan, artifact policy, and CodeQL promotion gates that sit
@@ -484,7 +470,7 @@ by RFC 012. It intentionally starts with local source/sink/path shapes such as
 `test-coverage-path`. This is not a global dataflow contract. The packet keeps
 source/sink handles, ordered path steps, guard/effect points, evidence
 artifacts, and `confidence=proved|bounded|partial|unavailable` explicit before
-an agent asks for exact source with `--code`.
+an agent asks for an exact source projection.
 
 `semantic-codeql-evidence.v1.schema.json` is the metadata-only artifact contract
 for optional CodeQL evidence. It records database/query fingerprints, source
@@ -531,9 +517,10 @@ fixtures may cite upstream `test/corpus` files for grammar provenance, but
 should test only provider/ASP capture granularity rather than duplicate
 upstream parser grammar coverage.
 
-Agent-facing syntax query stdout has a separate render contract from the JSON
-packet: non-`--code` output is locator/frontier evidence only, while `--code`
-prints pure source code. Rust currently renders a graph-rendered
+Agent-facing syntax search stdout has a separate render contract from exact
+query projection: search output is locator/frontier evidence, while exact
+query accepts only the typed `source` and `callable-skeleton` projections.
+Rust currently renders a graph-rendered
 locator-frontier profile, and TypeScript/Python render the `corpus-locator`
 profile. These are render profiles over frontier facts, not "compact frontier"
 protocols. Both profiles are valid only when backed by the same ASP-compiled
@@ -571,15 +558,12 @@ Org, Markdown, and future providers own their concrete fact builders and
 provider-local schema refinements. Search and query packets may embed these
 facts as optional `nativeSyntaxFacts`.
 
-`semantic-finder-tools.v1.schema.json` is the shared contract for
-provider-approved finder pipelines behind `search lexical`, compatibility
-`search lexical`, `search ingest`, and `search pattern`. It describes tool catalogs
-and pipelines such as `rg+lexical` without exposing raw shell argv to agents. `rg`
-owns lexical candidate generation, `lexical` owns headless filtering/ranking,
-and the language provider owns path normalization, owner resolution,
-nearest-item resolution, test frontier selection, deduplication, caps, and
-packet rendering. `ast-grep` is modeled as a structural recipe/search tool, not
-as a fuzzy text backend or a replacement for native provider `query`.
+`semantic-finder-tools.v1.schema.json` is the shared contract for internal
+provider-approved acquisition stages used by `search playbook`. It describes
+tool catalogs and pipelines such as `rg+lexical` without exposing stage argv as
+public Agent commands. The language provider owns path normalization, owner
+resolution, nearest-item resolution, test frontier selection, deduplication,
+caps, and packet rendering.
 
 `semantic-sandtable-scenario.v1.schema.json` is the shared scenario descriptor
 for replaying bounded search flows against real harness binaries. It owns the
@@ -590,11 +574,9 @@ real-trigger `evidence` metadata for recorded agent exploration loops, including
 the launch intent, edit-stop boundary, receipt path, recorded metrics,
 repeated-search findings, and query-set merge opportunities. Hook replay steps
 may use `expect.guideQuality` to assert that a denial includes the reason kind,
-language route, safe command shape, ingest-pipe guidance, and no leaked source
-text; guide-quality output assertions can require returned compact graph
-`entries=...` facts through `guideQuality.primeOutput.entries`, require
-optimized-prime status fields through `guideQuality.primeOutput.requiresStructureStatus`,
-and reject stale profile names, unknown profile names, or compatibility text. JSON stdout expectations can assert exact paths, substring containment,
+language route, safe Search Playbook command shape, and no leaked source text;
+guide-quality output assertions can require or forbid exact output and route
+command text. JSON stdout expectations can assert exact paths, substring containment,
 schema conformance, and array membership with scalar values or object subsets.
 Large-library calibration scenarios use typed `evidence.targetLibrary`,
 `evidence.fixtureTier`, and `evidence.intentCases` metadata so every provider
@@ -604,14 +586,14 @@ harness to parse natural-language intent. Coverage audits render this as
 missing large-library rows or missing intent cases as coverage failures.
 `intentCases[].queryTerms` records which query-set terms exercise each intent
 when several same-view probes are compressed into one scenario step.
-Agent SDK replay expectations can use `expect.pipeFlow` read-loop budgets to
+Agent SDK replay expectations can use `expect.commandFlow` read-loop budgets to
 bound direct-code reads, duplicate selectors, adjacent range windows, and
 same-owner scans; `forbiddenStages` can also reject the aggregate
 `read-loop-risk` stage.
 Failure-frontier replay gates use
 `evidence.failureFrontierComparison` to compare a baseline receipt/trace with a
 candidate receipt/trace. The candidate must prove command reduction, bounded
-`direct-source-read --code` count, zero duplicate selectors, zero same-file
+exact source-projection count, zero duplicate selectors, zero same-file
 window fanout, and full coverage of explicit `expectedHotBlocks`. Receipt-path
 comparisons validate stable checked-in replay evidence; trace-path comparisons
 first normalize JSONL command traces into the same receipt contract, then run
@@ -637,30 +619,25 @@ basis string so sandtable evidence is not confused with model billing.
 `--receipt <path>` from `packages/python`, and scenarios can link a receipt through
 `evidence.receiptPath`.
 
-`semantic-agent-hook-provider-manifest.v1.schema.json` is the static provider
-manifest contract consumed by `agent-semantic-hook` after a workspace activation
-selects that provider. It standardizes language-owned source defaults, policy
-defaults, and route argv templates without making the hook classifier
-language-specific. It does not store independent command display text; command
-text is rendered from argv when needed.
+`semantic-agent-hook-provider-manifest.v1.schema.json` and
+`hook-activation.v2.schema.json` are immutable archive contracts for the
+retired manifest/activation routing architecture. Current Hook compilation and
+classification do not consume either document. Provider policy identity is
+compiled from the managed Hook profile projection; provider execution and
+generation readiness belong to Runtime. These versioned schemas remain only so
+historical artifacts can be identified and validated without mutating an
+already published contract. They must not be used to reconstruct a
+compatibility route.
 
-`semantic-agent-hook-activation.v1.schema.json` is the generated workspace
-activation contract. It records which provider manifests are active in the
-current project, their resolved command prefixes, manifest digests, and
-coverage roots. It does not repeat provider routes or policies, so a stale
-activation cannot drift into an alternate command registry.
+`activation-admission-receipt.v1.schema.json` is likewise an immutable archive
+contract. Runtime artifact-slot admission and generation-bound provider
+execution receipts replace it in the current architecture.
 
-`semantic-agent-runtime-profiles.v1.schema.json` is the derived runtime
-execution profile shape for activated providers. It is not a separate
-workspace source of truth and must not resurrect the retired runtime profile
-state file. Activation
-answers which providers and coverage are active; runtime profile facts are
-derived from that activation plus current project binary resolution for
-install receipts, skill rendering, and `asp hook doctor` health reporting.
-`asp` facades and local native client execution must prefer activation-derived
-provider argv over ad hoc shell `PATH` lookup, and doctor reports profile
-health so PATH, direnv, and stale binary drift are visible instead of hidden
-behind symlink behavior.
+`semantic-agent-runtime-profiles.v1.schema.json` is the archive shape for the
+retired derived runtime-profile file. Current execution consumes the active
+provider set and artifact execution closure published under Runtime-owned
+generation slots. Hook skill rendering and Hook classification do not read a
+runtime profile.
 
 `semantic-agent-healthcheck.v1.schema.json` is the read-only report emitted by
 `asp healthcheck --json`. It treats git toplevel as the first project fact,
@@ -719,39 +696,49 @@ suppression may report `sourceBytesReturned=true` while keeping
 emits this packet for Codex integration tests; it is not an agent exploration
 surface.
 
-`semantic-read-packet.v1.schema.json` is the active provider-owned packet for
-bounded exact source windows or actionable read-plan frontiers selected by the
-language query layer. Its `schemaVersion` remains the current fixed contract
-value while the read-plan frontier shape is refined. It is not a root hook
-command surface and does not reintroduce a root read command. Providers
-may emit it from `query/*` methods, for example an exact
-`query --from-hook direct-source-read --selector <path[:range]>` recovery with
-`outputMode=read-packet`. The packet records parser-owned selection evidence:
+`semantic-read-packet.v1.schema.json` is the provider-owned historical packet
+for bounded source windows. It is not a root hook command surface and does not
+define the current exact-query CLI. The current exact-query contract uses a
+canonical structural selector plus `--projection source|callable-skeleton`.
+The packet records parser-owned selection evidence:
 project-relative selectors or source locators, owner paths, optional item facts,
 bounded source-preserved line windows, truncation state, and notes. Exact
-`direct-source-read --code` windows must not be reconstructed from lossy compact
+exact source projections must not be reconstructed from lossy search
 projection rows; projection may select or repair a frontier, but `sourceWindows`
 text is source/formatter-preserved for the bounded selector. When a selector is
 broad or low-signal, providers should emit `readPlan` with `code=false`,
 `mode=range-frontier`, executable `frontier` entries, bounded `windows`, and
 `avoid` actions instead of `sourceWindows`; broad discovery still stays in
-provider search, prime, ingest, or normal query repair.
+Search Playbook discovery or exact query repair.
 
-ASP owns the shared output mode names for provider stdout and packet requests:
-`frontier`, `code`, `read-packet`, and `json`. `frontier` is the default compact
-search/query mode and is source-free: providers must return metadata, omit/avoid
-facts, and executable read locators rather than `|code` rows or inline `text=`
-source fields. `code` is selected only by `--code` and may carry pure
-source/compact code text. `read-packet` is selected by `--json --view
-read-packet` and is the structured mode that may carry `sourceWindows` or
-`readPlan`. Other JSON packet requests use `json`. The ASP client validates the
-default frontier mode before prompt-output cache write-back and replay so
-language packages cannot drift into incompatible compact renderers.
+ASP separates search projection from exact query projection. Search is
+source-free locator/frontier evidence. Exact query accepts only
+`--projection source|callable-skeleton`; JSON is an explicit diagnostic or
+machine-consumer representation, never an implicit replacement for source
+projection. The removed `code` flag and direct-read recovery surface are not
+valid aliases.
+
+`query-playbook-materialization-request.v1.schema.json` binds one caller-ordered,
+unique selector sequence to one immutable Runtime execution identity without a
+Search-settlement or Project Topology handle. Query never sorts that sequence.
+`query-playbook-materialization-receipt.v1.schema.json` is its all-or-nothing
+terminal: Ready returns every requested selector exactly once and in request
+order under the requested projection, while Failed returns no materialized
+bytes. Search owns topology and GQL relationships; the Query receipt contains
+neither those fields nor planner, recommendation, or explanation fields.
+
+`runtime-execution-binding.v2.schema.json` is the current Runtime identity
+product used by Search and Query. It binds the complete parser-admitted
+`projectWorkspace`, the host-local `worktreeInstanceId`, one publication nonce,
+the content binding, Runtime artifact, evaluator policy, active publication
+receipt, and evaluator ABI. The former V1 `projectId`/`workspaceId` pair is not
+a workspace authority and must not be accepted or reconstructed by current
+clients.
 
 When a direct read must distinguish worktree, staged index, and committed
 contents, the same packet carries `sourceVersion=worktree|index|head`.
 Providers should set `repositoryRoot` when the Git repository root differs from
-`projectRoot`, such as a nested language harness repo. `gitBlobOid` identifies
+`projectRoot`, such as a nested ASP language provider repo. `gitBlobOid` identifies
 the Git object read for `index` or `head`; `worktreeHash` identifies bounded
 worktree text. This keeps Git object reads inside the provider-owned
 `direct-source-read` route instead of relying on raw `git show :path`, raw
@@ -778,155 +765,37 @@ provider dry-run/temp-apply receipt events. It deliberately rejects source text
 fields and requires `sourceStored=false`, so real-project evidence can live in
 fixtures without vendoring external project code.
 
-`semantic-search-packet.v1.schema.json` owns the search-synthesis frontier that
-precedes read packets. `searchSynthesis.editFrontier` names source owners,
-`searchSynthesis.testFrontier` names coupled tests, and
-`searchSynthesis.windowSet` names typed `{kind,target}` owner/test/read windows
-that an agent may inspect with bounded read transport after the provider has
-selected the semantic axis. Julia remains workspace-managed for startup-cost
-reasons, but `search ... --json` still emits this shared packet so agent semantic clients
-can cache search frontiers without parsing Julia-specific line text. Julia's
-hook wildcard `query --from-hook direct-source-read --selector <glob>
---term <term> --surface owners,tests --view seeds --json` form uses the same packet with `querySet`,
-`queryCoverage`, `sourceCoverage`, hits, frontier owners, and native syntax
-facts; exact source-window JSON remains a provider `query/*` read/query packet,
-not a search packet.
+`asp-client-workspace-search-playbook-request.v1.schema.json` remains the
+normalized northbound request. The MRR repository owns the
+`defsearch-playbook` macro, POO Flow lowering, and importable AOT SCM alongside
+the native Rust Ascent/GQL crates. `agent-semantic-search` owns the short configuration and
+native Scheme/query-table admission. Neither Scheme source nor a private POO
+IR is added to Client Protocol; the former flag-shaped CLI is removed rather
+than retained as a compatibility path.
 
-The TypeScript provider registers as:
+`enhanced-tree-sitter-query-operator-table.v1.schema.json` defines the
+language-neutral MRR Gerbil AOT operator declaration for the namespaced
+`#asp-*` predicates and result directive.
+`enhanced-tree-sitter-query-capability-table.v1.schema.json` defines each
+provider's parser/grammar-bound publication and equivalence rows.
+`resident-syntax-query-plan.v1.schema.json` is the complete normalized plan
+executed over one active generation. Search and direct Syntax requests carry
+that plan rather than Tree-sitter Query source or provider argv. These are
+stable V1 contracts completed as one hard cut; no V2 or compatibility route is
+created.
+`asp-client-workspace-syntax-plan-context-request.v1.schema.json` and
+`asp-client-workspace-syntax-plan-context-response.v1.schema.json` own the
+constant-time resident context read. The response supplies only the exact
+generation digest and provider capability; the Client performs source parsing
+and plan compilation locally before execution.
 
-```json
-{
-  "languageId": "typescript",
-  "providerId": "ts-harness",
-  "binary": "ts-harness",
-  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "guide"],
-  "methodDescriptors": [
-    {
-      "method": "search/workspace",
-      "command": "search",
-      "view": "workspace",
-      "outputSchemaIds": ["agent.semantic-protocols.semantic-search-packet"],
-      "requiresQuery": false,
-      "acceptsStdin": false,
-      "supportsPackageScope": true,
-      "supportsJson": true,
-      "supportsCompact": true
-    }
-  ]
-}
-```
+`search-playbook-pretool-calibration.v1.schema.json` remains the unchanged
+denial contract. The Scheme parser supplies typed expression issues at the
+outer argv token index. Arrays requiring flag/argv-leaf boundaries are empty
+for Scheme source, rather than populated with fabricated inner indices. No V2
+receipt or alternate public flag grammar is introduced.
 
-`ts-harness` is the binary/provider name. The protocol namespace is
-`agent.semantic-protocols.semantic-language`; the registry is
-`agent.semantic-protocols.semantic-language-registry`. The provider namespace
-is the stable method space for a concrete implementation.
-
-`methods` is the authoritative callable set for a provider. The shared search
-packet schema may list additional cross-language views, but an agent should
-only call methods present in the provider registry. `methodDescriptors` is the
-machine-readable command grammar for each method.
-Search descriptors must include a `view` and emitted `outputSchemaIds`; check
-descriptors intentionally do not advertise a search view; agent descriptors can
-point at registry output schemas such as
-`agent.semantic-protocols.semantic-language-registry`. Agent hook descriptors
-that emit structured decisions must instead advertise
-`agent.semantic-protocols.hook.decision`, so providers can render
-platform-specific hook payloads without changing the shared decision contract.
-Query descriptors use `query/*` methods, advertise packet schemas such as
-`agent.semantic-protocols.semantic-query-packet` and optional
-`agent.semantic-protocols.semantic-read-packet`, and describe owner-local inputs
-such as `input="owner-path"`, required options such as `--term`, and supported
-`outputModes` including frontier, json, code, names, outline, and read-packet.
-Providers may keep a user-facing `compact` label in guide text only as an alias
-for ASP `frontier`; registry descriptors should use the ASP-owned mode names.
-They must not reuse a search `view`; query is the parser-owned item lookup
-surface that lets an agent repair stale symbol probes without escalating to
-source reads.
-When a search packet embeds shared sub-schema content, descriptors list both
-the packet schema and the embedded sub-schema. For example,
-`search/public-external-types` advertises
-`agent.semantic-protocols.semantic-search-packet` plus
-`agent.semantic-protocols.semantic-type-surface` because its JSON packet may
-populate `typeSurfaces`.
-For search methods, `requiresQuery`, `acceptsStdin`, and `supportsPackageScope`
-define the v1 public input shape: one optional/required query positional, stdin
-participation, and `--package <package-id>`. Additional public controls must be
-added to the registry schema before agents depend on them. Provider-private
-debug flags are not semantic-language protocol methods until they are
-registry-described.
-
-Search descriptors may also carry `capabilities` and `ingestRequiredFor`.
-The common registry schema only standardizes their shape:
-`{languageId, namespace, name}`. It does not maintain TypeScript, Rust, Python,
-Julia, or JavaScript capability vocabularies. Language-specific harness
-repositories own those schemas under their local `schemas/` directories and may
-advertise them through the provider `schemas` list.
-`capabilities` is the machine-readable answer to "what can this method search
-directly"; `ingestRequiredFor` is the machine-readable answer to "what must be
-expanded through `rg`/`fd` or another external source and normalized through
-`search ingest`." Agents should consult these fields before interpreting packet
-notes or falling back to raw shell output.
-Search descriptors can also carry `acceptedPipes`, a provider-advertised list of
-final-only pipe names accepted by that method, such as TypeScript's
-`search/lexical` accepting `owner` and `tests`.
-
-Registry invariants mirror Language Server Protocol naming discipline without
-copying LSP transport. `languageId` identifies the source language,
-`providerId` identifies the implementation, `binary` is the executable an
-agent should invoke, and `namespace` is always
-`agent.semantic-protocols.languages.<languageId>.<providerId>`. Compatibility
-binary aliases are not registry identities. A provider must publish exactly one
-descriptor for every method in `methods`, no extra descriptors, and no duplicate
-descriptor methods.
-
-The stable envelope is language-neutral:
-
-- `schemaId`: `agent.semantic-protocols.semantic-search-packet`
-- `schemaVersion`: `1`
-- `protocolId`: `agent.semantic-protocols.semantic-language`
-- `protocolVersion`: `1`
-- `languageId`: source language id, such as `typescript`, `rust`, `julia`, or
-  `python`
-- `providerId`: provider id, such as `ts-harness`, `rs-harness`, or
-  `jl-harness`
-- `binary`: executable entrypoint advertised by the provider
-- `namespace`: dot-qualified provider namespace, such as
-  `agent.semantic-protocols.languages.typescript.ts-harness`
-- `method`: namespaced method, such as `search/prime`, `search/dependency`,
-  or `search/deps`
-- `view`: one semantic-search view, such as `workspace`, `prime`, `owner`,
-  `dependency`, `deps`, `symbol`, `callsite`, `import`, `query`, `cfg`,
-  `patterns`, `pattern`, `docs`, `api`, `public-external-types`, `policy`,
-  `tests`, `lexical`, `text`, or `ingest`
-- `header`, `packages`, `nodes`, `edges`, `owners`, `items`, `hits`,
-  `findings`, `nextActions`, and `notes`
-- optional `typeSurfaces` for shared public API and dependency type surface
-  facts
-- optional `invariantCandidates` for shared test/proof/review candidate facts
-  raised from provider-owned findings
-- optional `semanticHandles` for stable non-code semantic facts such as policy
-  rules, schema fixtures, test cases, config keys, and provider capabilities
-- optional `nativeSyntaxFacts` for parser-owned syntax facts from
-  `semantic-native-syntax-fact-index.v1`, used by code-shaped query routing
-  before broad text search
-- optional `querySet` and `queryComposition` for homogeneous same-view
-  query-set packets
-- optional `queryCoverage`, `ownerResolution`, `searchSynthesis`, and
-  `avoidNextActions` when a provider must explain term-level coverage, fixture
-  paths, false owner candidates, or synthesized follow-up seeds
-- optional `sourceCoverage`, `testResolution`, and `runtimeCost` when a large
-  project search must explain parser-visible source coverage, owner-to-test
-  reachability, or cold/warm index cost
-- optional `inputDetection` for stdin-derived searches
-
-Language harnesses should preserve compiler-native facts in `fields` maps
-instead of changing the envelope. For example, Rust can place Cargo feature
-facts in `fields`, TypeScript can place owner import summaries in `fields`, and
-Julia can place JuliaSyntax-native module facts in `fields`.
-Shared `nodes` may also name common search-axis kinds such as `tsconfig`,
-`extension`, `build_tool`, and `test_surface` when a language provider exposes
-those axes from native project facts.
+The public Search result is `workspace-search-playbook-result.v1`; Runtime joins it to `search-topology-settlement.v1` before the Client renders the single Org/GQL projection. Provider-native exact materialization remains `semantic-query-packet.v1`.
 
 Structured path fields use the shared `projectPath` definition. A project path
 is a canonical project-root-relative path, not a display locator. It must not
@@ -942,63 +811,42 @@ local usage should only be attributed when `versionScope` is `current`. When
 `versionScope` is `external`, owner evidence belongs to the workspace version
 and must not be presented as evidence for the requested external version.
 
-Query-set packets are for repeated same-axis searches, such as multiple
-dependencies or multiple owner paths in one package/scope context. Providers
-should set `queryComposition.mode` to `query-set`, list normalized terms in
-`querySet`, include `queryComposition.scope` when the query-set is owner- or
-package-scoped, and advertise support through registry method descriptors.
-Descriptor `querySetScopes` uses `project`, `package`, and `owner` to show which
-scope forms are accepted. Query sets are not a general command batch surface;
-distinct axes should remain separate search packets.
+The Runtime may combine repeated same-axis terms inside one internal query-set,
+but query-set packets are not a public command batch surface. The public input
+remains one `search playbook` request whose native rg, structured Tantivy,
+producer, parser, and optional Graph blocks are explicit. Provider acquisition,
+lexical recall, parser projection, and graph ranking remain ordered internal
+stages.
 
-Owner-scoped TypeScript text searches are the motivating case: once
-`search owner src/cli/semantic-search/render.ts .` has selected the owner,
-repeated text probes such as `location.path`, `location.column`,
-`location.line`, and `renderLocation` should become one
-`search/lexical` query-set packet with `scope.ownerPath`, not several separate
-text packets or a comma-joined literal query.
-Project-scoped TypeScript text query-sets are also valid when the owner has not
-been selected yet and the repeated probes are still the same text axis.
+Provider results must preserve the meaning and provenance of each matched term.
+A fixture string that resembles a source path is classified as fixture evidence,
+not promoted to a real owner. Graph-derived planning facts may rank exact owner
+and selector evidence, but they cannot emit another search command. The
+agent-facing receipt returns bounded evidence and canonical selectors; the only
+follow-up that materializes source is `query --selector ... --projection ...`.
 
-Query-set packets must not only merge terms; they must preserve the meaning of
-each term. When a text hit is a test fixture string such as
-`"src/cli/agent-hooks.ts"` inside `tests/unit/cli.test.ts`, the packet should
-classify the hit as `surface="test-fixture-string"`, set `realOwner=false`,
-record `fixturePath` and `fixtureOwner`, add `queryCoverage` for every term,
-and add `ownerResolution` so the agent knows not to run
-`search owner src/cli/agent-hooks.ts`. If the provider can infer a real
-implementation axis from the fixture context, it should emit
-`searchSynthesis.seeds` such as `text:runProtocolCli` or
-`owner:src/cli/protocol.ts`, and put the false follow-up in `avoidNextActions`.
-
-Providers may also use `searchSynthesis` for bounded graph-derived planning
-facts. The shared schema owns the graph algorithm name, scope, high-impact
-owners, frontier owners, and finding owners as explicit `searchSynthesis`
-properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
-facts rank and explain parser-owned owner/dependency/test edges but do not
-introduce a second source of truth. In agent-facing `--view seeds` output,
-providers render derived follow-up routes through the RFC 006 compact graph
-projection: the view-native `[search-<view>]` header, the micro-legend,
-`aliases=...`, role-typed aliases, `G>{...}` edges, `rank=`, and
-`frontier=`.
-Providers should not render seed or synthesis as a second independent prompt
-protocol.
+`semantic-graph-resident-evaluation-request.v1.schema.json` is the intent-only
+northbound graph request for `asp.graph.evaluate`. It contains no graph,
+source-snapshot, workspace-generation, provider, cache, or algorithm identity.
+The Runtime resolves those identities from the admitted Ready session.
+`semantic-graph-resident-evaluation-result.v1.schema.json` binds the returned
+ranked nodes and traversed edges to that exact resident generation and proves
+query-time provider RPC, durable reads, and generation mutation are zero.
 
 `semantic-graph-turbo-request.v1.schema.json` is the schema-owned algorithm
-input packet for the `asp-graph-turbo` Python workspace package. It carries
+input packet for the cold/offline `asp-python-graphs` service project. It never
+serves the Ready `search`, `query`, or `asp.graph.evaluate` routes. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
-facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
+facts under `graph.nodes[]` and `graph.edges[]`. Internal playbook request nodes may
 carry parser-owned `syntaxQuery` locators for candidate symbols, hot range
 nodes for direct code follow-ups, and dependency package nodes connected by
-`owner -> dependency` import edges for query-deps routing. Fast-search request
-packets from `search pipe`, `asp fd -query`, and `asp rg -query` may also carry
-`actionFrontier[]`: typed action facts with action id, kind, capability id,
+`owner -> dependency` import edges for query-deps routing. Internal playbook
+packets may also carry `actionFrontier[]`: typed action facts with action id, kind, capability id,
 target, target role, and fields such as selector, owner path, query, query
 clauses, scope, recipe, or names. These action facts are materializer input for
 display-only `nextCommand` text and intentionally reject materialized `command`
-or `argv` fields. `search pipe --view graph-turbo-request` is the typed packet
-spelling for this migration.
+or `argv` fields. This packet is never an Agent-facing CLI spelling.
 `semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
 response packet. It records the effective profile, algorithm, seed nodes,
 budget, per-kind budgets, ranked node ids, frontier actions, relation edges,
@@ -1019,7 +867,7 @@ request/response pair can represent real matrix-backed ranking, path, cache,
 trace, and sandtable metric evidence instead of a renderer-local graph format.
 `semantic-graph-turbo-sandtable-summary.v1.schema.json` can also carry
 report-derived `context` metrics and `benchmarkReport` provenance when
-`asp-graph-turbo sandtable-summary` consumes a calibration-ready benchmark
+the ASP Server `asp.graphs.sandtable-summary` method consumes a calibration-ready benchmark
 report scenario.
 Python MVP 12 requires relation-owned default edge weights and profile-owned
 typed transition masks before PageRank/path ranking. The result packet exposes
@@ -1049,14 +897,11 @@ as `depends_on`, `version_locked`, `imports`, `uses_api`, `documented_by`,
 `example_of`, and `tested_by`.
 
 `semantic-graph-turbo-artifact-events.v1.schema.json` is the schema-owned event
-stream between ASP's Rust DB Engine cache and graph-turbo timeline audit. It
-records compact artifact events for command, prompt-output, search, query,
-search-output, and tree-sitter-query artifacts without storing provider stdout
-or source windows. `semantic-graph-turbo-artifact-timeline.v1.schema.json` is
-the matching audit report contract. It owns session, microburst, repeat,
-fanout, action-summary, and efficiency-estimate fields so `asp search history
-audit` can use Turso-indexed events for speed while graph-turbo remains the
-ranking and timeline algorithm owner.
+stream between ASP's Rust DB Engine cache and graph-turbo timeline analysis. It
+records compact artifact events for command, prompt-output, Search Playbook,
+Query Playbook, and tree-sitter artifacts without storing provider stdout or
+source windows. `semantic-graph-turbo-artifact-timeline.v1.schema.json` is the
+matching internal report contract; it does not create another Search command.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.
@@ -1068,18 +913,18 @@ reports coarse cache and parser reuse facts such as `cacheStatus`, `elapsedMs`,
 follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
-For `search lexical`, a flag-like first query positional remains literal. For
-example, `ts-harness search lexical --json --workspace . --view seeds` searches for the token
-`--json`; request JSON output by placing `--json` after the query.
+`search playbook` parses an explicit option grammar. A query term that begins
+with `-` must be supplied with `--query`; legacy view, seed, query-set, owner,
+and pipe options are rejected instead of being reinterpreted.
 
 This repository's `schemas/` directory is the protocol source of truth.
 It contains common protocol schemas only. Provider packages that run CI from
 independent checkouts should carry package-local copies of those common schemas
 at the same relative paths, for example
-`schemas/semantic-search-packet.v1.schema.json`,
+`schemas/search-topology-settlement.v1.schema.json`,
 `schemas/semantic-source-location.v1.schema.json`, and
 `schemas/semantic-tree-sitter-provenance.v1.schema.json`. Language-specific schemas stay
-inside the language harness repository, for example the TypeScript provider's
+inside the ASP language provider repository, for example the TypeScript provider's
 `schemas/typescript-semantic-capabilities.v1.schema.json`. The protocol
 repository may keep language-specific templates, such as
 `schemas/typescript-semantic-capabilities-template.v1.schema.json` and
@@ -1087,19 +932,19 @@ repository may keep language-specific templates, such as
 expected active schema shape without making the common registry schema own a
 global capability enum. The TypeScript harness unit suite reads its
 package-local common schema copies, validates every implemented
-`ts-harness search ... --json` view against the shared envelope, checks
-`ts-harness agent doctor --json` against the common registry contract, checks
+`asp-typescript search ... --json` view against the shared envelope, checks
+`asp-typescript agent doctor --json` against the common registry contract, checks
 TypeScript descriptor capabilities against the TypeScript-local schema, compares
 common package-local copies with this repository's source schemas when the
 package is checked out as a submodule, and compares the TypeScript-local
 capability vocabulary with the protocol repository template when that template
 is available.
-The Python harness follows the same ownership split: `py-harness agent doctor
+The Python harness follows the same ownership split: `asp-python agent doctor
 --json` advertises the common registry and search packet schemas plus the
 Python-local `schemas/python-semantic-capabilities.v1.schema.json`, while this
 repository only keeps the template vocabulary.
 The Rust harness exposes the same registry contract through
-`rs-harness agent doctor --json`.
+`asp-rust agent doctor --json`.
 
 Schema evolution is versioned by file name and `schemaVersion`.
 Optional fields, enum members, and method descriptors can be additive v1
@@ -1109,72 +954,38 @@ such as a new versioned semantic search packet schema. Provider packages must up
 their package-local copies and sync tests in the same change that advertises a
 new schema version.
 
-The current TypeScript slice emits conforming packets from:
+The current TypeScript public discovery and materialization surfaces are:
 
 ```shell
-ts-harness search prime --json .
-ts-harness search prime packages/core --json .
-ts-harness search owner src/index.ts --json .
-ts-harness search dependency react --json .
-ts-harness search deps react/jsx-runtime@19.0.0::jsx --json .
-ts-harness search api OrderStatus --json .
-ts-harness search public-external-types react --json .
-ts-harness search symbol OrderStatus --json .
-ts-harness search callsite OrderStatus --json .
-ts-harness search import ./order --json .
-ts-harness search tests src/domain/order.ts --json .
-ts-harness search lexical OrderStatus --json .
-rg -n "OrderStatus" src tests | ts-harness search ingest --json .
+asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" ".") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
+asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" "src/index.ts") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
+asp query playbook --language typescript --selector <exact-selector> --projection source --workspace main
 ```
 
-Those JSON examples are contract checks, not an agent exploration recipe. A
-prompt-facing agent should use compact line protocol, for example
-`ts-harness search lexical OrderStatus --workspace . --view seeds`, and reserve `--json` for
-tests, receipts, validators, IDE/Flowhub, or other machine consumers.
-
-For TypeScript, `search owner` resolves reasoning owners first, then
-parser-visible modules, then existing project paths. Parser-visible modules
+Provider-internal parser and lexical stages may resolve reasoning owners,
+parser-visible modules, and existing project paths. Parser-visible modules
 outside the reasoning owner graph are represented with
 `fields.source=parser-visible-module`, `fields.parserOwner=false`, role/layer
 metadata, line counts, validity, and diagnostic counts. Existing paths outside
 the parser module set are still represented as path-only owners with
 `fields.source=path-only`, `fields.parserOwner=false`, and
-`nextActions=[{kind:"ingest", target:<path>}]`. `search lexical` indexes
-parser-visible source text, owner paths, and exports; docs, schema files, and
-other non-parser text should be expanded with `rg` or `fd` and normalized
-through `search ingest`. The TypeScript registry advertises this directly:
-`search/owner` carries TypeScript-scoped
-`parser-visible-module-owner-search`, `test-owner-search`, and
-`ingestRequiredFor=[{languageId:"typescript",namespace:"typescript",name:"non-parser-path"}]`;
-`search/lexical` carries TypeScript-scoped
-`parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
-non-parser text, docs text, schema JSON, and generated artifacts.
-`search/api` projects TypeScript parser-owned exported/public API facts from the
-current provider path context. Dependency-prefixed or external-version API
-queries require a separate docs/API source and must not present current project
-parser facts as dependency-version documentation.
-`search/public-external-types` projects TypeScript parser-owned public type
-surfaces that expose a dependency package. Direct import-type text is confirmed;
-owner-level external import plus unbound type text is marked possible until the
-provider exposes named import binding attribution.
+typed unavailable diagnostics. These facts are all projected through the one
+playbook receipt. Dependency-version documentation remains a separate admitted
+source and cannot be synthesized from current-workspace parser facts.
 
-The Rust slice emits the same envelope from `rs-harness search ... --json`,
+The Rust slice emits the same envelope from `asp-rust search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,
 docs, api, public-external-types, tests, and ingest views.
 
-The current Python slice emits conforming packets from:
+The current Python public discovery and materialization surfaces are:
 
 ```shell
-py-harness search prime --json .
-py-harness search owner src/python_lang_project_harness/_cli.py --json .
-py-harness search dependency pytest --json .
-py-harness search deps pytest::fixture --json .
-py-harness search api PythonHarnessReport --json .
-py-harness search public-external-types pytest --json .
-py-harness search symbol PythonHarnessReport --json .
-py-harness search callsite PythonHarnessReport --json .
-py-harness search import python_lang_project_harness --json .
-py-harness search tests src/python_lang_project_harness/_cli.py --json .
-py-harness search lexical PythonHarnessReport --json .
-rg -n "PythonHarnessReport" src tests | py-harness search ingest --json .
+asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" ".") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
+asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" "src/asp_python/_cli.py") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
+asp query playbook --language python --selector <exact-selector> --projection source --workspace main
 ```
+
+`runtime-selector-overlay-receipt.v1.schema.json` records a selector-only
+publication against one admitted workspace generation. Exact repair binds the
+owner digest and byte range without advancing or rewriting the canonical source
+generation.

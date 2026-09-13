@@ -101,10 +101,7 @@
       }
     },
     "findings": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/finding"
-      }
+      "$ref": "#/$defs/findingList"
     },
     "optimizationGate": {
       "type": "object",
@@ -142,6 +139,12 @@
     }
   },
   "$defs": {
+    "findingList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
     "languageEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -207,10 +210,7 @@
           "minimum": 0
         },
         "findings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/finding"
-          }
+          "$ref": "#/$defs/findingList"
         },
         "reportChainReady": {
           "type": "boolean"
@@ -441,7 +441,7 @@
               "requiresQuerySet",
               "requiresGraphSignals",
               "requiresHookEvents",
-              "requiresComplexPipeFlow",
+              "requiresComplexCommandFlow",
               "requiresTokenCost"
             ]
           }

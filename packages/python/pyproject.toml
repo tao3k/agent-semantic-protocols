@@ -1,17 +1,24 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [project]
 name = "agent-semantic-protocols-python-workspace"
 version = "0.1.0"
 description = "Python workspace for Agent Semantic Protocols packages."
+license = "Apache-2.0 AND LGPL-2.1-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "agent-semantic-protocols-tools",
-    "asp-graph-turbo",
+    "asp-python-graphs",
     "asp-memory-engine",
+    "asp-schema-manager",
 ]
 
 [dependency-groups]
 dev = [
-    "python-lang-project-harness",
+    "asp-python",
     "pytest>=9,<10",
 ]
 
@@ -20,13 +27,15 @@ package = false
 
 [tool.uv.sources]
 agent-semantic-protocols-tools = { workspace = true }
-asp-graph-turbo = { workspace = true }
-python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
+asp-python-graphs = { workspace = true }
+asp-python = { path = "../../languages/asp-python", editable = true }
 asp-memory-engine = { workspace = true }
+asp-schema-manager = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "asp_graph_turbo",
+    "asp_python_graphs",
     "tools",
     "asp_memory_engine",
+    "asp_schema_manager",
 ]

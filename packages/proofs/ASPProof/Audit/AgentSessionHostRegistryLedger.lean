@@ -1,0 +1,27 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryLedger
+
+namespace ASPProof.Audit.AgentSessionHostRegistryLedger
+
+open ASPProof.AgentSessionHostRegistryLedger
+
+#print axioms accepted_snapshot_ne_empty_snapshot
+#print axioms unanchored_split_brain_constructible
+#print axioms unanchored_rollback_resume_constructible
+#print axioms accepted_snapshot_cannot_advance_to_empty
+#print axioms canonical_first_accept_constructible
+#print axioms stale_ledger_revision_cannot_commit
+#print axioms canonical_same_head_commits_are_unique
+#print axioms canonical_commit_advances_ledger_revision
+#print axioms exact_head_snapshot_resumes
+#print axioms stale_snapshot_quarantines
+#print axioms stale_snapshot_cannot_resume
+#print axioms accepted_head_contains_bound_receipt
+#print axioms empty_head_cannot_contain_bound_receipt
+#print axioms ledger_bound_receipt_can_finalize
+#print axioms empty_head_cannot_finalize
+
+end ASPProof.Audit.AgentSessionHostRegistryLedger

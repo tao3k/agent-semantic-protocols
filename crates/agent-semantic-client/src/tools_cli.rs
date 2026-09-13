@@ -1,10 +1,14 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Tool health diagnostics for ASP-owned search helpers.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
+use std::path::PathBuf;
 
-const REQUIRED_TOOLS: &[&str] = &["fd", "rg", "eza", "asp-graph-turbo"];
+const REQUIRED_TOOLS: &[&str] = &["fd", "rg", "eza"];
 
 pub(crate) fn run_tools(project_root: &Path, args: &[String]) -> Result<(), String> {
     match args {
@@ -20,16 +24,8 @@ pub(crate) fn run_tools(project_root: &Path, args: &[String]) -> Result<(), Stri
             print_tools_doctor(&project_root.join(root), std::env::var_os("PATH"));
             Ok(())
         }
-        [subcommand, rest @ ..] if subcommand == "wrap" => run_wrap(rest),
-        _ => Err(
-            "usage: asp tools <doctor [PROJECT_ROOT]|wrap asp-graph-turbo [--] [ARGS...]>"
-                .to_string(),
-        ),
+        _ => Err("usage: asp tools doctor [PROJECT_ROOT]".to_string()),
     }
-}
-
-pub(crate) fn run_wrap(args: &[String]) -> Result<(), String> {
-    run_wrap_with_path(args, std::env::var_os("PATH"))
 }
 
 pub(crate) fn tools_summary_line() -> String {
@@ -73,32 +69,6 @@ fn print_tools_doctor(project_root: &Path, path: Option<OsString>) {
     }
 }
 
-pub(crate) fn run_wrap_with_path(args: &[String], path: Option<OsString>) -> Result<(), String> {
-    let (tool_name, tool_args) = args.split_first().ok_or_else(|| wrap_usage().to_string())?;
-    let tool = wrapper_tool(tool_name)
-        .ok_or_else(|| format!("asp wrap supports only asp-graph-turbo\n{}", wrap_usage()))?;
-    let tool_args = if tool_args.first().is_some_and(|arg| arg == "--") {
-        &tool_args[1..]
-    } else {
-        tool_args
-    };
-    let status = Command::new(
-        find_executable(tool, path.as_ref()).ok_or_else(|| {
-            "asp wrap asp-graph-turbo requires asp-graph-turbo on PATH; run just agent-tools-install-asp-graph-turbo <bin-dir>".to_string()
-        })?,
-    )
-    .args(tool_args)
-    .status()
-    .map_err(|error| format!("failed to execute {tool}: {error}"))?;
-    if status.success() {
-        return Ok(());
-    }
-    match status.code() {
-        Some(code) => Err(format!("{tool} exited with status {code}")),
-        None => Err(format!("{tool} terminated by signal")),
-    }
-}
-
 fn tool_statuses(path: Option<OsString>) -> Vec<ToolStatus> {
     REQUIRED_TOOLS
         .iter()
@@ -107,10 +77,6 @@ fn tool_statuses(path: Option<OsString>) -> Vec<ToolStatus> {
             path: find_executable(tool, path.as_ref()),
         })
         .collect()
-}
-
-fn wrapper_tool(tool_name: &str) -> Option<&'static str> {
-    (tool_name == "asp-graph-turbo").then_some("asp-graph-turbo")
 }
 
 fn find_executable(executable: &str, path: Option<&OsString>) -> Option<PathBuf> {
@@ -126,10 +92,6 @@ fn find_executable(executable: &str, path: Option<&OsString>) -> Option<PathBuf>
 
 fn required_tool_names() -> Vec<&'static str> {
     REQUIRED_TOOLS.to_vec()
-}
-
-fn wrap_usage() -> &'static str {
-    "usage: asp wrap asp-graph-turbo [--] [ARGS...]"
 }
 
 fn compact_path(path: &Path) -> String {

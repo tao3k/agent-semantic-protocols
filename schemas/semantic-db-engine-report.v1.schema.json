@@ -25,10 +25,10 @@
       "const": "turso"
     },
     "layoutVersion": {
-      "const": "state-v2"
+      "const": "state-v1"
     },
     "dbFileName": {
-      "const": "client.turso"
+      "const": "facts.turso"
     },
     "schemaVersion": {
       "const": 1
@@ -37,7 +37,7 @@
       "const": "turso-local-file"
     },
     "features": {
-      "$ref": "#/$defs/tursoFeatures"
+      "$ref": "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     },
     "clientDir": {
       "type": "string",
@@ -99,7 +99,7 @@
           ]
         },
         "dbFileName": {
-          "const": "client.turso"
+          "const": "facts.turso"
         },
         "schemaBootstrap": {
           "enum": [
@@ -112,7 +112,7 @@
           "const": "turso-local-file"
         },
         "features": {
-          "$ref": "#/$defs/tursoFeatures"
+          "$ref": "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
         },
         "dbPath": {
           "type": "string",
@@ -126,94 +126,6 @@
         },
         "schemaVersion": {
           "const": 1
-        }
-      }
-    },
-    "tursoFeatures": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "asyncIo",
-        "concurrentWrites",
-        "fts",
-        "ftsIndexMethod",
-        "vector",
-        "overlaySearch",
-        "sync",
-        "encryption",
-        "multiProcessWal",
-        "serializedWriterSlot",
-        "busyTimeoutMs",
-        "openLockRetryAttempts",
-        "openLockRetryBaseMs",
-        "openLockRetryMaxMs",
-        "statementLockRetryAttempts",
-        "operationLock",
-        "operationLockRetryAttempts",
-        "operationLockRetryMs",
-        "mvcc",
-        "beginConcurrent"
-      ],
-      "properties": {
-        "asyncIo": {
-          "const": true
-        },
-        "concurrentWrites": {
-          "const": false
-        },
-        "fts": {
-          "const": true
-        },
-        "ftsIndexMethod": {
-          "const": true
-        },
-        "vector": {
-          "const": false
-        },
-        "overlaySearch": {
-          "const": true
-        },
-        "sync": {
-          "const": false
-        },
-        "encryption": {
-          "const": false
-        },
-        "multiProcessWal": {
-          "const": true
-        },
-        "serializedWriterSlot": {
-          "const": true
-        },
-        "busyTimeoutMs": {
-          "const": 5000
-        },
-        "openLockRetryAttempts": {
-          "const": 80
-        },
-        "openLockRetryBaseMs": {
-          "const": 5
-        },
-        "openLockRetryMaxMs": {
-          "const": 200
-        },
-        "statementLockRetryAttempts": {
-          "const": 80
-        },
-        "operationLock": {
-          "const": true
-        },
-        "operationLockRetryAttempts": {
-          "const": 240
-        },
-        "operationLockRetryMs": {
-          "const": 250
-        },
-        "mvcc": {
-          "const": false
-        },
-        "beginConcurrent": {
-          "const": false
         }
       }
     },

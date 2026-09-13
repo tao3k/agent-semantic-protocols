@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-server-lifecycle-receipt.schema.json",
+  "title": "ASP Client Server Lifecycle Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "operationId",
+    "extensionId",
+    "languageId",
+    "providerId",
+    "workspaceIdentity",
+    "generationDigest",
+    "rootDigest",
+    "providerCatalogDigest",
+    "transport",
+    "eventKind",
+    "terminalStatus",
+    "state",
+    "attempt",
+    "publicationEpoch",
+    "artifactDigest",
+    "registrationDigest",
+    "runtimeContractDigest",
+    "leaseCount",
+    "elapsedMicros",
+    "operations"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-server-lifecycle-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "operationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extensionId": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+    },
+    "workspaceIdentity": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "generationDigest": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "rootDigest": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "providerCatalogDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "transport": {
+      "const": "http-json"
+    },
+    "eventKind": {
+      "enum": ["start", "ready", "query", "failure", "close", "restart"]
+    },
+    "terminalStatus": {
+      "enum": ["completed", "cancelled", "failed"]
+    },
+    "state": {
+      "enum": [
+        "declared",
+        "starting",
+        "warming",
+        "ready",
+        "draining",
+        "stopped",
+        "failed"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "publicationEpoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "artifactDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registrationDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtimeContractDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "leaseCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "endpoint": {
+      "type": ["string", "null"]
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "error": {
+      "type": ["string", "null"]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "gerbil-scheme"},
+        "providerId": {"const": "asp-gerbil-scheme"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "julia"},
+        "providerId": {"const": "asp-julia"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "md"},
+        "providerId": {"const": "asp-md"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "org"},
+        "providerId": {"const": "asp-org"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "python"},
+        "providerId": {"const": "asp-python"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "rust"},
+        "providerId": {"const": "asp-rust"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "typescript"},
+        "providerId": {"const": "asp-typescript"}
+      }
+    }
+  ]
+}

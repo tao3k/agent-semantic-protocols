@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: 10.05.26 Project Runtime Read Query Routing
+#+STARTUP: overview
+
+* Status
+
+Draft for implementation and qualification.
+
+* Problem
+
+Agent-facing =search= and =query= operations are read-only, but a sandboxed
+resident can currently be required to connect directly to a workspace-owner
+Unix socket.  Operating-system sandbox policy classifies socket connection as
+an IPC capability independently of the read-only semantics of the RPC method.
+The result is a transport-level permission denial before ASP can enforce its
+own read contract.
+
+This is an authority-boundary defect.  A workspace-owner endpoint is an
+implementation detail of the Runtime Server and MUST NOT be an agent
+capability.
+
+* Public and private boundaries
+
+There is one public Runtime Server authority for agent-facing operations.
+Agents, Hooks, providers, and resident subagents connect only to the canonical
+Runtime Server socket.  A request carries a parser-owned =projectId= and
+=workspaceId=.  The Runtime Server resolves that identity against its
+admitted workspace catalog and dispatches internally to the matching owner.
+
+Workspace-owner endpoints, binding tokens, process identifiers, and private
+socket paths remain server-owned.  They MUST NOT appear as required client
+inputs, recommended next commands, or fallback instructions.
+
+* Read-query contract
+
+An agent-facing read request contains:
+
+- a unique request identity;
+- =projectId= and =workspaceId=;
+- the registered language and provider identity;
+- an exact parser-owned selector;
+- an explicit projection;
+- a finite wall budget.
+
+The Runtime Server authenticates the public connection, verifies that the
+operation is in the read-only allowlist, resolves the workspace internally,
+and returns one typed receipt.
+
+=projectRoot= is forbidden on the public read frame.  Root lookup is a
+Runtime-owned projection of the admitted ProjectId/WorkspaceId catalog.  A
+client-supplied path would duplicate the isolation key, expose a private owner
+boundary to the sandbox, and recreate the LSP failure mode where clients own
+server document/workspace routing state.
+
+* Session and hot-path contract
+
+Before a Host-reachable stream's first Initialize, one typed control admission
+may supply the canonical project root to the Runtime-owned V1 catalog writer.
+This cold request is single-flight with session initialization and is never a
+Search/Query fallback.  It admits identity only: generation discovery,
+generation publication, workspace DB bootstrap, and provider execution are
+forbidden on this control route.  A sandbox receiving an inherited connected descriptor
+receives it only after Host admission.  One public gRPC stream then performs
+exactly one typed Initialize that binds ProjectId/WorkspaceId to the admitted
+Runtime-owned catalog entry.  Subsequent Search and
+Query operations use Request frames on that initialized session.  The legacy
+one-shot Dispatch frame, which repeats =projectRoot= and client identity on
+every operation, is not admitted for language Search/Query and is removed
+rather than retained as a compatibility route.
+
+The warm request path is:
+
+#+begin_example
+gRPC Request -> session binding -> generation lease -> resident fused read -> terminal
+#+end_example
+
+The separate =asp.workspace.generation.ensure-ready= request owns cold
+generation construction.  A Ready =EnsureWorkspace= receipt cannot be used as
+generation evidence, and the generation preflight cannot be duplicated inside
+control admission.
+
+It performs zero Runtime artifact publication, lifecycle discovery, provider spawn,
+filesystem traversal, schema materialization, DB open, or client retry.  The
+supervisor may recover a missing Runtime before a session exists, but a healthy
+session never touches an artifact-publication or lifecycle endpoint.  This separation prevents a
+sandbox =EPERM= on a private control socket from becoming an ordinary read
+failure.
+
+For an already healthy Runtime and resident generation, the cross-language
+transport-and-routing budget is p99 < 1 millisecond, measured from gRPC server
+ingress to emission of the typed terminal.  CLI process startup and cold
+generation construction are reported separately.  Lexical ranking, rg
+coverage, and Python graph computation execute during generation construction;
+the resident read consumes their fused immutable Rust-owned projection and
+does not call Python, HTTP, or a provider process.
+
+Read-query execution MUST NOT publish a generation, mutate an overlay, write a
+freshness receipt, or advance workspace authority.  It MAY calculate a live
+owner digest for comparison with an admitted generation.
+
+* Freshness and fail-closed admission
+
+Before a cached exact projection is returned, the Runtime Server compares its
+recorded owner identity and digest with the live owner identity and digest.
+A mismatch rejects the cached hit.
+
+When an admitted exact generation cannot be opened within the read budget, the
+server returns a typed terminal receipt containing =reasonKind=,
+=retryAfterMs=, and an executable =nextAction=.  It MUST NOT dispatch a
+provider-native fallback, open a private workspace-owner route, accept a
+different generation, or silently retry through another authority.  A bare
+=generation-discovery-in-progress= message is not a valid terminal result.
+
+* CLI projection stability
+
+The public query facade owns projection aliases.  The historical =--code=
+surface maps to =--projection source=.  Providers receive the normalized
+projection and MUST NOT define public CLI aliases independently.
+
+* Security invariants
+
+1. A read-only agent never receives or connects to a workspace-owner endpoint.
+2. A public read request is routed by an admitted project/workspace identity.
+3. A read request cannot invoke a mutation operation.
+4. A cached projection is returned only when its owner digest is current.
+5. Every query terminates with a projection or a typed actionable failure
+   within its finite wall budget.
+6. An unavailable admitted generation cannot execute through any second
+   provider, transport, engine, or workspace-owner authority.
+
+* Qualification scenarios
+
+- a read-only resident succeeds while direct workspace-owner socket access is
+  denied by the host sandbox;
+- a changed live owner invalidates an otherwise matching cached selector;
+- generation discovery that exceeds the budget fails closed without publishing;
+- an attempted provider fallback is rejected as a second authority;
+- =--code= and =--projection source= produce the same normalized request;
+- no public receipt or command contains a private owner socket path.

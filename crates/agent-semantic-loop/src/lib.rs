@@ -1,67 +1,54 @@
-use serde::Serialize;
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#[derive(Serialize)]
-pub struct ChoicePane<'a, State>
-where
-    State: Serialize,
-{
-    #[serde(rename = "schemaId")]
-    pub schema_id: &'a str,
-    #[serde(rename = "schemaVersion")]
-    pub schema_version: &'a str,
-    pub owner: &'a str,
-    pub state: State,
-    pub name: &'a str,
-    #[serde(rename = "hostRequirement")]
-    pub host_requirement: HostRequirement<'a>,
-    pub trace: Vec<TraceStep<'a, State>>,
-    pub choices: Vec<Choice<'a, State>>,
-    pub receipt: LoopReceipt<'a>,
-}
+mod authoritative_state;
+mod graph_router;
+mod ports;
+mod receipt;
+mod requirement;
+mod route_validation;
+mod search_advance;
+pub mod search_capability;
+pub mod search_graph_cursor;
+pub mod search_loop;
+pub mod search_runtime;
 
-#[derive(Serialize)]
-pub struct Choice<'a, State>
-where
-    State: Serialize,
-{
-    pub id: &'a str,
-    pub label: &'a str,
-    #[serde(rename = "platformAction")]
-    pub platform_action: &'a str,
-    #[serde(rename = "nextState")]
-    pub next_state: State,
-    #[serde(rename = "requiredInputs")]
-    pub required_inputs: &'a [&'a str],
-}
+pub use ports::SearchLoopRuntimeStore;
+mod transitions;
 
-#[derive(Serialize)]
-pub struct HostRequirement<'a> {
-    pub platform: &'a str,
-    #[serde(rename = "residentChildName")]
-    pub resident_child_name: &'a str,
-    #[serde(rename = "managedAgentKind")]
-    pub managed_agent_kind: &'a str,
-    #[serde(rename = "requiredTransport")]
-    pub required_transport: &'a str,
-    #[serde(rename = "requiredOutputs")]
-    pub required_outputs: &'a [&'a str],
-    #[serde(rename = "blockedWhen")]
-    pub blocked_when: &'a [&'a str],
-}
-
-#[derive(Serialize)]
-pub struct TraceStep<'a, State>
-where
-    State: Serialize,
-{
-    pub state: State,
-    pub result: &'a str,
-}
-
-#[derive(Serialize)]
-pub struct LoopReceipt<'a> {
-    pub loop_name: &'a str,
-    pub invariant: &'a str,
-    #[serde(rename = "noNextCommand")]
-    pub no_next_command: bool,
-}
+pub use authoritative_state::ValidatedContextProductStateV1;
+pub use graph_router::AdmitRouteProgramRequest;
+pub use graph_router::GraphRouter;
+pub use graph_router::GraphRouterError;
+pub use ports::AuthoritativeStateRecord;
+pub use ports::CompareAndAppendOutcome;
+pub use ports::PortFuture;
+pub use ports::ProofResolver;
+pub use ports::ProviderExecutionDispatch;
+pub use ports::ProviderExecutionResult;
+pub use ports::RunCommit;
+pub use ports::RunCommitReceipt;
+pub use ports::RunCommitStore;
+pub use ports::SearchExecutionDriver;
+pub use ports::StateHead;
+pub use ports::TrustedClock;
+pub use receipt::LoopReceipt;
+pub use receipt::TraceStep;
+pub use requirement::HostRequirement;
+pub use search_advance::SearchLoopAdvanceDispatch;
+pub use search_advance::SearchLoopAdvanceRequest;
+pub use search_advance::SearchLoopPollDispatch;
+pub use search_advance::SearchLoopPollRequest;
+pub use transitions::AdmitSearchLoopDirectiveRequest;
+pub use transitions::ConsumeExecutionGroupRequest;
+pub use transitions::ExecutionConsumptionSpec;
+pub use transitions::ExecutionDispatchAdmission;
+pub use transitions::ExecutionGrantSpec;
+pub use transitions::ExecutionRevocationSpec;
+pub use transitions::ExecutionStartSpec;
+pub use transitions::FinalizeClosureRequest;
+pub use transitions::IssueExecutionGroupGrantsRequest;
+pub use transitions::JoinExecutionGroupRequest;
+pub use transitions::RevokeExecutionGroupRequest;
+pub use transitions::StartExecutionGroupRequest;

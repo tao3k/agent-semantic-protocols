@@ -1,10 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+-->
+
 # Agent Semantic Protocols
 
 Shared protocol contracts, hook runtime, and replay sandtables for semantic
-language harnesses.
+ASP language providers.
 
 This repository keeps the agent-facing surface stable across Rust, TypeScript,
-Python, Julia, and future providers. Language harnesses own parser facts and
+Python, Julia, and future providers. ASP language providers own parser facts and
 provider-specific commands; this repository owns the shared schemas, RFCs,
 root hook classifier, and scenario evidence used to keep those providers
 aligned.
@@ -48,11 +53,12 @@ in the RFC and schema first, then align providers and sandtable evidence.
 - `docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org` owns the portable
   tree-sitter-compatible syntax ABI, catalog/profile/corpus layout, native
   projection boundary, and pattern-graph roadmap.
-- `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` owns the agent-facing `asp <language> guide`,
+- `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org` owns the server-first agent search architecture; `asp <language> ...` is a typed ASP Server client surface,
   search/query/read-plan stdout contracts, and syntax locate/code flows.
-- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns hook decision packets,
-  Markdown recovery prompts, `Detected Binaries`, and ast-patch config
-  branching.
+- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns normalized
+  Host invocation, compiled Hook policy/provider projections, typed decisions,
+  and the strict boundary that keeps provider activation and Runtime execution
+  out of Hook classification.
 - `schemas/README.md` owns the schema catalog and explains how query/search/read
   packets share tree-sitter provenance without merging packet envelopes.
 - `docs/30-39-research/31.18-tree-sitter-query-rfc-roadmap.org` records the
@@ -61,42 +67,48 @@ in the RFC and schema first, then align providers and sandtable evidence.
 
 ## Common Commands
 
-Enter the project shell first when available:
+Run repository commands through the captured devenv profile. This reuses the
+already-activated workspace without evaluating `direnv` for every command:
 
 ```sh
-direnv exec . <command>
+.devenv/devenv-profile-exec <command>
 ```
 
-Install agent-facing tools and the Codex project plugin through the current
-convenience target:
+Install agent-facing tools and refresh the Codex integration through the
+current convenience target:
 
 ```sh
 just agent-hooks-install
 just agent-hooks-doctor
 ```
 
-This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
-`rs-harness`, `ts-harness`, and `py-harness`. `asp-graph-turbo` is the only
-supported graph turbo executable and a required local ranking dependency for
-the graph-turbo search/history path, not an optional debugging tool.
+This installs the core ASP runtime surface: `asp`, the `asp-python-graphs`
+service project, `asp-rust`, `asp-typescript`, and `asp-python`. Graph-Turbo
+is an algorithm profile served by `asp-python-graphs`, not a standalone
+executable or alias.
 
-Install or refresh the Codex plugin for the current project through the
-unified install command:
+Install or refresh the Codex plugin globally through the unified install
+command:
 
 ```sh
 asp install plugin --codex .
 ```
 
-The Codex installer uses the official plugin marketplace model. It writes or
-refreshes `.agents/plugins/marketplace.json`, installs
-`asp-codex-plugin@asp-project` through the project-scoped `.codex` cache,
-materializes the plugin bundle in
-`.codex/plugins/cache/asp-project/asp-codex-plugin/<version>/`, writes the
-generated skill to that cache, and removes the retired project skill,
-project-root `asp-codex-plugin/` artifact, and direct Codex hook/subagent
-files. It does not create `asp-codex-plugin/` at the downstream project root.
-After installing, restart Codex or start a new thread so the plugin bundle and
-hooks are loaded.
+Global installation is the default when no scope flag is given. To enable and
+cache the plugin only for the current project, pass `--project` (or
+`--project-plugin`) explicitly:
+
+```sh
+asp install plugin --codex --project .
+```
+
+The project-scoped installer uses the official plugin marketplace model. It
+writes or refreshes `.agents/plugins/marketplace.json`, enables
+`asp-codex-plugin@asp-project`, materializes the plugin bundle in the
+project-scoped `.codex` cache, writes the generated skill to that cache, and
+removes retired project-local hook artifacts. It does not create
+`asp-codex-plugin/` at the downstream project root. After installing, restart
+Codex or start a new task so the plugin bundle and hooks are loaded.
 
 For a manual install that mirrors the Codex marketplace flow, run:
 
@@ -113,7 +125,7 @@ plugin should only come after the manifest, hook behavior, and generated skill
 contract are stable.
 
 Install released provider binaries into the current project's ASP runtime state
-when you want the repo to consume language harness releases instead of binaries
+when you want the repo to consume ASP language provider releases instead of binaries
 from `.bin` or the process `PATH`:
 
 ```sh
@@ -131,7 +143,7 @@ launcher into `.cache/agent-semantic-protocol/runtime/bin/`, and records a
 Each language provider owns its own GitHub release workflow under
 `languages/<provider>/.github/workflows/release.yml`. Release assets must be
 named `<binary>-<target>.tar.gz` with a matching `.sha256`, for example
-`rs-harness-aarch64-apple-darwin.tar.gz`. The currently published target set is
+`asp-rust-aarch64-apple-darwin.tar.gz`. The currently published target set is
 `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the Rust provider also
 publishes `x86_64-pc-windows-msvc`. `x86_64-apple-darwin` is not supported.
 
@@ -150,47 +162,46 @@ Install individual agent tools when only one boundary changed:
 ```sh
 just agent-tools-install-protocol "$HOME/.local/bin"
 just agent-tools-install-asp "$HOME/.local/bin"
-just agent-tools-install-asp-graph-turbo "$HOME/.local/bin"
 just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
 just agent-tools-install-python "$HOME/.local/bin"
 ```
 
-Run `asp-graph-turbo` through the native ASP wrapper when an agent step needs the
-ranking engine without depending on Python workspace internals:
+Use the Runtime-owned Search Playbook when an agent step needs source discovery,
+native syntax, lexical retrieval, or graph reasoning. The `asp-python-graphs`
+service is managed by the ASP Server and is not invoked as a second executable:
 
 ```sh
-asp wrap asp-graph-turbo -- help
-asp tools wrap asp-graph-turbo -- help
+asp search playbook --language rust \
+  --rg -n -e graphs_timeline crates/agent-semantic-client/src \
+  --tantivy term graphs_timeline \
+  --graph gql --query 'node(kind = "owner")'
 ```
 
 Graph-turbo request packets use the ranking engine through schema-owned JSON:
-`semantic-graph-turbo-request.v1` enters `asp-graph-turbo`, and
+`semantic-graph-turbo-request.v1` enters the `asp-python-graphs` service through
 `semantic-graph-turbo-result.v1` or its JSON projection leaves that boundary.
 The retired compact graph renderer is a prompt/debug projection only; it is not a
 trusted graph, frontier, rank, or action protocol.
 
-Agent-facing fast search uses graph-turbo ranking by default.
-`asp rust search lexical <term> owner tests --workspace .` and the explicit seeds
-form `asp rust search lexical <term> owner tests --workspace . --view seeds` avoid printing the
-request packet, but the trusted structure remains the schema packet and any
-schema-owned JSON projection. Rank, profile, paths, scores, cache, trace,
-explanations, metrics, and frontier actions must be packet-visible before any
-text renderer serializes them.
+Agent-facing search uses the fixed Playbook order: exact ripgrep acquisition,
+provider-native syntax, Tantivy lexical retrieval, then Python Graphs. The
+trusted structure remains the schema packet and its schema-owned GQL projection.
+Rank, profile, paths, scores, cache, trace, explanations, metrics, and frontier
+actions must be packet-visible before any presentation layer serializes them.
 Default fast-search request packets include candidate hot range nodes and
 `item -> hot` typed edges when locators are available, plus owner-scoped
 dependency nodes and `owner -> dependency` import edges for query-deps routing,
 so graph-turbo can rank direct code and package follow-ups. Warm graph-turbo
 backend cache entries are stored under `$PRJ_CACHE_HOME` when set, otherwise
 under the git toplevel `.cache`, with the graph fingerprint guarding against
-stale source facts. Inspect or reset that ranking cache with
-`asp-graph-turbo cache status`, `asp-graph-turbo cache prune`, and
-`asp-graph-turbo cache invalidate`. Use
-`--view graph-turbo-request` only when validating or debugging the JSON packet
-that will be sent to `asp-graph-turbo`.
+stale source facts. Inspect or reset that ranking cache with the ASP Server-owned
+graph cache methods. Use `--view graph-turbo-request` only when validating or
+debugging the JSON packet that will be sent to `asp-python-graphs` through the
+ASP Server.
 
-`asp-graph-turbo` is the lightweight internal ranker for this path. Its default
+`asp-python-graphs` provides the lightweight Graph-Turbo ranker for this path. Its default
 ranking dependency is SciPy sparse graph scoring, not PyTorch, PyG, or a GNN
 runtime. Future PyG/HeteroData work belongs behind optional lab or offline
 rerank surfaces; it must not become an install requirement, hook dependency, or
@@ -208,24 +219,19 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search --language rust prime --workspace . --view seeds
-asp query --language rust --treesitter-query '<pattern>' .
-asp rust search prime --workspace . --view seeds
+asp search playbook --language rust --rg -n -e '<term>' . --tantivy 'title:<term>^2 OR body:<term>'
+asp query playbook --language '<producer|...>' --selector '<provider-owned-selector>'
+asp query playbook --documents org --selector 'org://docs/spec.org#item/heading/Contract'
 ```
 
-`asp search` and `asp query` are thin routers over the language facades. Use
-`--language <rust|typescript|python|julia|org|md>` for ambiguous roots, or pass
-an owner/selector path or project root that matches one active provider's
-activation coverage so `asp` can route to the same
-`asp <language> search|query` boundary without parsing package layout.
-
-Dependency search is provider-owned and manifest-first. Start with
-`asp <language> search guide --workspace .` to confirm the current dependency
-profile, then use the advertised dependency/manifest surface, such as
-`asp rust search dependency serde --workspace . --view seeds` or
-`search reasoning query-deps`, before falling back to source reads, docs.rs, or
-web search. The first frontier should expose manifest versions, import owners,
-docs-use/public API lines, crate-source/runtime-source hints, and tests.
+`asp search playbook` and `asp query playbook` are the only public Search and Query
+surfaces. Use `--language <rust|typescript|python|julia>` for code producers
+and `--documents <org|md>` for document producers; a cross-domain request may
+use both. Search
+accepts native argument blocks; Query accepts only selectors returned on the
+owning GQL nodes. Dependency discovery therefore starts with manifest terms in
+the Playbook and continues through returned selectors, rather than a separate
+provider mode.
 
 Calibrate the local Julia cache hot path after client/cache changes:
 
@@ -243,18 +249,20 @@ asp install hook --client claude .
 asp hook doctor --client claude .
 ```
 
-`just install` installs `asp`, `asp-graph-turbo`, `rs-harness`, `ts-harness`,
-`py-harness`, and `asp-julia-harness` into
+`just install` installs `asp`, `asp-python-graphs`, `asp-rust`, `asp-typescript`,
+`asp-python`, and `asp-julia` into
 `${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}` by default, then refreshes the
 Codex hook config. Pass a directory argument, such as
 `just install /tmp/asp-bin`, to override the install root.
 
-`asp install plugin --codex` writes the Codex project plugin config.
+`asp install plugin --codex` installs the Codex plugin globally by default.
+Pass `--project` to write the Codex project plugin config and project-local
+cache.
 `asp install hook --client claude` writes the direct Claude hook
 configuration. Both install surfaces refresh cache activation, versioned hook
 policy config, and provider manifests for this repository. They do not build or
-install `asp-graph-turbo`, `rs-harness`, `ts-harness`, `py-harness`, or
-`asp-julia-harness`; use `just install` for the full local setup or the
+install `asp-python-graphs`, `asp-rust`, `asp-typescript`, `asp-python`, or
+`asp-julia`; use `just install` for the full local setup or the
 `just agent-tools-install-*` commands for one binary family.
 
 Agent clients invoke the runtime hook entrypoint as `asp hook --client
@@ -325,7 +333,7 @@ Both replay gates currently prove `10 -> 4` commands, `0.600` command
 reduction, `0.923` stdout-byte reduction, and `4/4` expected hot blocks
 covered.
 
-Run the Python policy gate owned by the Python harness:
+Run the Python policy gate owned by the ASP Python:
 
 ```sh
 just check-python-policy

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-materialize-receipt.v1.schema.json",
+  "title": "ASP live corpus materialize receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "resourceId",
+    "providerId",
+    "languageId",
+    "artifactDigest",
+    "artifactPath",
+    "currentPointer",
+    "matchingFileCount",
+    "candidateLanguageFileCount",
+    "status"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-materialize-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "resourceId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "artifactDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifactPath": { "type": "string", "minLength": 1 },
+    "currentPointer": { "type": "string", "minLength": 1 },
+    "matchingFileCount": { "type": "integer", "minimum": 1 },
+    "candidateLanguageFileCount": { "type": "integer", "minimum": 1 },
+    "status": { "const": "qualified" }
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Executable tree-sitter ABI rollout gates owned by the Python tools package."""
 
 from __future__ import annotations
@@ -12,13 +16,8 @@ from pathlib import Path
 
 from tools.console import emit
 from tools.provider_registry_contracts import validate_provider_registries
-from tools.tree_sitter.contract_exact_read import check_exact_direct_read_contract
-from tools.tree_sitter.contract_frontier_code import check_frontier_code_contract
 from tools.tree_sitter.contract_query_corpus import check_query_corpus_contracts
 from tools.tree_sitter.contract_runtime_boundary import check_runtime_boundary
-from tools.tree_sitter.contract_search_read_plan import (
-    check_search_read_plan_frontier_contract,
-)
 from tools.tree_sitter.contract_support import ContractFailure, ROOT, run
 
 
@@ -49,25 +48,6 @@ def main(argv: list[str] | None = None) -> int:
 
 def runtime_boundary_main(argv: list[str] | None = None) -> int:
     _run_single_gate(argv, check_runtime_boundary, "tree-sitter runtime boundary contract is valid")
-    return 0
-
-
-def frontier_code_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(argv, check_frontier_code_contract, "tree-sitter frontier/code contract is valid")
-    return 0
-
-
-def search_read_plan_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(
-        argv,
-        check_search_read_plan_frontier_contract,
-        "search/read-plan frontier contract is valid",
-    )
-    return 0
-
-
-def exact_direct_read_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(argv, check_exact_direct_read_contract, "exact direct-read contract is valid")
     return 0
 
 
@@ -127,19 +107,19 @@ def _selected_gates(names: list[str] | None) -> list[tuple[str, Gate]]:
 
 
 def _build_runtime(asp_bin: Path) -> None:
-    run(["npm", "--prefix", "languages/typescript-lang-project-harness", "run", "build"])
-    run(["cargo", "build", "-q", "-p", "agent-semantic-protocol", "--bin", "asp"])
+    run(["npm", "--prefix", "languages/asp-typescript", "run", "build"])
+    run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
     run(
         [
             "cargo",
             "build",
             "-q",
             "--manifest-path",
-            "languages/rust-lang-project-harness/Cargo.toml",
+            "languages/asp-rust/Cargo.toml",
             "--features",
-            "cli,search",
+            "provider-server",
             "--bin",
-            "rs-harness",
+            "asp-rust",
         ],
     )
     if not asp_bin.exists():
@@ -151,8 +131,6 @@ class _runtime_env:
         self.asp_bin = asp_bin
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self._asp_toml_backup: Path | None = None
-        self._codex_config_backup: Path | None = None
-        self._hook_config_backup: Path | None = None
 
     def __enter__(self) -> dict[str, str]:
         self._tmp = tempfile.TemporaryDirectory()
@@ -162,32 +140,22 @@ class _runtime_env:
                 shim_dir,
                 ROOT / ".agents/asp.toml",
             )
-            self._codex_config_backup = _backup_runtime_file(
-                shim_dir,
-                ROOT / ".codex/config.toml",
-            )
-            self._hook_config_backup = _backup_runtime_file(
-                shim_dir,
-                ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
-            )
             (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
             _write_shim(
-                shim_dir / "rs-harness",
-                f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
+                shim_dir / "asp-rust",
+                f'exec "{ROOT}/languages/asp-rust/target/debug/asp-rust" "$@"\n',
             )
             _write_shim(
-                shim_dir / "ts-harness",
-                f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
+                shim_dir / "asp-typescript",
+                f'exec node "{ROOT}/languages/asp-typescript/dist/src/cli/main.js" "$@"\n',
             )
             _write_shim(
-                shim_dir / "py-harness",
-                f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen py-harness "$@"\n',
+                shim_dir / "asp-python",
+                f'exec uv run --project "{ROOT}/languages/asp-python" --frozen asp-python "$@"\n',
             )
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
-            env["ASP_NO_AGENT_PLATFORM"] = "1"
-            run([str(self.asp_bin), "install", "plugin", "--codex", "."], env=env)
             return env
         except Exception:
             self.__exit__(None, None, None)
@@ -195,11 +163,6 @@ class _runtime_env:
 
     def __exit__(self, *_exc: object) -> None:
         _restore_runtime_file(ROOT / ".agents/asp.toml", self._asp_toml_backup)
-        _restore_runtime_file(ROOT / ".codex/config.toml", self._codex_config_backup)
-        _restore_runtime_file(
-            ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
-            self._hook_config_backup,
-        )
         if self._tmp is not None:
             self._tmp.cleanup()
 
@@ -226,17 +189,12 @@ def _write_shim(path: Path, body: str) -> None:
 
 
 def _contract_env(source: Mapping[str, str]) -> dict[str, str]:
-    env = dict(source)
-    env["ASP_NO_AGENT_PLATFORM"] = "1"
-    return env
+    return dict(source)
 
 
 _GATES: dict[str, Gate] = {
     "provider-registry": check_provider_registry_contracts,
     "runtime-boundary": check_runtime_boundary,
-    "frontier-code": check_frontier_code_contract,
-    "search-read-plan": check_search_read_plan_frontier_contract,
-    "exact-direct-read": check_exact_direct_read_contract,
     "query-corpus": check_query_corpus_contracts,
 }
 

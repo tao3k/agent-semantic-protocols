@@ -139,7 +139,7 @@
       "minLength": 1
     },
     "syntaxQuerySelector": {
-      "description": "Exact selector component from the semantic-tree-sitter-query packet when present; query --code remains pure stdout and selector metadata belongs in the receipt.",
+      "description": "Exact selector component from the semantic-tree-sitter-query packet when present; projection=source remains pure stdout and selector metadata belongs in the receipt.",
       "type": "string",
       "minLength": 1
     },
@@ -253,17 +253,17 @@
       "minimum": 0
     },
     "clientDbSourceIndexGenerationCount": {
-      "description": "Number of source-index generations visible in the local DB Engine client database.",
+      "description": "Number of source-index generations visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexOwnerCount": {
-      "description": "Number of source-index owner rows visible in the local DB Engine client database.",
+      "description": "Number of source-index owner rows visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexSelectorCount": {
-      "description": "Number of source-index selector rows visible in the local DB Engine client database.",
+      "description": "Number of source-index selector rows visible in the ASP Server DB Engine.",
       "type": "integer",
       "minimum": 0
     },
@@ -330,7 +330,7 @@
           ]
         },
         "layoutVersion": {
-          "const": "state-v2"
+          "const": "state-v1"
         },
         "dbFileName": {
           "enum": [
@@ -553,85 +553,10 @@
       }
     },
     "artifactHash": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "algorithm",
-        "value"
-      ],
-      "properties": {
-        "algorithm": {
-          "const": "blake3"
-        },
-        "value": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      }
+      "$ref": "semantic-artifact-definitions.v1.schema.json#/$defs/artifactHash"
     },
     "artifactRootRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "repoId",
-        "workspaceId",
-        "scopeId",
-        "generation",
-        "rootKind",
-        "rootHash",
-        "nodeHash"
-      ],
-      "properties": {
-        "repoId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "workspaceId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "scopeId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "generation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rootKind": {
-          "enum": [
-            "artifactExport",
-            "changeSet",
-            "compactGraph",
-            "dynamicOverlay",
-            "eventLogCheckpoint",
-            "evidenceGraph",
-            "graphDiff",
-            "howFixFrame",
-            "howFromFrame",
-            "proofReceipt",
-            "providerOutput",
-            "searchReceipt",
-            "sourceIndexBundle",
-            "sourceSnapshot"
-          ]
-        },
-        "rootHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "nodeHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "producerHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "schemaHash": {
-          "$ref": "#/$defs/artifactHash"
-        },
-        "contentHash": {
-          "$ref": "#/$defs/artifactHash"
-        }
-      }
+      "$ref": "semantic-artifact-definitions.v1.schema.json#/$defs/artifactRootRef"
     },
     "tursoReport": {
       "type": "object",

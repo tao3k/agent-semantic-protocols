@@ -1,0 +1,201 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Bounded Dominance-Witness Chain
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status
+
+This RFC refines
+=01.14-searchroute-finite-multiobjective-pareto-mask-witness.org=.
+
+It distinguishes a direct dominance witness from a witness chain terminating
+at a retained Pareto endpoint. It adds a fuel-bounded executable resolver, a
+strictly descending chain certificate, explicit exhaustion, and bounded
+receipt requirements.
+
+This RFC changes no Rust or Python runtime code.
+
+* Direct witness versus retained endpoint
+
+The direct witness returned by =findDominator= may itself be removed. A
+complete route-removal explanation therefore has the form:
+
+#+name: dominance-witness-chain-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ r_0 succ r_1 succ dots.c succ r_k $
+
+$ forall i < k,
+  r_(i + 1) prec r_i $
+
+$ "keep"(U, r_k) = #true $
+
+$ k <= "candidate capacity" $
+#+end_src
+
+Here =r_0= is the removed route and =r_k= is a retained undominated endpoint.
+Each edge carries both multiobjective strict-dominance evidence and a strict
+descent rank.
+
+* Fuel-bounded resolver
+
+The executable resolver follows direct witnesses with explicit fuel:
+
+#+begin_example
+resolve(U, 0, current):
+  retained(current, 0)  when findDominator(U, current) = none
+  exhausted(current, 0) otherwise
+
+resolve(U, fuel + 1, current):
+  retained(current, 0) when findDominator(U, current) = none
+  prepend(resolve(U, fuel, witness)) otherwise
+#+end_example
+
+Lean proves that returned step count never exceeds fuel. Running with
+=candidateCapacity= therefore bounds execution and receipt expansion.
+
+The resolver never treats exhaustion as successful completion.
+
+* Retained endpoint soundness
+
+When the resolver returns =retained=, Lean proves that the returned endpoint is
+kept by the finite Pareto mask. This closes the direct runtime implication:
+
+#+name: witness-chain-retained-endpoint
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "status"("resolve"(U, f, r)) = "retained"
+  quad "implies" quad
+  "keep"(U, "endpoint"("resolve"(U, f, r))) = #true $
+
+$ "steps"("resolve"(U, f, r)) <= f $
+
+$ "exhausted" != "retained" $
+#+end_src
+
+The converse is intentionally not claimed: a finite fuel value may be
+insufficient even though a retained endpoint exists.
+
+Lean demonstrates:
+
+- one step is insufficient for =slowest -> slower -> faster=;
+- two steps reach retained endpoint =faster=;
+- exhaustion is therefore a protocol-visible state, not an internal warning.
+
+* Strict descent and acyclicity
+
+Every certified edge contains:
+
+- =witness= strictly dominates =removed=;
+- =totalCost(witness) < totalCost(removed)=.
+
+The rank is the sum of graph hops, projected tokens, interaction rounds,
+search-cache misses, and model-cache misses.
+
+Lean proves that every nonempty certified chain strictly lowers endpoint rank.
+Consequently, a nonempty chain cannot return to its starting candidate.
+
+The rank condition is certificate-visible. A dominance implementation may
+derive it from componentwise Pareto evidence, but the chain validator does not
+silently assume that derivation.
+
+* Remaining finite-completeness gap
+
+Fuel bounding and acyclicity do not by themselves prove that
+=candidateCapacity= fuel always returns =retained=. The missing bridge requires:
+
+- every witness belongs to the same committed universe;
+- canonical route identities are unique in that universe;
+- every resolution step follows the certified edge relation;
+- strict descent prevents revisiting a route;
+- a finite no-repeat chain has length below universe capacity.
+
+The current Lean model proves each local property needed by that bridge except
+the final finite no-repeat cardinality theorem. Therefore this RFC reports
+exhaustion honestly instead of claiming unconditional retained-endpoint
+completeness.
+
+* Transitive shortcut
+
+A compact receipt should not normally project every intermediate witness. It
+may publish:
+
+- start route identity;
+- retained endpoint identity;
+- chain root and length;
+- endpoint keep proof;
+- accumulated dominance certificate;
+- inspect continuation for intermediate edges.
+
+However, a shortcut claiming that the endpoint directly dominates the start
+requires a generic transitivity proof for the executable five-dimensional
+dominance relation. The current chain certificate proves rank descent and
+acyclicity, but does not yet replace that transitivity theorem.
+
+* Receipt contract
+
+The default receipt MUST contain:
+
+- candidate-universe and cost-vector roots;
+- start and endpoint canonical route identities;
+- status: =retained= or =exhausted=;
+- chain root and step count;
+- fuel and candidate capacity;
+- endpoint keep-mask bit when retained;
+- last visited route when exhausted;
+- progressive inspect continuation.
+
+Explicit chain disclosure is bounded by:
+
+#+begin_example
+fixedBytes + bytesPerStep * candidateCapacity
+#+end_example
+
+The compact summary remains independent of chain length.
+
+* Proof-discovered design corrections
+
+1. Direct-witness existence does not prove a retained endpoint.
+2. Fuel exhaustion must be distinct from successful completion.
+3. A chain needs a visible strict-descent measure to exclude cycles.
+4. Candidate capacity bounds work, but does not alone prove completeness.
+5. A chain root is not automatically a transitive dominance shortcut.
+6. Search-cache and model-cache costs remain separate inside the descent rank.
+
+* Lean realization
+
+The executable model is:
+
+- =packages/proofs/ASPProof/SearchRouteBoundedDominanceWitnessChain.lean=
+- =packages/proofs/ASPProof/Audit/SearchRouteBoundedDominanceWitnessChain.lean=
+- =packages/proofs/audit/SearchRouteBoundedDominanceWitnessChainAudit.lean=
+- =packages/proofs/receipts/searchroute-bounded-dominance-witness-chain-audit-v1.json=
+
+The audit covers fuel and capacity bounds, retained-endpoint soundness,
+insufficient-fuel exhaustion, a successful two-edge example, strict rank
+descent, acyclicity, and bounded receipts.
+
+* Protocol requirements
+
+1. Witness traversal MUST carry explicit fuel.
+2. Exhaustion MUST fail closed and remain distinct from retained completion.
+3. A retained result MUST identify a route kept by the current Pareto mask.
+4. Every certified edge MUST carry dominance and strict-rank-descent evidence.
+5. Explicit chain projection MUST be capacity-bounded.
+6. Compact receipts SHOULD publish a chain root and progressive continuation.
+7. A transitive shortcut MUST NOT be claimed before dominance transitivity is
+   proved.
+
+* Next proof boundary
+
+The next refinement must prove the finite no-repeat cardinality bridge:
+
+- witness lookup stays inside one unique canonical candidate universe;
+- strict descent prevents identity repetition;
+- any such chain has length below candidate capacity;
+- capacity fuel therefore cannot exhaust before a retained endpoint.
+
+It should also prove transitivity of the executable five-dimensional strict
+dominance relation, enabling a verified shortcut from removed route directly
+to retained endpoint.

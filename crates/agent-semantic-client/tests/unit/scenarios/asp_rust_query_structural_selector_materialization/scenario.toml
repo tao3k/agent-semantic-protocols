@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "asp-rust-query-structural-selector-materialization"
+title = "Rust exact structural selectors materialize parser-owned code or typed misses"
+policy_ids = ["RUST-AGENT-ASP-SEARCH-FRAME-EXACT-SELECTOR-MATERIALIZATION-001"]
+agent_goal = "When the main agent has a parser-owned Rust structural selector, code projection should either return that exact item code or return a typed selector miss. Impl blocks are materializable owner items; missing names and kind mismatches are not empty payloads."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp query playbook --language rust --selector rust://src/lib.rs#item/impl/<Type> --projection source",
+  "state=not-found reason=item-not-found",
+  "state=kind-mismatch reason=item-kind-mismatch actualKinds=<kinds>",
+  "providerProcessCount=0",
+]
+inputs = "inputs"
+expected = "expected"

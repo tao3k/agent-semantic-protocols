@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: ASP Server-First SearchLoop Architecture
+#+options: toc:3 num:t
+
+* Status
+
+Accepted.  This module defines the executable center of RFC 10.05.
+
+* Decision
+
+SearchLoop is a stateful agent protocol hosted by ASP Server.  It is not a
+command transcript and is not executed inside a request client.
+
+#+begin_example
+ASP client
+  -> Runtime IPC request
+  -> ASP Server admission
+  -> immutable workspace generation
+  -> resident language client-server operation
+  -> provider-native facts
+  -> graph merge and terminal receipt
+#+end_example
+
+The CLI, Hook, and future native clients are equal typed clients.  The CLI is
+not an adapter over provider commands: it serializes the active request schema,
+sends it to ASP Server, and renders the returned terminal receipt.
+
+* Authority boundaries
+
+ASP Server exclusively owns:
+
+- workspace and generation identity;
+- provider catalog admission;
+- extension-driven lazy activation;
+- resident provider lifecycle and health;
+- bounded mailboxes, concurrency isolation, cancellation, and deadlines;
+- immutable cache publication and OpenTelemetry receipts; and
+- cross-provider graph composition.
+
+Each language client-server exclusively owns:
+
+- its native parser or compiler API;
+- project and module resolution;
+- provider-native semantic facts;
+- execution of registered typed operations; and
+- language package SCM catalogs and corpus evidence.
+
+Clients own neither provider processes nor semantic caches.  A missing Server,
+missing generation, or non-Ready provider fails with typed evidence.  It never
+starts a one-shot provider, opens a local cache, or executes a semantic fallback.
+
+* SCM query adapter
+
+SCM is supported as a portable S-expression query language.  ASP loads the
+provider-owned =.scm= source and compiles it into a grammarless typed plan with
+patterns, captures, node types, fields, and predicates.  The resident language
+client-server executes that plan against native parser/compiler facts.
+
+Tree-sitter-compatible node names are an adapter vocabulary only.  ASP does not
+load a Tree-sitter grammar, =parser.c=, =scanner.c=, dynamic library, or
+=QueryCursor=.  Providers may return semantic facts richer and more precise
+than the SCM compatibility vocabulary.
+
+* Request lifecycle
+
+Every request binds:
+
+- request and cancellation identity;
+- workspace identity;
+- immutable generation and source-root digest;
+- provider and provider-catalog identity;
+- registered operation and schema identity; and
+- one terminal response authority.
+
+Admission is bounded.  Cancellation is cooperative and isolated to the request.
+Backpressure fails fast.  A client cannot initialize, restart, dynamically
+register capabilities, drain, or stop a provider.
+
+* SearchLoop transition
+
+#+begin_example
+observe evidence state
+  -> classify unresolved frontier
+  -> select one bounded graph action
+  -> execute through admitted provider operation
+  -> validate native facts and identity receipts
+  -> merge immutable evidence
+  -> stop, fan out, or continue
+#+end_example
+
+Every transition emits a compact terminal receipt containing prior state,
+selected action, consulted owners, facts added or rejected, updated frontier,
+recommended next action, cache identities, latency, and cancellation outcome.
+
+* Performance boundary
+
+Cold lifecycle work includes provider start, warmup, project resolution,
+generation construction, and publication.  Warm reads consume an already
+published immutable generation.  They do not start providers, open databases,
+read source files, rebuild caches, or use timeouts as recovery.
+
+* Hard-cut rule
+
+There is one active architecture and one schema generation: =schemaVersion: 1=.
+When an operation or transport is replaced, its parser branch, schema, fixture,
+test, help text, Agent guidance, and runtime path are deleted together.  Git
+history is the only historical archive.

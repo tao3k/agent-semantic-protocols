@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Dependency Topology Action Frontier
+#+startup: overview
+
+* Status
+
+Implemented as the dependency-topology slice of the v1 agent search
+projection contract.
+
+* Problem
+
+The search flow previously mixed three independent authorities:
+
+- activated provider dependency topology
+- language-specific manifest and source fallbacks
+- view-local string heuristics for dependency intent
+
+That mixture allowed the renderer to manufacture an action without a typed
+graph receipt and made the same query behave differently across registered
+languages.
+
+* V1 contract
+
+** Provider topology is the only dependency evidence owner
+
+Dependency facts MUST originate from the activated language provider's typed
+=dependency-topology= packet. Protocol code MUST NOT reopen package-manager
+files, scan source imports, or synthesize fallback dependency facts.
+
+** Advertised capabilities require materialized activation routes
+
+A provider manifest MUST NOT advertise =dependencyTopology= or
+=dependencyTopologyMetadata= unless its =routeBindings= names a method that is
+present in the shared semantic language registry.  The registry method
+descriptor owns the exact provider argv and packet schema; activation
+materialization resolves that descriptor into the canonical hook route.
+
+The three declarations form one fail-closed contract:
+
+#+begin_src text
+search capability = true
+  -> provider route binding
+  -> shared registry method descriptor
+  -> materialized activation route
+#+end_src
+
+Missing links are installation or activation errors.  Protocol tests and
+fixtures MUST NOT manufacture a route that the shipped provider manifest and
+shared registry do not declare.
+
+Each fact carries:
+
+- manifest owner path
+- canonical dependency name
+- optional provider-parsed version
+
+Cache reuse is valid only while every provider-declared source digest remains
+current.
+
+** Graph relations authorize routing
+
+The graph builder projects a manifest owner to its dependency with the
+canonical =uses= relation. A query term connects to a dependency with
+=matches= only when the canonical dependency name equals the parser-produced
+query term.
+
+The action frontier MUST derive dependency actions exclusively from
+=query -> dependency / matches= edges. Query text, package-manager keywords,
+and renderer-local intent lists MUST NOT authorize an action. Missing typed
+edges fail closed.
+
+** Projection rendering is shared
+
+Search seeds MUST be rendered through
+=SearchProjectionRenderer= with the ranked-frontier projection. Protocol
+commands MUST NOT maintain a Rust-only graph renderer or a separate compact
+rendering interface.
+
+The renderer consumes the typed ranker result and does not reinterpret graph
+relations.
+
+* Performance contract
+
+Warm dependency topology reads MUST use the provider source-digest cache and
+MUST NOT reopen provider manifests or source files. The graph/action phase is
+an in-memory traversal of the typed packet.
+
+Cold execution invokes the activated provider once. Repeated renderer passes
+over the same packet MUST NOT invoke the provider again.
+
+* Regression gates
+
+- registered provider query routes require an exact selector and never a
+  lexical =--term=
+- legacy =DependencyFact= and dependency string matcher symbols are absent
+- dependency actions require a typed =matches= edge
+- a dependency node without a =matches= edge produces no action
+- search and projection crates compile independently of Protocol lifecycle
+  owners

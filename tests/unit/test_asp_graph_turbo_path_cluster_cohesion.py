@@ -1,7 +1,11 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph
-from asp_graph_turbo.query_weights import (
+from asp_python_graphs import TypedGraph
+from asp_python_graphs.query_weights import (
     query_package_cohesion_adjustment,
     query_package_cohesion_tokens,
 )
@@ -22,16 +26,16 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "languages/asp-typescript/src/cli/"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "languages/asp-typescript/src/cli/"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "languages/asp-typescript/src/cli/"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                 },
                 {
@@ -39,15 +43,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/src/parser/"
+                        "languages/asp-typescript/src/parser/"
                         "package_index.ts"
                     ),
                 },
@@ -56,15 +60,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-topology.v1.schema.json"
                     ),
                 },
@@ -73,15 +77,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-graph.v1.schema.json"
                     ),
                 },
@@ -90,15 +94,15 @@ def test_package_cohesion_scales_with_specific_path_token_coverage() -> None:
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                     "path": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                     "ownerPath": (
-                        "languages/typescript-lang-project-harness/schemas/"
+                        "languages/asp-typescript/schemas/"
                         "semantic-dependency-source.v1.schema.json"
                     ),
                 },

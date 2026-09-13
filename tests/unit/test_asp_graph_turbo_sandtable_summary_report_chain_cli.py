@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Report-chain gates for graph turbo sandtable summaries."""
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ def test_graph_turbo_sandtable_summary_consumes_large_library_report_chain(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -88,7 +92,7 @@ def test_graph_turbo_sandtable_summary_gate_blocks_unready_report_chain(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -125,7 +129,7 @@ def test_graph_turbo_sandtable_summary_text_includes_report_chain(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "sandtable-summary",
             "--benchmark",
             str(benchmark_path),
@@ -164,7 +168,7 @@ def _benchmark_stdout(packet_path: Path) -> str:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "benchmark",
             str(packet_path),
             "--runs",

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 name: CI
 
 on:
@@ -39,13 +43,13 @@ jobs:
         shell: bash
         run: |
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
-            languages/gerbil-scheme-language-project-harness \
-            languages/org \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -65,18 +69,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install asp-graph-turbo
+      - name: Validate asp-python-graphs service entry
         if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
           set -euo pipefail
-          tool_bin="$RUNNER_TEMP/asp-tools/bin"
-          tool_dir="$RUNNER_TEMP/asp-tools/tools"
-          mkdir -p "$tool_bin" "$tool_dir"
-          UV_TOOL_BIN_DIR="$tool_bin" UV_TOOL_DIR="$tool_dir" \
-            uv tool install packages/python/asp_graph_turbo
-          echo "$tool_bin" >> "$GITHUB_PATH"
-          "$tool_bin/asp-graph-turbo" --help
+          uv run --project packages/python/asp_python_graphs --frozen \
+            python -m asp_python_graphs.service_cli serve --help
 
       - name: Install sccache
         uses: taiki-e/install-action@v2
@@ -100,10 +99,10 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-${{ github.run_id }}
           restore-keys: |
-            asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
-            asp-rust-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
+            asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-
+            asp-rust-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml', 'schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}-
             asp-rust-sccache-${{ runner.os }}-
 
       - name: Cache cargo artifacts
@@ -111,7 +110,7 @@ jobs:
         with:
           workspaces: |
             . -> target
-          shared-key: asp-rust-ci-${{ runner.os }}
+          shared-key: asp-rust-ci-${{ runner.os }}-${{ hashFiles('schemas/provider-register.json', 'schemas/provider-install-register.json', 'languages/*/provider/asp-provider-registration.json', 'languages/*/tree-sitter/**/enhanced-query-capabilities.v1.json') }}
           cache-on-failure: true
 
       - name: Fetch cargo dependencies
@@ -126,29 +125,29 @@ jobs:
           mkdir -p .bin
           cargo build --bin asp
           install -m 755 target/debug/asp .bin/asp
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
-          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness .bin/rs-harness
-          npm --prefix languages/typescript-lang-project-harness ci
-          npm --prefix languages/typescript-lang-project-harness run build
-          cat > .bin/py-harness <<EOF
+          cargo build --manifest-path languages/asp-rust/Cargo.toml --features provider-server --bin asp-rust
+          install -m 755 languages/asp-rust/target/debug/asp-rust .bin/asp-rust
+          npm --prefix languages/asp-typescript ci
+          npm --prefix languages/asp-typescript run build
+          cat > .bin/asp-python <<EOF
           #!/usr/bin/env bash
-          exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen py-harness "\$@"
+          exec uv run --project "$repo_root/languages/asp-python" --frozen asp-python "\$@"
           EOF
-          cat > .bin/ts-harness <<EOF
+          cat > .bin/asp-typescript <<EOF
           #!/usr/bin/env bash
-          exec node "$repo_root/languages/typescript-lang-project-harness/dist/src/cli/main.js" "\$@"
+          exec node "$repo_root/languages/asp-typescript/dist/src/cli/main.js" "\$@"
           EOF
-          cat > .bin/asp-julia-harness <<'EOF'
+          cat > .bin/asp-julia <<'EOF'
           #!/usr/bin/env bash
-          echo "asp-julia-harness is validated outside the Rust unit-test job" >&2
+          echo "asp-julia is validated outside the Rust unit-test job" >&2
           exit 127
           EOF
-          cat > .bin/gslph <<'EOF'
+          cat > .bin/asp-gerbil-scheme <<'EOF'
           #!/usr/bin/env bash
-          echo "gslph is validated by the Gerbil language CI job" >&2
+          echo "asp-gerbil-scheme is validated by the Gerbil language CI job" >&2
           exit 127
           EOF
-          chmod 755 .bin/py-harness .bin/ts-harness .bin/asp-julia-harness .bin/gslph
+          chmod 755 .bin/asp-python .bin/asp-typescript .bin/asp-julia .bin/asp-gerbil-scheme
           echo "$PWD/.bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
@@ -163,10 +162,20 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Check portable Rust contracts on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: >-
+          cargo check
+          -p agent-semantic-client-protocol
+          -p agent-semantic-provider-protocol
+          -p agent-semantic-tree-sitter
+
       - name: Build asp binary
+        if: ${{ matrix.os != 'windows-latest' }}
         run: cargo build --bin asp
 
       - name: Run asp binary smoke
+        if: ${{ matrix.os != 'windows-latest' }}
         run: cargo run --quiet --bin asp -- guide
 
       - name: Save sccache cache (fallback)
@@ -190,13 +199,13 @@ jobs:
       - name: Checkout provider submodules
         run: |
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
-            languages/gerbil-scheme-language-project-harness \
-            languages/org \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -213,7 +222,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+          cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -225,30 +234,36 @@ jobs:
         with:
           workspaces: |
             . -> target
-            languages/rust-lang-project-harness -> languages/rust-lang-project-harness/target
+            languages/asp-rust -> languages/asp-rust/target
           shared-key: asp-rust-ci-${{ runner.os }}
           cache-on-failure: true
 
       - name: Fetch Rust dependencies
         run: |
           cargo fetch
-          cargo fetch --manifest-path languages/rust-lang-project-harness/Cargo.toml
+          cargo fetch --manifest-path languages/asp-rust/Cargo.toml
+
+      - name: ASP Rust workspace policy
+        run: >-
+          cargo test -p asp-rust-project-harness-policy
+          --features workspace-policy
+          --test integration_test
+          workspace_policy::asp_workspace_source_policy_is_clean
+          -- --nocapture
 
       - name: Root schema gates
         run: |
           uv run --project packages/python --frozen pytest \
-            tests/unit/test_semantic_common_schema_copy_sync.py \
             tests/unit/test_semantic_source_location_schema.py \
             tests/unit/test_semantic_tree_sitter_grammar_profile_schema.py \
             tests/unit/test_semantic_tree_sitter_provenance_schema.py \
             tests/unit/test_semantic_tree_sitter_query_schema.py \
             tests/unit/semantic_tree_sitter_query_rfc \
-            tests/unit/test_cli_first_harness_ux_rfc.py \
+            tests/unit/test_asp_server_first_architecture_rfc.py \
             tests/unit/test_agent_hook_interception_protocol_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
             tests/unit/test_ci_workflow_contracts.py \
             tests/unit/semantic_query_packet_schema/test_basic.py \
-            tests/unit/test_semantic_search_packet_schema.py \
             tests/unit/test_semantic_read_packet_schema.py \
             tests/unit/semantic_native_syntax_fact_index_schema \
             tests/unit/semantic_language_registry_schema \
@@ -256,14 +271,29 @@ jobs:
 
       - name: Python provider schema gates
         run: |
-          uv run --frozen --with pytest pytest \
-            tests/unit/harness/test_semantic_cli_direct_read.py \
-            tests/unit/harness/test_semantic_schema_registry.py \
+          cargo test -p agent-semantic-schema-manager \
+            canonical_client_profile_publishes_the_shared_schema_bundle_route \
+            --quiet
+          cargo test -p agent-semantic-runtime-server \
+            host_uds_schema_bundle_route_bypasses_workspace_generation \
+            --quiet
+          uv run --project languages/asp-python --frozen --with pytest pytest \
+            languages/asp-python/tests/unit/asp_python/test_semantic_language_schemas.py \
             -q
-        working-directory: languages/python-lang-project-harness
+
+      - name: Gerbil central schema profile gates
+        run: |
+          cargo test -p agent-semantic-schema-manager \
+            canonical_registry_verifies_every_registered_language_bundle \
+            --quiet
+          cargo test -p agent-semantic-runtime-server \
+            canonical_profiles_project_ready_and_unchanged_in_process_under_one_millisecond \
+            --quiet
 
       - name: Python provider policy gate
-        run: uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+        run: >-
+          uv run --project languages/asp-python --frozen python -c
+          'from asp_python import assert_asp_python_clean; assert_asp_python_clean(".")'
 
       - name: Build asp binary
         run: cargo build --bin asp
@@ -271,16 +301,23 @@ jobs:
       - name: Rust provider graph-render smoke gates
         run: |
           SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
               --workspace --all-targets --all-features --quiet \
               cli_search_graph_profiles_filter_to_rendered_aliases
           SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
-            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+            cargo test --manifest-path languages/asp-rust/Cargo.toml \
               --workspace --all-targets --all-features --quiet \
               cli_search_policy_renders_semantic_handles
 
       - name: Rust provider schema gates
-        run: cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml schema --features cli --quiet
+        run: |
+          cargo run --quiet --bin asp -- schema materialize --workspace . --language rust
+          cargo run --quiet --bin asp -- schema verify --workspace . --language rust
+          cargo run --quiet --bin asp -- schema publish-client \
+            --workspace . \
+            --language rust \
+            --output languages/asp-rust/schemas
+          cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
 
       - name: TypeScript provider schema gates
         run: |
@@ -289,41 +326,10 @@ jobs:
           node --test \
             dist/tests/unit/semantic_search_schema.test.js \
             dist/tests/unit/semantic_language_registry_read_packet.test.js
-        working-directory: languages/typescript-lang-project-harness
+        working-directory: languages/asp-typescript
 
-      - name: Language evidence and facade smoke gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --global @openai/codex@0.144.1
-          codex --version
-          mkdir -p "$HOME/.local/bin"
-          install -m 755 target/debug/asp "$HOME/.local/bin/asp"
-          export PATH="$HOME/.local/bin:$PATH"
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
-          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness "$HOME/.local/bin/rs-harness"
-          printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/ts-harness"
-          chmod 755 "$HOME/.local/bin/ts-harness"
-          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen py-harness "$@"\n' "$PWD" > "$HOME/.local/bin/py-harness"
-          chmod 755 "$HOME/.local/bin/py-harness"
-          cp .agents/asp.toml .agents/asp.toml.ci-full-provider
-          restore_asp_toml() {
-            mv .agents/asp.toml.ci-full-provider .agents/asp.toml
-          }
-          trap restore_asp_toml EXIT
-          cat > .agents/asp.toml <<'EOF'
-          [providers.gerbil-scheme]
-          enabled = false
-
-          [providers.julia]
-          enabled = false
-          EOF
-          asp install plugin --codex .
-          ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
-            ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
-            ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json \
-            uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
-          cat .cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json
+      - name: Language facade smoke gate
+        run: uv run --project packages/python/asp_python_graphs --frozen pytest tests/unit/test_language_facade_smoke.py -q
 
       - name: Tree-sitter query contract gates
         run: uv run --project packages/python --frozen python -m tools tree-sitter validate contracts

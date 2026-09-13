@@ -1,10 +1,19 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
-use crate::{OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode};
+use crate::OutputMode;
+use crate::ProviderProcessLimits;
+use crate::ProviderProcessSpec;
+use crate::StdinMode;
 
 pub(super) fn temp_dir(name: &str) -> PathBuf {
     let unique = SystemTime::now()
@@ -41,6 +50,8 @@ pub(super) fn spec(program: PathBuf, cwd: PathBuf) -> ProviderProcessSpec {
         args: Vec::new(),
         cwd,
         env: BTreeMap::new(),
+        remove_env: Default::default(),
+        remove_env_prefixes: Default::default(),
         stdin: StdinMode::Closed,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,

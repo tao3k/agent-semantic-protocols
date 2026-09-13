@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * One-sentence summary
 =smolagents= is useful to ASP as an external reference for code-as-reasoning: it shows how model-written code actions, tool calls, observations, errors, state, and plans can become structured run evidence. ASP's core theory and improvement scheme live in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]], not in this reference note.
 * Scope

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: V1 Runtime Execution Binding
+#+status: design and additive implementation
+
+* Current state and first divergence
+
+The artifact publication owner commits one content-addressed Runtime bundle
+under the publication guard. Active and healthy selectors, the activation
+receipt, the artifact digest, the bundle digest, and the publication nonce are
+validated as one transaction. Re-publishing identical bytes produces a fresh
+nonce without creating a second numeric lifecycle authority.
+
+The first semantic divergence is the evaluator boundary: policy generation
+digest is not sufficient evidence of the executable ASP binary that produced
+the decision. An active artifact receipt can contain binary and activation
+leaves, but the evaluator decision must carry the exact executable binding.
+
+A Host permission failure is a separate boundary failure. A State Home or
+Runtime socket EPERM is not an activation, admission, or semantic-content
+failure, and must never cause an implicit restart, install, retry, or identity
+change.
+
+* V1 contract
+
+The existing =asp.content-binding= schemaVersion =1= remains the content
+identity primitive. Runtime execution adds a typed composition containing:
+
+- ProjectId;
+- WorkspaceId;
+- publication nonce;
+- runtime artifact digest;
+- evaluator policy digest;
+- active artifact receipt digest; and
+- evaluator ABI/schema digest.
+
+The composition is immutable and exact. Same policy with a different binary,
+same binary with a different policy, and any cross-content composition are
+rejected before evaluator reuse or provider admission.
+
+** V1 legacy refresh
+
+Existing V1 documents that predate the execution-scope fields remain decodable.
+They are not admissible: an empty ProjectId, WorkspaceId, or publication nonce
+means =refresh-required=. Runtime Server reconstructs the canonical V1 binding
+from its verified serving publication and workspace admission, asks Artifacts
+to CAS-publish it, and retries admission against that publication. A malformed
+digest or an unverifiable receipt is not refreshable and fails closed. This is
+an in-version canonicalization rule, not a schemaVersion 2 migration.
+
+Runtime artifact activation has no numeric generation. Publication nonce plus
+content identity fences stale actors. Neither is a source generation,
+ClientFrame product identity, workspace identity, provider input, or cache key.
+ProjectId and WorkspaceId are explicit execution-scope identities; a filesystem
+project root is never their replacement.
+
+** V1 serving-endpoint path identity
+
+The daemon publisher and every ClientFrame resolver derive the fallback
+endpoint path from one platform-stable Runtime root.  On Unix that root is
+=/tmp/asp-runtime-server-<uid>/=; a process-local =temp_dir()= value is not an
+authority because macOS may project it as =/var/folders/...= while the daemon
+publishes under =/tmp=.  State Home canonicalization and the existing content
+identity suffix remain unchanged.  A resolver must first honor the resident
+publication and explicit publication directory, then use this same canonical
+fallback.  It must not prescribe a restart or another command when the endpoint
+is absent; it returns the typed transport result and leaves continuation to the
+Agent.
+
+* Authority and data flow
+
+ASP Server owns artifact receipt validation, exact execution-binding admission,
+evaluator lifecycle, WorkspaceSnapshot, SourceGeneration, SourceIndex, and
+provider admission. Artifact publication has one durable CAS commit. Providers
+consume immutable typed snapshots and return parser-owned facts. Clients carry
+the exact binding and render typed terminal receipts.
+
+The additive implementation seam is in
+=crates/agent-semantic-content-identity/src/runtime_execution.rs= and
+=search_execution.rs=. It is not a second serving authority; public cutover
+remains gated on Runtime Server integration and protected producer evidence.
+
+* Design review
+
+** Rejected: numeric generation authority
+
+It minimizes immediate migration but cannot distinguish equal labels with
+different binary or source content. It also leaves evaluator freshness coupled
+to implicit snapshots and environment equality. It is rejected as the product
+identity.
+
+** Rejected: content address without publication nonce
+
+It gives strong content equality but does not by itself specify actor ordering,
+ABA fencing, or crash-cut behavior. It also increases migration and digest
+materialization cost.
+
+** Selected: content identity plus publication nonce
+
+Content digests determine reuse and admission. A transaction-owned nonce binds
+the candidate, pending/applied receipt, and actor acknowledgement, preventing
+stale writes without exposing a second counter. Active and healthy selectors
+remain the only serving state.
+
+* Required gates
+
+- same content with a new nonce keeps the same content identity;
+- a stale nonce actor remains rejected;
+- same-policy/different-binary and same-binary/different-policy are rejected;
+- binary refresh invalidates the old evaluator binding;
+- publication crash cuts expose no mixed content;
+- cancellation does not commit;
+- 32 same-key requests single-flight and produce one terminal each; and
+- cold/warm measurements separate build, artifact lock, install, IPC, and
+  query phases.
+
+#+begin_comment
+Final public-route cutover requires a separate approval after the Host IPC
+permission boundary and protected evaluator producer evidence are available.
+#+end_comment

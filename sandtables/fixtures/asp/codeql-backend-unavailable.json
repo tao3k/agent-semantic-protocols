@@ -9,7 +9,7 @@
   "queryVersion": "2026-06-05.v1",
   "generatedAt": "2026-06-05T12:00:00Z",
   "languageId": "rust",
-  "providerId": "rs-harness",
+  "providerId": "asp-rust",
   "projectRoot": ".",
   "inputHandles": [
     "param:input",

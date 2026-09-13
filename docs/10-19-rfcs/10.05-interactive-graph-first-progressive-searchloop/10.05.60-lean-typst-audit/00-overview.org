@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Lean, Typst, and AXLE audit
+#+PROPERTY: rfc_layer lean-typst-audit
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Ownership
+
+This layer owns the mathematical exposition embedded as Org Babel Typst,
+executable Lean models under =packages/proofs=, Lean JSON audit receipts, and
+AXLE consumption of those receipts.
+
+It does not own runtime search implementation. A proof failure or countermodel
+is an RFC design input until the RFC model is repaired.
+
+* Audit identity finding
+
+The legacy merge and cache receipts contain more than one theorem in the same
+theorem family. The standalone Lean-to-AXLE consumer originally rejected both
+with =duplicate theorem family= even though the canonical AXLE validator
+already treated theorem families as a coverage set. The standalone rule
+confused a grouping dimension with an identity dimension.
+
+The corrected mathematical contract is:
+
+- =theoremId= MUST be unique within one receipt;
+- =(familyId, obligationId)= MUST be unique within one receipt;
+- =familyId= MAY repeat because one family may contain several obligations;
+- required-family coverage means every required family has at least one
+  accepted theorem, not exactly one theorem.
+
+The executable countermodel is
+[[file:../../../../packages/proofs/ASPProof/AuditFamilyIdentity.lean][ASPProof.AuditFamilyIdentity]].
+Its axiom audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/AuditFamilyIdentity.lean][ASPProof.Audit.AuditFamilyIdentity]].
+The modular Lean JSON emitter is
+[[file:../../../../packages/proofs/audit/AuditFamilyIdentityAudit.lean][AuditFamilyIdentityAudit.lean]],
+and its checked source receipt is
+[[file:../../../../packages/proofs/receipts/audit-family-identity-audit-v1.json][audit-family-identity-audit-v1.json]].
+The AXLE consumer accepts 2 declarations in the repeated
+=audit-family-identity= family with receipt hash
+=ce86f9b0d21a6c21c791f6cba512c7eb32d453c4ed04f2a49537236f9ce7d667=.
+The standalone consumer now follows the canonical validator:
+
+- allowed axioms are an upper bound rather than an exact inventory;
+- required theorem families and RFC clauses are lower-bound coverage sets;
+- emitted theorem families are canonicalized as a sorted set;
+- =auditSha256= hashes canonical sorted compact JSON, not presentation bytes.
+
+The merge receipt validates as 13 declarations across 5 theorem families with
+audit hash
+=4a64686fefd07261443ef4ec3c122d4dceaf57e6f4b378d37c8b3709af998d28=.
+The cache receipt validates as 12 declarations across 5 theorem families with
+audit hash
+=bfa665421555ff0a3a6977160da5568bf71a25a2c0c2b7c5bb07806c7187d162=.
+A successful Lean build still is not sufficient evidence by itself; AXLE
+receipt validation remains a separate required gate.
+
+* Canonical RFCs
+
+- [[file:00.02-axle-lean-rfc-validation.org][AXLE and Lean RFC validation]]
+- [[file:00.10-clause-first-lean-proof-plan.org][Clause-first Lean proof plan]]
+- [[file:00.11-clause-first-mathematical-model.org][Clause-first mathematical model]]
+- [[file:00.12-searchloop-trace-and-lean-json-audit.org][SearchLoop trace and Lean JSON audit]]

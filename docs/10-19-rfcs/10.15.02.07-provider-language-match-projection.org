@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: 10.15.02.07 Declarative Language Profile Projection
+#+STATUS: Implemented
+
+* Problem
+
+Hook source matching needs replayable language, provider, and extension facts,
+but synchronous decisions must not depend on provider manifests, installed
+binaries, Runtime activation, or rematerialized compatibility snapshots.
+
+* Authority and projection
+
+The v1 client Hook config owns a declarative =[profiles.<id>]= catalog.  Every
+profile declares =languageId=, =providerId=, and =extensionAny=.  Rules opt in
+with =profilesList=; the compiler projects those profiles into immutable matcher
+IR and binary-free provider routes.
+
+Profiles are language-local and additive.  Adding a language means adding one
+profile and referencing it from the relevant rules.  No generated
+=languageProviders= table, manifest digest, binary lookup, or provider-runtime
+snapshot participates in matching.
+
+* Runtime contract
+
+The Hook consumes the compiled profile projection locally.  Runtime/provider
+health is a separate asynchronous concern.  If a selected provider route is not
+available, the Hook remains fail closed and returns typed unavailable evidence;
+it does not synchronously load, install, or inspect a Runtime binary.
+
+* Acceptance
+
+- Every configured extension maps to exactly one language/provider identity.
+- Unknown profiles and cross-provider extension collisions fail validation.
+- Native Read and opaque registered-source access select the same profile-owned
+  identity without consulting activation state.
+- Matcher publication and replay are deterministic from Config TOML alone.
+- No Hook config/schema field named =languageProviders= or =manifestDigest=
+  exists.

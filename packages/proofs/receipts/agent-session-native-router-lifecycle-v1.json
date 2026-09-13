@@ -1,0 +1,12 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.AgentSessionNativeRouterLifecycle",
+  "sourcePath": "ASPProof/AgentSessionNativeRouterLifecycle.lean",
+  "leanVersion": "4.32.2",
+  "hasSorryAx": false,
+  "declarationCount": 21,
+  "axiomFreeDeclarationCount": 21,
+  "axiomDependentDeclarationCount": 0
+}

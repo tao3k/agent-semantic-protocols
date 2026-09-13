@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-server-descriptor.schema.json",
+  "title": "ASP Client Server Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "transport", "command", "healthPath", "requestPath", "shutdownPath", "warmupPolicy"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.asp-client-server-descriptor" },
+    "schemaVersion": { "const": "1" },
+    "transport": { "const": "http-json" },
+    "command": { "const": ["serve"] },
+    "healthPath": { "const": "/health" },
+    "requestPath": { "const": "/v1/provider-runtime" },
+    "shutdownPath": { "const": "/shutdown" },
+    "warmupPolicy": { "enum": ["before-ready"] }
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 id = "turso-unified-search-interface-warm-path"
 title = "Turso DB search interface serves overlay and structural search without provider fallback"
 policy_ids = ["SEARCH-AGENT-ASP-PERF-TURSO-UNIFIED-SEARCH-001"]
