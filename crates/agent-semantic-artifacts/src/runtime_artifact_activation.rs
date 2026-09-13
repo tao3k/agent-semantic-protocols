@@ -441,7 +441,20 @@ pub(crate) async fn prepare_runtime_artifact_serving_snapshot(
                 &receipt_bytes,
                 "active Runtime artifact activation receipt",
             )?;
-            if healthy != applied.candidate_slot_path {
+            let healthy_identity = std::fs::canonicalize(&healthy).map_err(|error| {
+                format!(
+                    "state=runtime-artifact-publication-failed reasonKind=healthy-slot-invalid path={} error={error}",
+                    healthy.display()
+                )
+            })?;
+            let applied_candidate_identity =
+                std::fs::canonicalize(&applied.candidate_slot_path).map_err(|error| {
+                    format!(
+                        "state=runtime-artifact-publication-failed reasonKind=applied-candidate-invalid path={} error={error}",
+                        applied.candidate_slot_path.display()
+                    )
+                })?;
+            if healthy_identity != applied_candidate_identity {
                 return Err(format!(
                     "state=runtime-artifact-publication-failed reasonKind=healthy-applied-identity-mismatch healthy={} applied={}",
                     healthy.display(),

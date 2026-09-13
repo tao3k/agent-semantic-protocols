@@ -138,12 +138,12 @@ fn observe_one_with_wrapped(
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (tokens, dynamic_cache_root_override);
-        return terminal(
+        terminal(
             ReaderProbeAccess::Unknown,
             "unsupported-platform",
             "unavailable",
             false,
-        );
+        )
     }
 
     #[cfg(target_os = "macos")]

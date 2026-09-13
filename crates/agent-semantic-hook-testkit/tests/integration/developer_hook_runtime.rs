@@ -52,6 +52,22 @@ async fn publish(state_home: &Path, sources: &Path, label: &str) -> String {
     .to_string()
 }
 
+async fn qualify_active_runtime(state_home: &Path) {
+    let active_runtime = std::fs::canonicalize(state_home.join("runtime/artifacts/active/asp"))
+        .expect("resolve active Runtime binary");
+    let digest =
+        agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+            &active_runtime,
+        )
+        .await
+        .expect("active Runtime binary digest");
+    agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
+        state_home, "asp", &digest,
+    )
+    .await
+    .expect("health-qualify active Runtime bundle");
+}
+
 async fn invoke(state_home: &Path) -> serde_json::Value {
     let mut spec = HookProcessSpec::new(launcher(), state_home);
     spec.args = vec![
@@ -97,6 +113,11 @@ async fn thirty_two_real_launcher_calls_crossing_switch_observe_only_old_or_new(
     let sources = temp.path().join("sources");
     std::fs::create_dir_all(&sources).expect("sources");
     publish(&state_home, &sources, "old").await;
+    // Publication exposes an active candidate awaiting health; it does not
+    // itself establish rollback reachability. Qualify the predecessor before
+    // exercising the active=new/healthy=old launch window so retention keeps
+    // both generations executable for in-flight path resolution.
+    qualify_active_runtime(&state_home).await;
     let barrier = Arc::new(tokio::sync::Barrier::new(33));
     let mut calls = Vec::new();
     for _ in 0..32 {
