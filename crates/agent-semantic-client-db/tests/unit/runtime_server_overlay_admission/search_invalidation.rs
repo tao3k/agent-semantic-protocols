@@ -17,6 +17,7 @@ use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot;
 
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
+const FIXTURE_PROJECT_ID: &str = "repo-0000000000000001";
 
 fn fixture_root() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -36,7 +37,7 @@ fn content_search_generation_receipt(
     use agent_semantic_search::SearchGenerationStageReceipt;
     use agent_semantic_search::canonical_blake3_digest;
     let identity = SearchGenerationIdentity {
-        project_id: "project-overlay-fixture".to_owned(),
+        project_id: FIXTURE_PROJECT_ID.to_owned(),
         workspace_id: workspace_identity.to_owned(),
         source_root_digest: canonical_blake3_digest(&source_snapshot.root_digest).unwrap(),
         provider_digest: canonical_blake3_digest(&source_snapshot.provider_digest).unwrap(),
@@ -61,6 +62,7 @@ fn content_search_generation_receipt(
 fn generation(
     workspace_identity: &str,
     project_root: &std::path::Path,
+    active_epoch: u64,
     bytes: &[u8],
     selector: WorkspaceSelectorSnapshot,
     relation: agent_semantic_client_db::ClientDbSourceIndexOwnedRelation,
@@ -76,24 +78,38 @@ fn generation(
             blake3::hash(b"runtime-search-invalidation-provider").to_hex()
         ),
     );
+    let module_graph_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(b"runtime-search-invalidation-module-graph").to_hex()
+    );
+    let runtime_provider_execution_binding =
+        agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
+            FIXTURE_PROJECT_ID.to_owned(),
+            workspace_identity.to_owned(),
+            format!("blake3-256:{}", "2".repeat(64)),
+            format!("blake3-256:{}", "3".repeat(64)),
+            format!("blake3-256:{}", "4".repeat(64)),
+            source_snapshot
+                .root_integrity_reference()
+                .expect("fixture source snapshot integrity reference"),
+            module_graph_digest.clone(),
+        )
+        .expect("fixture Runtime provider execution binding");
     WorkspaceMemoryGeneration::try_from_build(WorkspaceGenerationBuild {
         projection_capability:
             agent_semantic_client_db::fixture::projection_capability_manifest_fixture(),
         relations: vec![relation],
         workspace_identity: workspace_identity.to_owned(),
         project_root: project_root.display().to_string(),
-        active_epoch: 1,
+        active_epoch,
         workspace_snapshot,
         content_search_generation: content_search_generation_receipt(
             workspace_identity,
             &source_snapshot,
         ),
         source_snapshot,
-        module_graph_digest: format!(
-            "blake3-256:{}",
-            blake3::hash(b"runtime-search-invalidation-module-graph").to_hex()
-        ),
-        runtime_provider_execution_binding: None,
+        module_graph_digest,
+        runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
         project_resolutions: Vec::new(),
         auxiliary_owners: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
@@ -109,7 +125,7 @@ fn generation(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch() {
+async fn canonical_rebuild_invalidates_lexical_postings_and_graph_edges_in_one_epoch() {
     let root = fixture_root();
     let workspace_identity = "workspace-atomic-search-invalidation";
     let registry =
@@ -143,6 +159,7 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
             generation(
                 workspace_identity,
                 &root,
+                1,
                 b"fn stale() {}",
                 stale_selector.clone(),
                 stale_relation,
@@ -183,7 +200,7 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
             derived_projections: Vec::new(),
         }],
     };
-    registry
+    let missing_generation_proof = registry
         .publish_owner_delta(
             "replace-owner-and-invalidate-derived-search-state",
             workspace_identity,
@@ -198,7 +215,46 @@ async fn owner_delta_invalidates_lexical_postings_and_graph_edges_in_one_epoch()
             },
         )
         .await
-        .expect("publish fresh owner generation");
+        .expect_err("owner delta cannot mint a content search generation");
+    assert!(missing_generation_proof.contains("canonical generation rebuild required"));
+
+    let fresh_selector = WorkspaceSelectorSnapshot {
+        selector: "rust://src/lib.rs#item/function/fresh".to_owned(),
+        byte_start: 0,
+        byte_end: fresh_bytes.len(),
+        query_keys: vec!["fresh".to_owned()],
+        derived_projections: Vec::new(),
+    };
+    let fresh_relation = agent_semantic_client_db::ClientDbSourceIndexOwnedRelation {
+        owner_path: agent_semantic_client_db::ClientDbSourceIndexPath::new("src/lib.rs"),
+        relation:
+            agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+                from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: fresh_selector.selector.clone(),
+                },
+                kind: "calls".into(),
+                to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                    kind: agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item,
+                    id: "rust://src/lib.rs#item/function/dependency".into(),
+                },
+            },
+    };
+    registry
+        .publish(
+            "publish-proven-fresh-search-generation",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                workspace_identity,
+                &root,
+                2,
+                fresh_bytes,
+                fresh_selector,
+                fresh_relation,
+            ),
+        )
+        .await
+        .expect("publish proven fresh search generation");
 
     let current = registry
         .lease(workspace_identity, &root)
