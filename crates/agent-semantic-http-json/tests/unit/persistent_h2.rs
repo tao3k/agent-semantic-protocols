@@ -73,7 +73,7 @@ async fn persistent_h2_uses_one_accept_for_256_multiplexed_frames() {
     );
     assert_eq!(accepted.load(Ordering::Relaxed), 256);
     let client = Arc::try_unwrap(client).unwrap_or_else(|_| panic!("client still referenced"));
-    client.close().await.unwrap();
     shutdown.send(true).unwrap();
     server.await.unwrap();
+    client.close().await.unwrap();
 }
