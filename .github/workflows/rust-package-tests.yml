@@ -18,104 +18,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test-fixtures:
-    name: Build shared Runtime test fixtures
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Checkout provider catalog submodules
-        run: |
-          git submodule update --init --depth 1 \
-            languages/asp-rust \
-            languages/asp-gerbil-scheme \
-            org \
-            languages/orgize \
-            languages/asp-typescript \
-            languages/asp-python \
-            languages/AspJulia.jl
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: languages/asp-typescript/package-lock.json
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: sccache
-
-      - name: Configure shared compiler cache
-        shell: bash
-        run: |
-          echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> "$GITHUB_ENV"
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-
-      - name: Restore shared compiler cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ github.workspace }}/.sccache/
-          key: rust-package-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.run_id }}
-          restore-keys: |
-            rust-package-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
-            rust-package-sccache-${{ runner.os }}-
-
-      - name: Build provider fixtures once
-        shell: bash
-        run: |
-          set -euo pipefail
-          repo_root="$PWD"
-          mkdir -p .bin
-          cargo build --bin asp
-          install -m 755 target/debug/asp .bin/asp
-          cargo build --manifest-path languages/asp-rust/Cargo.toml --features provider-server --bin asp-rust
-          install -m 755 languages/asp-rust/target/debug/asp-rust .bin/asp-rust
-          npm --prefix languages/asp-typescript ci
-          npm --prefix languages/asp-typescript run build
-          cat > .bin/asp-python <<EOF
-          #!/usr/bin/env bash
-          exec uv run --project "$repo_root/languages/asp-python" --frozen asp-python "\$@"
-          EOF
-          cat > .bin/asp-typescript <<EOF
-          #!/usr/bin/env bash
-          exec node "$repo_root/languages/asp-typescript/dist/src/cli/main.js" "\$@"
-          EOF
-          cat > .bin/asp-julia <<'EOF'
-          #!/usr/bin/env bash
-          echo "asp-julia is validated outside the Rust package-test matrix" >&2
-          exit 127
-          EOF
-          cat > .bin/asp-gerbil-scheme <<'EOF'
-          #!/usr/bin/env bash
-          echo "asp-gerbil-scheme is validated by the Gerbil language CI job" >&2
-          exit 127
-          EOF
-          chmod 755 .bin/*
-
-      - name: Publish shared fixtures
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-runtime-test-fixtures
-          path: |
-            .bin/
-            languages/asp-typescript/dist/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: sccache summary
-        if: ${{ always() }}
-        run: sccache --show-stats || true
-
   package-test:
     name: Test ${{ matrix.package }}
-    needs: test-fixtures
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -166,40 +70,6 @@ jobs:
             languages/AspJulia.jl
 
       - uses: dtolnay/rust-toolchain@stable
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: sccache
-
-      - name: Configure shared compiler cache
-        shell: bash
-        run: |
-          echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> "$GITHUB_ENV"
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "$PWD/.bin" >> "$GITHUB_PATH"
-
-      - name: Read shared compiler cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ github.workspace }}/.sccache/
-          key: rust-package-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.run_id }}
-          restore-keys: |
-            rust-package-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
-            rust-package-sccache-${{ runner.os }}-
-
-      - name: Restore shared Runtime test fixtures
-        uses: actions/download-artifact@v5
-        with:
-          name: rust-runtime-test-fixtures
-          path: .
 
       - name: Restore package-local Cargo state
         uses: Swatinem/rust-cache@v2
@@ -209,11 +79,4 @@ jobs:
           cache-on-failure: true
 
       - name: Test package
-        shell: bash
-        run: |
-          chmod 755 .bin/*
-          cargo test -p "${{ matrix.package }}" --all-targets --all-features
-
-      - name: sccache summary
-        if: ${{ always() }}
-        run: sccache --show-stats || true
+        run: cargo test -p "${{ matrix.package }}" --all-targets --all-features
