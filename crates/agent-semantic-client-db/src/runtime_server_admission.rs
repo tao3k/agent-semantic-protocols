@@ -278,12 +278,17 @@ impl WorkspaceGenerationAdmission {
         crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
         String,
     > {
-        let workspace_identity = crate::AgentSessionRegistry::workspace_id(&project_root)?;
-        let entry =
-            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
-                workspace_identity,
+        // State Core performs filesystem and Gix identity discovery. Keep that
+        // blocking work off Tokio's async workers and resolve the root exactly
+        // once; the former workspace_id + catalog-entry path rediscovered the
+        // same repository twice for every cold control admission.
+        let entry = tokio::task::spawn_blocking(move || {
+            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve_project_root(
                 project_root,
-            )?;
+            )
+        })
+        .await
+        .map_err(|error| format!("workspace identity resolution task failed: {error}"))??;
         // The catalog is a derived locator.  Linearize its resident identity
         // before acknowledging control admission, but keep flush/rename off
         // the request path; callers that require durable settlement use the

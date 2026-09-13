@@ -112,20 +112,25 @@ impl RuntimeWorkspaceAdmissionCatalogMutation {
 }
 
 impl RuntimeWorkspaceAdmissionCatalogEntry {
-    pub fn resolve(workspace_identity: String, project_root: PathBuf) -> Result<Self, String> {
+    pub fn resolve_project_root(project_root: PathBuf) -> Result<Self, String> {
         let state = agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)?;
-        if state.workspace.workspace_id.as_str() != workspace_identity {
-            return Err(format!(
-                "workspace admission catalog identity drift: requestedWorkspaceId={workspace_identity} resolvedWorkspaceId={}",
-                state.workspace.workspace_id
-            ));
-        }
         let entry = Self {
             project_id: state.repo.repo_id.to_string(),
-            workspace_identity,
+            workspace_identity: state.workspace.workspace_id.to_string(),
             project_root,
         };
         entry.validate()?;
+        Ok(entry)
+    }
+
+    pub fn resolve(workspace_identity: String, project_root: PathBuf) -> Result<Self, String> {
+        let entry = Self::resolve_project_root(project_root)?;
+        if entry.workspace_identity != workspace_identity {
+            return Err(format!(
+                "workspace admission catalog identity drift: requestedWorkspaceId={workspace_identity} resolvedWorkspaceId={}",
+                entry.workspace_identity
+            ));
+        }
         Ok(entry)
     }
 
