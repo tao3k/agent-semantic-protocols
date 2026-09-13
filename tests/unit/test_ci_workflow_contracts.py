@@ -31,6 +31,8 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert len(matrix_packages) == 28
     assert set(matrix_packages) == set(workspace_packages)
     assert "max-parallel: 28" in workflow
+    assert "github.event.pull_request.number || github.ref" in workflow
+    assert "cancel-in-progress: true" in workflow
     assert (
         'cargo clippy -p "${{ matrix.package }}" --all-targets --all-features -- -D warnings'
         in workflow
@@ -47,6 +49,8 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "cargo build -p agent-semantic-hook --bin asp-hook" in workflow
     assert "--ignored --exact" not in workflow
     monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert "github.event.pull_request.number || github.ref" in monolithic_workflow
+    assert "cancel-in-progress: true" in monolithic_workflow
     assert "cargo test --workspace --all-targets --all-features" not in monolithic_workflow
     assert "cargo clippy --workspace --all-targets --all-features" not in monolithic_workflow
     assert "rust-format:" in monolithic_workflow
