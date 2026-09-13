@@ -28,7 +28,9 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
         workspace_packages.append(manifest["package"]["name"])
 
     assert len(matrix_packages) == len(set(matrix_packages))
+    assert len(matrix_packages) == 28
     assert set(matrix_packages) == set(workspace_packages)
+    assert "max-parallel: 28" in workflow
     assert 'cargo test -p "${{ matrix.package }}" --all-targets --all-features' in workflow
     assert "needs: test-fixtures" not in workflow
     assert "cargo build --bin asp" not in workflow
