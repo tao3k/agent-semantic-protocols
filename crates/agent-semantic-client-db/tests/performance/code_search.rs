@@ -45,6 +45,34 @@ fn benchmark_u64(manifest: &str, key: &str) -> u64 {
         .unwrap_or_else(|| panic!("missing {key} benchmark value"))
 }
 
+fn bind_search_generation_authority(
+    materialization: &mut agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+) {
+    let workspace_identity = materialization.workspace_identity.clone();
+    let source_snapshot = materialization.source_snapshot.clone();
+    let binding = agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
+        crate::fixture::FIXTURE_PROJECT_ID.to_owned(),
+        workspace_identity.clone(),
+        format!("blake3-256:{}", "a".repeat(64)),
+        format!("blake3-256:{}", "b".repeat(64)),
+        format!("blake3-256:{}", "c".repeat(64)),
+        source_snapshot
+            .root_integrity_reference()
+            .expect("fixture source snapshot integrity"),
+        materialization.import_digest.clone(),
+    )
+    .expect("build fixture Runtime provider execution binding");
+    materialization
+        .bind_runtime_provider_execution(binding)
+        .expect("bind fixture Runtime provider execution");
+    materialization
+        .attach_content_search_generation(crate::fixture::content_search_generation_receipt(
+            &workspace_identity,
+            &source_snapshot,
+        ))
+        .expect("attach fixture content search generation receipt");
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[expect(
     clippy::await_holding_lock,
@@ -181,7 +209,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         .expect("create resident workspace registry"),
     );
     let second_workspace_owner_snapshot = owner_snapshot.clone();
-    let canonical_materialization =
+    let mut canonical_materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
             workspace_identity,
             source_snapshot.clone(),
@@ -191,8 +219,9 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             Vec::new(),
         )
         .expect("assemble canonical workspace materialization");
+    bind_search_generation_authority(&mut canonical_materialization);
     let second_workspace_identity = "workspace-code-search-performance-second";
-    let second_workspace_materialization =
+    let mut second_workspace_materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
             second_workspace_identity,
             source_snapshot.clone(),
@@ -202,6 +231,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             Vec::new(),
         )
         .expect("assemble second canonical workspace materialization");
+    bind_search_generation_authority(&mut second_workspace_materialization);
     let canonical_runtime_project_root =
         std::path::PathBuf::from(&canonical_materialization.project_root);
     let canonical_materialization_replay = canonical_materialization
@@ -308,7 +338,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
                 native_syntax_diagnostic: None,
                 selectors: Vec::new(),
             };
-        let sample_materialization =
+        let mut sample_materialization =
             agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
                 sample_workspace_identity.clone(),
                 source_snapshot.clone(),
@@ -317,7 +347,9 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
                 vec![sample_owner],
                 Vec::new(),
             )
-            .expect("assemble cold pressure canonical materialization")
+            .expect("assemble cold pressure canonical materialization");
+        bind_search_generation_authority(&mut sample_materialization);
+        let sample_materialization = sample_materialization
             .into_validated(&sample_workspace_identity)
             .expect("validate cold pressure canonical materialization");
         runtime_registry

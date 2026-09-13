@@ -76,14 +76,27 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         }
     })));
 
+    let fixture_root = tempfile::tempdir().expect("create isolated workspace identity root");
+    let workspaces = (0..workspace_count)
+        .map(|workspace_index| {
+            let root = fixture_root
+                .path()
+                .join(format!("workspace-{workspace_index}"));
+            std::fs::create_dir(&root).expect("create canonical workspace identity fixture");
+            let workspace_identity =
+                agent_semantic_client_db::AgentSessionRegistry::workspace_id(&root)
+                    .expect("derive canonical workspace identity");
+            (workspace_identity, root)
+        })
+        .collect::<Vec<_>>();
+
     let mut requests = tokio::task::JoinSet::new();
-    for workspace_index in 0..workspace_count {
+    for (workspace_index, workspace) in workspaces.iter().enumerate() {
         for _ in 0..calls_per_workspace {
             let admission = Arc::clone(&admission);
             let candidate = candidate.clone();
+            let (workspace_identity, root) = workspace.clone();
             requests.spawn(async move {
-                let workspace_identity = format!("workspace-{workspace_index}");
-                let root = std::env::temp_dir().join(&workspace_identity);
                 let started = tokio::time::Instant::now();
                 let receipt = admission
                     .admit(workspace_identity, root.clone(), candidate)
@@ -94,18 +107,25 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
     }
 
     let mut accepted_per_workspace = vec![0_usize; workspace_count];
+    let mut accepted_attempts = vec![Vec::new(); workspace_count];
     let mut latencies = Vec::with_capacity(workspace_count * calls_per_workspace);
     tokio::time::timeout(Duration::from_millis(100), async {
         while let Some(joined) = requests.join_next().await {
             let (workspace_index, receipt, latency) = joined.expect("join admission request");
             let receipt = receipt.expect("admit workspace mutation");
             accepted_per_workspace[workspace_index] += usize::from(receipt.accepted);
+            if receipt.accepted {
+                accepted_attempts[workspace_index].push(receipt.attempt);
+            }
             latencies.push(latency);
         }
     })
     .await
     .expect("all in-process admission submissions must complete within 100ms");
-    assert!(accepted_per_workspace.iter().all(|accepted| *accepted == 1));
+    assert!(
+        accepted_per_workspace.iter().all(|accepted| *accepted == 1),
+        "each workspace must admit exactly one build: counts={accepted_per_workspace:?} attempts={accepted_attempts:?}"
+    );
     latencies.sort_unstable();
     let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
     eprintln!(
@@ -128,12 +148,10 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
     assert_eq!(build_count.load(Ordering::Acquire), workspace_count);
 
     release.add_permits(workspace_count);
-    for workspace_index in 0..workspace_count {
-        let workspace_identity = format!("workspace-{workspace_index}");
-        let root = std::env::temp_dir().join(&workspace_identity);
+    for (workspace_identity, root) in &workspaces {
         let terminal = tokio::time::timeout(
             Duration::from_millis(100),
-            admission.wait_terminal(&workspace_identity, &root),
+            admission.wait_terminal(workspace_identity, root),
         )
         .await
         .expect("workspace admission must become terminal within 100ms")

@@ -5,5 +5,11 @@
 
 #[path = "performance/code_search.rs"]
 mod code_search;
+#[allow(
+    dead_code,
+    reason = "shared fixture helpers are selected per test target"
+)]
+#[path = "unit/projection_capability_fixture.rs"]
+mod fixture;
 #[path = "unit/runtime_generation_admission_gate.rs"]
 mod runtime_generation_admission_gate;

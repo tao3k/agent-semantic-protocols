@@ -572,7 +572,7 @@ impl WorkspaceGenerationAdmission {
             if observed.state == WorkspaceGenerationAdmissionState::Queued {
                 return Ok(observed);
             }
-            if entry.lane.observed().building
+            if observed.state == WorkspaceGenerationAdmissionState::Building
                 && same_candidate(&observed)
                 && (cold_target_paths.is_empty() || entry.building_covers(&cold_target_paths))
             {
@@ -606,7 +606,7 @@ impl WorkspaceGenerationAdmission {
                     let observed = entry.observed();
                     if reusable_ready(&observed, build_mode)
                         || observed.state == WorkspaceGenerationAdmissionState::Queued
-                        || (entry.lane.observed().building
+                        || (observed.state == WorkspaceGenerationAdmissionState::Building
                             && (cold_target_paths.is_empty()
                                 || entry.building_covers(&cold_target_paths)))
                     {
@@ -623,7 +623,7 @@ impl WorkspaceGenerationAdmission {
         if observed.state == WorkspaceGenerationAdmissionState::Queued {
             return Ok(observed);
         }
-        if entry.lane.observed().building {
+        if observed.state == WorkspaceGenerationAdmissionState::Building {
             return Ok(observed);
         }
         if build_mode == WorkspaceGenerationBuildMode::RestoreOrBuild
