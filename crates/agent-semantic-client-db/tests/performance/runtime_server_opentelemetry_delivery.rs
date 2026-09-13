@@ -47,7 +47,10 @@ async fn duplicate_budget_failure_identity_is_recorded_once() {
     observation.seal_budget_failure_identity();
     assert!(handle.try_record(observation.clone()));
     assert!(handle.try_record(observation));
-    tokio::task::yield_now().await;
+    handle
+        .flush()
+        .await
+        .expect("failure de-duplication observations should reach the resident live store");
 
     let receipt = query_runtime_performance(
         &query_socket_path,

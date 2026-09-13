@@ -18,7 +18,7 @@ use opentelemetry_sdk::{
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc, watch},
+    sync::{mpsc, oneshot, watch},
 };
 
 use super::{
@@ -31,8 +31,18 @@ use super::{
 
 #[derive(Clone, Debug)]
 pub struct RuntimeServerOpenTelemetryHandle {
-    sender: mpsc::Sender<RuntimePerformanceObservation>,
+    sender: mpsc::Sender<RuntimeTelemetryLaneMessage>,
     dropped_observations: Arc<std::sync::atomic::AtomicU64>,
+}
+
+#[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "observations stay inline because heap allocation belongs outside the sub-millisecond telemetry admission path; fences are rare control messages"
+)]
+enum RuntimeTelemetryLaneMessage {
+    Observation(RuntimePerformanceObservation),
+    Fence(oneshot::Sender<()>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -52,7 +62,10 @@ impl RuntimeServerOpenTelemetryHandle {
         self.try_record(event.into_observation())
     }
     pub fn try_record(&self, observation: RuntimePerformanceObservation) -> bool {
-        match self.sender.try_send(observation) {
+        match self
+            .sender
+            .try_send(RuntimeTelemetryLaneMessage::Observation(observation))
+        {
             Ok(()) => true,
             Err(_) => {
                 self.dropped_observations
@@ -65,6 +78,22 @@ impl RuntimeServerOpenTelemetryHandle {
     pub fn dropped_observation_count(&self) -> u64 {
         self.dropped_observations
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Waits for the resident lane to consume every message admitted before
+    /// this fence. Unlike a scheduler yield, the acknowledgement establishes
+    /// an explicit FIFO happens-before relation with the live query store.
+    pub async fn flush(&self) -> Result<(), String> {
+        let (acknowledge, acknowledged) = oneshot::channel();
+        self.sender
+            .send(RuntimeTelemetryLaneMessage::Fence(acknowledge))
+            .await
+            .map_err(|_| {
+                "Runtime Server telemetry lane closed before accepting fence".to_owned()
+            })?;
+        acknowledged.await.map_err(|_| {
+            "Runtime Server telemetry lane closed before acknowledging fence".to_owned()
+        })
     }
 }
 
@@ -252,13 +281,25 @@ impl RuntimeServerOpenTelemetry {
                     _ = telemetry_shutdown.changed() => {
                         telemetry_receiver.close();
                         while let Some(event) = telemetry_receiver.recv().await {
-                            if telemetry_sender.send(event.into_observation()).await.is_err() { break; }
+                            if telemetry_sender
+                                .send(RuntimeTelemetryLaneMessage::Observation(event.into_observation()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                         break;
                     }
                     event = telemetry_receiver.recv() => match event {
                         Some(event) => {
-                            if telemetry_sender.send(event.into_observation()).await.is_err() { break; }
+                            if telemetry_sender
+                                .send(RuntimeTelemetryLaneMessage::Observation(event.into_observation()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
                         }
                         None => break,
                     }
@@ -372,7 +413,7 @@ pub async fn admit_to_runtime(
 )]
 async fn run_resident_telemetry_lane(
     database_path: std::path::PathBuf,
-    mut receiver: mpsc::Receiver<RuntimePerformanceObservation>,
+    mut receiver: mpsc::Receiver<RuntimeTelemetryLaneMessage>,
     ingress: tokio::net::UnixListener,
     query_listener: tokio::net::UnixListener,
     dropped_observations: Arc<std::sync::atomic::AtomicU64>,
@@ -456,21 +497,21 @@ async fn run_resident_telemetry_lane(
             biased;
             changed = shutdown.changed() => {
                 let _ = changed;
-                while let Ok(observation) = receiver.try_recv() {
-                    record_observation_with_memory(
+                while let Ok(message) = receiver.try_recv() {
+                    commit_lane_message(
+                        message,
                         &tracer,
-                        observation,
                         latest_process_memory,
                         &live_store,
                     );
                 }
                 break;
             }
-            observation = receiver.recv() => match observation {
-                Some(observation) => {
-                    record_observation_with_memory(
+            message = receiver.recv() => match message {
+                Some(message) => {
+                    commit_lane_message(
+                        message,
                         &tracer,
-                        observation,
                         latest_process_memory,
                         &live_store,
                     );
@@ -602,6 +643,22 @@ async fn run_resident_telemetry_lane(
         .join()
         .await?
         .map_err(|error| format!("OpenTelemetry provider shutdown failed: {error}"))
+}
+
+fn commit_lane_message(
+    message: RuntimeTelemetryLaneMessage,
+    tracer: &opentelemetry_sdk::trace::SdkTracer,
+    memory: Option<super::process_memory::ProcessMemoryObservation>,
+    live_store: &super::live_store::RuntimePerformanceLiveStore,
+) {
+    match message {
+        RuntimeTelemetryLaneMessage::Observation(observation) => {
+            record_observation_with_memory(tracer, observation, memory, live_store);
+        }
+        RuntimeTelemetryLaneMessage::Fence(acknowledge) => {
+            let _ = acknowledge.send(());
+        }
+    }
 }
 
 async fn remove_socket_if_present(path: &std::path::Path) -> Result<(), String> {

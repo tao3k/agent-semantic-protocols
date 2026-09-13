@@ -14,6 +14,7 @@ use serde::de::DeserializeOwned;
 const POINTER_LEN: usize = 4_096;
 const PAYLOAD_OFFSET: usize = 16;
 const MAX_READ_ATTEMPTS: usize = 64;
+static POINTER_REPLACEMENT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub(super) struct AtomicSnapshotPointerWriter {
@@ -25,27 +26,42 @@ pub(super) struct AtomicSnapshotPointerWriter {
 
 impl AtomicSnapshotPointerWriter {
     pub(super) async fn open(path: PathBuf, context: &'static str) -> Result<Self, String> {
-        let reset = match tokio::fs::metadata(&path).await {
-            Ok(metadata) => metadata.len() != POINTER_LEN as u64,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        let existing = tokio::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .await;
+        let (file, replacement_path) = match existing {
+            Ok(file) => {
+                let length = file
+                    .metadata()
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "inspect existing {context} pointer `{}`: {error}",
+                            path.display()
+                        )
+                    })?
+                    .len();
+                if length == POINTER_LEN as u64 {
+                    (file, None)
+                } else {
+                    let (file, replacement_path) =
+                        create_replacement_pointer(&path, context).await?;
+                    (file, Some(replacement_path))
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let (file, replacement_path) = create_replacement_pointer(&path, context).await?;
+                (file, Some(replacement_path))
+            }
             Err(error) => {
                 return Err(format!(
-                    "inspect {context} pointer `{}`: {error}",
+                    "open existing {context} pointer `{}`: {error}",
                     path.display()
                 ));
             }
         };
-        let file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .truncate(reset)
-            .read(true)
-            .write(true)
-            .open(&path)
-            .await
-            .map_err(|error| format!("open {context} pointer `{}`: {error}", path.display()))?;
-        file.set_len(POINTER_LEN as u64)
-            .await
-            .map_err(|error| format!("size {context} pointer `{}`: {error}", path.display()))?;
         let sync_file = file
             .try_clone()
             .await
@@ -65,7 +81,19 @@ impl AtomicSnapshotPointerWriter {
                 pointer_path.display()
             )
         })?;
-        set_private_permissions(&path).await?;
+        if let Some(replacement_path) = replacement_path {
+            set_private_permissions(&replacement_path).await?;
+            tokio::fs::rename(&replacement_path, &path)
+                .await
+                .map_err(|error| {
+                    format!(
+                        "publish replacement {context} pointer `{}`: {error}",
+                        path.display()
+                    )
+                })?;
+        } else {
+            set_private_permissions(&path).await?;
+        }
         Ok(Self {
             path,
             context,
@@ -121,6 +149,34 @@ impl AtomicSnapshotPointerWriter {
     pub(super) fn path(&self) -> &Path {
         &self.path
     }
+}
+
+async fn create_replacement_pointer(
+    path: &Path,
+    context: &'static str,
+) -> Result<(tokio::fs::File, PathBuf), String> {
+    let sequence = POINTER_REPLACEMENT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let replacement_path =
+        path.with_extension(format!("pending-{}-{sequence}", std::process::id()));
+    let file = tokio::fs::OpenOptions::new()
+        .create_new(true)
+        .read(true)
+        .write(true)
+        .open(&replacement_path)
+        .await
+        .map_err(|error| {
+            format!(
+                "create replacement {context} pointer `{}`: {error}",
+                replacement_path.display()
+            )
+        })?;
+    file.set_len(POINTER_LEN as u64).await.map_err(|error| {
+        format!(
+            "size replacement {context} pointer `{}`: {error}",
+            replacement_path.display()
+        )
+    })?;
+    Ok((file, replacement_path))
 }
 
 #[derive(Debug)]
@@ -345,4 +401,42 @@ async fn set_private_permissions(path: &Path) -> Result<(), String> {
 #[cfg(not(unix))]
 async fn set_private_permissions(_path: &Path) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AtomicSnapshotPointerWriter, POINTER_LEN};
+
+    #[tokio::test]
+    async fn existing_invalid_pointer_is_replaced_without_truncation() {
+        let root = tempfile::tempdir().expect("atomic pointer fixture");
+        let path = root.path().join("pointer.memory");
+        tokio::fs::write(&path, vec![7_u8; 31])
+            .await
+            .expect("write invalid existing pointer");
+
+        let old_inode = tokio::fs::OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .await
+            .expect("retain old pointer inode");
+        let writer = AtomicSnapshotPointerWriter::open(path.clone(), "test pointer")
+            .await
+            .expect("invalid existing pointer should be replaced by inode");
+        assert_eq!(
+            old_inode
+                .metadata()
+                .await
+                .expect("inspect retained old pointer inode")
+                .len(),
+            31
+        );
+        assert_eq!(
+            tokio::fs::metadata(writer.path())
+                .await
+                .expect("inspect initialized pointer")
+                .len(),
+            POINTER_LEN as u64
+        );
+    }
 }
