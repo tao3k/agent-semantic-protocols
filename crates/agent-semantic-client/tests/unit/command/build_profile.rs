@@ -57,7 +57,7 @@ fn require_release_fails_closed_for_debug_artifacts() {
 
 #[test]
 fn release_install_checks_release_profile_before_and_after_copy() {
-    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     assert!(
         justfile.contains("agent-tools-install-protocol bin_dir=\"\": check-rust-workspace-policy"),
         "release publication must admit the Cargo-derived workspace policy exactly once before building"
@@ -80,7 +80,7 @@ fn release_install_checks_release_profile_before_and_after_copy() {
 
 #[test]
 fn debug_install_never_publishes_a_stale_target_after_build_failure() {
-    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     assert!(
         justfile.contains("agent-tools-install-protocol-debug: check-rust-workspace-policy"),
         "developer publication must admit the Cargo-derived workspace policy exactly once before building"
@@ -104,7 +104,7 @@ fn debug_install_never_publishes_a_stale_target_after_build_failure() {
 
 #[test]
 fn asp_recipe_delegates_freshness_to_the_content_addressed_installer() {
-    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     let recipe = justfile
         .split("agent-tools-install-protocol bin_dir=\"\"")
         .nth(1)
