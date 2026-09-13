@@ -33,6 +33,9 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "needs: test-fixtures" in workflow
     assert workflow.count("cargo build --bin asp") == 1
     assert "include-hidden-files: true" in workflow
+    assert "SCCACHE_GHA_ENABLED=true" not in workflow
+    assert "Read shared compiler cache" in workflow
+    assert "${{ github.run_id }}" in workflow
     assert "cargo test --workspace --all-targets --all-features" not in CI_WORKFLOW.read_text(
         encoding="utf-8"
     )
