@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 import re
+import tomllib
 from pathlib import Path
 
 
@@ -10,6 +11,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 JUSTFILE = REPO_ROOT / "Justfile"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+RUST_PACKAGE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "rust-package-tests.yml"
+
+
+def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
+    workflow = RUST_PACKAGE_WORKFLOW.read_text(encoding="utf-8")
+    matrix = workflow.split("        package:", 1)[1].split("\n\n    steps:", 1)[0]
+    matrix_packages = re.findall(r"^          - ([a-z0-9-]+)$", matrix, re.MULTILINE)
+
+    workspace = tomllib.loads((REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    workspace_packages = []
+    for member in workspace["workspace"]["members"]:
+        manifest = tomllib.loads(
+            (REPO_ROOT / member / "Cargo.toml").read_text(encoding="utf-8")
+        )
+        workspace_packages.append(manifest["package"]["name"])
+
+    assert len(matrix_packages) == len(set(matrix_packages))
+    assert set(matrix_packages) == set(workspace_packages)
+    assert 'cargo test -p "${{ matrix.package }}" --all-targets --all-features' in workflow
+    assert "needs: test-fixtures" in workflow
+    assert workflow.count("cargo build --bin asp") == 1
+    assert "include-hidden-files: true" in workflow
+    assert "cargo test --workspace --all-targets --all-features" not in CI_WORKFLOW.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_root_schema_gate_references_only_present_test_paths() -> None:

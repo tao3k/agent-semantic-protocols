@@ -587,6 +587,7 @@ dependencies = [
 name = "agent-semantic-workspace-scheduler"
 version = "0.1.0"
 dependencies = [
+ "asp-rust-project-harness-policy",
  "tokio",
 ]
 
