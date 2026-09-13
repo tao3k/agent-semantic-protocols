@@ -61,6 +61,11 @@ pub(crate) struct WorkspaceGenerationAdmissionKey {
     workspace_identity: String,
 }
 
+type WorkspaceIdentityAdmissionResult =
+    Result<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry, String>;
+type WorkspaceIdentityAdmissionCell = Arc<tokio::sync::OnceCell<WorkspaceIdentityAdmissionResult>>;
+type WorkspaceIdentityAdmissionMap = Arc<dashmap::DashMap<PathBuf, WorkspaceIdentityAdmissionCell>>;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceGenerationAdmissionState {
@@ -109,6 +114,7 @@ pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
     ready_validator: Option<WorkspaceGenerationReadyValidator>,
     catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
+    identity_admissions: WorkspaceIdentityAdmissionMap,
     entries: AdmissionRegistry,
     changes: Arc<tokio::sync::Notify>,
     build_dispatcher: dispatcher::RuntimeServerAdmissionDispatcher,
@@ -278,17 +284,38 @@ impl WorkspaceGenerationAdmission {
         crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
         String,
     > {
+        let identity_admission = Arc::clone(
+            self.identity_admissions
+                .entry(project_root.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
+                .value(),
+        );
         // State Core performs filesystem and Gix identity discovery. Keep that
-        // blocking work off Tokio's async workers and resolve the root exactly
-        // once; the former workspace_id + catalog-entry path rediscovered the
-        // same repository twice for every cold control admission.
-        let entry = tokio::task::spawn_blocking(move || {
-            crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve_project_root(
-                project_root,
-            )
-        })
-        .await
-        .map_err(|error| format!("workspace identity resolution task failed: {error}"))??;
+        // blocking work off Tokio's async workers. The OnceCell is the
+        // Runtime-owner-epoch single-flight and resident proof for this exact
+        // canonical root: concurrent first callers share one discovery, while
+        // later control admissions never queue behind generation work merely
+        // to rediscover an immutable checkout identity.
+        let resolved_root = project_root.clone();
+        let entry = identity_admission
+            .get_or_init(|| async move {
+                tokio::task::spawn_blocking(move || {
+                    crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve_project_root(
+                        resolved_root,
+                    )
+                })
+                .await
+                .map_err(|error| format!("workspace identity resolution task failed: {error}"))?
+            })
+            .await
+            .clone();
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                self.identity_admissions.remove(&project_root);
+                return Err(error);
+            }
+        };
         // The catalog is a derived locator.  Linearize its resident identity
         // before acknowledging control admission, but keep flush/rename off
         // the request path; callers that require durable settlement use the
@@ -317,6 +344,7 @@ impl WorkspaceGenerationAdmission {
             builder,
             ready_validator: None,
             catalog: None,
+            identity_admissions: Arc::new(dashmap::DashMap::new()),
             entries: AdmissionRegistry::new(Self::initial_control_plane_capacity()),
             changes: Arc::new(tokio::sync::Notify::new()),
             build_dispatcher: dispatcher::RuntimeServerAdmissionDispatcher::new(),
