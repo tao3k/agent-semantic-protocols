@@ -84,6 +84,7 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     )[0]
     assert "languages/asp-python" in python_provider
     assert "languages/asp-rust" in python_provider
+    assert "languages/orgize" in python_provider
 
     rust_provider = contract_jobs.split("  rust-provider-gates:", 1)[1].split(
         "  tree-sitter-contract-gates:", 1
