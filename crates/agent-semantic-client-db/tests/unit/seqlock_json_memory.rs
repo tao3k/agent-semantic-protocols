@@ -86,3 +86,42 @@ async fn concurrent_publication_is_coherent_and_read_p99_is_sub_millisecond() {
         "seqlock read p99 must remain sub-millisecond: p99={p99:?}"
     );
 }
+
+#[tokio::test]
+async fn replacement_writer_preserves_the_live_reader_inode() {
+    let directory = tempfile::tempdir().expect("temporary seqlock directory");
+    let path = directory.path().join("fixture.v1.memory");
+    let mut first = SeqlockJsonMemoryWriter::create(&path, 64 * 1024)
+        .await
+        .expect("create first writer");
+    first
+        .publish(&FixtureReceipt {
+            sequence: 1,
+            complement: !1,
+        })
+        .expect("publish first receipt");
+    let reader = SeqlockJsonMemoryReader::open(&path)
+        .await
+        .expect("map first writer inode");
+
+    let mut replacement = SeqlockJsonMemoryWriter::create(&path, 64 * 1024)
+        .await
+        .expect("atomically replace writer inode");
+    replacement
+        .publish(&FixtureReceipt {
+            sequence: 2,
+            complement: !2,
+        })
+        .expect("publish replacement receipt");
+
+    let (_, leased): (_, FixtureReceipt) = reader
+        .read()
+        .expect("old mapping remains readable after replacement");
+    assert_eq!(leased.sequence, 1);
+    let replacement_reader = SeqlockJsonMemoryReader::open(&path)
+        .await
+        .expect("map replacement writer inode");
+    let (_, current): (_, FixtureReceipt) =
+        replacement_reader.read().expect("read replacement receipt");
+    assert_eq!(current.sequence, 2);
+}

@@ -10,6 +10,7 @@ const GENERATION_OFFSET: usize = 0;
 const PAYLOAD_LENGTH_OFFSET: usize = 8;
 const PAYLOAD_DIGEST_OFFSET: usize = 16;
 const PAYLOAD_OFFSET: usize = 48;
+static WRITER_PUBLICATION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn generation(bytes: &[u8]) -> &AtomicU64 {
     // SAFETY: mappings are page aligned, GENERATION_OFFSET is aligned for u64,
@@ -36,12 +37,16 @@ impl SeqlockJsonMemoryWriter {
                 .await
                 .map_err(|error| format!("failed to create seqlock JSON memory parent: {error}"))?;
         }
+        let publication_sequence = WRITER_PUBLICATION_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let temporary = path.with_extension(format!(
+            "pending-{}-{publication_sequence}",
+            std::process::id()
+        ));
         let file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .read(true)
             .write(true)
-            .open(path)
+            .open(&temporary)
             .await
             .map_err(|error| format!("failed to create seqlock JSON memory: {error}"))?;
         file.set_len(capacity as u64)
@@ -56,6 +61,13 @@ impl SeqlockJsonMemoryWriter {
         // and retains the mapping for its full lifetime.
         let mapping = unsafe { MmapOptions::new().map_mut(&file) }
             .map_err(|error| format!("failed to map seqlock JSON memory writer: {error}"))?;
+        if let Err(error) = tokio::fs::rename(&temporary, path).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(format!(
+                "failed to publish seqlock JSON memory {}: {error}",
+                path.display()
+            ));
+        }
         Ok(Self {
             mapping,
             generation: 0,
