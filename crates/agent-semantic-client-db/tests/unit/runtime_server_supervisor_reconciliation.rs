@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
+use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
 
 fn supervisor_request(
     state_home: &std::path::Path,
@@ -32,7 +32,7 @@ fn supervisor_request(
 #[tokio::test]
 async fn dead_owner_legacy_endpoint_is_republished_by_current_writer() {
     let state_home = tempfile::tempdir().expect("create isolated State Home");
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         state_home.path(),
         &state_home.path().join("asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -55,7 +55,7 @@ async fn dead_owner_legacy_endpoint_is_republished_by_current_writer() {
         .await
         .unwrap();
     let legacy_object = legacy.as_object_mut().expect("endpoint object");
-    legacy_object.remove("providerPlaneSocketPath");
+    legacy_object.remove("providerEndpoint");
     legacy_object.insert(
         "socketPath".into(),
         serde_json::Value::String(malicious_path.display().to_string()),
@@ -85,7 +85,7 @@ async fn dead_owner_legacy_endpoint_is_republished_by_current_writer() {
 #[tokio::test]
 async fn live_owner_legacy_endpoint_fails_closed() {
     let state_home = tempfile::tempdir().expect("create isolated State Home");
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         state_home.path(),
         &state_home.path().join("asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -99,10 +99,7 @@ async fn live_owner_legacy_endpoint_fails_closed() {
     .await
     .expect("prepare endpoint");
     let mut legacy = serde_json::to_value(&endpoint).unwrap();
-    legacy
-        .as_object_mut()
-        .unwrap()
-        .remove("providerPlaneSocketPath");
+    legacy.as_object_mut().unwrap().remove("providerEndpoint");
     let endpoint_path =
         agent_semantic_client_db::runtime_server_endpoint_path(state_home.path()).unwrap();
     tokio::fs::create_dir_all(endpoint_path.parent().unwrap())
@@ -144,7 +141,7 @@ async fn live_owner_legacy_endpoint_fails_closed() {
         .expect_err("live owner must reject malformed endpoint");
     assert_eq!(
         error,
-        "undecodable Runtime Server endpoint and owner receipt identities differ; refusing unbound termination: failed to decode Runtime Server endpoint: missing field `providerPlaneSocketPath`"
+        "undecodable Runtime Server endpoint and owner receipt identities differ; refusing unbound termination: failed to decode Runtime Server endpoint: missing field `providerEndpoint`"
     );
 }
 
@@ -155,7 +152,7 @@ async fn endpoint_without_owner_receipt_is_stale_and_republished() {
     let digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
         &std::fs::read(&executable).unwrap(),
     );
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         state_home.path(),
         &executable,
         &digest,
@@ -193,7 +190,7 @@ async fn cached_healthy_endpoint_with_dead_owner_is_republished() {
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
             &std::fs::read(&executable).expect("read fixture executable"),
         );
-    let mut endpoint = prepare_runtime_server_endpoint_in(
+    let mut endpoint = prepare_runtime_server_endpoint(
         state_home.path(),
         &executable,
         &artifact_digest,

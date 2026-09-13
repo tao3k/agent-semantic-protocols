@@ -8,10 +8,9 @@ use std::time::Duration;
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
-use agent_semantic_client_db::runtime_server_control::RuntimeServerOperation;
 use agent_semantic_client_db::runtime_server_control::RuntimeServerState;
-use agent_semantic_client_db::runtime_server_control::call_runtime_server;
-use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
+use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
+use agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status;
 use agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path;
 use agent_semantic_client_db::runtime_server_health::cached_runtime_server_health;
 use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
@@ -21,7 +20,7 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     let _performance = crate::test_support::performance_lock();
     let state_home = tempfile::tempdir().expect("create isolated state home");
     let catalog = Arc::new(RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release));
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         state_home.path(),
         std::path::Path::new("/runtime/asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -59,10 +58,8 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
 
-    let serving = call_runtime_server(
-        &health_endpoint,
-        RuntimeServerOperation::Status,
-        health_endpoint.runtime_binary_identity.clone(),
+    let serving = read_runtime_server_cached_health_status(
+        std::path::Path::new(&health_endpoint.status_memory_path),
         "cached-health-serving-barrier".to_owned(),
     )
     .await

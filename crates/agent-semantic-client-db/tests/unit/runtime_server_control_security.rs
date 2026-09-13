@@ -9,6 +9,7 @@ use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::call_runtime_server;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server::RuntimeServerExit;
+use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
 use agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
@@ -99,7 +100,7 @@ async fn fixture_endpoint(
     let catalog = agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
         agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
     );
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(

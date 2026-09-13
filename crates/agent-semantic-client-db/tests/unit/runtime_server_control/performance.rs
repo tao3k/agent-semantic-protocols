@@ -13,6 +13,7 @@ use super::call_runtime_server;
 use super::concurrent_runtime_status_wave;
 use super::fixture_endpoint;
 use super::prewarm_runtime_server_status_memory;
+use super::read_runtime_server_cached_health_status;
 use super::runtime_server_status_memory_metrics;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -104,10 +105,8 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
         server.await.expect("join runtime server").expect("serve"),
         RuntimeServerExit::RestartRequested
     );
-    let draining_status = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_binary_identity.clone(),
+    let draining_status = read_runtime_server_cached_health_status(
+        std::path::Path::new(&endpoint.status_memory_path),
         "post-restart-status".to_owned(),
     )
     .await
@@ -152,10 +151,8 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
         server.await.expect("join Runtime Server").expect("serve"),
         RuntimeServerExit::ShutdownRequested
     );
-    let draining = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_binary_identity.clone(),
+    let draining = read_runtime_server_cached_health_status(
+        std::path::Path::new(&endpoint.status_memory_path),
         "post-shutdown-status".to_owned(),
     )
     .await

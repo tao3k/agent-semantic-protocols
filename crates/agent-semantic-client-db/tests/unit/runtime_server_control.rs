@@ -14,9 +14,9 @@ use agent_semantic_client_db::runtime_server_control::RuntimeServerState;
 use agent_semantic_client_db::runtime_server_control::call_runtime_server;
 use agent_semantic_client_db::runtime_server_control::cleanup_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
-use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
 use agent_semantic_client_db::runtime_server_control::prewarm_runtime_server_status_memory;
 use agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint;
+use agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status;
 use agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path;
 use agent_semantic_client_db::runtime_server_control::runtime_server_status_memory_metrics;
 use agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest;
@@ -89,7 +89,7 @@ pub(super) async fn fixture_endpoint(
     let catalog = agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
         agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
     );
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
@@ -118,10 +118,8 @@ async fn concurrent_runtime_status_wave(
         clients.spawn(async move {
             barrier.wait().await;
             let started = tokio::time::Instant::now();
-            let receipt = call_runtime_server(
-                &endpoint,
-                RuntimeServerOperation::Status,
-                endpoint.runtime_binary_identity.clone(),
+            let receipt = read_runtime_server_cached_health_status(
+                std::path::Path::new(&endpoint.status_memory_path),
                 format!("{request_prefix}-{index}"),
             )
             .await

@@ -24,13 +24,13 @@ mod turso_sync_storage_tests {
         ))
     }
 
-    fn offline_config(path: PathBuf) -> TursoSyncProfileConfig {
+    fn offline_config(path: PathBuf, remote_url: String) -> TursoSyncProfileConfig {
         TursoSyncProfileConfig {
             path,
             mode: TursoSyncProfileMode::Remote {
-                remote_url: "http://127.0.0.1:1".into(),
+                remote_url: remote_url.into(),
                 auth_token: "fixed-test-token".into(),
-                bootstrap_if_empty: false,
+                bootstrap_if_empty: true,
             },
             operation_timeout: Duration::from_millis(100),
         }
@@ -57,10 +57,24 @@ mod turso_sync_storage_tests {
 
     #[tokio::test]
     async fn sync_profile_open_times_out_for_unresponsive_remote() {
-        let error = match TursoSyncStorage::open(offline_config(temp_db("open-timeout"))).await {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind unresponsive remote fixture");
+        let address = listener.local_addr().expect("read fixture address");
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.expect("accept sync client");
+            std::future::pending::<()>().await;
+        });
+        let error = match TursoSyncStorage::open(offline_config(
+            temp_db("open-timeout"),
+            format!("http://{address}"),
+        ))
+        .await
+        {
             Ok(_) => panic!("unresponsive remote must fail at the configured open timeout"),
             Err(error) => error,
         };
+        server.abort();
 
         assert_eq!(format!("{:?}", error.code), "Timeout");
         assert!(error.message.contains("open timed out"));

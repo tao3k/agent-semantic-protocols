@@ -11,7 +11,7 @@ use agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmis
 use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog;
 use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry;
 use agent_semantic_client_db::runtime_server_control::RuntimeServerState;
-use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
+use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
 
 async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
@@ -23,7 +23,7 @@ async fn fixture_endpoint(
     let catalog = agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
         agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
     );
-    let endpoint = prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
         &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
