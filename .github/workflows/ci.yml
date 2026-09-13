@@ -120,7 +120,7 @@ jobs:
 
       - name: Run asp binary smoke on macOS
         if: ${{ matrix.os == 'macos-latest' }}
-        run: cargo run --quiet --bin asp -- guide
+        run: cargo run --quiet --bin asp -- --help
 
       - name: Save sccache cache (fallback)
         if: ${{ always() && !cancelled() && env.SCCACHE_GHA_ENABLED != 'true' }}

@@ -61,6 +61,8 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "ubuntu-latest" not in platform_matrix
     assert "macos-latest" in platform_matrix
     assert "windows-latest" in platform_matrix
+    assert "cargo run --quiet --bin asp -- --help" in platform_matrix
+    assert "cargo run --quiet --bin asp -- guide" not in platform_matrix
 
 
 def test_root_schema_gate_references_only_present_test_paths() -> None:
