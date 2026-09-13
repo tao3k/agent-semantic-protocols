@@ -61,3 +61,7 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "needs: asp-linux-binary" in tree_sitter
     assert "--asp-bin .ci/bin/asp" in tree_sitter
     assert "--no-build" in tree_sitter
+    assert "languages/orgize" in tree_sitter
+    assert "languages/AspJulia.jl" in tree_sitter
+    assert "languages/asp-rust -> target" in tree_sitter
+    assert "languages/asp-rust -> languages/asp-rust/target" not in contract_jobs

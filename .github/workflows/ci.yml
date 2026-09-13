@@ -382,7 +382,7 @@ jobs:
       - name: Cache Rust provider artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: languages/asp-rust -> languages/asp-rust/target
+          workspaces: languages/asp-rust -> target
           shared-key: asp-rust-provider-contracts-${{ runner.os }}
           cache-on-failure: true
 
@@ -423,12 +423,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Checkout syntax provider submodules
+      - name: Checkout provider catalog submodules
         run: |
           git submodule update --init --depth 1 \
             languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
             languages/asp-typescript \
-            languages/asp-python
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -448,8 +452,10 @@ jobs:
       - name: Cache Rust provider artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: languages/asp-rust -> languages/asp-rust/target
-          shared-key: asp-tree-sitter-contracts-${{ runner.os }}
+          workspaces: |
+            . -> target
+            languages/asp-rust -> target
+          shared-key: asp-contract-binary-${{ runner.os }}
           cache-on-failure: true
 
       - name: Download asp contract binary
