@@ -33,7 +33,15 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     )
     .await
     .expect("bind runtime server");
+    let mut readiness = server.readiness_subscribe();
     let server = tokio::spawn(server.serve());
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        readiness.wait_for(|state| *state == RuntimeServerState::Healthy),
+    )
+    .await
+    .expect("Runtime Server readiness event deadline")
+    .expect("Runtime Server readiness sender remains live");
 
     let admission_started = tokio::time::Instant::now();
     let admission_metrics = prewarm_runtime_server_status_memory(&endpoint)
@@ -133,8 +141,16 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     )
     .await
     .expect("bind Runtime Server");
+    let mut readiness = server.readiness_subscribe();
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        readiness.wait_for(|state| *state == RuntimeServerState::Healthy),
+    )
+    .await
+    .expect("Runtime Server readiness event deadline")
+    .expect("Runtime Server readiness sender remains live");
 
     let mut callers = tokio::task::JoinSet::new();
     for _ in 0..64 {

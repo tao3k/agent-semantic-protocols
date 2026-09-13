@@ -55,8 +55,16 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
         )
         .await
         .expect("publish ready Runtime Server endpoint");
+    let mut readiness = server.readiness_subscribe();
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        readiness.wait_for(|state| *state == RuntimeServerState::Healthy),
+    )
+    .await
+    .expect("Runtime Server readiness event deadline")
+    .expect("Runtime Server readiness sender remains live");
 
     let serving = read_runtime_server_cached_health_status(
         std::path::Path::new(&health_endpoint.status_memory_path),

@@ -15,16 +15,20 @@ use super::workspace_identity;
 async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millisecond() {
     const REQUEST_COUNT: usize = 4_096;
     let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let repair_started = Arc::new(tokio::sync::Semaphore::new(0));
     let release_repair = Arc::new(tokio::sync::Notify::new());
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
+        let repair_started = Arc::clone(&repair_started);
         let release_repair = Arc::clone(&release_repair);
         move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             let build_count = Arc::clone(&build_count);
+            let repair_started = Arc::clone(&repair_started);
             let release_repair = Arc::clone(&release_repair);
             Box::pin(async move {
                 let attempt = build_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1;
                 if attempt == 2 {
+                    repair_started.add_permits(1);
                     release_repair.notified().await;
                 }
                 completed_generation(candidate)
@@ -81,6 +85,11 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     latencies.sort_unstable();
     let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
     assert_eq!(accepted, 1);
+    tokio::time::timeout(std::time::Duration::from_secs(1), repair_started.acquire())
+        .await
+        .expect("repair build start event deadline")
+        .expect("repair build start sender remains live")
+        .forget();
     assert_eq!(build_count.load(std::sync::atomic::Ordering::Acquire), 2);
     assert!(
         p99 < std::time::Duration::from_millis(1),
