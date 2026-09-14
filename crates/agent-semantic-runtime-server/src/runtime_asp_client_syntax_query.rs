@@ -124,7 +124,11 @@ fn query_resident_block(
         return Ok(());
     }
 
-    for owner_path in resident.indexed_owner_paths() {
+    let owner_paths = admitted_owner_paths.map_or_else(
+        || resident.indexed_owner_paths(),
+        |owners| owners.iter().cloned().collect(),
+    );
+    for owner_path in owner_paths {
         if evidence.len() == limit {
             break;
         }
@@ -132,9 +136,6 @@ fn query_resident_block(
             .extension()
             .and_then(|value| value.to_str());
         if !extension.is_some_and(|value| source_extensions.contains(value)) {
-            continue;
-        }
-        if admitted_owner_paths.is_some_and(|owners| !owners.contains(&owner_path)) {
             continue;
         }
         let (projections, _, diagnostics) = resident

@@ -1081,6 +1081,13 @@ fall back to the complete generation query.  The owner-id field is an internal
 V1 index capability; changing it rotates the index engine digest, not the
 public schema version.
 
+The same owner cut is the iteration authority for the following structural
+stage.  Once retrieval supplies an admitted nonempty owner set, syntax
+evaluation iterates that set directly; enumerating every generation owner and
+then testing set membership repeats workspace-sized work on each distinct
+Search expression.  The resident projection lookup remains fail-closed for an
+absent or diagnostic owner, so direct iteration does not weaken admission.
+
 * Verdict
 
 ASP does not need tgrep's product architecture, but it does need GREP's role.
