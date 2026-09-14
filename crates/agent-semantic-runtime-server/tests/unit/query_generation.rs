@@ -23,6 +23,9 @@ use crate::query_generation_calibration::workload_bucket;
 use crate::runtime_query_generation::RuntimeQueryMaterializationState;
 use crate::runtime_query_generation::RuntimeSearchMaterializationState;
 
+#[path = "query_generation_materialization_retention.rs"]
+mod materialization_retention;
+
 fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
     RuntimeProjectWorkspaceKey::new(
         agent_semantic_client_protocol::ClientProjectId::new(project_id).expect("test ProjectId"),
@@ -547,7 +550,7 @@ async fn result_wait_deadline_preserves_late_completion_and_notification() {
         .publish_search_materialization("key".into(), Ok(serde_json::json!({"hits": 1})))
         .unwrap();
     // Models publication between reading Building and subscribing to its event.
-    assert!(*completion.subscribe().borrow());
+    assert!(completion.subscribe().borrow().is_some());
     assert!(matches!(
         generation
             .await_search_materialization("key")

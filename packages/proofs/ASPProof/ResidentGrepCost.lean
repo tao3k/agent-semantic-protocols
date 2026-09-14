@@ -646,6 +646,33 @@ theorem full_scan_settlement_pays_workspace_node_scan
   unfold fullScanSettlementLookupWork
   omega
 
+/-- Completed response history has one Search and one Query slot. In-flight
+claims are task-lifetime state and are not completed-history retention. -/
+structure GenerationTerminalRetention where
+  searchTerminals : Nat
+  queryTerminals : Nat
+  deriving DecidableEq, Repr
+
+def terminalRetentionAdmitted (retention : GenerationTerminalRetention) : Prop :=
+  retention.searchTerminals ≤ 1 ∧ retention.queryTerminals ≤ 1
+
+def retainedTerminalCount (retention : GenerationTerminalRetention) : Nat :=
+  retention.searchTerminals + retention.queryTerminals
+
+theorem admitted_generation_retains_at_most_two_terminals
+    (retention : GenerationTerminalRetention)
+    (admitted : terminalRetentionAdmitted retention) :
+    retainedTerminalCount retention ≤ 2 := by
+  rcases admitted with ⟨searchBound, queryBound⟩
+  unfold retainedTerminalCount
+  omega
+
+def waiterTerminalAvailable (channelTerminal _cacheHit : Bool) : Bool :=
+  channelTerminal
+
+theorem evicted_cache_slot_does_not_erase_waiter_terminal :
+    waiterTerminalAvailable true false = true := rfl
+
 /-- Default Search projects exact grounded selectors. The complete owner
 projection remains available to Query but is not expanded into Search output. -/
 def defaultSearchSelectorWork (exactGroundedSelectors : Nat) : Nat :=

@@ -55,16 +55,46 @@ pub struct RuntimeQueryGeneration {
 
 #[derive(Clone)]
 pub(crate) enum RuntimeSearchMaterializationState {
-    Building(Arc<tokio::sync::watch::Sender<bool>>),
+    Building(Arc<tokio::sync::watch::Sender<Option<RuntimeSearchTerminalState>>>),
     Ready(Arc<serde_json::Value>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
 
 #[derive(Clone)]
-pub(crate) enum RuntimeQueryMaterializationState {
-    Building(Arc<tokio::sync::watch::Sender<bool>>),
+pub(crate) enum RuntimeSearchTerminalState {
     Ready(Arc<serde_json::Value>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
+}
+
+impl RuntimeSearchTerminalState {
+    fn materialization_state(self) -> RuntimeSearchMaterializationState {
+        match self {
+            Self::Ready(value) => RuntimeSearchMaterializationState::Ready(value),
+            Self::Failed(error) => RuntimeSearchMaterializationState::Failed(error),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum RuntimeQueryMaterializationState {
+    Building(Arc<tokio::sync::watch::Sender<Option<RuntimeQueryTerminalState>>>),
+    Ready(Arc<serde_json::Value>),
+    Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
+}
+
+#[derive(Clone)]
+pub(crate) enum RuntimeQueryTerminalState {
+    Ready(Arc<serde_json::Value>),
+    Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
+}
+
+impl RuntimeQueryTerminalState {
+    fn materialization_state(self) -> RuntimeQueryMaterializationState {
+        match self {
+            Self::Ready(value) => RuntimeQueryMaterializationState::Ready(value),
+            Self::Failed(error) => RuntimeQueryMaterializationState::Failed(error),
+        }
+    }
 }
 
 pub(super) struct RuntimeSyntaxScopeEvidence {
@@ -164,7 +194,7 @@ impl RuntimeQueryGeneration {
         materializations.insert(
             key,
             RuntimeSearchMaterializationState::Building(Arc::new(
-                tokio::sync::watch::channel(false).0,
+                tokio::sync::watch::channel(None).0,
             )),
         );
         Ok(true)
@@ -186,11 +216,14 @@ impl RuntimeQueryGeneration {
         };
         let completion = Arc::clone(completion);
         let terminal = match result {
-            Ok(value) => RuntimeSearchMaterializationState::Ready(Arc::new(value)),
-            Err(error) => RuntimeSearchMaterializationState::Failed(Arc::new(error)),
+            Ok(value) => RuntimeSearchTerminalState::Ready(Arc::new(value)),
+            Err(error) => RuntimeSearchTerminalState::Failed(Arc::new(error)),
         };
-        materializations.insert(key, terminal);
-        completion.send_replace(true);
+        materializations.remove(&key);
+        materializations
+            .retain(|_, state| matches!(state, RuntimeSearchMaterializationState::Building(_)));
+        materializations.insert(key, terminal.clone().materialization_state());
+        completion.send_replace(Some(terminal));
         Ok(())
     }
 
@@ -201,14 +234,17 @@ impl RuntimeQueryGeneration {
         match self.search_materialization(key)? {
             Some(RuntimeSearchMaterializationState::Building(completion)) => {
                 let mut receiver = completion.subscribe();
-                if !*receiver.borrow_and_update() {
+                if receiver.borrow_and_update().is_none() {
                     receiver
                         .changed()
                         .await
                         .map_err(|_| "Search completion channel closed".to_owned())?;
                 }
-                self.search_materialization(key)?
-                    .ok_or_else(|| "Search materialization disappeared".to_owned())
+                receiver
+                    .borrow()
+                    .clone()
+                    .map(RuntimeSearchTerminalState::materialization_state)
+                    .ok_or_else(|| "Search completion did not publish a terminal".to_owned())
             }
             Some(terminal) => Ok(terminal),
             None => Err("Search materialization has no claim".to_owned()),
@@ -239,7 +275,7 @@ impl RuntimeQueryGeneration {
         materializations.insert(
             key,
             RuntimeQueryMaterializationState::Building(Arc::new(
-                tokio::sync::watch::channel(false).0,
+                tokio::sync::watch::channel(None).0,
             )),
         );
         Ok(true)
@@ -261,11 +297,14 @@ impl RuntimeQueryGeneration {
         };
         let completion = Arc::clone(completion);
         let terminal = match result {
-            Ok(value) => RuntimeQueryMaterializationState::Ready(Arc::new(value)),
-            Err(error) => RuntimeQueryMaterializationState::Failed(Arc::new(error)),
+            Ok(value) => RuntimeQueryTerminalState::Ready(Arc::new(value)),
+            Err(error) => RuntimeQueryTerminalState::Failed(Arc::new(error)),
         };
-        materializations.insert(key, terminal);
-        completion.send_replace(true);
+        materializations.remove(&key);
+        materializations
+            .retain(|_, state| matches!(state, RuntimeQueryMaterializationState::Building(_)));
+        materializations.insert(key, terminal.clone().materialization_state());
+        completion.send_replace(Some(terminal));
         Ok(())
     }
 
@@ -276,14 +315,17 @@ impl RuntimeQueryGeneration {
         match self.query_materialization(key)? {
             Some(RuntimeQueryMaterializationState::Building(completion)) => {
                 let mut receiver = completion.subscribe();
-                if !*receiver.borrow_and_update() {
+                if receiver.borrow_and_update().is_none() {
                     receiver
                         .changed()
                         .await
                         .map_err(|_| "Query completion channel closed".to_owned())?;
                 }
-                self.query_materialization(key)?
-                    .ok_or_else(|| "Query materialization disappeared".to_owned())
+                receiver
+                    .borrow()
+                    .clone()
+                    .map(RuntimeQueryTerminalState::materialization_state)
+                    .ok_or_else(|| "Query completion did not publish a terminal".to_owned())
             }
             Some(terminal) => Ok(terminal),
             None => Err("Query materialization has no claim".to_owned()),

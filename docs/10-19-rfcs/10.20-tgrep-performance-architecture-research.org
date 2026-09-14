@@ -724,6 +724,7 @@ flowchart TD
   S --> M[Exact selector and Relation grounding]
   M --> Z[Indexed bounded topology settlement]
   Z --> N[Return first usable Search result]
+  N --> AA[Replace one generation terminal slot]
   G -. independent attachment .-> O[Content-addressed segment durability]
   G -. independent attachment .-> P[Tantivy acceleration]
   K -. candidate scoped .-> Q[Request graph and Project Topology refinement]
@@ -760,6 +761,10 @@ complete edges $E$, request settlement lookup work is
 $ W_("indexed") = n + 2e $, independent of $N$ and $E$.
 The forbidden full scans pay at least
 $ W_("scan") = n N + N + 2E $ before rendering and digest construction.
+Completed response retention is constant per generation:
+$ R_("terminal") = R_("Search") + R_("Query") <= 2 $.
+Concurrent single-flight claims are task-lifetime state and publish their
+terminal through their own watch channel before leaving the in-flight table.
 First-computation observation and ready resident read have distinct budgets:
 $ B_("ready") = 1 "ms", quad T_("first") = T_("generation wait") + T_("compute wait") + T_("return") $
 The temporary 60-second observation deadline bounds diagnosis, not acceptance.

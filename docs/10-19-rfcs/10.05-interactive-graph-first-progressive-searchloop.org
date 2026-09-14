@@ -1959,15 +1959,18 @@ node; serial stages preserve declared scope flow. Graph may filter weak
 candidates but cannot mint an owner absent from the structurally grounded frontier. Logical inference begins
 only after graph/base relation facts exist and never becomes a retrieval axis.
 
-The fused Ready cache is owned by the immutable resident generation.  Its key
-binds ProjectId, WorkspaceId, exact source/content generation, normalized query
-terms, language/profile/algorithm, lexical frontier, and explicit budgets.  Its
-value is an immutable =Arc= projection of the admitted lexical-plus-graph
-result; it never retains a writer and never becomes a publication authority.
-The atomic generation pointer is the only invalidation boundary.  Receipts
-report cache hit/miss, entry count, retained bytes, capacity, shard count, and
-zero request-time external work.  Cross-generation or content drift cannot hit
-the cache.
+The fused Ready cache is owned by the immutable resident generation.  Search
+and Query each retain exactly one most-recent immutable terminal =Arc=; a new
+terminal atomically replaces the preceding slot.  In-flight keys remain in a
+separate single-flight claim table only until completion.  Each claim's watch
+channel carries its terminal value, so an already subscribed waiter completes
+even if a later request replaces the retained slot.  The key binds ProjectId,
+WorkspaceId, exact source/content generation, normalized query terms,
+language/profile/algorithm, lexical frontier, and explicit budgets.  The cache
+never retains a writer or becomes a publication authority.  The atomic
+generation pointer is the outer invalidation boundary.  Cross-generation or
+content drift cannot hit the cache, and completed memory cannot grow with the
+number of distinct expressions.
 
 The dispatcher MUST NOT hard-code, probe, or infer these lane capabilities.
 Generation admission validates the fused receipt once and stores the resulting
