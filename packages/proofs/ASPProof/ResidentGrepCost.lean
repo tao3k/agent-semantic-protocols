@@ -633,6 +633,21 @@ def exactQueryOwnerMaterializerCalls (projectionResident : Bool) : Nat :=
 theorem resident_exact_query_skips_owner_materializer :
     exactQueryOwnerMaterializerCalls true = 0 := rfl
 
+/-- A generation-local materialized-response cache hit and a selector-index
+read are distinct Runtime boundaries.  Observing the former cannot certify
+that the latter executed in the same request. -/
+inductive ResidentQueryObservationBoundary where
+  | materializedResponse
+  | selectorProjection
+  deriving DecidableEq, Repr
+
+def certifiesSelectorRead : ResidentQueryObservationBoundary → Bool
+  | .materializedResponse => false
+  | .selectorProjection => true
+
+theorem materialized_response_hit_does_not_certify_selector_read :
+    certifiesSelectorRead .materializedResponse = false := rfl
+
 /-- Provider process bootstrap is a lifecycle observation, not a term in the
 Runtime Search/Query data-plane measurement. Candidate parse/projection work is
 still retained explicitly. -/

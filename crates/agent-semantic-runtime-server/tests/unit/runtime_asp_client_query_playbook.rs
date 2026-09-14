@@ -6,8 +6,9 @@ use super::{
     AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, emit_runtime_search_trace_observation,
     exact_query_projections_are_resident, materialize_query_playbook_receipt,
-    query_playbook_generation_provider_targets, record_settled_client_timing_observations,
-    runtime_search_trace_budget_micros, workspace_query_materialization_key,
+    query_playbook_generation_provider_targets, record_resident_query_materialization_hit,
+    record_settled_client_timing_observations, runtime_search_trace_budget_micros,
+    workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -94,6 +95,76 @@ fn execution_publication() -> RuntimeWorkspaceExecutionPublication {
         runtime_bundle_digest: digest('f').into(),
     })
     .expect("workspace execution publication")
+}
+
+#[test]
+fn resident_query_materialization_hit_records_the_runtime_boundary() {
+    let mut bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
+    let mut selector_params = params();
+    selector_params.selectors = vec![
+        "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
+            .into(),
+    ];
+
+    assert!(
+        record_resident_query_materialization_hit(
+            &bus.sender,
+            "workspace-23cc5ba784c605ae",
+            &digest('1'),
+            "request-resident-hit",
+            &selector_params,
+            17,
+        )
+        .expect("resident Query telemetry")
+    );
+
+    let observation = bus
+        .receiver
+        .try_recv()
+        .expect("resident Query performance observation")
+        .into_observation();
+    assert_eq!(observation.surface, "query");
+    assert_eq!(observation.stage, "runtime-query-materialization-read");
+    assert_eq!(observation.elapsed_micros, 17);
+    assert_eq!(observation.budget_micros, 1_000);
+    assert_eq!(observation.budget_status, "within-budget");
+    assert_eq!(
+        observation.workspace_identity.as_deref(),
+        Some("workspace-23cc5ba784c605ae")
+    );
+    assert_eq!(observation.language_id.as_deref(), Some("rust"));
+    assert_eq!(
+        observation.generation_digest.as_deref(),
+        Some(digest('1').as_str())
+    );
+    assert_eq!(
+        observation.operation_id.as_deref(),
+        Some("request-resident-hit")
+    );
+    assert_eq!(observation.requested_projection.as_deref(), Some("source"));
+    assert_eq!(observation.memory_search_turso_opens, Some(0));
+    assert_eq!(observation.memory_search_source_bytes_read, Some(0));
+    assert_eq!(observation.memory_search_provider_spawns, Some(0));
+    assert_eq!(observation.memory_search_socket_connects, Some(0));
+    assert!(bus.receiver.try_recv().is_err());
+}
+
+#[test]
+fn mixed_language_query_does_not_forge_a_single_language_runtime_metric() {
+    let mut bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
+
+    assert!(
+        !record_resident_query_materialization_hit(
+            &bus.sender,
+            "workspace-23cc5ba784c605ae",
+            &digest('1'),
+            "request-mixed-language",
+            &params(),
+            17,
+        )
+        .expect("mixed-language telemetry admission")
+    );
+    assert!(bus.receiver.try_recv().is_err());
 }
 
 #[tokio::test]

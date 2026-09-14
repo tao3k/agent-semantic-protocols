@@ -17,7 +17,7 @@ use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest,
-    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros,
+    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros, record_runtime_route_performance,
 };
 
 fn query_playbook_terminal(
@@ -41,6 +41,45 @@ fn selector_owner_path(selector: &str) -> Option<&str> {
         .and_then(|(_, suffix)| suffix.split_once("#item/"))
         .map(|(owner_path, _)| owner_path)
         .filter(|owner_path| !owner_path.is_empty())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_resident_query_materialization_hit(
+    telemetry_sender: &RuntimeTelemetryBusSender,
+    workspace_identity: &str,
+    generation_digest: &str,
+    operation_id: &str,
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    elapsed_micros: u64,
+) -> Result<bool, String> {
+    let Some(language_id) = params
+        .selectors
+        .first()
+        .and_then(|selector| selector.split_once("://"))
+        .map(|(language_id, _)| language_id)
+        .filter(|language_id| {
+            params.selectors.iter().all(|selector| {
+                selector
+                    .split_once("://")
+                    .is_some_and(|(candidate, _)| candidate == *language_id)
+            })
+        })
+    else {
+        return Ok(false);
+    };
+
+    record_runtime_route_performance(
+        telemetry_sender,
+        workspace_identity,
+        language_id,
+        generation_digest,
+        operation_id,
+        "query",
+        "runtime-query-materialization-read",
+        params.projection.as_str(),
+        elapsed_micros,
+    )?;
+    Ok(true)
 }
 
 fn exact_query_projections_are_resident(
@@ -717,6 +756,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
     };
     let materialization_key =
         workspace_query_materialization_key(&params, generation.generation_digest())?;
+    let resident_lookup_started = tokio::time::Instant::now();
     let result = match generation.query_materialization(&materialization_key)? {
         Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Ready(
             template,
@@ -726,6 +766,14 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 template.as_ref(),
                 request.request_id.as_str(),
             )?;
+            let _ = record_resident_query_materialization_hit(
+                telemetry_sender,
+                request.workspace_id.as_str(),
+                generation.generation_digest(),
+                request.request_id.as_str(),
+                &params,
+                elapsed_micros(resident_lookup_started),
+            );
             Ok(result)
         }
         Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Failed(error)) => {
