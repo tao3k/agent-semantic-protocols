@@ -351,7 +351,10 @@ impl SearchTopologySettlement {
                 serde_json::json!({"state": "ready", "terminalCount": 1})
             },
         });
-        Self::admit_for_library(settlement, library)
+        Ok(Self {
+            packet: settlement,
+            derived_relation_count,
+        })
     }
 
     /// Jointly admit a Search slice with the exact reusable topology generation.

@@ -595,6 +595,31 @@ theorem internal_byte_coverage_has_no_duplicate_full_validation :
 theorem restored_byte_coverage_retains_full_validation :
     fullByteCoverageValidationPasses .externallyRestored = 1 := rfl
 
+/-- Internally constructed settlement values already crossed typed input
+validation. External JSON remains untrusted and must cross full admission. -/
+inductive SettlementOrigin where
+  | internalTyped
+  | externalJson
+  deriving DecidableEq, Repr
+
+def settlementDecodeAdmissions : SettlementOrigin → Nat
+  | .internalTyped => 0
+  | .externalJson => 1
+
+theorem internal_settlement_has_no_duplicate_decode :
+    settlementDecodeAdmissions .internalTyped = 0 := rfl
+
+theorem external_settlement_retains_full_admission :
+    settlementDecodeAdmissions .externalJson = 1 := rfl
+
+/-- A ready candidate set forks its generation lease. Registry acquisition is
+reserved for a materialization miss. -/
+def residentRegistryAcquisitions (allOwnersReady : Bool) : Nat :=
+  if allOwnersReady then 0 else 2
+
+theorem ready_owner_scope_has_zero_registry_acquisitions :
+    residentRegistryAcquisitions true = 0 := rfl
+
 /-- Default Search projects exact grounded selectors. The complete owner
 projection remains available to Query but is not expanded into Search output. -/
 def defaultSearchSelectorWork (exactGroundedSelectors : Nat) : Nat :=

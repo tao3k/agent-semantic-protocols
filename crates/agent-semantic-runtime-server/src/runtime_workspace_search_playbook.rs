@@ -149,19 +149,25 @@ pub(super) async fn execute_progressive_search_clauses(
     })??;
     let retrieval_micros = retrieval_started.elapsed().as_micros();
     let owner_materialization_started = std::time::Instant::now();
-    let mut resident = owner_materializer
-        .ensure_candidates(
-            request_id,
-            workspace_identity,
-            project_root,
-            parser_artifact_root,
-            generation.generation_digest(),
-            &retrieval.fused_scope,
-            providers,
-            runtime_search_service,
-            workspace_registry,
-        )
-        .await?;
+    let mut resident = if let Some(resident) =
+        resident_semantic_scope(generation.resident(), &retrieval.fused_scope)?
+    {
+        resident
+    } else {
+        owner_materializer
+            .ensure_candidates(
+                request_id,
+                workspace_identity,
+                project_root,
+                parser_artifact_root,
+                generation.generation_digest(),
+                &retrieval.fused_scope,
+                providers,
+                runtime_search_service,
+                workspace_registry,
+            )
+            .await?
+    };
     let topology_scope = if graph_query_clauses.is_empty() {
         retrieval.fused_scope.clone()
     } else {
@@ -174,19 +180,25 @@ pub(super) async fn execute_progressive_search_clauses(
         )?
     };
     if topology_scope != retrieval.fused_scope {
-        resident = owner_materializer
-            .ensure_candidates(
-                request_id,
-                workspace_identity,
-                project_root,
-                parser_artifact_root,
-                generation.generation_digest(),
-                &topology_scope,
-                providers,
-                runtime_search_service,
-                workspace_registry,
-            )
-            .await?;
+        resident = if let Some(resident) =
+            resident_semantic_scope(generation.resident(), &topology_scope)?
+        {
+            resident
+        } else {
+            owner_materializer
+                .ensure_candidates(
+                    request_id,
+                    workspace_identity,
+                    project_root,
+                    parser_artifact_root,
+                    generation.generation_digest(),
+                    &topology_scope,
+                    providers,
+                    runtime_search_service,
+                    workspace_registry,
+                )
+                .await?
+        };
     }
     let owner_materialization_micros = owner_materialization_started.elapsed().as_micros();
     let structural_started = std::time::Instant::now();
@@ -406,6 +418,24 @@ pub(super) async fn execute_progressive_search_clauses(
         owner_materialization_micros,
         structural_micros,
     })
+}
+
+fn resident_semantic_scope(
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    owners: &BTreeSet<String>,
+) -> Result<
+    Option<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>,
+    AspClientOperationError,
+> {
+    for owner in owners {
+        if !resident
+            .semantic_owner_materialized(owner)
+            .map_err(AspClientOperationError::Message)?
+        {
+            return Ok(None);
+        }
+    }
+    Ok(resident.fork_process_resident().ok())
 }
 
 pub(super) fn relation_neighbor_scope(

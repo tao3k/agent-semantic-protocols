@@ -39,6 +39,16 @@ pub struct RuntimeResidentReadWorkCounters {
 }
 
 impl RuntimeResidentReadClient {
+    /// Fork the exact process-resident generation lease by reference.
+    /// Durable readers are reopened only at admission and cannot use this
+    /// request-path shortcut.
+    pub fn fork_process_resident(&self) -> Result<Self, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (None, Some(lease)) => Self::from_resident_lease(lease.clone()),
+            _ => Err("Runtime resident read is not backed by a process lease".to_owned()),
+        }
+    }
+
     /// Returns the owner-attributed parser topology inputs from this exact
     /// immutable generation without filesystem, DB, socket, or provider work.
     pub fn topology_source_segments(

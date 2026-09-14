@@ -1114,6 +1114,21 @@ qualification: p95 remains above 1ms and the sample is smaller than the full
 acceptance matrix.  Remaining visible costs include resident owner readiness
 (about 90--110us) and Search topology settlement (about 250--290us).
 
+An already admitted Runtime generation is also the owner-read authority.  When
+every requested owner is resident-semantic-ready, Search forks that exact
+generation lease by reference; reopening the same lease through the workspace
+registry, then refreshing it a second time, is forbidden resident-hit work.
+Any missing owner continues through the existing claimed materialization and
+publication path.
+
+Settlement has distinct trusted-construction and untrusted-admission
+boundaries.  Externally supplied settlement JSON always receives complete V1
+admission and Project Topology identity checks.  The internal typed constructor
+validates its Search result and library inputs while building every field; it
+must not serialize the product and immediately run the external decoder over
+its own bytes.  Removing that duplicate decode does not authorize unchecked
+external packets or a second public settlement shape.
+
 * Verdict
 
 ASP does not need tgrep's product architecture, but it does need GREP's role.
