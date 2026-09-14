@@ -11,9 +11,9 @@ fn main() -> std::process::ExitCode {
     let daemon = std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("server"))
         && std::env::args_os().nth(2).as_deref() == Some(std::ffi::OsStr::new("daemon"));
     let mut runtime_builder = if daemon {
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_daemon()
+        agent_semantic_workspace_scheduler::RuntimeServerRuntimeBuilder::new_daemon()
     } else {
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_client()
+        agent_semantic_workspace_scheduler::RuntimeServerRuntimeBuilder::new_client()
     };
     let runtime = match runtime_builder.enable_all().build() {
         Ok(runtime) => runtime,

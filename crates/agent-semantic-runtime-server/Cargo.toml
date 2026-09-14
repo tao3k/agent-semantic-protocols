@@ -31,6 +31,7 @@ harness = false
 [dependencies]
 agent-semantic-artifacts.workspace = true
 agent-semantic-runtime.workspace = true
+agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-content-identity.workspace = true
 blake3.workspace = true
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }

@@ -17,9 +17,9 @@ use super::state_home;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server_control::remove_stale_socket;
-use agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope;
 use agent_semantic_runtime::runtime_identity_monitor::spawn_runtime_identity_monitor;
 use agent_semantic_runtime_server as runtime_asp_client;
+use agent_semantic_workspace_scheduler::RuntimeServerTaskScope;
 use runtime_server_identity_handoff::RuntimeIdentityHandoffCoordinator;
 use runtime_server_search_service::serve_runtime_search_requests;
 
@@ -268,7 +268,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .with_agent_session_registry_owner(std::sync::Arc::clone(&agent_session_registry));
     let task_scope = RuntimeServerTaskScope::new("runtime-server-daemon");
     let resource_supervisor =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::for_current_daemon();
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::for_current_daemon();
     let query_generation_authority =
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new_in_task_scope_with_calibration_store(
             task_scope.clone(),

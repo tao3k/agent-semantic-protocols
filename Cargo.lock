@@ -151,6 +151,7 @@ dependencies = [
  "agent-semantic-runtime",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "agent-semantic-workspace-scheduler",
  "arc-swap",
  "asp-rust-project-harness-policy",
  "blake3",
@@ -437,6 +438,7 @@ dependencies = [
  "agent-semantic-shell-parser",
  "agent-semantic-topology",
  "agent-semantic-tree-sitter",
+ "agent-semantic-workspace-scheduler",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
  "blake3",
@@ -588,6 +590,8 @@ name = "agent-semantic-workspace-scheduler"
 version = "0.1.0"
 dependencies = [
  "asp-rust-project-harness-policy",
+ "libc",
+ "serde",
  "tokio",
 ]
 

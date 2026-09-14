@@ -102,16 +102,17 @@ enum AdmissionDispatcherCommand {
 #[derive(Clone)]
 pub(crate) struct RuntimeServerAdmissionDispatcher {
     sender: tokio::sync::mpsc::Sender<AdmissionDispatcherCommand>,
-    task:
-        Arc<tokio::sync::Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task: Arc<
+        tokio::sync::Mutex<Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>>,
+    >,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 }
 
 impl RuntimeServerAdmissionDispatcher {
     pub(crate) fn new() -> Self {
         let (sender, mut receiver) = tokio::sync::mpsc::channel(64);
         let task_scope =
-            crate::runtime_server_runtime::RuntimeServerTaskScope::new("generation-admission");
+            agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new("generation-admission");
         let task = task_scope
             .spawn("generation-admission-dispatcher", async move {
                 let mut builds = tokio::task::JoinSet::new();

@@ -33,10 +33,10 @@ fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
 
 fn authority() -> RuntimeQueryGenerationAuthority {
     RuntimeQueryGenerationAuthority::new_in_task_scope(
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
+        agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
             "runtime-query-generation-test",
         ),
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::new(
             4,
             256 * 1024 * 1024,
         ),
@@ -670,13 +670,13 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    let task_scope = agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
+    let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
         "runtime-search-generation-builder-test",
     );
     let builder = Arc::new(
         RuntimeSearchGenerationBuilder::new(
             task_scope.clone(),
-            agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
+            agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::new(
                 4,
                 256 * 1024 * 1024,
             ),
@@ -702,7 +702,7 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
                 graph: RuntimeSearchGenerationBuildOperation {
                     name: "test-graph-build",
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
-                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                    resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
                         memory_bytes: 1024 * 1024,
                     },
@@ -717,7 +717,7 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
                 lexical: RuntimeSearchGenerationBuildOperation {
                     name: "test-lexical-build",
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Tantivy),
-                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                    resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
                         memory_bytes: 1024 * 1024,
                     },
@@ -824,13 +824,13 @@ async fn derived_generation_terminal_waits_for_every_attachment() {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    let task_scope = agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
+    let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
         "runtime-search-generation-atomic-terminal-test",
     );
     let builder = Arc::new(
         RuntimeSearchGenerationBuilder::new(
             task_scope.clone(),
-            agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::new(
+            agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::new(
                 4,
                 256 * 1024 * 1024,
             ),
@@ -851,7 +851,7 @@ async fn derived_generation_terminal_waits_for_every_attachment() {
                 graph: RuntimeSearchGenerationBuildOperation {
                     name: "atomic-terminal-graph",
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
-                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                    resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
                         memory_bytes: 1024 * 1024,
                     },
@@ -865,7 +865,7 @@ async fn derived_generation_terminal_waits_for_every_attachment() {
                 lexical: RuntimeSearchGenerationBuildOperation {
                     name: "atomic-terminal-lexical",
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Tantivy),
-                    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
+                    resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
                         memory_bytes: 1024 * 1024,
                     },

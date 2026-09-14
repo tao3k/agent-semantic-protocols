@@ -56,6 +56,8 @@ mod runtime_search_authority_fixture;
 mod runtime_search_service_cancellation;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
+#[path = "unit/runtime_server_connection.rs"]
+mod runtime_server_connection;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
 #[path = "unit/runtime_server_control_authority.rs"]
@@ -80,8 +82,6 @@ mod runtime_server_operator_stop;
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_owner_receipt.rs"]
 mod runtime_server_owner_receipt;
-#[path = "unit/runtime_server_runtime.rs"]
-mod runtime_server_runtime;
 #[path = "unit/runtime_server_state_home_isolation.rs"]
 mod runtime_server_state_home_isolation;
 #[path = "unit/runtime_server_supervisor_endpoint_v1_migration.rs"]

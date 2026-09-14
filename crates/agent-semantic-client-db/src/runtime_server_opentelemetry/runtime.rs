@@ -44,9 +44,9 @@ pub struct RuntimeServerOpenTelemetry {
     handle: RuntimeServerOpenTelemetryHandle,
     registration_id: u64,
     shutdown: watch::Sender<bool>,
-    task: crate::runtime_server_runtime::RuntimeServerOwnedTask<Result<(), String>>,
-    telemetry_task: crate::runtime_server_runtime::RuntimeServerOwnedTask<Result<(), String>>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task: agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<Result<(), String>>,
+    telemetry_task: agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<Result<(), String>>,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     ingress_socket_path: std::path::PathBuf,
     query_socket_path: std::path::PathBuf,
 }
@@ -212,7 +212,7 @@ impl RuntimeServerOpenTelemetry {
             .lock()
             .map_err(|_| "Runtime Server OpenTelemetry registry lock poisoned".to_owned())? =
             Some((registration_id, handle.clone()));
-        let task_scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+        let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
             "runtime-server-opentelemetry",
         );
         let telemetry_sender = handle.sender.clone();
@@ -282,7 +282,7 @@ impl RuntimeServerOpenTelemetry {
 
     pub async fn shutdown(
         self,
-    ) -> Result<crate::runtime_server_runtime::RuntimeServerTaskLifecycleReceipt, String> {
+    ) -> Result<agent_semantic_workspace_scheduler::RuntimeServerTaskLifecycleReceipt, String> {
         let drain_started = tokio::time::Instant::now();
         if let Some(active) = ACTIVE_RUNTIME_TELEMETRY.get()
             && let Ok(mut active) = active.lock()
@@ -362,7 +362,7 @@ async fn run_resident_telemetry_lane(
     dropped_observations: Arc<std::sync::atomic::AtomicU64>,
     initial_process_memory: Option<super::process_memory::ProcessMemoryObservation>,
     mut shutdown: watch::Receiver<bool>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 ) -> Result<(), String> {
     let (provider, persistence_failure) =
         match TursoOpenTelemetrySpanExporter::open(&database_path).await {
@@ -412,7 +412,7 @@ async fn run_resident_telemetry_lane(
     }
     let mut ingress_connections = tokio::task::JoinSet::new();
     let ingress_supervisor =
-        crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
+        crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
             "runtime-server-telemetry-ingress",
         );
     let (memory_sender, mut memory_receiver) = watch::channel(initial_process_memory);
@@ -468,7 +468,7 @@ async fn run_resident_telemetry_lane(
                         .try_admit()
                         .expect("capacity guard must admit one telemetry connection");
                     ingress_connections.spawn(async move {
-                        let result = crate::runtime_server_runtime::within_connection_io_budget(
+                        let result = crate::runtime_server_connection::within_connection_io_budget(
                             "telemetry ingress frame",
                             read_ingress_observation(stream),
                         )
@@ -936,7 +936,7 @@ async fn read_ingress_observation(
 async fn commit_ingress_completion(
     completed: Result<
         (
-            crate::runtime_server_runtime::RuntimeServerConnectionLease,
+            crate::runtime_server_connection::RuntimeServerConnectionLease,
             Result<(RuntimePerformanceObservation, tokio::net::UnixStream), String>,
         ),
         tokio::task::JoinError,

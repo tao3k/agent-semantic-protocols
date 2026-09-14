@@ -8,7 +8,7 @@ pub(super) fn publish_connection_completion(
     events: Option<&crate::runtime_server_observability::RuntimeServerEventPublisher>,
     completed: Result<
         (
-            crate::runtime_server_runtime::RuntimeServerConnectionLease,
+            crate::runtime_server_connection::RuntimeServerConnectionLease,
             Result<bool, String>,
         ),
         tokio::task::JoinError,

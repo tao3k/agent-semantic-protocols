@@ -26,9 +26,10 @@ pub(super) struct AdmissionRegistry {
     snapshot: tokio::sync::watch::Receiver<
         Arc<std::collections::HashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
     >,
-    task:
-        Arc<tokio::sync::Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task: Arc<
+        tokio::sync::Mutex<Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>>,
+    >,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 }
 
 impl AdmissionRegistry {
@@ -41,7 +42,7 @@ impl AdmissionRegistry {
         let (commands, mut receiver) = tokio::sync::mpsc::channel(capacity.max(1));
         let server_entries_for_actor = Arc::clone(&server_entries);
         let task_scope =
-            crate::runtime_server_runtime::RuntimeServerTaskScope::new("generation-registry");
+            agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new("generation-registry");
         let task = task_scope
             .spawn("generation-registry-actor", async move {
                 if let Some(AdmissionRegistryCommand::Shutdown(completed)) = receiver.recv().await {

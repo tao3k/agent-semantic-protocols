@@ -757,7 +757,7 @@ impl RuntimeServer {
         readiness_sender.send_replace(crate::runtime_server_control::RuntimeServerState::Healthy);
         let mut connections = JoinSet::new();
         let connection_supervisor =
-            crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
+            crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
                 "runtime-server-ipc",
             );
         let control_replay_guard = Arc::new(tokio::sync::Mutex::new(

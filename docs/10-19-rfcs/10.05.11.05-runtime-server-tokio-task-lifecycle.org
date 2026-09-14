@@ -106,3 +106,52 @@ enabled.  It requires sub-millisecond request-side telemetry enqueue p99,
 bounded event-loop lag and resource growth, zero lifecycle leaks after repeated
 start/stop cycles, and no surviving Runtime Server socket or task after the
 terminal receipt.  Passing a focused throughput test alone is not closure.
+
+* Scheduler authority and compile closure
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-SCHEDULER-AUTHORITY
+:END:
+
+Runtime scheduling primitives are not database capabilities.  The lightweight
+=agent-semantic-workspace-scheduler= package owns Runtime profiles, bounded
+CPU/memory admission, owned tasks, cancellation accounting, and lifecycle V1
+receipts.  =agent-semantic-client-db= owns Turso generations and may consume
+those primitives, but MUST NOT define them.  Runtime Server generation code
+depends directly on the scheduler package rather than importing scheduler
+authority through =client-db=.
+
+This boundary does not change a public packet or schema.  In particular, the
+=agent.semantic-protocols.runtime-server-task-lifecycle-receipt= remains
+version =1=.  Runtime profiles, resource permits, and task scopes use the
+scheduler namespace directly.  Connection admission remains a Runtime Server
+transport concern in the explicitly named =runtime_server_connection= module;
+it is not disguised as scheduler ownership.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  RuntimeServer[Runtime Server Query Generation] --> Scheduler[workspace-scheduler]
+  ClientDB[client-db / Turso generations] --> Scheduler
+  RuntimeServer --> ClientDB
+  Scheduler --> Tokio[Tokio]
+  Scheduler -. forbidden .-> ClientDB
+#+end_src
+
+The compile-closure model separates behavioral latency from build latency.  If
+=C_s= is scheduler compilation, =C_d= is the positive database/search closure,
+and =C_r= is Runtime Server code, importing scheduling through the database
+costs =C_r + C_d + C_s=.  Direct ownership costs =C_r + C_s= for scheduler-only
+validation.  It cannot increase the closure and strictly reduces it whenever
+=C_d > 0=.  This is a direction theorem, not a measured speedup claim.
+
+#+begin_src typst :exports code
+#let old(c-r, c-d, c-s) = c-r + c-d + c-s
+#let direct(c-r, c-s) = c-r + c-s
+$ C_d > 0 => direct(C_r, C_s) < old(C_r, C_d, C_s) $
+#+end_src
+
+=ASPProof.RuntimeSchedulerOwnership= proves the authority exclusions and both
+compile-closure inequalities.  Rust scheduler tests independently verify
+adaptive worker ownership, cancellation-on-drop, concurrent drain equations,
+caller-runtime borrowing, and the resident sub-millisecond executor lookup.
+Cold package timing remains an empirical qualification and MUST be reported
+separately from these proofs.

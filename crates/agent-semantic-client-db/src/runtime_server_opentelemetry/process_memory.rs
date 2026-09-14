@@ -98,7 +98,7 @@ pub(super) fn observe_process_memory(
         resident_bytes,
         peak_resident_bytes,
         budget_bytes: u64::try_from(
-            crate::runtime_server_runtime::runtime_server_process_memory_budget_bytes(),
+            agent_semantic_workspace_scheduler::runtime_server_process_memory_budget_bytes(),
         )
         .unwrap_or(u64::MAX),
         disk_read_bytes: io.map(|io| io.disk_read_bytes),

@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::publish_connection_completion;
+use crate::runtime_server_connection::RuntimeServerConnectionSupervisor;
 use crate::runtime_server_observability::{RuntimeServerEvent, RuntimeServerEventPublisher};
-use crate::runtime_server_runtime::RuntimeServerConnectionSupervisor;
 
-fn completion_lease() -> crate::runtime_server_runtime::RuntimeServerConnectionLease {
+fn completion_lease() -> crate::runtime_server_connection::RuntimeServerConnectionLease {
     RuntimeServerConnectionSupervisor::new("connection-completion-test", 1)
         .try_admit()
         .expect("one test connection")

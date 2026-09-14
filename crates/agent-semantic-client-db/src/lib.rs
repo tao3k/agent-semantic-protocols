@@ -50,13 +50,13 @@ pub use runtime_server_owner_receipt::{
     RuntimeServerSpawnReceipt, RuntimeServerSpawnReceiptRead, StaleRuntimeServerSpawnReceipt,
 };
 mod runtime_server_asp_python_graphs_status;
+pub mod runtime_server_connection;
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
 pub mod runtime_server_health;
 pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;
 pub mod runtime_server_opentelemetry;
-pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;
 pub mod runtime_telemetry_bus;
 pub mod search_incident;

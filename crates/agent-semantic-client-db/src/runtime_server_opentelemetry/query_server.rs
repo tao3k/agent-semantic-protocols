@@ -13,7 +13,7 @@ enum QueryConnectionOutcome {
 }
 
 fn record_query_connection_terminal(
-    permit: crate::runtime_server_runtime::RuntimeServerTaskPermit,
+    permit: agent_semantic_workspace_scheduler::RuntimeServerTaskPermit,
     result: &Result<QueryConnectionOutcome, String>,
 ) {
     if result.is_ok() {
@@ -27,11 +27,11 @@ pub(super) async fn run_query_server(
     listener: tokio::net::UnixListener,
     live_store: std::sync::Arc<super::live_store::RuntimePerformanceLiveStore>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 ) -> Result<(), String> {
     let mut connections = tokio::task::JoinSet::new();
     let connection_supervisor =
-        crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
+        crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
             "runtime-server-telemetry-query",
         );
     loop {
@@ -53,7 +53,7 @@ pub(super) async fn run_query_server(
                             let _ = changed;
                             Err("telemetry query connection cancelled by shutdown".to_owned())
                         }
-                        result = crate::runtime_server_runtime::within_connection_io_budget(
+                        result = crate::runtime_server_connection::within_connection_io_budget(
                             "telemetry query",
                             serve_query(stream, live_store),
                         ) => result,

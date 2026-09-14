@@ -187,8 +187,8 @@ pub struct WorkspaceProjectResolutionHandle {
 }
 
 struct WorkspaceProjectResolutionLifecycle {
-    task: Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task: Mutex<Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>>,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 }
 
 impl Drop for WorkspaceProjectResolutionLifecycle {
@@ -335,8 +335,9 @@ pub fn spawn_workspace_project_resolution_actor(
         .writer_queue_capacity()
         .clamp(16, 256);
     let (sender, receiver) = mpsc::channel(queue_capacity);
-    let task_scope =
-        crate::runtime_server_runtime::RuntimeServerTaskScope::new("workspace-project-resolution");
+    let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
+        "workspace-project-resolution",
+    );
     let task = task_scope.spawn(
         "workspace-project-resolution-actor",
         run_actor(

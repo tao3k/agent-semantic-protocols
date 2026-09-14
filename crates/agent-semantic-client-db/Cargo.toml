@@ -17,6 +17,7 @@ turso-sync-server-e2e = []
 arc-swap.workspace = true
 agent-semantic-provider-protocol.workspace = true
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-search = { path = "../agent-semantic-search" }
 memmap2.workspace = true

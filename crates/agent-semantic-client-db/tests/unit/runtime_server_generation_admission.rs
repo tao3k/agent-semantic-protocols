@@ -288,11 +288,10 @@ fn cold_byte_generation_is_published_before_source_index_durability_attachment()
 
 #[test]
 fn concurrent_256_requests_share_one_server_workspace_writer_lease() {
-    let runtime =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_daemon()
-            .enable_all()
-            .build()
-            .expect("adaptive Runtime Server daemon runtime");
+    let runtime = agent_semantic_workspace_scheduler::RuntimeServerRuntimeBuilder::new_daemon()
+        .enable_all()
+        .build()
+        .expect("adaptive Runtime Server daemon runtime");
     runtime.block_on(async {
         const REQUEST_COUNT: usize = 256;
         let build_count = Arc::new(Mutex::new(0_u32));

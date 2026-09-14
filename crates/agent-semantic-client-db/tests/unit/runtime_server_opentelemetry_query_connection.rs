@@ -9,8 +9,9 @@ use tokio::io::AsyncWriteExt;
 async fn eof_before_frame_completes_liveness_probe_accounting() {
     let (client, server) = tokio::net::UnixStream::pair().expect("create query socket pair");
     drop(client);
-    let scope =
-        crate::runtime_server_runtime::RuntimeServerTaskScope::new("telemetry-query-probe-test");
+    let scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
+        "telemetry-query-probe-test",
+    );
     let permit = scope
         .permit("runtime-server-telemetry-query-connection")
         .expect("admit probe connection");
@@ -38,7 +39,7 @@ async fn non_empty_malformed_frame_remains_failed_accounting() {
         .await
         .expect("write malformed query frame");
     client.shutdown().await.expect("finish malformed frame");
-    let scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+    let scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
         "telemetry-query-malformed-test",
     );
     let permit = scope
@@ -75,7 +76,7 @@ async fn non_empty_partial_frame_eof_is_one_typed_terminal_failure() {
         .expect("write partial query frame");
     client.shutdown().await.expect("terminate partial frame");
 
-    let scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+    let scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
         "telemetry-query-partial-frame-test",
     );
     let permit = scope

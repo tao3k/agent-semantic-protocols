@@ -444,7 +444,7 @@ async fn finalize_content_search_generation(
             )
         })
         .collect::<Vec<_>>();
-    let acquisition = crate::runtime_server_runtime::RuntimeServerOwnedTask::spawn_blocking(
+    let acquisition = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
         "content-search-generation-byte-acquisition",
         move || {
             agent_semantic_search::build_source_byte_acquisition_stage(

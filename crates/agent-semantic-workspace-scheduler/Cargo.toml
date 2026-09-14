@@ -6,11 +6,18 @@
 name = "agent-semantic-workspace-scheduler"
 version.workspace = true
 edition.workspace = true
-description = "Tokio self-scheduling and deterministic joins for independent ASP workspace tasks."
+description = "Lightweight Tokio scheduling, resource admission, and deterministic task ownership for ASP runtimes."
 license.workspace = true
 
 [dependencies]
-tokio.workspace = true
+libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { version = "1", default-features = false, features = [
+  "macros",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true

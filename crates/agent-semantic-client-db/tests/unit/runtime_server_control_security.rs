@@ -9,10 +9,10 @@ use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::call_runtime_server;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server::RuntimeServerExit;
+use agent_semantic_client_db::runtime_server_connection::RuntimeServerConnectionSupervisor;
 use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint;
 use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in;
 use agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint;
-use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
 
 async fn raw_status_exchange(
     endpoint: &agent_semantic_client_db::RuntimeServerEndpoint,
@@ -267,7 +267,8 @@ async fn unauthenticated_control_connection_is_closed_at_first_frame_budget() {
         .await
         .expect("connect stalled unauthenticated client");
     tokio::time::sleep(
-        agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CONNECTION_IO_BUDGET * 3,
+        agent_semantic_client_db::runtime_server_connection::RUNTIME_SERVER_CONNECTION_IO_BUDGET
+            * 3,
     )
     .await;
     let mut byte = [0_u8; 1];

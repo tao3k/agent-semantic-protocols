@@ -210,7 +210,7 @@ pub(super) async fn serve_connection(
             &replay_guard,
         )
         .await?;
-        crate::runtime_server_runtime::within_connection_io_budget(
+        crate::runtime_server_connection::within_connection_io_budget(
             "runtime-server-control-write",
             write_runtime_server_receipts(&mut stream, &receipts),
         )
@@ -247,7 +247,7 @@ async fn read_control_requests(
     if authenticated_first_frame {
         read.await
     } else {
-        crate::runtime_server_runtime::within_connection_io_budget(
+        crate::runtime_server_connection::within_connection_io_budget(
             "runtime-server-control-first-frame",
             read,
         )

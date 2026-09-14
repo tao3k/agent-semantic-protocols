@@ -48,24 +48,25 @@ impl Default for RuntimeQueryGenerationAuthority {
 impl RuntimeQueryGenerationAuthority {
     pub fn new() -> Self {
         Self::new_in_task_scope(
-            agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope::new(
+            agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
                 "runtime-query-generation",
             ),
-            agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor::for_current_daemon(),
+            agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::for_current_daemon(
+            ),
         )
         .expect("a new Runtime query generation task scope must admit its builder")
     }
 
     pub fn new_in_task_scope(
-        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
     ) -> Result<Self, String> {
         Self::new_in_task_scope_with_calibration_store(task_scope, resource_supervisor, None)
     }
 
     pub fn new_in_task_scope_with_calibration_store(
-        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
         calibration_store_path: Option<std::path::PathBuf>,
     ) -> Result<Self, String> {
         let (sender, _) = watch::channel(Arc::new(HashMap::new()));

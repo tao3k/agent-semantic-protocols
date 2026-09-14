@@ -34,10 +34,9 @@ pub use agent_semantic_search::RuntimeSearchDerivedAttachmentSnapshot;
 pub use agent_semantic_search::RuntimeSearchDerivedAttachmentState;
 
 pub(super) struct RuntimeSearchGenerationBuilder {
-    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     accepting: std::sync::atomic::AtomicBool,
-    resource_supervisor:
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
     throughput_by_workload: Arc<
         std::sync::Mutex<
             std::collections::BTreeMap<
@@ -53,9 +52,8 @@ pub(super) struct RuntimeSearchGenerationBuilder {
     process_memory_budget_bytes: usize,
     minimum_memory_per_worker_bytes: usize,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
-    background_tasks: std::sync::Mutex<
-        Vec<agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask<()>>,
-    >,
+    background_tasks:
+        std::sync::Mutex<Vec<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>>,
 }
 
 type RuntimeSearchGenerationBuild = Box<
@@ -75,7 +73,7 @@ struct RuntimeSearchGenerationBuildJob {
 struct RuntimeSearchGenerationBuildOperation {
     name: &'static str,
     identity: RuntimeSearchDerivedAttachmentIdentity,
-    resources: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest,
+    resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest,
     build: RuntimeSearchGenerationBuild,
     fail: Box<dyn FnOnce(String) + Send + 'static>,
 }
@@ -84,9 +82,7 @@ fn emit_runtime_search_build_failure(
     task: &'static str,
     reason_kind: &'static str,
     error: &str,
-    permit: Option<
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourcePermitReceipt,
-    >,
+    permit: Option<agent_semantic_workspace_scheduler::RuntimeServerResourcePermitReceipt>,
 ) {
     eprintln!(
         "[runtime-search-generation-build-resource] {}",
@@ -103,8 +99,8 @@ fn emit_runtime_search_build_failure(
 }
 
 async fn run_runtime_search_generation_build(
-    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-    resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+    resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
     operation: RuntimeSearchGenerationBuildOperation,
 ) -> Result<(), String> {
@@ -208,8 +204,8 @@ async fn run_runtime_search_generation_build(
 
 #[cfg(test)]
 async fn run_runtime_search_generation_build_and_wait(
-    task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-    resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+    resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
     attachment_hub: RuntimeSearchDerivedAttachmentHub,
     job: RuntimeSearchGenerationBuildJob,
 ) -> Result<(), String> {
@@ -233,15 +229,15 @@ async fn run_runtime_search_generation_build_and_wait(
 impl RuntimeSearchGenerationBuilder {
     #[cfg(test)]
     fn new(
-        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
     ) -> Result<Self, String> {
         Self::new_with_calibration_store(task_scope, resource_supervisor, None)
     }
 
     pub(super) fn new_with_calibration_store(
-        task_scope: agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope,
-        resource_supervisor: agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
         calibration_store_path: Option<std::path::PathBuf>,
     ) -> Result<Self, String> {
         let effective_cpu = resource_supervisor.effective_cpu();
@@ -449,11 +445,10 @@ impl RuntimeSearchGenerationBuilder {
                 content_generation_digest: content_generation_digest.clone(),
                 attachment: RuntimeSearchDerivedAttachmentKind::Tantivy,
             },
-            resources:
-                agent_semantic_client_db::runtime_server_runtime::RuntimeServerResourceRequest {
-                    cpu: lexical_cpu,
-                    memory_bytes: lexical_memory,
-                },
+            resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                cpu: lexical_cpu,
+                memory_bytes: lexical_memory,
+            },
             build: Box::new(move || {
                 let (resources, resource_receipt, workload_key) = selected;
                 let started = std::time::Instant::now();

@@ -53,9 +53,9 @@ pub(super) struct AdmissionEntryAuthority {
     commands: tokio::sync::mpsc::Sender<AdmissionEntryCommand>,
     state: tokio::sync::watch::Receiver<AdmissionEntryState>,
     task: std::sync::Arc<
-        tokio::sync::Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>,
+        tokio::sync::Mutex<Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>>,
     >,
-    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
+    task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 }
 
 impl AdmissionEntryAuthority {
@@ -79,7 +79,7 @@ impl AdmissionEntryAuthority {
         }
         let (state_sender, state) = tokio::sync::watch::channel(initial);
         let (commands, mut receiver) = tokio::sync::mpsc::channel(ADMISSION_ENTRY_COMMAND_CAPACITY);
-        let task_scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+        let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
             "generation-admission-entry",
         );
         let task = task_scope.spawn("generation-admission-entry-actor", async move {

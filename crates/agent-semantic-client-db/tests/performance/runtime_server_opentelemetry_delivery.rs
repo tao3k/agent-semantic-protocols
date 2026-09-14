@@ -538,7 +538,7 @@ async fn stalled_query_connections_are_bounded_and_drain_without_leaks() {
     .await
     .expect("resident telemetry should start");
     let connection_limit =
-        agent_semantic_client_db::runtime_server_runtime::runtime_server_connection_limit(
+        agent_semantic_client_db::runtime_server_connection::runtime_server_connection_limit(
             tokio::runtime::Handle::current().metrics().num_workers(),
         );
     let mut stalled = Vec::with_capacity(connection_limit);
