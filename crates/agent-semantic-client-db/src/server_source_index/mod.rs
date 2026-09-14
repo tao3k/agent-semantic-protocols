@@ -26,6 +26,7 @@ pub(crate) use api::materialized_current_source_index_snapshot;
 pub use api::{CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry};
 pub use async_rebuild::{
     prepare_runtime_server_resident_owner_projections_async,
+    prepare_runtime_server_resident_owner_projections_with_cache_async,
     prepare_runtime_server_workspace_generation_with_runtime_service_async,
 };
 pub use collect::SourceIndexCollectionScope;
@@ -37,6 +38,7 @@ pub use model::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
     SourceIndexRefreshReport, SourceIndexScopeFile, SourceIndexSourceKind,
 };
+pub use parser_artifact_store::ParserArtifactResidentCache;
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
     ProviderWorkspaceIdentityV1,

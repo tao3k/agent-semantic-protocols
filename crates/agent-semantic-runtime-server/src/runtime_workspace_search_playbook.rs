@@ -186,54 +186,50 @@ pub(super) async fn execute_progressive_search_clauses(
             )
             .await?;
     }
-    let grounding_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
-        .acquire_owned()
+    if structural_clauses.is_empty() {
+        let grounding_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
+            .acquire_owned()
+            .await
+            .map_err(|_| {
+                AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
+            })?;
+        let grounding_scope = retrieval.fused_scope.clone();
+        let grounding_matches = retrieval.fused_matches.clone();
+        let grounding_resident = workspace_registry
+            .resident_read_client(workspace_identity, project_root)
+            .map_err(AspClientOperationError::Message)?;
+        let mut syntax_candidates = tokio::task::spawn_blocking(move || {
+            let _cpu_permit = grounding_permit;
+            syntax_candidates_enclosing_rg_matches(
+                &grounding_resident,
+                &grounding_scope,
+                grounding_matches.iter(),
+            )
+        })
         .await
-        .map_err(|_| {
-            AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
-        })?;
-    let grounding_scope = retrieval.fused_scope.clone();
-    let grounding_matches = retrieval.fused_matches.clone();
-    let grounding_resident = workspace_registry
-        .resident_read_client(workspace_identity, project_root)
-        .map_err(AspClientOperationError::Message)?;
-    let mut syntax_candidates = tokio::task::spawn_blocking(move || {
-        let _cpu_permit = grounding_permit;
-        syntax_candidates_enclosing_rg_matches(
-            &grounding_resident,
-            &grounding_scope,
-            grounding_matches.iter(),
-        )
-    })
-    .await
-    .map_err(|error| {
-        AspClientOperationError::Message(format!("resident parser grounding lane failed: {error}"))
-    })??;
-    for candidate in &mut syntax_candidates {
-        candidate.hit.tantivy = retrieval
-            .tantivy_expressions_by_owner
-            .get(&candidate.owner)
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect();
-        if !candidate.hit.rg.is_empty() {
-            candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
+        .map_err(|error| {
+            AspClientOperationError::Message(format!(
+                "resident parser grounding lane failed: {error}"
+            ))
+        })??;
+        for candidate in &mut syntax_candidates {
+            candidate.hit.tantivy = retrieval
+                .tantivy_expressions_by_owner
+                .get(&candidate.owner)
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect();
+            if !candidate.hit.rg.is_empty() {
+                candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
+            }
         }
-    }
-    if let Some(clause) = retrieval
-        .clauses
-        .iter_mut()
-        .find(|clause| clause.receipt.axis == WorkspaceSearchAxisKind::Rg)
-    {
-        clause.syntax_candidates = syntax_candidates;
-    }
-    if !structural_clauses.is_empty() {
-        for clause in &mut retrieval.clauses {
-            // An explicit structural query owns the structural frontier. The
-            // automatic grounding result is the default only when no explicit
-            // syntax or native-syntax block was supplied.
-            clause.syntax_candidates.clear();
+        if let Some(clause) = retrieval
+            .clauses
+            .iter_mut()
+            .find(|clause| clause.receipt.axis == WorkspaceSearchAxisKind::Rg)
+        {
+            clause.syntax_candidates = syntax_candidates;
         }
     }
     let mut clause_executions = retrieval.clauses;

@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use super::{ParserArtifactIdentity, ParserArtifactStore};
+use super::{
+    ParserArtifactIdentity, ParserArtifactResidentCache, ParserArtifactReuse, ParserArtifactStore,
+};
 
 fn digest(byte: char) -> String {
     format!(
@@ -48,21 +50,57 @@ async fn artifact_reuses_across_generation_proofs_but_not_content_identity() {
         .expect("publish parser artifact");
 
     assert_eq!(
-        store
-            .read(&stable)
-            .await
-            .expect("read parser artifact")
-            .expect("stable parser artifact"),
-        owner('a')
+        match store.read(&stable).await.expect("read parser artifact") {
+            ParserArtifactReuse::Persistent(owner) => owner,
+            _ => panic!("stable parser artifact must come from persistent storage"),
+        },
+        owner('a'),
     );
     assert!(
         store
             .read(&identity('b'))
             .await
             .expect("changed content lookup")
-            .is_none(),
+            .is_miss(),
         "generation-independent reuse must still bind exact owner content"
     );
+}
+
+impl ParserArtifactReuse {
+    fn is_miss(&self) -> bool {
+        matches!(self, Self::Miss)
+    }
+}
+
+#[tokio::test]
+async fn validated_artifact_becomes_a_bounded_resident_hit() {
+    let temporary = tempfile::tempdir().expect("temporary parser artifact root");
+    let cache = ParserArtifactResidentCache::new(8 * 1024, 1);
+    let store =
+        ParserArtifactStore::for_artifact_root_with_resident_cache(temporary.path(), cache.clone());
+    let first = identity('a');
+    store
+        .publish(first.clone(), owner('a'))
+        .await
+        .expect("publish first parser artifact");
+    assert!(matches!(
+        store.read(&first).await.expect("resident first artifact"),
+        ParserArtifactReuse::Resident(_)
+    ));
+
+    let second = identity('b');
+    store
+        .publish(second.clone(), owner('b'))
+        .await
+        .expect("publish second parser artifact");
+    assert_eq!(cache.resident_usage().1, 1, "entry budget must evict LRU");
+    assert!(matches!(
+        store
+            .read(&first)
+            .await
+            .expect("persistent evicted artifact"),
+        ParserArtifactReuse::Persistent(_)
+    ));
 }
 
 #[tokio::test]

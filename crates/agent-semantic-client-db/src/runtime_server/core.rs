@@ -187,6 +187,8 @@ impl RuntimeServer {
         let memory_registry = Arc::clone(&self.workspace_registry);
         let generation_publication = self.generation_publication.clone();
         let durability_tasks = Arc::clone(&self.durability_tasks);
+        let durability_lanes =
+            Arc::new(dashmap::DashMap::<String, Arc<tokio::sync::Mutex<()>>>::new());
         let events = self.events.clone();
         let durable_restore_runtime_bundle_probe = runtime_bundle_digest_probe.clone();
         let ready_validator = runtime_bundle_digest_probe.map(|probe| {
@@ -246,6 +248,12 @@ impl RuntimeServer {
                 let memory_registry = Arc::clone(&memory_registry);
                 let generation_publication = generation_publication.clone();
                 let durability_tasks = Arc::clone(&durability_tasks);
+                let durability_lane = Arc::clone(
+                    durability_lanes
+                        .entry(workspace_identity.clone())
+                        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                        .value(),
+                );
                 let durable_restore_runtime_bundle_probe =
                     durable_restore_runtime_bundle_probe.clone();
                 let source_builder = source_builder.clone();
@@ -261,6 +269,11 @@ impl RuntimeServer {
                     }
                     let diagnostic_workspace_identity = workspace_identity.clone();
                     let diagnostic_events = events.clone();
+                    // Resident Ready intentionally precedes durable Source
+                    // Index attachment. Keep the same workspace lane through
+                    // that attachment so a targeted successor cannot reopen
+                    // Turso while the previous generation still commits.
+                    let generation_durability_guard = durability_lane.lock_owned().await;
                     let result = async move {
             if cancellation.is_cancelled() {
                         return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
@@ -659,6 +672,7 @@ impl RuntimeServer {
                     let durability_generation_digest = published.generation_digest.clone();
                     let durability_source_root_digest = published.source_root_digest.clone();
                     spawn_runtime_owned_durability_task(&durability_tasks, async move {
+                        let _generation_durability_guard = generation_durability_guard;
                         let durability_started = std::time::Instant::now();
                         let durability = async {
                             let session = await_stage(

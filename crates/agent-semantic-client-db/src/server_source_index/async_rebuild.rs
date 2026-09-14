@@ -42,10 +42,37 @@ pub async fn prepare_runtime_server_resident_owner_projections_async(
     runtime: Option<ProviderRuntimeActorClient>,
     project_root: PathBuf,
     workspace_identity: String,
+    owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
+    auxiliary_inputs: Vec<crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot>,
+    snapshot: RuntimeProviderProjection,
+    parser_artifact_root: PathBuf,
+) -> Result<Vec<crate::runtime_server_workspace::WorkspaceOwnerProjection>, String> {
+    prepare_runtime_server_resident_owner_projections_with_cache_async(
+        runtime,
+        project_root,
+        workspace_identity,
+        owners,
+        auxiliary_inputs,
+        snapshot,
+        parser_artifact_root,
+        None,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "runtime owner projection keeps content, provider, artifact, and resident cache authorities explicit"
+)]
+pub async fn prepare_runtime_server_resident_owner_projections_with_cache_async(
+    runtime: Option<ProviderRuntimeActorClient>,
+    project_root: PathBuf,
+    workspace_identity: String,
     mut owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
     auxiliary_inputs: Vec<crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot>,
     snapshot: RuntimeProviderProjection,
     parser_artifact_root: PathBuf,
+    parser_artifact_cache: Option<super::parser_artifact_store::ParserArtifactResidentCache>,
 ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceOwnerProjection>, String> {
     let total_started = Instant::now();
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
@@ -196,6 +223,7 @@ pub async fn prepare_runtime_server_resident_owner_projections_async(
         &source_blobs,
         &auxiliary_owners,
         &parser_artifact_root,
+        parser_artifact_cache,
     )
     .await?;
     let projection_micros = elapsed_micros(projection_started);

@@ -27,6 +27,30 @@ fn runtime_bundle_drift_skips_restore_while_exact_binding_admits_it() {
     ));
 }
 
+#[test]
+fn successor_build_lane_is_transferred_to_the_durability_attachment() {
+    let source = include_str!("../../src/runtime_server/core.rs");
+    let acquire = source
+        .find("let generation_durability_guard = durability_lane.lock_owned().await")
+        .expect("generation build must acquire its workspace durability lane");
+    let publication = source[acquire..]
+        .find("generation_publication.publish(query_publication)")
+        .map(|offset| acquire + offset)
+        .expect("resident query-generation publication");
+    let transfer = source[publication..]
+        .find("let _generation_durability_guard = generation_durability_guard")
+        .map(|offset| publication + offset)
+        .expect("durability task must own the lane after resident publication");
+    let commit = source[transfer..]
+        .find(".commit_source_index_generation(")
+        .map(|offset| transfer + offset)
+        .expect("durable Source Index commit");
+    assert!(
+        acquire < publication && publication < transfer && transfer < commit,
+        "one same-workspace lane must cover build through durability without delaying resident publication"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn cold_publication_does_not_wait_for_delayed_durability_attachment() {
     let tasks = Arc::new(Mutex::new(JoinSet::new()));

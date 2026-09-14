@@ -205,6 +205,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
     let (runtime_search_service, runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
+    let resource_supervisor =
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::for_current_daemon();
+    let parser_artifact_cache =
+        agent_semantic_client_db::server_source_index::ParserArtifactResidentCache::for_process_memory_budget(
+            resource_supervisor.memory_budget_bytes(),
+        );
     let schema_bundles = runtime_asp_client::RuntimeSchemaBundleCatalog::load_embedded()?;
     // The Runtime Server is the sole owner of the resident Python Graphs
     // lifecycle. The optional executable is admitted only as a content-proven
@@ -229,6 +235,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         std::sync::Arc::clone(&provider_register),
         runtime_search_requests,
         graph_server.clone(),
+        parser_artifact_cache,
     ));
     let endpoint_path =
         agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
@@ -273,8 +280,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .with_runtime_search_service(runtime_search_service.clone())
         .with_agent_session_registry_owner(std::sync::Arc::clone(&agent_session_registry));
     let task_scope = RuntimeServerTaskScope::new("runtime-server-daemon");
-    let resource_supervisor =
-        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::for_current_daemon();
     let query_generation_authority =
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new_in_task_scope_with_calibration_store(
             task_scope.clone(),

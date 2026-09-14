@@ -55,9 +55,17 @@ pub(super) async fn project_generation_with_resident_runtime_and_artifact_store(
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
     artifact_root: &Path,
+    resident_cache: Option<super::parser_artifact_store::ParserArtifactResidentCache>,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
-    let artifact_store =
-        super::parser_artifact_store::ParserArtifactStore::for_artifact_root(artifact_root);
+    let artifact_store = resident_cache.map_or_else(
+        || super::parser_artifact_store::ParserArtifactStore::for_artifact_root(artifact_root),
+        |cache| {
+            super::parser_artifact_store::ParserArtifactStore::for_artifact_root_with_resident_cache(
+                artifact_root,
+                cache,
+            )
+        },
+    );
     project_generation_with_executor(
         ProviderProjectionExecutor::Resident(runtime),
         project_root,
@@ -214,20 +222,37 @@ async fn project_provider(
         Vec::new()
     };
     let mut response_by_owner = BTreeMap::new();
+    let mut resident_hits = 0usize;
+    let mut persistent_hits = 0usize;
     let mut cache_rejected = 0usize;
     let mut cache_indexes = std::collections::BTreeSet::new();
     for (index, identity, cached_owner) in cached {
         let admitted = match cached_owner {
-            Ok(Some(owner)) => validate_cached_projected_owner(
-                provider,
-                tree,
-                workspace_identity,
-                source_blobs,
-                &identity.owner_path,
-                owner,
-            )
-            .map(Some),
-            Ok(None) => Ok(None),
+            Ok(super::parser_artifact_store::ParserArtifactReuse::Resident(owner)) => {
+                resident_hits = resident_hits.saturating_add(1);
+                validate_cached_projected_owner(
+                    provider,
+                    tree,
+                    workspace_identity,
+                    source_blobs,
+                    &identity.owner_path,
+                    owner,
+                )
+                .map(Some)
+            }
+            Ok(super::parser_artifact_store::ParserArtifactReuse::Persistent(owner)) => {
+                persistent_hits = persistent_hits.saturating_add(1);
+                validate_cached_projected_owner(
+                    provider,
+                    tree,
+                    workspace_identity,
+                    source_blobs,
+                    &identity.owner_path,
+                    owner,
+                )
+                .map(Some)
+            }
+            Ok(super::parser_artifact_store::ParserArtifactReuse::Miss) => Ok(None),
             Err(error) => Err(error),
         };
         match admitted {
@@ -251,9 +276,11 @@ async fn project_provider(
         .filter(|index| !cache_indexes.contains(index))
         .collect::<Vec<_>>();
     eprintln!(
-        "[parser-artifact-reuse] providerId={} state=observed hits={} misses={} rejected={} elapsedMicros={}",
+        "[parser-artifact-reuse] providerId={} state=observed hits={} residentHits={} persistentHits={} misses={} rejected={} elapsedMicros={}",
         provider.provider_id,
         cache_indexes.len(),
+        resident_hits,
+        persistent_hits,
         miss_indexes.len(),
         cache_rejected,
         cache_started.elapsed().as_micros(),

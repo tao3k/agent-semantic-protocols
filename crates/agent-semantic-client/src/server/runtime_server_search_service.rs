@@ -14,6 +14,7 @@ pub(super) async fn serve_runtime_search_requests(
         agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest,
     >,
     graph_server: agent_semantic_runtime_server::asp_python_graphs_transport::AspPythonGraphsServer,
+    parser_artifact_cache: agent_semantic_client_db::server_source_index::ParserArtifactResidentCache,
 ) {
     use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
     use tokio_stream::StreamExt;
@@ -388,6 +389,7 @@ pub(super) async fn serve_runtime_search_requests(
                 auxiliary_owners,
                 response,
             } => {
+                let parser_artifact_cache = parser_artifact_cache.clone();
                 let result = (|| {
                     let launch = runtime_active_provider_projection.runtime_launch(
                         &project_root,
@@ -424,7 +426,7 @@ pub(super) async fn serve_runtime_search_requests(
                     let result = match result {
                         Ok((runtime, registry)) => {
                             agent_semantic_client_db::server_source_index::
-                                prepare_runtime_server_resident_owner_projections_async(
+                                prepare_runtime_server_resident_owner_projections_with_cache_async(
                                     runtime,
                                     project_root,
                                     workspace_identity,
@@ -432,6 +434,7 @@ pub(super) async fn serve_runtime_search_requests(
                                     auxiliary_owners,
                                     registry,
                                     parser_artifact_root,
+                                    Some(parser_artifact_cache),
                                 )
                                 .await
                         }

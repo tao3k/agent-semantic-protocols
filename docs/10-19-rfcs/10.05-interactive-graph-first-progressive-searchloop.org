@@ -86,6 +86,14 @@ pointer.  Therefore a visible new pointer implies that its binding was already
 durable.  A crash before pointer publication leaves either the old pointer or a
 binding/pointer mismatch, both of which fail closed.  A writer lacking a current
 candidate proof MUST invalidate an older binding before publishing its pointer.
+Resident publication may acknowledge before its Source Index durability
+attachment completes, but a successor build for the same workspace MUST join
+that attachment before opening or deriving durable Source Index state.  The
+Runtime therefore owns one build-through-durability lane per workspace: the
+lane begins before restore/build reads and transfers to the asynchronous
+durability attachment after resident publication.  Different workspaces remain
+independent.  This prevents a targeted provider successor from racing the
+previous generation's Turso commit while preserving early resident visibility.
 
 Normative architectural root for RFC 10.05.
 
@@ -1148,6 +1156,24 @@ Restart recovery revalidates the already durable parser artifact and reattaches
 it on demand.  Therefore one candidate miss has work proportional to that
 candidate artifact, never to total workspace bytes.
 
+After a durable parser artifact has passed that validation, the Runtime Search
+Service MAY retain its immutable projected owner in a process-resident hot set.
+The hot set is keyed by the complete V1 parser-artifact identity, including
+provider, parser, query-pack, auxiliary-input, owner-path and owner-content
+digests.  It is an acceleration layer, not a second recovery authority: a
+process restart repopulates it only from a validated durable artifact or a
+successfully published provider result.  A hit MUST recheck the requested full
+identity and owner content binding without reopening or decoding the artifact
+file.  Entries are bounded by both bytes and count, derive their byte budget
+from the Runtime Server process memory authority, use deterministic recency
+eviction, and disappear with the Runtime Search Service lifecycle.  Eviction
+changes only latency; it cannot change Search or Query semantics.  A miss or
+identity drift returns to durable validation/provider projection and MUST NOT
+silently reuse an owner-path-only entry.
+Performance receipts MUST distinguish resident hits, durable-file hits, misses,
+and rejected artifacts so a fast semantic-overlay hit cannot be misreported as
+proof that the parser-artifact hot set was exercised.
+
 For every admitted workspace/provider target restored during daemon startup,
 the same startup barrier also attempts and terminalizes establishment of the
 Runtime-owned resident provider actor before public health becomes Ready.  A
@@ -1816,6 +1842,13 @@ acceleration may finish later; candidate semantic products attach only after
 their content identity validates against that published base.  Replaying from
 a different generation, exposing a partial parser artifact, or attaching stale
 work is fail-closed.
+
+Automatic parser grounding of rg byte matches is mutually exclusive with an
+explicit =syntax= or =native-syntax= clause.  When an explicit structural
+clause exists, it owns the structural frontier and the Runtime MUST NOT compute
+automatic grounding only to discard it afterward.  This preserves the same
+result semantics while removing a redundant selector scan and blocking-lane
+handoff from every structurally composed Search.
 
 The resident lexical attachment snapshot has exactly one slot per
 =(ProjectId, WorkspaceId, attachmentKind)=.  Content digest proves what was
