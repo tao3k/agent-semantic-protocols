@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use crate::RESIDENT_BYTE_GRAM_WIDTH;
 
@@ -44,17 +44,19 @@ pub(super) fn encode<'a>(owners: impl IntoIterator<Item = &'a [u8]>) -> Result<V
 pub(super) fn encode_validated<'a>(
     owners: impl IntoIterator<Item = &'a [u8]>,
 ) -> Result<EncodedByteCoverageArtifact, String> {
-    let owners = owners.into_iter().collect::<Vec<_>>();
-    let owner_count = owners.len();
-    if owner_count > u32::MAX as usize {
-        return Err("resident byte predicate owner count exceeds u32".to_owned());
-    }
-    // Fx hashing is sufficient for packed fixed-width integer grams and avoids
-    // paying SipHash or ordered-tree insertion cost for every owner/gram pair.
-    // The final key sort keeps the V1 artifact byte-for-byte deterministic.
-    let mut postings = FxHashMap::<u32, Vec<u32>>::default();
+    // Construction uses one flat fixed-width arena instead of one allocation
+    // per distinct gram. Sorting the packed (gram, owner-id) records gives the
+    // same canonical V1 directory/posting order while making peak build memory
+    // proportional to postings rather than postings plus thousands of Vec
+    // headers and allocator capacities. This arena is also the in-memory run
+    // shape required by the bounded external-sort builder.
+    let mut records = Vec::<u64>::new();
     let mut owner_grams = FxHashSet::default();
+    let mut owner_count = 0usize;
     for (owner_id, bytes) in owners.into_iter().enumerate() {
+        if owner_id >= u32::MAX as usize {
+            return Err("resident byte predicate owner count exceeds u32".to_owned());
+        }
         owner_grams.clear();
         owner_grams.reserve(bytes.len().min(65_536));
         for window in bytes.windows(RESIDENT_BYTE_GRAM_WIDTH) {
@@ -63,17 +65,19 @@ pub(super) fn encode_validated<'a>(
         let owner_id = u32::try_from(owner_id)
             .map_err(|_| "resident byte predicate owner id exceeds u32".to_owned())?;
         for &gram in &owner_grams {
-            postings.entry(gram).or_default().push(owner_id);
+            records.push(pack_record(gram, owner_id));
         }
+        owner_count += 1;
     }
-    let mut postings = postings.into_iter().collect::<Vec<_>>();
-    postings.sort_unstable_by_key(|(gram, _)| *gram);
-    let gram_count = postings.len();
-    let posting_count = postings.iter().try_fold(0usize, |total, (_, posting)| {
-        total
-            .checked_add(posting.len())
-            .ok_or_else(|| "resident byte predicate posting count overflows".to_owned())
-    })?;
+    records.sort_unstable();
+    let posting_count = records.len();
+    let gram_count = records
+        .iter()
+        .enumerate()
+        .filter(|(index, record)| {
+            *index == 0 || record_gram(**record) != record_gram(records[*index - 1])
+        })
+        .count();
     let directory_len = gram_count
         .checked_mul(DIRECTORY_ENTRY_LEN)
         .ok_or_else(|| "resident byte predicate directory length overflows".to_owned())?;
@@ -81,10 +85,25 @@ pub(super) fn encode_validated<'a>(
         .checked_add(directory_len)
         .ok_or_else(|| "resident byte predicate postings offset overflows".to_owned())?;
     let mut directory = Vec::with_capacity(directory_len);
-    let mut posting_bytes = Vec::new();
-    for (gram, owner_ids) in postings {
+    let mut posting_bytes = Vec::with_capacity(posting_count);
+    let mut cursor = 0usize;
+    while cursor < records.len() {
+        let gram = record_gram(records[cursor]);
         let relative_offset = posting_bytes.len();
-        encode_posting(&owner_ids, &mut posting_bytes);
+        let mut previous = 0u32;
+        let mut group_count = 0usize;
+        while cursor < records.len() && record_gram(records[cursor]) == gram {
+            let owner = record_owner(records[cursor]);
+            let delta = if group_count == 0 {
+                owner
+            } else {
+                owner - previous
+            };
+            write_varint(&mut posting_bytes, delta);
+            previous = owner;
+            group_count += 1;
+            cursor += 1;
+        }
         write_u32(&mut directory, gram);
         write_u32(&mut directory, 0);
         write_u64(
@@ -95,10 +114,7 @@ pub(super) fn encode_validated<'a>(
             &mut directory,
             checked_u64(posting_bytes.len() - relative_offset, "posting length")?,
         );
-        write_u64(
-            &mut directory,
-            checked_u64(owner_ids.len(), "posting count")?,
-        );
+        write_u64(&mut directory, checked_u64(group_count, "posting count")?);
     }
     let total_len = postings_offset
         .checked_add(posting_bytes.len())
@@ -130,6 +146,18 @@ pub(super) fn encode_validated<'a>(
             postings_offset,
         },
     })
+}
+
+fn pack_record(gram: u32, owner: u32) -> u64 {
+    (u64::from(gram) << 32) | u64::from(owner)
+}
+
+fn record_gram(record: u64) -> u32 {
+    (record >> 32) as u32
+}
+
+fn record_owner(record: u64) -> u32 {
+    record as u32
 }
 
 impl ValidatedByteCoverageLayout {
@@ -383,15 +411,6 @@ impl PostingDecoder<'_> {
         self.previous = owner;
         self.decoded += 1;
         Ok(Some(owner))
-    }
-}
-
-fn encode_posting(owners: &[u32], output: &mut Vec<u8>) {
-    let mut previous = 0u32;
-    for (index, owner) in owners.iter().copied().enumerate() {
-        let delta = if index == 0 { owner } else { owner - previous };
-        write_varint(output, delta);
-        previous = owner;
     }
 }
 

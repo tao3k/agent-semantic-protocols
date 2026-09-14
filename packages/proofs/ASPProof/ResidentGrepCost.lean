@@ -205,6 +205,32 @@ theorem mapped_generation_has_zero_workspace_heap_retention
   rcases zeroCopy with ⟨postings, corpus⟩
   omega
 
+/-- The Rust builder's flat `(gram, owner-id)` arena retains one fixed-width
+record per posting.  A map of independently allocated posting vectors retains
+the same records plus at least one allocator header per distinct gram. -/
+def flatPostingArenaBytes (postingCount recordBytes : Nat) : Nat :=
+  postingCount * recordBytes
+
+def fragmentedPostingArenaBytes
+    (postingCount distinctGramCount recordBytes vectorHeaderBytes : Nat) : Nat :=
+  flatPostingArenaBytes postingCount recordBytes +
+    distinctGramCount * vectorHeaderBytes
+
+theorem flat_posting_arena_never_exceeds_fragmented
+    (postingCount distinctGramCount recordBytes vectorHeaderBytes : Nat) :
+    flatPostingArenaBytes postingCount recordBytes ≤
+      fragmentedPostingArenaBytes
+        postingCount distinctGramCount recordBytes vectorHeaderBytes := by
+  unfold fragmentedPostingArenaBytes
+  omega
+
+theorem fragmented_arena_overhead_is_per_gram
+    (postingCount distinctGramCount recordBytes vectorHeaderBytes : Nat) :
+    fragmentedPostingArenaBytes
+        postingCount distinctGramCount recordBytes vectorHeaderBytes =
+      flatPostingArenaBytes postingCount recordBytes +
+        distinctGramCount * vectorHeaderBytes := rfl
+
 structure TokioCpuLaneModel where
   laneLimit : Nat
   activeCpuLanes : Nat

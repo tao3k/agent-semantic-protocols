@@ -25,6 +25,8 @@ open ASPProof.ResidentGrepCost
 #check limit_before_intersection_loses_hit
 #check v1_directory_field_accounting
 #check mapped_generation_has_zero_workspace_heap_retention
+#check flat_posting_arena_never_exceeds_fragmented
+#check fragmented_arena_overhead_is_per_gram
 #check admitted_tokio_lane_preserves_reactor
 #check cached_digest_check_equivalent
 #check owner_hash_work_decomposition

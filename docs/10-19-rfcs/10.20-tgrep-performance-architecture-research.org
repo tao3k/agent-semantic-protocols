@@ -403,6 +403,16 @@ arenas sort and spill; final construction k-way merges directly into the mmap
 artifact.  Resource selection comes from Runtime Server's existing CPU and
 memory supervisor and is included in the build receipt.
 
+The first P3 construction slice replaces the fragmented
+=HashMap<gram, Vec<owner-id>>= build representation with one packed, flat
+=(gram, owner-id)= arena.  Sorting that arena preserves the exact V1 directory
+and delta-posting byte order, while grouped encoding writes directly into the
+final directory and posting streams without a second vector per gram.  Lean
+models the removed per-gram allocation term as
+=distinctGramCount * vectorHeaderBytes=.  This closes the in-memory run shape;
+bounded spill files, k-way merge and Runtime-owned peak-memory receipts remain
+required before P3 is complete.
+
 The batch contract must bound:
 
 - file count;
