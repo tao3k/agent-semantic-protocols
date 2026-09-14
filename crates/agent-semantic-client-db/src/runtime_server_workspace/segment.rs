@@ -199,14 +199,31 @@ impl WorkspaceGenerationPublisher {
         generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
     ) -> Result<WorkspaceGenerationSnapshot, String> {
-        self.publish_inner(generation, previous_epoch_readable)
+        self.publish_inner(generation, previous_epoch_readable, None)
             .await
+    }
+
+    pub(crate) async fn publish_with_admission_candidate(
+        &self,
+        generation: std::sync::Arc<WorkspaceMemoryGeneration>,
+        previous_epoch_readable: bool,
+        admission_candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    ) -> Result<WorkspaceGenerationSnapshot, String> {
+        self.publish_inner(
+            generation,
+            previous_epoch_readable,
+            Some(admission_candidate),
+        )
+        .await
     }
 
     async fn publish_inner(
         &self,
         generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
+        admission_candidate: Option<
+            crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+        >,
     ) -> Result<WorkspaceGenerationSnapshot, String> {
         let state = self.state().await?;
         // Publication is a single-writer transition. Besides preventing pointer races, this
@@ -372,6 +389,24 @@ impl WorkspaceGenerationPublisher {
             search_generation_authority,
         )
         .await?;
+        match admission_candidate {
+            Some(candidate) => {
+                let binding = crate::runtime_server_admission_binding::WorkspaceGenerationAdmissionBindingV1::new(
+                    generation.workspace_identity.clone(),
+                    std::path::PathBuf::from(&generation.project_root),
+                    candidate,
+                    snapshot.generation_digest.clone(),
+                    snapshot.source_root_digest.clone(),
+                )?;
+                crate::runtime_server_admission_binding::publish(&self.directory, &binding).await?;
+            }
+            None => {
+                // A writer without current candidate evidence may publish
+                // durable bytes, but it must revoke any previous restart
+                // proof before the new active pointer becomes visible.
+                crate::runtime_server_admission_binding::invalidate(&self.directory).await?;
+            }
+        }
         state.pointer.publish(&snapshot).await?;
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),

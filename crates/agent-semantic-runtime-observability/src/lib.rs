@@ -879,8 +879,10 @@ pub trait RuntimeObservationSink: Send + Sync + 'static {
     fn try_record(&self, observation: RuntimePerformanceObservation) -> bool;
 }
 
+type RuntimeObservationSinkSlot = Option<(u64, std::sync::Arc<dyn RuntimeObservationSink>)>;
+
 static ACTIVE_RUNTIME_OBSERVATION_SINK: std::sync::OnceLock<
-    std::sync::Mutex<Option<(u64, std::sync::Arc<dyn RuntimeObservationSink>)>>,
+    std::sync::Mutex<RuntimeObservationSinkSlot>,
 > = std::sync::OnceLock::new();
 static NEXT_RUNTIME_OBSERVATION_SINK_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);

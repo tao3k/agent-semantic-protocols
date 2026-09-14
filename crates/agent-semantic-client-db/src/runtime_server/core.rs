@@ -258,20 +258,21 @@ impl RuntimeServer {
                             "workspace admission requires a non-empty workspace identity",
                         ));
                     }
-                    // RestoreOrBuild must verify current source identity in the
-                    // source builder. Loading a pointer here only to reject its
-                    // unverified coverage duplicates recovery work and can
-                    // transiently expose stale resident bytes.
-                    let durable_restore_admitted = if !build_mode.attempts_durable_restore()
-                        || build_mode == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOrBuild {
+                    // Process-cold reuse requires the separate V1 admission
+                    // binding to match the freshly discovered Git candidate.
+                    // The pointer alone proves durable bytes, not that those
+                    // bytes still describe the current worktree and policy.
+                    let durable_restore_admitted = if !build_mode.attempts_durable_restore() {
                         false
-                    } else if provider_target.is_none() {
-                        true
                     } else {
-                        let current_generation = durable_restore_runtime_bundle_probe
-                            .as_ref()
-                            .and_then(|probe| probe().ok().flatten());
-                        let observed_generation = async {
+                        let generation_directory =
+                            crate::runtime_server_workspace::workspace_generation_directory(
+                                memory_registry.root(),
+                                &workspace_identity,
+                                &project_root,
+                            )
+                            .ok();
+                        let snapshot = async {
                             let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
                                 memory_registry.root(),
                                 &workspace_identity,
@@ -285,15 +286,40 @@ impl RuntimeServer {
                             .ok()??;
                             let snapshot = reader.read().ok()?;
                             snapshot.validate().ok()?;
-                            snapshot
-                                .runtime_provider_execution_binding
-                                .map(|binding| binding.runtime_bundle_digest)
+                            Some(snapshot)
                         }
                         .await;
-                        durable_runtime_bundle_matches_current(
-                            observed_generation.as_deref(),
-                            current_generation.as_deref(),
-                        )
+                        let admission_binding = match generation_directory.as_deref() {
+                            Some(directory) => crate::runtime_server_admission_binding::read(directory)
+                                .await
+                                .ok(),
+                            None => None,
+                        };
+                        let identity_admitted = snapshot.as_ref().is_some_and(|snapshot| {
+                            admission_binding.as_ref().is_some_and(|binding| {
+                                binding.admits(
+                                    &workspace_identity,
+                                    &project_root,
+                                    &candidate,
+                                    snapshot,
+                                )
+                            })
+                        });
+                        let current_generation = durable_restore_runtime_bundle_probe
+                            .as_ref()
+                            .and_then(|probe| probe().ok().flatten());
+                        let observed_generation = snapshot
+                            .and_then(|snapshot| snapshot
+                                .runtime_provider_execution_binding
+                                .map(|binding| binding.runtime_bundle_digest));
+                        let provider_admitted = match observed_generation.as_deref() {
+                            Some(observed) => durable_runtime_bundle_matches_current(
+                                Some(observed),
+                                current_generation.as_deref(),
+                            ),
+                            None => provider_target.is_none(),
+                        };
+                        identity_admitted && provider_admitted
                     };
                     if durable_restore_admitted {
                         let restore_started = std::time::Instant::now();
@@ -510,7 +536,7 @@ impl RuntimeServer {
                         &operation_id,
                         Stage::CanonicalGenerationPublication,
                         async {
-                            memory_registry.admit_canonical_generation_resident(
+                            memory_registry.admit_canonical_generation_resident_with_candidate(
                             format!(
                                 "daemon-admission-build-{workspace_identity}-{}-{}",
                                 committed_materialization.as_materialization().workspace_generation.root_digest,
@@ -518,6 +544,7 @@ impl RuntimeServer {
                             ),
                             &workspace_identity,
                             committed_materialization,
+                            captured_candidate.clone(),
                             )
                             .await
                             .map_err(|error| {

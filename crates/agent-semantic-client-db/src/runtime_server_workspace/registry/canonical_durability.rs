@@ -20,6 +20,9 @@ use crate::runtime_server_workspace::{
 pub(super) async fn commit_canonical_generation(
     publisher: &WorkspaceGenerationPublisher,
     generation: Arc<WorkspaceMemoryGeneration>,
+    admission_candidate: Option<
+        crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    >,
     previous_epoch_readable: bool,
     durability: &watch::Sender<Option<WorkspaceGenerationDurabilityReceipt>>,
     workspace_identity: &str,
@@ -27,7 +30,15 @@ pub(super) async fn commit_canonical_generation(
     target_epoch: u64,
     counters: &RuntimeDataPlaneCounterState,
 ) -> Result<crate::runtime_server_workspace::WorkspaceGenerationSnapshot, String> {
-    let snapshot = match publisher.publish(generation, previous_epoch_readable).await {
+    let publication = match admission_candidate {
+        Some(candidate) => {
+            publisher
+                .publish_with_admission_candidate(generation, previous_epoch_readable, candidate)
+                .await
+        }
+        None => publisher.publish(generation, previous_epoch_readable).await,
+    };
+    let snapshot = match publication {
         Ok(snapshot) => snapshot,
         Err(error) => {
             durability.send_replace(Some(WorkspaceGenerationDurabilityReceipt::new(

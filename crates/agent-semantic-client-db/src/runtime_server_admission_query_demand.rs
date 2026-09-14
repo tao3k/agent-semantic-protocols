@@ -306,12 +306,6 @@ impl WorkspaceGenerationAdmission {
                 ));
             }
         }
-        let candidate = super::WorkspaceGenerationCandidateIdentity::for_runtime_admission(
-            &resolved.project_id,
-            &workspace_identity,
-            provider_target.as_ref(),
-        )?;
-
         loop {
             if let Some(observed) = self.current(&workspace_identity, &project_root) {
                 if matches!(
@@ -330,8 +324,6 @@ impl WorkspaceGenerationAdmission {
                 if observed.state == WorkspaceGenerationAdmissionState::Ready
                     && observed.admission_mode.is_complete_generation()
                     && observed.commit.is_some()
-                    && observed.candidate_generation == candidate.candidate_generation
-                    && observed.policy_overlay_digest == candidate.policy_overlay_digest
                     && self.ready_validator.as_ref().is_none_or(|validator| {
                         validator(&workspace_identity, &project_root, &observed).is_ok()
                     })
@@ -349,6 +341,11 @@ impl WorkspaceGenerationAdmission {
             } else {
                 WorkspaceGenerationBuildMode::RestoreOrBuild
             };
+            // A process-cold restore must compare the durable generation with
+            // the current Git/worktree and policy identity. Resident Ready is
+            // handled above without a repository walk; this discovery occurs
+            // only when a new admission attempt is actually required.
+            let candidate = super::discover_workspace_generation_candidate(&project_root).await?;
             let queued = self
                 .admit_with_mode(
                     workspace_identity.clone(),

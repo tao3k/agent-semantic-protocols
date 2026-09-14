@@ -319,6 +319,23 @@ impl RuntimeServerWorkspaceRegistry {
             request_id.into(),
             workspace_identity.into(),
             materialization,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn admit_canonical_generation_resident_with_candidate(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
+        admission_candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        self.admit_canonical_generation_resident_inner(
+            request_id.into(),
+            workspace_identity.into(),
+            materialization,
+            Some(admission_candidate),
         )
         .await
     }
@@ -328,6 +345,9 @@ impl RuntimeServerWorkspaceRegistry {
         request_id: String,
         workspace_identity: String,
         materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
+        admission_candidate: Option<
+            crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+        >,
     ) -> Result<WorkspaceRecoveryReceipt, String> {
         let project_root = std::path::Path::new(&materialization.as_materialization().project_root);
         let active = match self.ready_entry(&workspace_identity, project_root) {
@@ -418,6 +438,7 @@ impl RuntimeServerWorkspaceRegistry {
                     workspace_identity: workspace_identity.clone(),
                     materialization,
                     prepared_index,
+                    admission_candidate,
                     reply,
                 },
             ))

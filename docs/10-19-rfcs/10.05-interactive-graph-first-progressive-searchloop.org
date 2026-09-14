@@ -34,6 +34,56 @@ single-flight submission; neither a failed generation nor a timeout is retried.
 The V1 zero-work resident-read receipt applies only to the cache-ready phase.
 First-computation timing is a separate diagnostic, never a forged resident receipt.
 
+** Process-cold generation reuse is proof-bound
+
+A Runtime restart MUST NOT turn an unchanged workspace into an unconditional
+full source/parser rebuild.  The durable V1 generation is reusable only when a
+separate V1 admission binding proves the exact tuple
+=(WorkspaceId, canonical project root, repository candidate generation,
+policy overlay digest, source root digest, generation digest)=.  Provider
+Runtime bundle admission remains an independent conjunct.  Missing, malformed,
+non-Git-resident, stale, or cross-scope binding evidence fails closed to one
+normal generation build; it never weakens Query semantics.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  C[Current Git candidate + policy] --> A{V1 admission binding exact?}
+  P[Durable generation pointer] --> A
+  B[Current provider bundle] --> A
+  A -->|yes| R[restore mmap + exact owner index]
+  A -->|no| F[one complete generation build]
+  R --> Q[direct generation-bound Query]
+  F --> Q
+#+end_src
+
+#+begin_src typst :exports code
+$
+  restore_(cold) =
+    pointer_(exact) and scope_(exact) and candidate_(exact)
+    and generation_(exact) and source_(exact) and provider_(exact)
+$
+
+$
+  cost(query_(resident)) = O(1),
+  quad cost(query_(process-cold)) = cost(candidate_(git)) + cost(mmap_(generation))
+$
+#+end_src
+
+The admission binding is a generation-specific proof, not parser output and
+not a new public Search/Query schema.  Content-addressed parser artifacts remain
+reusable independently, while the binding is replaced atomically for each
+published generation.  Thus a process-cold exact Query pays candidate
+verification plus mmap restoration, not repository-wide parsing, when and only
+when all identities are unchanged.
+
+The workspace durability single writer MUST publish in this order: generation,
+exact-projection, and search segments; generation-specific admission binding;
+active-generation pointer.  The directory is synchronized before advancing the
+pointer.  Therefore a visible new pointer implies that its binding was already
+durable.  A crash before pointer publication leaves either the old pointer or a
+binding/pointer mismatch, both of which fail closed.  A writer lacking a current
+candidate proof MUST invalidate an older binding before publishing its pointer.
+
 Normative architectural root for RFC 10.05.
 
 This file is intentionally a compact index.  Detailed state machines,

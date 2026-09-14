@@ -16,66 +16,137 @@ inductive BuildAction where
   | fail
   deriving DecidableEq, Repr
 
-def decide (mode : BuildMode) (currentGenerationPointer : Bool) : BuildAction :=
-  match mode, currentGenerationPointer with
+structure RestoreEvidence where
+  currentGenerationPointer : Bool
+  exactScope : Bool
+  exactCandidate : Bool
+  exactGenerationDigest : Bool
+  exactSourceRootDigest : Bool
+  exactProviderBundle : Bool
+  deriving DecidableEq, Repr
+
+def restoreAdmitted (evidence : RestoreEvidence) : Bool :=
+  evidence.currentGenerationPointer &&
+  evidence.exactScope &&
+  evidence.exactCandidate &&
+  evidence.exactGenerationDigest &&
+  evidence.exactSourceRootDigest &&
+  evidence.exactProviderBundle
+
+def decide (mode : BuildMode) (evidence : RestoreEvidence) : BuildAction :=
+  match mode, restoreAdmitted evidence with
   | .restoreOnly, true => .publishCommitted
   | .restoreOnly, false => .fail
   | .restoreOrBuild, true => .publishCommitted
   | .restoreOrBuild, false => .runSourceBuilder
   | .rebuildAfterMutation, _ => .runSourceBuilder
 
+def completeEvidence : RestoreEvidence where
+  currentGenerationPointer := true
+  exactScope := true
+  exactCandidate := true
+  exactGenerationDigest := true
+  exactSourceRootDigest := true
+  exactProviderBundle := true
+
+def missingPointer : RestoreEvidence :=
+  { completeEvidence with currentGenerationPointer := false }
+
 def legacyRestore (currentMaterialization : Bool) : BuildAction :=
   if currentMaterialization then .publishCommitted else .runSourceBuilder
 
-def onDemandPointerRestore (currentGenerationPointer : Bool) : BuildAction :=
-  decide .restoreOnly currentGenerationPointer
+def onDemandPointerRestore (evidence : RestoreEvidence) : BuildAction :=
+  decide .restoreOnly evidence
 
 theorem legacy_missing_restore_runs_source_builder :
     legacyRestore false = .runSourceBuilder := by
   rfl
 
 theorem restore_only_current_publishes :
-    decide .restoreOnly true = .publishCommitted := by
+    decide .restoreOnly completeEvidence = .publishCommitted := by
   rfl
 
 theorem restore_only_missing_fails :
-    decide .restoreOnly false = .fail := by
+    decide .restoreOnly missingPointer = .fail := by
   rfl
 
-theorem restore_only_never_runs_source_builder (currentGenerationPointer : Bool) :
-    decide .restoreOnly currentGenerationPointer ≠ .runSourceBuilder := by
-  cases currentGenerationPointer <;> simp [decide]
+theorem restore_only_never_runs_source_builder (evidence : RestoreEvidence) :
+    decide .restoreOnly evidence ≠ .runSourceBuilder := by
+  cases h : restoreAdmitted evidence <;> simp [decide, h]
 
-theorem on_demand_pointer_restore_uses_restore_only (currentGenerationPointer : Bool) :
-    onDemandPointerRestore currentGenerationPointer =
-      decide .restoreOnly currentGenerationPointer := by
+theorem on_demand_pointer_restore_uses_restore_only (evidence : RestoreEvidence) :
+    onDemandPointerRestore evidence = decide .restoreOnly evidence := by
   rfl
 
-theorem on_demand_pointer_restore_never_runs_source_builder (currentGenerationPointer : Bool) :
-    onDemandPointerRestore currentGenerationPointer ≠ .runSourceBuilder := by
-  exact restore_only_never_runs_source_builder currentGenerationPointer
+theorem on_demand_pointer_restore_never_runs_source_builder (evidence : RestoreEvidence) :
+    onDemandPointerRestore evidence ≠ .runSourceBuilder := by
+  exact restore_only_never_runs_source_builder evidence
 
 theorem on_demand_pointer_restore_missing_is_terminal_failure :
-    onDemandPointerRestore false = .fail := by
+    onDemandPointerRestore missingPointer = .fail := by
   rfl
 
 theorem source_builder_requires_explicit_build_authority
     (mode : BuildMode)
-    (currentGenerationPointer : Bool)
-    (runs : decide mode currentGenerationPointer = .runSourceBuilder) :
+    (evidence : RestoreEvidence)
+    (runs : decide mode evidence = .runSourceBuilder) :
     mode ≠ .restoreOnly := by
   intro restoreOnly
   subst mode
-  exact restore_only_never_runs_source_builder currentGenerationPointer runs
+  exact restore_only_never_runs_source_builder evidence runs
 
-theorem restore_only_result_domain (currentGenerationPointer : Bool) :
-    decide .restoreOnly currentGenerationPointer = .publishCommitted ∨
-      decide .restoreOnly currentGenerationPointer = .fail := by
-  cases currentGenerationPointer <;> simp [decide]
+theorem restore_only_result_domain (evidence : RestoreEvidence) :
+    decide .restoreOnly evidence = .publishCommitted ∨
+      decide .restoreOnly evidence = .fail := by
+  cases h : restoreAdmitted evidence <;> simp [decide, h]
 
-theorem mutation_never_publishes_existing (currentGenerationPointer : Bool) :
-    decide .rebuildAfterMutation currentGenerationPointer = .runSourceBuilder := by
-  cases currentGenerationPointer <;> rfl
+theorem mutation_never_publishes_existing (evidence : RestoreEvidence) :
+    decide .rebuildAfterMutation evidence = .runSourceBuilder := by
+  rfl
+
+theorem exact_binding_restores_without_source_builder :
+    decide .restoreOrBuild completeEvidence = .publishCommitted := by
+  rfl
+
+theorem candidate_drift_rejects_restore :
+    decide .restoreOrBuild { completeEvidence with exactCandidate := false } =
+      .runSourceBuilder := by
+  rfl
+
+theorem source_root_drift_rejects_restore :
+    decide .restoreOrBuild { completeEvidence with exactSourceRootDigest := false } =
+      .runSourceBuilder := by
+  rfl
+
+theorem provider_drift_rejects_restore :
+    decide .restoreOrBuild { completeEvidence with exactProviderBundle := false } =
+      .runSourceBuilder := by
+  rfl
+
+inductive DurablePublicationPhase where
+  | segmentsPending
+  | segmentsDurable
+  | bindingDurable
+  | pointerVisible
+  deriving DecidableEq, Repr
+
+def phaseRank : DurablePublicationPhase → Nat
+  | .segmentsPending => 0
+  | .segmentsDurable => 1
+  | .bindingDurable => 2
+  | .pointerVisible => 3
+
+def bindingIsDurable (phase : DurablePublicationPhase) : Prop :=
+  phaseRank .bindingDurable ≤ phaseRank phase
+
+def pointerIsVisible (phase : DurablePublicationPhase) : Prop :=
+  phase = .pointerVisible
+
+theorem visible_pointer_implies_durable_binding
+    (phase : DurablePublicationPhase) (visible : pointerIsVisible phase) :
+    bindingIsDurable phase := by
+  subst phase
+  simp [bindingIsDurable, phaseRank]
 
 structure SourceSnapshotRoot where
   value : String

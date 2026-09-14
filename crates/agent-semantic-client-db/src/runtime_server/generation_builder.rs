@@ -54,16 +54,35 @@ where
 }
 
 pub(crate) fn restored_generation_covers_demand(
-    _memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
-    _workspace_identity: &str,
-    _project_root: &std::path::Path,
-    _target_paths: &std::collections::BTreeSet<std::path::PathBuf>,
-    _provider_target: Option<&crate::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+    memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    target_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    provider_target: Option<&crate::runtime_server_admission::WorkspaceGenerationProviderTarget>,
 ) -> bool {
-    // Durable generations do not yet carry the candidate-generation identity
-    // that produced their projections. After a Runtime restart, neither a
-    // ProjectResolution match nor an owner-path match can prove that restored
-    // bytes belong to the current worktree. Fail closed and rebuild once;
-    // resident Ready coverage remains reusable for subsequent requests.
-    false
+    let Ok(resident) = memory_registry.resident_read_client(workspace_identity, project_root)
+    else {
+        return false;
+    };
+    target_paths.iter().all(|path| {
+        let owner_path = path
+            .strip_prefix(project_root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        resident
+            .owner_snapshot(&owner_path)
+            .ok()
+            .flatten()
+            .is_some_and(|owner| {
+                provider_target.is_none_or(|target| {
+                    owner.authority.as_ref().is_some_and(|authority| {
+                        authority.language_id.as_str() == target.language_id
+                            && target.provider_id.as_ref().is_none_or(|provider_id| {
+                                authority.provider_id.as_str() == provider_id
+                            })
+                    })
+                })
+            })
+    })
 }

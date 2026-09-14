@@ -26,6 +26,8 @@ pub(super) struct EnsureCanonicalGenerationCommand {
     pub(super) workspace_identity: String,
     pub(super) materialization: WorkspaceCanonicalMaterialization,
     pub(super) prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
+    pub(super) admission_candidate:
+        Option<crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity>,
     pub(super) reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
 }
 
@@ -43,6 +45,7 @@ pub(super) async fn publish_canonical_generation(
         workspace_identity,
         materialization,
         prepared_index,
+        admission_candidate,
         reply,
     } = command;
     let WorkspaceWriteTarget {
@@ -114,6 +117,7 @@ pub(super) async fn publish_canonical_generation(
                         workspace_identity,
                         generation,
                         prepared_index,
+                        admission_candidate,
                         active_epoch,
                         old_generation_readable,
                         resident_publication_started,
@@ -284,6 +288,9 @@ async fn publish_new_generation(
     workspace_identity: String,
     generation: Arc<crate::runtime_server_workspace::WorkspaceMemoryGeneration>,
     prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
+    admission_candidate: Option<
+        crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    >,
     active_epoch: u64,
     old_generation_readable: bool,
     started: tokio::time::Instant,
@@ -362,6 +369,7 @@ async fn publish_new_generation(
             let _ = super::canonical_durability::commit_canonical_generation(
                 publisher.as_ref(),
                 generation,
+                admission_candidate,
                 old_generation_readable,
                 &durability_attachment,
                 &durability_workspace_identity,

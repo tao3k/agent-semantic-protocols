@@ -32,6 +32,7 @@ pub mod runtime_resident_read;
 pub mod runtime_search_service;
 pub mod runtime_server;
 pub mod runtime_server_admission;
+mod runtime_server_admission_binding;
 mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
 mod runtime_server_agent_control_plane;
