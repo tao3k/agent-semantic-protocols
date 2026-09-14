@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+"""Keep query contracts independent from the complete ASP client binary."""
+
+from pathlib import Path
+
+from tools.tree_sitter import contract_gates
+
+
+class _RecordedRuntimeEnv:
+    def __init__(self, asp_bin: Path | None, seen: list[Path | None]) -> None:
+        self.asp_bin = asp_bin
+        seen.append(asp_bin)
+
+    def __enter__(self) -> dict[str, str]:
+        return {"contract": "env"}
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
+def test_query_only_gate_neither_builds_nor_exports_complete_asp(monkeypatch) -> None:
+    built: list[Path | None] = []
+    environments: list[Path | None] = []
+    invoked: list[tuple[dict[str, str], str]] = []
+
+    monkeypatch.setattr(
+        contract_gates,
+        "_GATES",
+        {"query-corpus": lambda env, asp_bin: invoked.append((env, asp_bin))},
+    )
+    monkeypatch.setattr(contract_gates, "_build_runtime", built.append)
+    monkeypatch.setattr(
+        contract_gates,
+        "_runtime_env",
+        lambda asp_bin: _RecordedRuntimeEnv(asp_bin, environments),
+    )
+    monkeypatch.setattr(contract_gates, "emit", lambda _message: None)
+
+    assert contract_gates.main(["--gate", "query-corpus"]) == 0
+    assert built == [None]
+    assert environments == [None]
+    assert invoked == [({"contract": "env"}, "")]
+
+
+def test_provider_registry_gate_retains_complete_asp_dependency(
+    monkeypatch, tmp_path: Path
+) -> None:
+    environments: list[Path | None] = []
+    invoked: list[tuple[dict[str, str], str]] = []
+    asp_bin = tmp_path / "asp"
+
+    monkeypatch.setattr(
+        contract_gates,
+        "_GATES",
+        {"provider-registry": lambda env, path: invoked.append((env, path))},
+    )
+    monkeypatch.setattr(
+        contract_gates,
+        "_runtime_env",
+        lambda path: _RecordedRuntimeEnv(path, environments),
+    )
+    monkeypatch.setattr(contract_gates, "emit", lambda _message: None)
+
+    assert (
+        contract_gates.main(
+            ["--gate", "provider-registry", "--asp-bin", str(asp_bin), "--no-build"]
+        )
+        == 0
+    )
+    resolved = asp_bin.resolve()
+    assert environments == [resolved]
+    assert invoked == [({"contract": "env"}, str(resolved))]

@@ -33,21 +33,28 @@ enabled = false
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    asp_bin = Path(args.asp_bin).resolve() if args.asp_bin else ROOT / "target/debug/asp"
+    selected = _selected_gates(args.gate)
+    requires_asp = any(name == "provider-registry" for name, _ in selected)
+    asp_bin = (
+        (Path(args.asp_bin).resolve() if args.asp_bin else ROOT / "target/debug/asp")
+        if requires_asp
+        else None
+    )
     if args.build:
         _build_runtime(asp_bin)
     with _runtime_env(asp_bin) as env:
-        selected = _selected_gates(args.gate)
         for name, gate in selected:
             emit(f"[tree-sitter-contract] gate={name} status=running")
-            gate(env, str(asp_bin))
+            gate(env, "" if asp_bin is None else str(asp_bin))
             emit(f"[tree-sitter-contract] gate={name} status=ok")
     emit(f"tree-sitter rollout contracts are valid: gates={len(selected)}")
     return 0
 
 
 def runtime_boundary_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(argv, check_runtime_boundary, "tree-sitter runtime boundary contract is valid")
+    _run_single_gate(
+        argv, check_runtime_boundary, "tree-sitter runtime boundary contract is valid"
+    )
     return 0
 
 
@@ -106,9 +113,10 @@ def _selected_gates(names: list[str] | None) -> list[tuple[str, Gate]]:
     return [(name, _GATES[name]) for name in names]
 
 
-def _build_runtime(asp_bin: Path) -> None:
+def _build_runtime(asp_bin: Path | None) -> None:
     run(["npm", "--prefix", "languages/asp-typescript", "run", "build"])
-    run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
+    if asp_bin is not None:
+        run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
     run(
         [
             "cargo",
@@ -122,12 +130,12 @@ def _build_runtime(asp_bin: Path) -> None:
             "asp-rust",
         ],
     )
-    if not asp_bin.exists():
+    if asp_bin is not None and not asp_bin.exists():
         raise ContractFailure(f"asp binary not built: {asp_bin}")
 
 
 class _runtime_env:
-    def __init__(self, asp_bin: Path) -> None:
+    def __init__(self, asp_bin: Path | None) -> None:
         self.asp_bin = asp_bin
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self._asp_toml_backup: Path | None = None
@@ -140,7 +148,9 @@ class _runtime_env:
                 shim_dir,
                 ROOT / ".agents/asp.toml",
             )
-            (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
+            (ROOT / ".agents/asp.toml").write_text(
+                _CORE_FAST_ASP_TOML, encoding="utf-8"
+            )
             _write_shim(
                 shim_dir / "asp-rust",
                 f'exec "{ROOT}/languages/asp-rust/target/debug/asp-rust" "$@"\n',
@@ -155,7 +165,8 @@ class _runtime_env:
             )
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
-            env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
+            if self.asp_bin is not None:
+                env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
             return env
         except Exception:
             self.__exit__(None, None, None)

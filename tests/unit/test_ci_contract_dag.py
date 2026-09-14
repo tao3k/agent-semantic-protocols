@@ -22,7 +22,8 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "  catalog-provider-gates:" in contract_jobs
     assert "  language-facade-gates:" in contract_jobs
     assert "  rust-provider-gates:" in contract_jobs
-    assert "  tree-sitter-contract-gates:" in contract_jobs
+    assert "  tree-sitter-query-contract-gates:" in contract_jobs
+    assert "  tree-sitter-provider-registry-gates:" in contract_jobs
 
     python_provider = contract_jobs.split("  python-provider-gates:", 1)[1].split(
         "  catalog-provider-gates:", 1
@@ -39,8 +40,7 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
         in catalog_provider
     )
     assert (
-        "host_uds_schema_bundle_route_bypasses_workspace_generation"
-        in catalog_provider
+        "host_uds_schema_bundle_route_bypasses_workspace_generation" in catalog_provider
     )
 
     language_facade = contract_jobs.split("  language-facade-gates:", 1)[1].split(
@@ -50,18 +50,30 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "Set up Rust" not in language_facade
 
     rust_provider = contract_jobs.split("  rust-provider-gates:", 1)[1].split(
-        "  tree-sitter-contract-gates:", 1
+        "  tree-sitter-query-contract-gates:", 1
     )[0]
     assert "needs: asp-linux-binary" in rust_provider
     assert "actions/download-artifact@v4" in rust_provider
     assert "cargo run --quiet --bin asp" not in rust_provider
     assert ".ci/bin/asp schema materialize" in rust_provider
 
-    tree_sitter = contract_jobs.split("  tree-sitter-contract-gates:", 1)[1]
-    assert "needs: asp-linux-binary" in tree_sitter
-    assert "--asp-bin .ci/bin/asp" in tree_sitter
-    assert "--no-build" in tree_sitter
-    assert "languages/orgize" in tree_sitter
-    assert "languages/AspJulia.jl" in tree_sitter
-    assert "languages/asp-rust -> target" in tree_sitter
+    query_contracts = contract_jobs.split("  tree-sitter-query-contract-gates:", 1)[
+        1
+    ].split("  tree-sitter-provider-registry-gates:", 1)[0]
+    assert "needs: asp-linux-binary" not in query_contracts
+    assert "--asp-bin" not in query_contracts
+    assert "--gate runtime-boundary" in query_contracts
+    assert "--gate query-corpus" in query_contracts
+    assert "--no-build" in query_contracts
+
+    provider_registry = contract_jobs.split(
+        "  tree-sitter-provider-registry-gates:", 1
+    )[1]
+    assert "needs: asp-linux-binary" in provider_registry
+    assert "--asp-bin .ci/bin/asp" in provider_registry
+    assert "--gate provider-registry" in provider_registry
+    assert "--no-build" in provider_registry
+    assert "languages/orgize" in provider_registry
+    assert "languages/AspJulia.jl" in provider_registry
+    assert "languages/asp-rust -> target" in provider_registry
     assert "languages/asp-rust -> languages/asp-rust/target" not in contract_jobs

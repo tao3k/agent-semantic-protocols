@@ -416,8 +416,65 @@ jobs:
             --output languages/asp-rust/schemas
           cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
 
-  tree-sitter-contract-gates:
-    name: Tree-sitter provider runtime contracts
+  tree-sitter-query-contract-gates:
+    name: Tree-sitter query and ABI contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider catalog submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/asp-typescript/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache syntax contract artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            languages/asp-rust -> target
+          shared-key: asp-tree-sitter-query-contracts-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Build syntax provider runtimes
+        run: |
+          npm --prefix languages/asp-typescript ci
+          npm --prefix languages/asp-typescript run build
+          cargo build --quiet \
+            --manifest-path languages/asp-rust/Cargo.toml \
+            --features provider-server \
+            --bin asp-rust
+
+      - name: Tree-sitter query and ABI gates
+        run: >-
+          uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
+          --gate runtime-boundary
+          --gate query-corpus
+          --no-build
+
+  tree-sitter-provider-registry-gates:
+    name: Tree-sitter provider registry contracts
     needs: asp-linux-binary
     runs-on: ubuntu-latest
     steps:
@@ -449,13 +506,12 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust provider artifacts
+      - name: Cache provider registry artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            . -> target
             languages/asp-rust -> target
-          shared-key: asp-contract-binary-${{ runner.os }}
+          shared-key: asp-tree-sitter-provider-registry-${{ runner.os }}
           cache-on-failure: true
 
       - name: Download asp contract binary
@@ -476,8 +532,9 @@ jobs:
             --features provider-server \
             --bin asp-rust
 
-      - name: Tree-sitter query contract gates
+      - name: Tree-sitter provider registry gate
         run: >-
           uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
           --asp-bin .ci/bin/asp
+          --gate provider-registry
           --no-build
