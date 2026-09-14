@@ -56,16 +56,19 @@ flowchart LR
   F --> Q
 #+end_src
 
-#+begin_src typst :exports code
+#+begin_src typst :exports code :file ../../.data/runtime-generation-admission-cost.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Runtime generation admission cost
 $
-  restore_(cold) =
-    pointer_(exact) and scope_(exact) and candidate_(exact)
-    and generation_(exact) and source_(exact) and provider_(exact)
+  "restore"_("cold") =
+    "pointer"_("exact") and "scope"_("exact") and "candidate"_("exact")
+    and "generation"_("exact") and "source"_("exact") and "provider"_("exact")
 $
 
 $
-  cost(query_(resident)) = O(1),
-  quad cost(query_(process-cold)) = cost(candidate_(git)) + cost(mmap_(generation))
+  "cost"("query"_("resident")) = O(1),
+  quad "cost"("query"_("process-cold")) =
+    "cost"("candidate"_("git")) + "cost"("mmap"_("generation"))
 $
 #+end_src
 
@@ -1944,7 +1947,13 @@ selector/capability tests. It MUST NOT call =asp <language> query=, restore a
 provider command namespace, or treat Query as structural discovery.
 Exact selector materialization must agree with Query's =--language= even though the
 selector also binds provider and parser identity; it bypasses lexical, graph,
-and ripgrep planning when current.
+and ripgrep planning when current.  Runtime MUST first probe the requested
+projection through the generation-admitted selector index.  When every exact
+selector resolves from that resident generation, Query MUST bypass owner
+materialization, parser-artifact probing, provider lifecycle, and provider RPC;
+only an exact projection miss may enter the candidate-scoped owner
+materialization lane.  This is a private execution refinement of V1 and adds no
+request, result, or compatibility field.
 
 By default the Host injects the current =ProjectId= and =WorkspaceId= and
 Runtime binds the active source generation.  The Server generates =roundId=

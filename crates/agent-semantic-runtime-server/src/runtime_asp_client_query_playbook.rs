@@ -43,6 +43,33 @@ fn selector_owner_path(selector: &str) -> Option<&str> {
         .filter(|owner_path| !owner_path.is_empty())
 }
 
+fn exact_query_projections_are_resident(
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    mut read_selector: impl FnMut(
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
+        &str,
+    ) -> Result<
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+        String,
+    >,
+) -> Result<bool, AspClientOperationError> {
+    use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+
+    let projection =
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
+            params.projection.as_str(),
+        )?;
+    Ok(params.selectors.iter().all(|selector| {
+        matches!(
+            read_selector(projection, selector),
+            Ok(WorkspaceRuntimeSelectorRead::Projection {
+                resolved_selector,
+                ..
+            }) if resolved_selector == *selector
+        )
+    }))
+}
+
 fn query_playbook_generation_provider_targets(
     selectors: &[String],
     active_provider_targets: &[(String, String)],
@@ -717,6 +744,10 @@ pub(super) async fn dispatch_workspace_query_playbook(
         None => {
             dispatch_budget.observe_miss();
             if generation.begin_query_materialization(materialization_key.clone())? {
+                let projections_are_resident =
+                    exact_query_projections_are_resident(&params, |projection, selector| {
+                        generation.read_runtime_selector(projection, selector)
+                    })?;
                 let materialization_generation = Arc::clone(&generation);
                 let materialization_registry = Arc::clone(workspace_registry);
                 let materialization_targets = active_provider_targets.to_vec();
@@ -736,21 +767,26 @@ pub(super) async fn dispatch_workspace_query_playbook(
                         .iter()
                         .filter_map(|selector| selector_owner_path(selector).map(str::to_owned))
                         .collect::<std::collections::BTreeSet<_>>();
-                    let result = match materialization_owner_materializer
-                        .ensure_candidates(
-                            &materialization_request_id,
-                            &materialization_workspace_id,
-                            &materialization_initialized.project_root,
-                            &materialization_parser_artifact_root,
-                            materialization_generation.generation_digest(),
-                            &owner_paths,
-                            &materialization_providers,
-                            &materialization_runtime_search_service,
-                            &materialization_registry,
-                        )
-                        .await
-                    {
-                        Ok(_) => tokio::task::spawn_blocking({
+                    let owner_materialization = if projections_are_resident {
+                        Ok(())
+                    } else {
+                        materialization_owner_materializer
+                            .ensure_candidates(
+                                &materialization_request_id,
+                                &materialization_workspace_id,
+                                &materialization_initialized.project_root,
+                                &materialization_parser_artifact_root,
+                                materialization_generation.generation_digest(),
+                                &owner_paths,
+                                &materialization_providers,
+                                &materialization_runtime_search_service,
+                                &materialization_registry,
+                            )
+                            .await
+                            .map(|_| ())
+                    };
+                    let result = match owner_materialization {
+                        Ok(()) => tokio::task::spawn_blocking({
                             let materialization_generation =
                                 Arc::clone(&materialization_generation);
                             let materialization_registry = Arc::clone(&materialization_registry);
@@ -779,9 +815,15 @@ pub(super) async fn dispatch_workspace_query_playbook(
                     }
                     .map_err(query_materialization_dispatch_error);
                     eprintln!(
-                        "[runtime-query-materialization-wall] key={} requestWallMicros={} includesProviderLifecycle=true state={}",
+                        "[runtime-query-materialization-wall] key={} requestWallMicros={} ownerMaterialization={} includesProviderLifecycle={} state={}",
                         materialization_key_for_task,
                         compute_started.elapsed().as_micros(),
+                        if projections_are_resident {
+                            "skipped-resident-exact"
+                        } else {
+                            "candidate-scoped"
+                        },
+                        !projections_are_resident,
                         if result.is_ok() { "ready" } else { "failed" }
                     );
                     let _ = materialization_generation

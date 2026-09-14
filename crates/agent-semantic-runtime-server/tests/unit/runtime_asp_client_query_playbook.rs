@@ -5,9 +5,9 @@
 use super::{
     AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, emit_runtime_search_trace_observation,
-    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
-    record_settled_client_timing_observations, runtime_search_trace_budget_micros,
-    workspace_query_materialization_key,
+    exact_query_projections_are_resident, materialize_query_playbook_receipt,
+    query_playbook_generation_provider_targets, record_settled_client_timing_observations,
+    runtime_search_trace_budget_micros, workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -154,6 +154,47 @@ fn query_materialization_identity_binds_semantics_and_rebinds_only_envelope_requ
         template["requestedSelectors"]
     );
     assert_eq!(rebound["terminal"], template["terminal"]);
+}
+
+#[test]
+fn resident_exact_query_skips_owner_materialization_only_when_every_projection_resolves() {
+    use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+
+    let request = params();
+    let mut resident_reads = 0usize;
+    assert!(
+        exact_query_projections_are_resident(&request, |_projection, selector| {
+            resident_reads += 1;
+            Ok(WorkspaceRuntimeSelectorRead::Projection {
+                generation_digest: digest('1'),
+                root_digest: digest('2'),
+                resolved_selector: selector.to_owned(),
+                bytes: Vec::new(),
+            })
+        })
+        .unwrap_or_else(|_| panic!("resident exact projection probe"))
+    );
+    assert_eq!(resident_reads, request.selectors.len());
+
+    let missing = request.selectors[1].clone();
+    assert!(
+        !exact_query_projections_are_resident(&request, |_projection, selector| {
+            if selector == missing {
+                return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
+                    generation_digest: digest('1'),
+                    root_digest: digest('2'),
+                    resolved_selector: selector.to_owned(),
+                });
+            }
+            Ok(WorkspaceRuntimeSelectorRead::Projection {
+                generation_digest: digest('1'),
+                root_digest: digest('2'),
+                resolved_selector: selector.to_owned(),
+                bytes: Vec::new(),
+            })
+        })
+        .unwrap_or_else(|_| panic!("missing projection routes to owner materialization"))
+    );
 }
 
 #[test]

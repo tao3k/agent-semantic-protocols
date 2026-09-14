@@ -624,6 +624,15 @@ theorem indexed_query_work_is_independent_of_workspace
       indexedQueryWork ownerIndexLookup selectorIndexLookup projectionWork := by
   rfl
 
+/-- A generation-resident exact selector/projection is already the Query read
+authority.  Owner/parser materialization is a miss path, not an unconditional
+prefix of every first semantic Query. -/
+def exactQueryOwnerMaterializerCalls (projectionResident : Bool) : Nat :=
+  if projectionResident then 0 else 1
+
+theorem resident_exact_query_skips_owner_materializer :
+    exactQueryOwnerMaterializerCalls true = 0 := rfl
+
 /-- Provider process bootstrap is a lifecycle observation, not a term in the
 Runtime Search/Query data-plane measurement. Candidate parse/projection work is
 still retained explicitly. -/
