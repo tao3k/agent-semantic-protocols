@@ -272,7 +272,7 @@ impl RuntimeServer {
                                 &project_root,
                             )
                             .ok();
-                        let snapshot = async {
+                        let read_snapshot = async {
                             let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
                                 memory_registry.root(),
                                 &workspace_identity,
@@ -287,14 +287,22 @@ impl RuntimeServer {
                             let snapshot = reader.read().ok()?;
                             snapshot.validate().ok()?;
                             Some(snapshot)
-                        }
-                        .await;
-                        let admission_binding = match generation_directory.as_deref() {
-                            Some(directory) => crate::runtime_server_admission_binding::read(directory)
-                                .await
-                                .ok(),
-                            None => None,
                         };
+                        let read_admission_binding = async {
+                            match generation_directory.as_deref() {
+                                Some(directory) => {
+                                    crate::runtime_server_admission_binding::read(directory)
+                                        .await
+                                        .ok()
+                                }
+                                None => None,
+                            }
+                        };
+                        // The immutable pointer and its candidate proof are
+                        // independent reads. Join them under the Runtime Tokio
+                        // scheduler, then admit only their exact conjunction.
+                        let (snapshot, admission_binding) =
+                            tokio::join!(read_snapshot, read_admission_binding);
                         let identity_admitted = snapshot.as_ref().is_some_and(|snapshot| {
                             admission_binding.as_ref().is_some_and(|binding| {
                                 binding.admits(

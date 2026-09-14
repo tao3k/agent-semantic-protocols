@@ -214,11 +214,8 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
 impl std::error::Error for GitWorkspaceFileScopeError {}
 
 fn discover_git_workspace_file_scope(
-    workspace: &Path,
-) -> Result<Option<GitWorkspaceFileScope>, GitWorkspaceFileScopeError> {
-    let Ok(repository) = gix::discover(workspace) else {
-        return Ok(None);
-    };
+    repository: &gix::Repository,
+) -> Result<GitWorkspaceFileScope, GitWorkspaceFileScopeError> {
     let worktree_root = repository
         .workdir()
         .map(canonicalize_if_possible)
@@ -278,7 +275,7 @@ fn discover_git_workspace_file_scope(
         }
     }
 
-    Ok(Some(GitWorkspaceFileScope {
+    Ok(GitWorkspaceFileScope {
         worktree_root,
         files: files
             .into_iter()
@@ -287,7 +284,7 @@ fn discover_git_workspace_file_scope(
                 origin,
             })
             .collect(),
-    }))
+    })
 }
 
 fn repository_candidate_generation(
@@ -346,9 +343,10 @@ pub fn discover_repository_candidate_snapshot_cancellable(
             message: "cancelled".to_owned(),
         });
     }
-    let Some(scope) = discover_git_workspace_file_scope(workspace)? else {
+    let Ok(repository) = gix::discover(workspace) else {
         return Ok(None);
     };
+    let scope = discover_git_workspace_file_scope(&repository)?;
     let project_root = canonicalize_if_possible(workspace);
     let worktree_prefix = project_root
         .strip_prefix(&scope.worktree_root)
@@ -361,11 +359,6 @@ pub fn discover_repository_candidate_snapshot_cancellable(
     } else {
         worktree_prefix.to_path_buf()
     };
-    let repository = gix::discover(workspace).map_err(|error| {
-        GitWorkspaceFileScopeError::DiscoverRepository {
-            message: error.to_string(),
-        }
-    })?;
     let git_dir = canonicalize_if_possible(repository.git_dir());
     let git_common_dir = canonicalize_if_possible(repository.common_dir());
     let remote_url = canonical_remote_url_from_repository(&repository)
