@@ -11,6 +11,7 @@ use super::runtime_server_generation_builder::{
 use super::runtime_server_identity_handoff;
 use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
+use super::runtime_server_startup_recovery::recover_startup_workspace_generation;
 use super::runtime_server_telemetry_query_socket_path;
 use super::runtime_server_telemetry_socket_path;
 use super::state_home;
@@ -22,85 +23,6 @@ use agent_semantic_runtime_server as runtime_asp_client;
 use agent_semantic_workspace_scheduler::RuntimeServerTaskScope;
 use runtime_server_identity_handoff::RuntimeIdentityHandoffCoordinator;
 use runtime_server_search_service::serve_runtime_search_requests;
-
-async fn recover_startup_workspace_generation(
-    generation_admission: &std::sync::Arc<
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
-    >,
-    query_generation_authority: &agent_semantic_runtime_server::RuntimeQueryGenerationAuthority,
-    entry: &agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
-    provider_targets: &[(String, String)],
-) -> Result<String, String> {
-    let mut receipt = None;
-    for (language_id, provider_id) in provider_targets {
-        receipt = Some(
-            generation_admission
-                .ensure_runtime_generation_ready_for_provider(
-                    entry.workspace_identity.clone(),
-                    entry.project_root.clone(),
-                    Some(
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                            language_id: language_id.clone(),
-                            provider_id: Some(provider_id.clone()),
-                        },
-                    ),
-                )
-                .await?,
-        );
-    }
-    let receipt = match receipt {
-        Some(receipt) => receipt,
-        None => {
-            generation_admission
-                .ensure_runtime_generation_ready(
-                    entry.workspace_identity.clone(),
-                    entry.project_root.clone(),
-                )
-                .await?
-        }
-    };
-    let expected_digest = receipt
-        .commit
-        .as_ref()
-        .ok_or_else(|| "startup generation Ready receipt has no commit".to_owned())?
-        .generation_digest
-        .clone();
-    let key = agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::new(
-        agent_semantic_client_protocol::ClientProjectId::new(entry.project_id.clone())?,
-        agent_semantic_client_protocol::ClientWorkspaceIdentity::new(
-            entry.workspace_identity.clone(),
-        )?,
-    );
-    let mut states = query_generation_authority.subscribe();
-    let generation = loop {
-        let state = { states.borrow_and_update().get(&key).cloned() };
-        match state {
-            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Ready(generation))
-                if generation.generation_digest() == expected_digest =>
-            {
-                break generation;
-            }
-            // A previous provider-target successor may still be retained when
-            // admission for the next target returns. It is an ordered
-            // predecessor, not identity drift; wait for the exact digest that
-            // this admission committed.
-            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Ready(_)) => {
-                states.changed().await.map_err(|_| {
-                    "Runtime query generation observer closed during startup recovery".to_owned()
-                })?;
-            }
-            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Failed {
-                reason,
-                ..
-            }) => return Err(format!("query generation publication failed: {reason}")),
-            None => states.changed().await.map_err(|_| {
-                "Runtime query generation observer closed during startup recovery".to_owned()
-            })?,
-        }
-    };
-    generation.await_lexical_attachment().await?;
-    Ok(expected_digest)
-}
 
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
@@ -768,7 +690,14 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         result = &mut client_grpc_done_receiver => ("client-grpc", result),
         result = &mut provider_stream_done_receiver => ("provider-stream", result),
     };
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=service-terminal-observed service={}",
+        winner.0
+    );
     activation_actor.shutdown().await?;
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=activation-actor-drained"
+    );
     if winner.0 != "server" {
         service_failure_shutdown.shutdown();
     }
@@ -782,12 +711,24 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .join()
         .await
         .map_err(|error| format!("ASP ProviderSession stream task failed: {error}"))?;
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=protocol-services-drained"
+    );
     let server_result = server_task
         .join()
         .await
         .map_err(|error| format!("Runtime Server task failed: {error}"))?;
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=control-service-drained"
+    );
     let _ = generation_task.join().await;
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=generation-observer-drained"
+    );
     let query_generation_shutdown_error = query_generation_authority.shutdown().await.err();
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=query-generation-builder-drained"
+    );
     let identity_change = identity_change_receiver.try_recv().ok();
     let successor_required = successor_receiver.try_recv().ok();
     let identity_handoff_requested = identity_change.is_some() || successor_required.is_some();
@@ -816,6 +757,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .join()
         .await
         .map_err(|error| format!("Runtime Server OpenTelemetry task failed: {error}"))??;
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=telemetry-owner-acquired"
+    );
     let telemetry_handle = opentelemetry.handle();
     let telemetry_drain = async {
         let started = tokio::time::Instant::now();
@@ -823,10 +767,13 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     };
     let diagnostic_drain = async {
         let started = tokio::time::Instant::now();
-        (diagnostics.join().await, started.elapsed())
+        (diagnostics.shutdown().await, started.elapsed())
     };
     let ((telemetry_result, telemetry_elapsed), (diagnostic_result, diagnostic_elapsed)) =
         tokio::join!(telemetry_drain, diagnostic_drain);
+    eprintln!(
+        "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=observability-services-drained"
+    );
     let total_drain_elapsed = drain_started.elapsed();
     for (service, elapsed, state) in [
         ("openTelemetry", telemetry_elapsed, telemetry_result.is_ok()),

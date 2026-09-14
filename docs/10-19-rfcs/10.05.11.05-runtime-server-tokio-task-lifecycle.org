@@ -61,6 +61,15 @@ response closure, and cancellation.  A nested future MUST NOT survive after
 its admission attempt has terminalized.  Request deadlines, sleeps, polling,
 and elapsed-time repair are not lifecycle transitions.
 
+Runtime drain MUST close generation admission and publish cancellation to
+every accepted producer before draining the workspace registry, its writer
+lanes, or generation publishers.  The workspace registry is a consumer of
+admitted generation work; draining that consumer while admission can still
+produce or retain work is an ownership inversion and MUST NOT be repaired by
+raising the owner-exit deadline.  After admission reaches terminal state, the
+workspace registry drains its accepted writes and publishers, and only then
+may the daemon publish its terminal owner receipt.
+
 * Bounded public request semantics
 
 =EnsureWorkspace= and public =search/query= requests submit or coalesce demand,
@@ -87,6 +96,11 @@ The resident telemetry component owns its ingress, query, process sampler, and
 exporter tasks.  Shutdown first closes admission, then drains accepted
 observations, stops sampling and query admission, flushes the exporter, joins
 all owned tasks, removes sockets, and finally publishes the lifecycle receipt.
+Every resident observability actor has an explicit daemon-owned shutdown
+authority.  It MUST close its receiver, drain already accepted observations,
+persist its terminal state, and join independently of whether producers still
+retain clonable non-blocking publisher handles.  Sender reference counts and
+incidental Rust drop order are not lifecycle or termination authorities.
 
 * Required observations
 

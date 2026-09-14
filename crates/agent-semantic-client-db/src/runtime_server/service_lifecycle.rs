@@ -61,11 +61,23 @@ impl RuntimeServer {
                 }
             }
         };
-        let shutdown_result = workspace_registry.shutdown().await;
+        eprintln!(
+            "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=control-loop-closed"
+        );
+        // Admission produces work consumed by the workspace registry. Close
+        // and cancel every producer before draining writer lanes; the inverse
+        // order can deadlock shutdown while a cold generation is in flight.
         let admission_shutdown_result = match generation_admission {
             Some(admission) => admission.shutdown().await.map(|_| ()),
             None => Ok(()),
         };
+        eprintln!(
+            "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=generation-admission-drained"
+        );
+        let shutdown_result = workspace_registry.shutdown().await;
+        eprintln!(
+            "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=workspace-registry-drained"
+        );
         let shutdown_result = match (shutdown_result, admission_shutdown_result) {
             (Ok(_), Ok(())) => Ok(()),
             (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),

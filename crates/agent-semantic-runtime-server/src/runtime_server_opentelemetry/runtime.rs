@@ -221,7 +221,13 @@ impl RuntimeServerOpenTelemetry {
         let _ = self.shutdown.send(true);
         drop(self.handle);
         self.telemetry_task.join().await??;
+        eprintln!(
+            "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=telemetry-bridge-drained"
+        );
         self.task.join().await??;
+        eprintln!(
+            "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=telemetry-lane-drained"
+        );
         remove_socket_if_present(&self.ingress_socket_path).await?;
         remove_socket_if_present(&self.query_socket_path).await?;
         let drain_micros = u64::try_from(drain_started.elapsed().as_micros()).unwrap_or(u64::MAX);

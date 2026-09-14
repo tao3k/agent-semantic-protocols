@@ -51,6 +51,7 @@ struct RuntimeServerDiagnosticJournalSnapshot {
 /// Owns the bounded latest-event diagnostic lane for one Runtime Server.
 pub struct RuntimeServerDiagnostics {
     task: tokio::task::JoinHandle<Result<(), String>>,
+    shutdown: tokio::sync::watch::Sender<bool>,
 }
 
 impl RuntimeServerDiagnostics {
@@ -78,6 +79,7 @@ impl RuntimeServerDiagnostics {
         let (sender, mut receiver) = mpsc::channel(capacity);
         let publisher =
             crate::runtime_server_observability::RuntimeServerEventPublisher::new(sender, capacity);
+        let (shutdown, mut shutdown_receiver) = tokio::sync::watch::channel(false);
         let task = tokio::spawn(async move {
             let mut sequence = initial_sequence;
             let mut journal = initial_journal;
@@ -90,6 +92,20 @@ impl RuntimeServerDiagnostics {
 
             loop {
                 tokio::select! {
+                    biased;
+                    changed = shutdown_receiver.changed() => {
+                        let _ = changed;
+                        receiver.close();
+                        while let Some(event) = receiver.recv().await {
+                            sequence = sequence.saturating_add(1);
+                            append_journal_event(&mut journal, sequence, event)?;
+                            dirty = true;
+                        }
+                        if dirty {
+                            persist_diagnostics(&receipt_path, &journal).await?;
+                        }
+                        break;
+                    }
                     event = receiver.recv() => match event {
                         Some(event) => {
                             sequence = sequence.saturating_add(1);
@@ -111,7 +127,12 @@ impl RuntimeServerDiagnostics {
             }
             Ok(())
         });
-        Ok((publisher, Self { task }))
+        Ok((publisher, Self { task, shutdown }))
+    }
+
+    pub async fn shutdown(self) -> Result<(), String> {
+        self.shutdown.send_replace(true);
+        self.join().await
     }
 
     pub async fn join(self) -> Result<(), String> {

@@ -36,6 +36,38 @@ async fn latest_event_receipt_is_bounded_and_atomically_replaced() {
 }
 
 #[tokio::test]
+async fn explicit_shutdown_drains_without_waiting_for_publisher_drop_order() {
+    let root = tempfile::tempdir().expect("create explicit shutdown fixture");
+    let path = root.path().join("runtime-server-diagnostic.v1.json");
+    let (publisher, diagnostics) = RuntimeServerDiagnostics::start(path.clone())
+        .await
+        .expect("start diagnostics");
+    let retained_publisher = publisher.clone();
+    publisher
+        .send(RuntimeServerEvent::ConnectionRejected(
+            "accepted-before-shutdown".to_owned(),
+        ))
+        .expect("send accepted diagnostic");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), diagnostics.shutdown())
+        .await
+        .expect("explicit diagnostics shutdown must not await publisher drop order")
+        .expect("explicit diagnostics shutdown must join");
+    assert!(
+        retained_publisher
+            .send(RuntimeServerEvent::ConnectionRejected(
+                "rejected-after-shutdown".to_owned(),
+            ))
+            .is_err()
+    );
+
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&tokio::fs::read(&path).await.expect("read shutdown receipt"))
+            .expect("decode shutdown receipt");
+    assert_eq!(receipt["event"]["detail"], "accepted-before-shutdown");
+}
+
+#[tokio::test]
 async fn diagnostic_journal_retains_the_latest_64_events() {
     let root = tempfile::tempdir().expect("create diagnostic journal fixture");
     let latest_path = root.path().join("runtime-server-diagnostic.v1.json");
