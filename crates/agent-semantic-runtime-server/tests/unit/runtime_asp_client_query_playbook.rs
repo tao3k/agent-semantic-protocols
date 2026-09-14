@@ -5,10 +5,10 @@
 use super::{
     AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, emit_runtime_search_trace_observation,
-    exact_query_projections_are_resident, materialize_query_playbook_receipt,
-    query_playbook_generation_provider_targets, record_resident_query_materialization_hit,
-    record_settled_client_timing_observations, runtime_search_trace_budget_micros,
-    workspace_query_materialization_key,
+    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
+    read_query_projection_handoff, record_resident_query_materialization_hit,
+    record_settled_client_timing_observations, resident_exact_query_projections,
+    runtime_search_trace_budget_micros, workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -233,23 +233,45 @@ fn resident_exact_query_skips_owner_materialization_only_when_every_projection_r
 
     let request = params();
     let mut resident_reads = 0usize;
-    assert!(
-        exact_query_projections_are_resident(&request, |_projection, selector| {
-            resident_reads += 1;
-            Ok(WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: digest('1'),
-                root_digest: digest('2'),
-                resolved_selector: selector.to_owned(),
-                bytes: Vec::new(),
-            })
+    let resident = resident_exact_query_projections(&request, |_projection, selector| {
+        resident_reads += 1;
+        Ok(WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: digest('1'),
+            root_digest: digest('2'),
+            resolved_selector: selector.to_owned(),
+            bytes: Vec::new(),
         })
-        .unwrap_or_else(|_| panic!("resident exact projection probe"))
-    );
+    })
+    .unwrap_or_else(|_| panic!("resident exact projection probe"))
+    .expect("all exact projections are resident");
     assert_eq!(resident_reads, request.selectors.len());
+    assert_eq!(resident.len(), request.selectors.len());
+    let mut handoff = Some(resident);
+    for selector in &request.selectors {
+        let read = read_query_projection_handoff(
+            &mut handoff,
+            agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+            selector,
+            |_projection, _selector| {
+                resident_reads += 1;
+                Err("resident handoff unexpectedly repeated the selector read".to_owned())
+            },
+        )
+        .expect("ordered resident projection handoff");
+        assert!(matches!(
+            read,
+            WorkspaceRuntimeSelectorRead::Projection {
+                resolved_selector,
+                ..
+            } if resolved_selector == *selector
+        ));
+    }
+    assert_eq!(resident_reads, request.selectors.len());
+    assert!(handoff.as_ref().is_some_and(|reads| reads.is_empty()));
 
     let missing = request.selectors[1].clone();
     assert!(
-        !exact_query_projections_are_resident(&request, |_projection, selector| {
+        resident_exact_query_projections(&request, |_projection, selector| {
             if selector == missing {
                 return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
                     generation_digest: digest('1'),
@@ -265,6 +287,7 @@ fn resident_exact_query_skips_owner_materialization_only_when_every_projection_r
             })
         })
         .unwrap_or_else(|_| panic!("missing projection routes to owner materialization"))
+        .is_none()
     );
 }
 

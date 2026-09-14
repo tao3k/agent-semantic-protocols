@@ -633,6 +633,18 @@ def exactQueryOwnerMaterializerCalls (projectionResident : Bool) : Nat :=
 theorem resident_exact_query_skips_owner_materializer :
     exactQueryOwnerMaterializerCalls true = 0 := rfl
 
+/-- The resident preflight owns the projection values it proves.  Passing those
+values to receipt materialization makes the complete hit path one selector read
+per requested selector instead of a probe followed by a duplicate read. -/
+def residentQueryProjectionReads
+    (selectorCount : Nat) (handoffPreflight : Bool) : Nat :=
+  if handoffPreflight then selectorCount else selectorCount + selectorCount
+
+theorem resident_query_projection_handoff_reads_each_selector_once
+    (selectorCount : Nat) :
+    residentQueryProjectionReads selectorCount true = selectorCount := by
+  simp [residentQueryProjectionReads]
+
 /-- A generation-local materialized-response cache hit and a selector-index
 read are distinct Runtime boundaries.  Observing the former cannot certify
 that the latter executed in the same request. -/

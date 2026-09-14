@@ -82,7 +82,11 @@ fn record_resident_query_materialization_hit(
     Ok(true)
 }
 
-fn exact_query_projections_are_resident(
+type ResidentQueryProjections = std::collections::VecDeque<
+    agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+>;
+
+fn resident_exact_query_projections(
     params: &AspClientWorkspaceQueryPlaybookRequest,
     mut read_selector: impl FnMut(
         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
@@ -91,22 +95,45 @@ fn exact_query_projections_are_resident(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
         String,
     >,
-) -> Result<bool, AspClientOperationError> {
+) -> Result<Option<ResidentQueryProjections>, AspClientOperationError> {
     use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
 
     let projection =
         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
             params.projection.as_str(),
         )?;
-    Ok(params.selectors.iter().all(|selector| {
-        matches!(
-            read_selector(projection, selector),
-            Ok(WorkspaceRuntimeSelectorRead::Projection {
-                resolved_selector,
-                ..
-            }) if resolved_selector == *selector
-        )
-    }))
+    let mut resident = std::collections::VecDeque::with_capacity(params.selectors.len());
+    for selector in &params.selectors {
+        let read = read_selector(projection, selector)?;
+        match &read {
+            WorkspaceRuntimeSelectorRead::Projection {
+                resolved_selector, ..
+            } if resolved_selector == selector => resident.push_back(read),
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some(resident))
+}
+
+fn read_query_projection_handoff(
+    resident_projections: &mut Option<ResidentQueryProjections>,
+    projection: agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
+    selector: &str,
+    fallback: impl FnOnce(
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
+        &str,
+    ) -> Result<
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+        String,
+    >,
+) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
+{
+    if let Some(projections) = resident_projections.as_mut() {
+        return projections.pop_front().ok_or_else(|| {
+            "resident Query projection handoff ended before the requested selector".to_owned()
+        });
+    }
+    fallback(projection, selector)
 }
 
 fn query_playbook_generation_provider_targets(
@@ -356,7 +383,7 @@ fn materialize_query_playbook_receipt(
         &agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
         &RuntimeTelemetryBusSender,
     )>,
-    read_selector: impl Fn(
+    mut read_selector: impl FnMut(
         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
         &str,
     ) -> Result<
@@ -587,6 +614,11 @@ fn bind_query_materialization_to_request(
     Ok(result)
 }
 
+struct ResidentQueryProjectionHandoff<'a> {
+    generation: &'a crate::RuntimeQueryGeneration,
+    projections: Option<ResidentQueryProjections>,
+}
+
 fn materialize_generation_bound_query_playbook(
     materialization_key: &str,
     workspace_id: &str,
@@ -594,7 +626,7 @@ fn materialize_generation_bound_query_playbook(
     initialized: &InitializedWorkspace,
     workspace_registry: &RuntimeServerWorkspaceRegistry,
     active_provider_targets: &[(String, String)],
-    generation: &crate::RuntimeQueryGeneration,
+    mut projection_handoff: ResidentQueryProjectionHandoff<'_>,
 ) -> Result<serde_json::Value, AspClientOperationError> {
     let (resident_root, resident_generation_digest) = workspace_registry
         .unique_resident_scope(workspace_id)
@@ -606,7 +638,7 @@ fn materialize_generation_bound_query_playbook(
             )
         })?;
     if resident_root != initialized.project_root
-        || resident_generation_digest != generation.generation_digest()
+        || resident_generation_digest != projection_handoff.generation.generation_digest()
     {
         return Err(query_playbook_terminal(
             "query-playbook-runtime-binding-mismatch",
@@ -623,13 +655,16 @@ fn materialize_generation_bound_query_playbook(
                 params.selectors.len(),
             )
         })?;
-    let execution_publication = generation.execution_publication().ok_or_else(|| {
-        query_playbook_terminal(
-            "query-playbook-runtime-binding-unavailable",
-            "Query Playbook generation has no admitted RuntimeExecutionBinding V2",
-            params.selectors.len(),
-        )
-    })?;
+    let execution_publication = projection_handoff
+        .generation
+        .execution_publication()
+        .ok_or_else(|| {
+            query_playbook_terminal(
+                "query-playbook-runtime-binding-unavailable",
+                "Query Playbook generation has no admitted RuntimeExecutionBinding V2",
+                params.selectors.len(),
+            )
+        })?;
     execution_publication.validate().map_err(|error| {
         query_playbook_terminal(
             "query-playbook-runtime-binding-mismatch",
@@ -656,7 +691,14 @@ fn materialize_generation_bound_query_playbook(
         initialized.host_workspace.project_workspace(),
         active_provider_targets,
         None,
-        |projection, selector| resident.read_runtime_selector(projection, selector),
+        |projection, selector| {
+            read_query_projection_handoff(
+                &mut projection_handoff.projections,
+                projection,
+                selector,
+                |projection, selector| resident.read_runtime_selector(projection, selector),
+            )
+        },
     )
 }
 
@@ -792,10 +834,11 @@ pub(super) async fn dispatch_workspace_query_playbook(
         None => {
             dispatch_budget.observe_miss();
             if generation.begin_query_materialization(materialization_key.clone())? {
-                let projections_are_resident =
-                    exact_query_projections_are_resident(&params, |projection, selector| {
+                let resident_projections =
+                    resident_exact_query_projections(&params, |projection, selector| {
                         generation.read_runtime_selector(projection, selector)
                     })?;
+                let projections_are_resident = resident_projections.is_some();
                 let materialization_generation = Arc::clone(&generation);
                 let materialization_registry = Arc::clone(workspace_registry);
                 let materialization_targets = active_provider_targets.to_vec();
@@ -848,7 +891,10 @@ pub(super) async fn dispatch_workspace_query_playbook(
                                     &materialization_initialized,
                                     materialization_registry.as_ref(),
                                     &materialization_targets,
-                                    materialization_generation.as_ref(),
+                                    ResidentQueryProjectionHandoff {
+                                        generation: materialization_generation.as_ref(),
+                                        projections: resident_projections,
+                                    },
                                 )
                             }
                         })
