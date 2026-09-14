@@ -1148,6 +1148,16 @@ Restart recovery revalidates the already durable parser artifact and reattaches
 it on demand.  Therefore one candidate miss has work proportional to that
 candidate artifact, never to total workspace bytes.
 
+For every admitted workspace/provider target restored during daemon startup,
+the same startup barrier also attempts and terminalizes establishment of the
+Runtime-owned resident provider actor before public health becomes Ready.  A
+successful cache-complete generation restore MUST NOT leave provider process
+creation as hidden work in the first Search materialization.  Search may
+consume the already resident actor, but it does not own provider process
+startup for a successfully warmed workspace.  A target that fails warmup is
+not reported provider-ready; its typed startup-recovery diagnostic remains
+visible without revoking independent resident languages.
+
 Graph and Project Topology are request-scoped refinements over the admitted
 candidate owner set.  A graph clause may add a bounded one-hop Relation
 neighbourhood, but it MUST NOT force parser projection for every indexed

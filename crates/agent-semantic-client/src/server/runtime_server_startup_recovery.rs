@@ -95,3 +95,23 @@ pub(super) async fn recover_startup_workspace_generation(
     await_query_generation(authority, entry, &digest).await?;
     Ok(digest)
 }
+
+pub(super) async fn warm_startup_workspace_providers(
+    runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    entry: &agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
+    provider_targets: &[(String, String)],
+) -> Result<(), String> {
+    for (language_id, _) in provider_targets {
+        runtime
+            .provider_runtime(entry.project_root.clone(), language_id.clone())
+            .await?;
+        runtime
+            .provider_runtime_await_ready(
+                entry.project_root.clone(),
+                language_id.clone(),
+                agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new(),
+            )
+            .await?;
+    }
+    Ok(())
+}

@@ -11,7 +11,9 @@ use super::runtime_server_generation_builder::{
 use super::runtime_server_identity_handoff;
 use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
-use super::runtime_server_startup_recovery::recover_startup_workspace_generation;
+use super::runtime_server_startup_recovery::{
+    recover_startup_workspace_generation, warm_startup_workspace_providers,
+};
 use super::runtime_server_telemetry_query_socket_path;
 use super::runtime_server_telemetry_socket_path;
 use super::state_home;
@@ -622,10 +624,38 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )
         .await
         {
-            Ok(generation_digest) => eprintln!(
-                "[runtime-server-startup-generation-ready] schemaId=agent.semantic-protocols.runtime-server-startup-generation-ready.v1 schemaVersion=1 projectId={} workspaceId={} generationDigest={generation_digest}",
-                entry.project_id, entry.workspace_identity,
-            ),
+            Ok(generation_digest) => {
+                eprintln!(
+                    "[runtime-server-startup-generation-ready] schemaId=agent.semantic-protocols.runtime-server-startup-generation-ready.v1 schemaVersion=1 projectId={} workspaceId={} generationDigest={generation_digest}",
+                    entry.project_id, entry.workspace_identity,
+                );
+                let provider_warm_started = std::time::Instant::now();
+                match warm_startup_workspace_providers(
+                    &runtime_search_service,
+                    entry,
+                    &provider_targets,
+                )
+                .await
+                {
+                    Ok(()) => eprintln!(
+                        "[runtime-server-startup-providers-ready] schemaId=agent.semantic-protocols.runtime-server-startup-providers-ready.v1 schemaVersion=1 projectId={} workspaceId={} providerCount={} elapsedMicros={} state=ready",
+                        entry.project_id,
+                        entry.workspace_identity,
+                        provider_targets.len(),
+                        provider_warm_started.elapsed().as_micros(),
+                    ),
+                    Err(error) => eprintln!(
+                        "[runtime-server-startup-providers-failed] schemaId=agent.semantic-protocols.runtime-server-startup-providers-failed.v1 schemaVersion=1 projectId={} workspaceId={} providerCount={} elapsedMicros={} state=failed error={}",
+                        entry.project_id,
+                        entry.workspace_identity,
+                        provider_targets.len(),
+                        provider_warm_started.elapsed().as_micros(),
+                        serde_json::to_string(&error).unwrap_or_else(|_| {
+                            "\"failed to encode startup provider error\"".to_owned()
+                        }),
+                    ),
+                }
+            }
             Err(error) => eprintln!(
                 "[runtime-server-startup-generation-failed] schemaId=agent.semantic-protocols.runtime-server-startup-generation-failed.v1 schemaVersion=1 projectId={} workspaceId={} projectRoot={} error={}",
                 entry.project_id,
