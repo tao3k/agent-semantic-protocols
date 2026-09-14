@@ -1096,6 +1096,24 @@ global query cache and never reuses failures.  Computing a miss occurs outside
 the mutex.  This removes repeated selector filtering without weakening the
 content/generation binding carried by the resident plan.
 
+2026-09-15 real Runtime qualification on one exact Rust owner, using different
+lexical expressions with the same syntax plan and owner scope, measured
+materialization inside Runtime (CLI startup/transport excluded):
+
+| Architecture | Retrieval | Structural | Complete hot Search |
+| Full-generation Tantivy, uncached structure | 5,418--6,094us | 852--883us | 7,189--7,813us |
+| Exact owner-id pushdown | 508--580us | 873--911us | 1,876--2,004us |
+| Direct owner iteration | 575--581us | 643--660us | 1,743--1,803us |
+| Exact structural-evidence hot slot | 437--499us | 24--31us | 918--1,064us |
+
+A following 20-expression sample of the final row observed 923us minimum,
+approximately 992us median, 1,065us p95 and 1,069us p99/max.  This is evidence
+of roughly sevenfold to eightfold improvement and occasional sub-millisecond
+completion for this selective cohort, not a stable sub-millisecond
+qualification: p95 remains above 1ms and the sample is smaller than the full
+acceptance matrix.  Remaining visible costs include resident owner readiness
+(about 90--110us) and Search topology settlement (about 250--290us).
+
 * Verdict
 
 ASP does not need tgrep's product architecture, but it does need GREP's role.
