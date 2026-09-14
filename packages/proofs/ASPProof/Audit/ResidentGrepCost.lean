@@ -65,5 +65,7 @@ open ASPProof.ResidentGrepCost
 #check generic_client_language_provider_dependency_is_forbidden
 #check resident_candidate_projection_has_zero_filesystem_reads
 #check auxiliary_inputs_do_not_expand_search_owner_count
+#check whole_owner_automaton_has_one_matcher_entrance
+#check whole_owner_automaton_removes_per_line_restarts
 
 end ASPProof.Audit.ResidentGrepCost

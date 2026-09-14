@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+use grep_matcher::Matcher;
+
 use super::execute_runtime_resident_grep_blocks as execute_runtime_resident_grep_blocks_impl;
 
 fn execute_runtime_resident_grep_blocks(
@@ -17,7 +19,24 @@ fn execute_runtime_resident_grep_blocks(
                 bytes: corpus.owner_bytes(&span.owner_path).unwrap(),
             },
         ))?;
+    let all_owners = corpus
+        .owner_spans
+        .iter()
+        .map(|span| span.owner_path.clone())
+        .collect::<Vec<_>>();
     execute_runtime_resident_grep_blocks_impl(corpus, blocks, limit, |plan, limit| {
+        if plan.is_match_all() {
+            return Ok((
+                all_owners.clone(),
+                agent_semantic_search::ResidentByteCoverageQueryReceipt {
+                    requested_gram_count: 0,
+                    decoded_posting_count: 0,
+                    smallest_posting_count: 0,
+                    candidate_count: all_owners.len(),
+                    lookup_nanos: 0,
+                },
+            ));
+        }
         index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
     })
 }
@@ -61,7 +80,7 @@ fn case_flags_obey_last_occurrence() {
         let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(&argv);
         let matcher = super::compile_resident_matcher(&analysis, 0).unwrap();
         assert_eq!(
-            matcher.expression.is_match(b"runtime"),
+            matcher.expression.is_match(b"runtime").unwrap(),
             expected,
             "{argv:?}"
         );
@@ -93,6 +112,73 @@ fn grounding_anchors_are_deduplicated_and_bounded_by_lines() {
             .map(|hit| hit.owner_line)
             .collect::<Vec<_>>(),
         [1, 2]
+    );
+    assert_eq!(result.block_receipts[0].resident_regex_scan_count, 1);
+}
+
+#[test]
+fn one_owner_automaton_preserves_multiline_dotall_and_start_line_attribution() {
+    let bytes = b"prefix\nstart\nmiddle\nend\nsuffix\n";
+    let corpus = agent_semantic_search::build_resident_grep_corpus(
+        &digest(b"generation"),
+        [agent_semantic_search::ResidentGrepCorpusOwner {
+            owner_path: "a.rs",
+            content_digest: &digest(bytes),
+            bytes,
+        }],
+    )
+    .unwrap();
+    let result = execute_runtime_resident_grep_blocks(
+        &corpus,
+        &[vec![
+            "-U".into(),
+            "--multiline-dotall".into(),
+            "-n".into(),
+            "start.*end".into(),
+            ".".into(),
+        ]],
+        8,
+    )
+    .unwrap();
+
+    assert_eq!(result.branch_matches[0][0].owner_line, 2);
+    assert_eq!(result.block_receipts[0].resident_owner_read_count, 1);
+    assert_eq!(result.block_receipts[0].resident_regex_scan_count, 1);
+}
+
+#[test]
+fn zero_width_eof_is_not_projected_as_a_phantom_line() {
+    let bytes = b"value\n\n";
+    let empty = b"";
+    let corpus = agent_semantic_search::build_resident_grep_corpus(
+        &digest(b"generation"),
+        [
+            agent_semantic_search::ResidentGrepCorpusOwner {
+                owner_path: "lines.rs",
+                content_digest: &digest(bytes),
+                bytes,
+            },
+            agent_semantic_search::ResidentGrepCorpusOwner {
+                owner_path: "empty.rs",
+                content_digest: &digest(empty),
+                bytes: empty,
+            },
+        ],
+    )
+    .unwrap();
+    let result = execute_runtime_resident_grep_blocks(
+        &corpus,
+        &[vec!["-n".into(), "^$".into(), ".".into()]],
+        8,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.branch_matches[0]
+            .iter()
+            .map(|hit| (hit.owner_path.as_str(), hit.owner_line))
+            .collect::<Vec<_>>(),
+        [("lines.rs", 2)]
     );
 }
 
@@ -144,6 +230,7 @@ fn admitted_grep_matches_rg_reference_corpus() {
         (vec!["-w"], "abc"),
         (vec!["-w", "-x"], "@abc@"),
         (vec![], r"abc\s+def"),
+        (vec!["-U", "--multiline-dotall"], "abc.*def"),
         (vec![], "^$"),
         (vec![], ""),
         (vec!["-F"], "@abc@"),
@@ -244,6 +331,7 @@ fn native_rg_reads_each_independent_block_without_process_or_filesystem_work() {
             && block.process_count == 0
             && block.filesystem_operation_count == 0
             && block.resident_owner_read_count == 1
+            && block.resident_regex_scan_count == 1
             && block.candidate_owner_count == 1
             && block.candidate_gram_count > 0
             && block.decoded_posting_count > 0
@@ -456,6 +544,7 @@ fn resident_grep_4096_owner_reads_have_submillisecond_kernel_and_wall_p99() {
         non_lookup_samples.push(wall_nanos.saturating_sub(lookup_nanos));
         assert_eq!(receipt.candidate_owner_paths, ["src/generated/4095.rs"]);
         assert_eq!(receipt.block_receipts[0].resident_owner_read_count, 1);
+        assert_eq!(receipt.block_receipts[0].resident_regex_scan_count, 1);
         let observed_candidate_gram_count = receipt.block_receipts[0].candidate_gram_count;
         let observed_decoded_posting_count = receipt.block_receipts[0].decoded_posting_count;
         assert!(observed_candidate_gram_count > 1);

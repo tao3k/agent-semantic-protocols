@@ -708,4 +708,24 @@ theorem auxiliary_inputs_do_not_expand_search_owner_count
       searchOwnerCount ⟨searchable, secondAuxiliary⟩ := by
   rfl
 
+/-- Restarting a compiled matcher for every physical line multiplies engine
+entry work by the number of lines in one candidate owner. -/
+def perLineMatcherEntrances (physicalLines : Nat) : Nat := physicalLines
+
+/-- A generation-resident whole-owner automaton enters the matcher once. Match
+offset projection is separate linear byte work and is not hidden here. -/
+def perOwnerMatcherEntrances (_physicalLines : Nat) : Nat := 1
+
+theorem whole_owner_automaton_has_one_matcher_entrance (physicalLines : Nat) :
+    perOwnerMatcherEntrances physicalLines = 1 := by
+  rfl
+
+theorem whole_owner_automaton_removes_per_line_restarts
+    (physicalLines : Nat)
+    (nonempty : 0 < physicalLines) :
+    perLineMatcherEntrances physicalLines =
+      perOwnerMatcherEntrances physicalLines + (physicalLines - 1) := by
+  simp [perLineMatcherEntrances, perOwnerMatcherEntrances]
+  omega
+
 end ASPProof.ResidentGrepCost

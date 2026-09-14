@@ -4,6 +4,8 @@
 
 //! Bounded in-process GREP over one immutable resident corpus.
 
+use grep_matcher::Matcher;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimeResidentGrepAxisReceipt {
     pub candidate_owner_paths: Vec<String>,
@@ -26,6 +28,7 @@ pub(crate) struct RuntimeResidentGrepBlockReceipt {
     pub candidate_owner_count: usize,
     pub candidate_lookup_nanos: u64,
     pub resident_owner_read_count: usize,
+    pub resident_regex_scan_count: usize,
     pub process_count: u8,
     pub filesystem_operation_count: u8,
 }
@@ -88,6 +91,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         let mut owners = Vec::new();
         let mut matches = Vec::new();
         let mut resident_owner_read_count = 0_usize;
+        let mut resident_regex_scan_count = 0_usize;
         let mut truncated = false;
         let (candidate_owner_paths, candidate_receipt) =
             candidate_owner_paths(&matcher.candidate_plan, limit as usize)?;
@@ -106,18 +110,42 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                 format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
             })?;
             resident_owner_read_count += 1;
-            let mut owner_matches = bytes
-                .split_inclusive(|byte| *byte == b'\n')
-                .enumerate()
-                .filter_map(|(line, bytes)| {
-                    let line_bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-                    matcher
-                        .expression
-                        .is_match(line_bytes)
-                        .then_some(line as u64 + 1)
+            resident_regex_scan_count += 1;
+            // Execute rg's compiled matcher once per candidate owner. Ordinary
+            // patterns cannot consume a line terminator; explicit -U
+            // multiline mode removes that restriction.
+            let mut owner_lines = Vec::new();
+            let mut line_cursor = 0usize;
+            let mut owner_line = 1u64;
+            let mut last_emitted_line = None;
+            let owner_line_limit = if line_attribution {
+                (limit as usize).saturating_sub(matches.len()) + 1
+            } else {
+                1
+            };
+            matcher
+                .expression
+                .find_iter(bytes, |occurrence| {
+                    // A zero-width match at EOF is not a physical line. This
+                    // excludes an empty file and the phantom line after a
+                    // terminating newline while retaining real empty lines.
+                    if occurrence.start() == bytes.len() && occurrence.end() == bytes.len() {
+                        return true;
+                    }
+                    while line_cursor < occurrence.start() {
+                        if bytes[line_cursor] == b'\n' {
+                            owner_line = owner_line.saturating_add(1);
+                        }
+                        line_cursor += 1;
+                    }
+                    if last_emitted_line != Some(owner_line) {
+                        last_emitted_line = Some(owner_line);
+                        owner_lines.push(owner_line);
+                    }
+                    owner_lines.len() < owner_line_limit
                 })
-                .peekable();
-            if owner_matches.peek().is_none() {
+                .map_err(|error| format!("resident GREP matcher failed: {error}"))?;
+            if owner_lines.is_empty() {
                 continue;
             }
             if owners.len() == limit as usize {
@@ -126,8 +154,8 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             }
             owners.push(owner_path.clone());
             all_owners.insert(owner_path.clone());
-            if line_attribution {
-                for owner_line in owner_matches {
+            for owner_line in owner_lines {
+                if line_attribution {
                     if matches.len() == limit as usize {
                         truncated = true;
                         break 'owners;
@@ -138,16 +166,17 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                     };
                     grounding_matches.push(matched.clone());
                     matches.push(matched);
+                } else {
+                    // Output flags control rg-compatible rendering, not the
+                    // Runtime's private parser-grounding evidence. Retain one
+                    // exact line per owner so Search never expands a merely
+                    // owner-level hit into every selector in that file.
+                    grounding_matches.push(RuntimeGrepMatch {
+                        owner_path: owner_path.clone(),
+                        owner_line,
+                    });
+                    break;
                 }
-            } else if let Some(owner_line) = owner_matches.next() {
-                // Output flags control rg-compatible rendering, not the
-                // Runtime's private parser-grounding evidence. Retain one
-                // exact line per owner so Search never expands a merely
-                // owner-level hit into every selector in that file.
-                grounding_matches.push(RuntimeGrepMatch {
-                    owner_path: owner_path.clone(),
-                    owner_line,
-                });
             }
         }
         any_truncated |= truncated;
@@ -171,6 +200,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             candidate_owner_count: candidate_receipt.candidate_count,
             candidate_lookup_nanos: candidate_receipt.lookup_nanos,
             resident_owner_read_count,
+            resident_regex_scan_count,
             process_count: 0,
             filesystem_operation_count: 0,
         });
@@ -186,7 +216,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
 }
 
 struct ResidentGrepMatcher {
-    expression: regex::bytes::Regex,
+    expression: grep_regex::RegexMatcher,
     candidate_plan: agent_semantic_search::ResidentGrepCandidatePlan,
     path_globs: Option<globset::GlobSet>,
 }
@@ -220,52 +250,47 @@ fn compile_resident_matcher(
             _ => None,
         })
         .unwrap_or(false);
-    let mut patterns = analysis
+    let raw_patterns = analysis
         .patterns
         .iter()
-        .map(|pattern| {
-            Ok(if fixed {
-                regex::escape(&pattern.value)
-            } else {
-                pattern.value.clone()
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    if patterns.is_empty() {
+        .map(|pattern| pattern.value.as_str())
+        .collect::<Vec<_>>();
+    if raw_patterns.is_empty() {
         return Err(format!(
             "resident GREP block has no executable pattern: blockIndex={block_index}"
         ));
     }
-    if has_option(analysis, &["-w", "--word-regexp"])
-        && !has_option(analysis, &["-x", "--line-regexp"])
-    {
-        patterns = patterns
-            .into_iter()
-            .map(|pattern| format!(r"(?:^|\W)(?:{pattern})(?:$|\W)"))
-            .collect();
-    }
-    if has_option(analysis, &["-x", "--line-regexp"]) {
-        patterns = patterns
-            .into_iter()
-            .map(|pattern| format!(r"^(?:{pattern})$"))
-            .collect();
-    }
-    let expression = patterns
-        .into_iter()
+    let candidate_expression = raw_patterns
+        .iter()
+        .map(|pattern| {
+            if fixed {
+                regex::escape(pattern)
+            } else {
+                (*pattern).to_owned()
+            }
+        })
         .map(|pattern| format!("(?:{pattern})"))
         .collect::<Vec<_>>()
         .join("|");
     let unicode = !has_option(analysis, &["--no-unicode"]);
     let candidate_plan = agent_semantic_search::build_resident_grep_candidate_plan(
-        &expression,
+        &candidate_expression,
         ignore_case,
         unicode,
     )?;
-    let expression = regex::bytes::RegexBuilder::new(&expression)
+    let multiline = has_option(analysis, &["-U", "--multiline"]);
+    let mut expression_builder = grep_regex::RegexMatcherBuilder::new();
+    expression_builder
         .case_insensitive(ignore_case)
         .multi_line(true)
+        .dot_matches_new_line(has_option(analysis, &["--multiline-dotall"]))
         .unicode(unicode)
-        .build()
+        .fixed_strings(fixed)
+        .whole_line(has_option(analysis, &["-x", "--line-regexp"]))
+        .word(has_option(analysis, &["-w", "--word-regexp"]))
+        .line_terminator((!multiline).then_some(b'\n'));
+    let expression = expression_builder
+        .build_many(&raw_patterns)
         .map_err(|error| {
             format!(
                 "resident GREP pattern compilation failed: blockIndex={block_index} error={error}"
@@ -356,6 +381,8 @@ fn validate_resident_options(
         "--heading",
         "--no-config",
         "--no-unicode",
+        "-U",
+        "--multiline",
         "--multiline-dotall",
     ];
     if let Some(option) = analysis

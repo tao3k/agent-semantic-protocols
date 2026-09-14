@@ -827,6 +827,7 @@ the 1ms budget.  These equations count logical work, not elapsed time.
 | Provider bootstrap is not Search/Query engine work | provider_bootstrap_is_outside_runtime_data_plane | Lifecycle timing is reported separately; generic client code retains only protocol/transport dependencies and provider parse/projection time remains visible |
 | Generic client cannot link one language provider | generic_client_language_provider_dependency_is_forbidden | =cargo tree -e normal= for =agent-semantic-client= contains no =asp-rust=; direct normal/dev dependencies, embedded Runtime calls, and the local build-policy default feature are regression-guarded. The pinned MRR/GQL crates still carry a transitive build-only =asp-rust= policy dependency, so build-graph closure remains explicitly open and is not Runtime evidence |
 | Candidate projection cannot reopen the worktree | resident_candidate_projection_has_zero_filesystem_reads; auxiliary_inputs_do_not_expand_search_owner_count | Canonical generation persists auxiliary bytes separately from searchable owners; Runtime sends source and applicable config bytes from the resident lease, reports both filesystem read counts as zero, and rejects corrupt auxiliary identity without live-filesystem fallback |
+| Exact matching cannot restart per line | whole_owner_automaton_has_one_matcher_entrance; whole_owner_automaton_removes_per_line_restarts | Runtime uses =grep-regex= line-terminator-safe HIR and one matcher iteration per candidate owner; =resident_regex_scan_count= is one for one candidate owner, while offsets are projected monotonically to physical lines and EOF zero-width matches cannot create phantom lines |
 
 The user approved measuring first computation separately before setting its
 production latency limit. Runtime starts each resident request with the strict
@@ -1027,9 +1028,15 @@ The two proposed choices are not equivalent responsibilities:
 2. ripgrep's published library crates supply exact regex/search semantics, but
    the full rg binary is not a library backend and its index is explicitly
    unstable.  The current upstream repository also requires Rust 1.96 while
-   ASP is fixed at 1.95.  Verdict: do not fork or raise MSRV.  First preserve
-   the current resident exact matcher; separately qualify the newest compatible
-   =grep-regex=/=grep-searcher= release before adding a dependency.
+   ASP is fixed at 1.95.  Verdict: do not fork or raise MSRV.  Qualification
+   exposed a semantic fault in a raw whole-owner =regex= scan: =\s= could cross
+   =\n= even though ordinary rg search is line oriented.  Use the compatible
+   =grep-regex= 0.1.14 and =grep-matcher= 0.1.9 crates as the smallest admitted
+   rg semantic kernel.  Configure a line terminator for ordinary search so the
+   compiled HIR cannot consume =\n=, remove that restriction only for the
+   explicit =-U/--multiline= mode, and drive one matcher iteration per resident owner.
+   Do not add =grep-searcher=, a filesystem walker, the rg CLI, or another
+   lifecycle owner.
 
 The selected architecture is therefore an ASP-owned trigram candidate artifact
 plus an independently qualified in-process exact matcher.  This retains the
@@ -1046,7 +1053,9 @@ not the rg semantics or its position in the SearchLoop.
 ASP does need tgrep's physical-index discipline.  The resident implementation
 now publishes a compact mmap artifact, reopens postings and source bytes without
 workspace-sized heap reconstruction, evaluates regex-HIR AND/OR plans rarest
-first, and runs the lexical phase on a bounded Tokio CPU lane.  External posting
-construction, bounded OR unions, broader rg differential semantics, and
-independently measured end-to-end request cost remain the next performance
+first, and runs the lexical phase on a bounded Tokio CPU lane.  Exact matching
+uses rg's library-owned line semantics in-process and scans each candidate owner
+once; it does not start an rg process or import rg's traversal stack.  External
+posting construction, bounded OR unions, broader rg differential semantics,
+and independently measured end-to-end request cost remain the next performance
 closure points.
