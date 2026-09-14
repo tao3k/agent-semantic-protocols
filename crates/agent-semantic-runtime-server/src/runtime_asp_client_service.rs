@@ -184,7 +184,7 @@ pub struct RuntimeAspClientDispatcher {
         Mutex<
             HashMap<
                 ClientRequestKey,
-                agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+                agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
             >,
         >,
     >,

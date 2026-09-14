@@ -19,13 +19,13 @@ pub(super) struct TelemetryQueryArgs {
 pub(super) async fn run_telemetry_query(args: TelemetryQueryArgs) -> Result<(), String> {
     let state_home = super::state_home()?;
     let query =
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceQuery::new(
+        agent_semantic_runtime_server::runtime_server_opentelemetry::RuntimePerformanceQuery::new(
             args.workspace_identity,
             args.surface,
             args.stage,
         );
     let receipt =
-        agent_semantic_client_db::runtime_server_opentelemetry::query_runtime_performance(
+        agent_semantic_runtime_server::runtime_server_opentelemetry::query_runtime_performance(
             &super::runtime_server_telemetry_query_socket_path(&state_home)?,
             &query,
         )

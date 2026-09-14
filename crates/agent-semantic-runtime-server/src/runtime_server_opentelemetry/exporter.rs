@@ -83,7 +83,8 @@ impl TursoOpenTelemetrySpanExporter {
                 )
             })?;
         }
-        let database = crate::engine::shared_turso_database(path).await?;
+        let database =
+            agent_semantic_client_db::engine::runtime_observability_database(path).await?;
         let writer = database.connect().map_err(|error| {
             format!("failed to connect Runtime Server OpenTelemetry Turso DB: {error}")
         })?;

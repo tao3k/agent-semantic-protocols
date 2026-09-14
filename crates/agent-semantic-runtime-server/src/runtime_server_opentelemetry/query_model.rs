@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 const QUERY_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-performance-query";
+// This private V1 transport model is implemented by Runtime Server.
 const QUERY_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-performance-query-receipt";
 const SCHEMA_VERSION: &str = "1";

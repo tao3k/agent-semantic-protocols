@@ -31,7 +31,7 @@ pub(super) async fn run_query_server(
 ) -> Result<(), String> {
     let mut connections = tokio::task::JoinSet::new();
     let connection_supervisor =
-        crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
+        agent_semantic_client_db::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
             "runtime-server-telemetry-query",
         );
     loop {
@@ -53,7 +53,7 @@ pub(super) async fn run_query_server(
                             let _ = changed;
                             Err("telemetry query connection cancelled by shutdown".to_owned())
                         }
-                        result = crate::runtime_server_connection::within_connection_io_budget(
+                        result = agent_semantic_client_db::runtime_server_connection::within_connection_io_budget(
                             "telemetry query",
                             serve_query(stream, live_store),
                         ) => result,

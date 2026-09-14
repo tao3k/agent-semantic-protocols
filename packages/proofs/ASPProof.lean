@@ -217,6 +217,7 @@ import ASPProof.SearchRouteAppendOnlyForecastCalibration
 import ASPProof.SearchRouteRobustWindowedCalibrationHysteresis
 import ASPProof.RuntimeServerSearchGeneration
 import ASPProof.RuntimeSchedulerOwnership
+import ASPProof.RuntimeObservationAuthority
 import ASPProof.WorkspaceSearchPlaybookPlanner
 import ASPProof.Audit.WorkspaceSearchPlaybookPlanner
 import ASPProof.ChangeAwareEvidencePlanning

@@ -155,3 +155,55 @@ adaptive worker ownership, cancellation-on-drop, concurrent drain equations,
 caller-runtime borrowing, and the resident sub-millisecond executor lookup.
 Cold package timing remains an empirical qualification and MUST be reported
 separately from these proofs.
+
+* Observation model and exporter separation
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-OBSERVATION-AUTHORITY
+:END:
+
+The Version 1 observation is a neutral value contract.  The package
+=agent-semantic-runtime-observability= owns its Rust data model and the single
+process-local, non-blocking sink registry.  It owns no Tokio runtime, socket,
+Turso database, OpenTelemetry SDK, sampler, or exporter.  Producers including
+=client-db= may construct the V1 value and attempt admission, but cannot acquire
+exporter lifecycle authority.
+
+The minimal =agent-semantic-runtime-process-observation= adapter owns only the
+audited OS resource probes and their narrow libc boundary.  It does not own a
+Tokio runtime, sampler task, sink, exporter, or database.  Runtime Server owns
+the sampler task and cancellation; its crate keeps =deny(unsafe_code)=.  The DB
+Engine retains construction and pooling authority and exposes only a
+purpose-limited Runtime-observability database acquisition function to the
+Runtime Server exporter.
+
+The Runtime Server installs exactly one sink implementation after its telemetry
+lane is ready.  Shutdown unregisters that exact registration before draining
+the lane.  A stale registration token cannot revoke a newer sink.  Missing or
+poisoned admission remains a bounded =false= result; it cannot block Search or
+Query and cannot change their semantic result.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  ClientDB[client-db producer] --> Core[V1 observation + sink registry]
+  Search[Runtime Search/Query] --> Core
+  Core -->|try_record| Server[Runtime Server telemetry sink]
+  Probe[process-observation OS adapter] -->|resource values| Server
+  Server --> OTel[OpenTelemetry adapter]
+  Server -->|purpose-limited acquisition| Engine[client-db DB Engine]
+  Engine --> Turso[Turso telemetry store]
+  Core -. no dependency .-> OTel
+  Core -. no dependency .-> Turso
+  Probe -. no lifecycle authority .-> Server
+#+end_src
+
+For active registration =a= and stale token =s=, unregister is identity when
+=a != s= and clears the sink only when =a = s=:
+
+#+begin_src typst :exports code
+$ unregister(some(a), s) = cases(none, a = s; some(a), a != s) $
+#+end_src
+
+=ASPProof.RuntimeObservationAuthority= proves the model, OS boundary, sampler,
+database-pool, and exporter ownership exclusions plus stale-registration
+fencing.  Rust tests bind those statements to the concrete registry and also
+assert that serialized observations retain schema version =1=.

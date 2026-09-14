@@ -82,6 +82,7 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-runtime-observability",
  "agent-semantic-runtime-server",
  "agent-semantic-schema-manager",
  "agent-semantic-search",
@@ -149,6 +150,7 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-runtime-observability",
  "agent-semantic-search",
  "agent-semantic-search-projection",
  "agent-semantic-workspace-scheduler",
@@ -163,8 +165,6 @@ dependencies = [
  "gix",
  "libc",
  "memmap2",
- "opentelemetry",
- "opentelemetry_sdk",
  "parking_lot",
  "postcard",
  "serde",
@@ -419,6 +419,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-semantic-runtime-observability"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-client-protocol",
+ "agent-semantic-content-identity",
+ "asp-rust-project-harness-policy",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "agent-semantic-runtime-process-observation"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-workspace-scheduler",
+ "asp-rust-project-harness-policy",
+ "libc",
+ "tokio",
+]
+
+[[package]]
 name = "agent-semantic-runtime-server"
 version = "0.1.0"
 dependencies = [
@@ -432,6 +453,8 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-runtime-observability",
+ "agent-semantic-runtime-process-observation",
  "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
@@ -443,9 +466,13 @@ dependencies = [
  "base64 0.23.1",
  "blake3",
  "criterion",
+ "dashmap 6.2.1",
  "futures-util",
  "globset",
  "hyper-util",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "parking_lot",
  "prost",
  "protoc-bin-vendored",
  "regex",
@@ -459,6 +486,7 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "tower",
+ "turso",
 ]
 
 [[package]]

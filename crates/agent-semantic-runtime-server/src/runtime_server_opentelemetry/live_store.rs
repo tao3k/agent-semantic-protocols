@@ -4,7 +4,9 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use super::RuntimePerformanceObservation;
+// The live performance window is resident Runtime Server state.
+
+use agent_semantic_runtime_observability::RuntimePerformanceObservation;
 
 const MAX_SAMPLES_PER_STAGE: usize = 4_096;
 

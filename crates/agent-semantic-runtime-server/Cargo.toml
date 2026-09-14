@@ -24,6 +24,14 @@ path = "tests/integration/agent_session_registration.rs"
 name = "runtime_dependency_boundary"
 path = "tests/integration/runtime_dependency_boundary.rs"
 
+[[test]]
+name = "runtime_generation_resource_gate"
+path = "tests/integration/runtime_generation_resource_gate.rs"
+
+[[test]]
+name = "runtime_server_opentelemetry_test"
+path = "tests/performance/runtime_server_opentelemetry_harness.rs"
+
 [[bench]]
 name = "runtime_schema_bundle_catalog"
 harness = false
@@ -31,6 +39,8 @@ harness = false
 [dependencies]
 agent-semantic-artifacts.workspace = true
 agent-semantic-runtime.workspace = true
+agent-semantic-runtime-observability.workspace = true
+agent-semantic-runtime-process-observation.workspace = true
 agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-content-identity.workspace = true
 blake3.workspace = true
@@ -61,6 +71,11 @@ tonic-prost.workspace = true
 tokio-stream.workspace = true
 tower.workspace = true
 hyper-util.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+parking_lot.workspace = true
+turso.workspace = true
+dashmap = "6.2.1"
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true

@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
+use agent_semantic_runtime_observability::{
+    RuntimeObservationSinkRegistration, RuntimePerformanceObservation,
+    active_runtime_memory_operations, register_runtime_observation_sink,
+};
+use agent_semantic_runtime_process_observation as process_memory;
 use opentelemetry::{
     KeyValue,
     trace::{Span, Status, Tracer, TracerProvider},
@@ -24,7 +25,6 @@ use tokio::{
 use super::{
     exporter::TursoOpenTelemetrySpanExporter,
     handle::{RuntimeServerOpenTelemetryHandle, RuntimeTelemetryLaneMessage},
-    observation::{RuntimePerformanceObservation, push_optional, push_optional_u64},
     semconv,
 };
 
@@ -42,7 +42,7 @@ pub struct RuntimePerformanceIngressReceipt {
 
 pub struct RuntimeServerOpenTelemetry {
     handle: RuntimeServerOpenTelemetryHandle,
-    registration_id: u64,
+    registration: Option<RuntimeObservationSinkRegistration>,
     shutdown: watch::Sender<bool>,
     task: agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<Result<(), String>>,
     telemetry_task: agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<Result<(), String>>,
@@ -59,76 +59,13 @@ struct RuntimePressurePersistenceState {
 }
 
 impl RuntimePressurePersistenceState {
-    fn from_observation(observation: super::process_memory::ProcessMemoryObservation) -> Self {
+    fn from_observation(observation: process_memory::ProcessMemoryObservation) -> Self {
         Self {
             memory_budget_exceeded: observation.budget_exceeded(),
             event_loop_lag_budget_exceeded: observation.event_loop_lag_budget_exceeded(),
             open_descriptor_budget_exceeded: observation.open_descriptor_budget_exceeded(),
         }
     }
-}
-
-static ACTIVE_RUNTIME_TELEMETRY: std::sync::OnceLock<
-    std::sync::Mutex<Option<(u64, RuntimeServerOpenTelemetryHandle)>>,
-> = std::sync::OnceLock::new();
-static NEXT_RUNTIME_TELEMETRY_REGISTRATION_ID: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(1);
-static ACTIVE_MEMORY_OPERATIONS: std::sync::OnceLock<std::sync::Mutex<BTreeMap<String, String>>> =
-    std::sync::OnceLock::new();
-
-pub(crate) struct RuntimeMemoryOperationGuard {
-    operation_id: String,
-}
-
-impl Drop for RuntimeMemoryOperationGuard {
-    fn drop(&mut self) {
-        if let Some(active) = ACTIVE_MEMORY_OPERATIONS.get()
-            && let Ok(mut active) = active.lock()
-        {
-            active.remove(&self.operation_id);
-        }
-    }
-}
-
-pub(crate) fn begin_runtime_memory_operation(
-    workspace_identity: impl Into<String>,
-    operation_id: impl Into<String>,
-) -> RuntimeMemoryOperationGuard {
-    let operation_id = operation_id.into();
-    if let Ok(mut active) = ACTIVE_MEMORY_OPERATIONS
-        .get_or_init(|| std::sync::Mutex::new(BTreeMap::new()))
-        .lock()
-    {
-        active.insert(operation_id.clone(), workspace_identity.into());
-    }
-    RuntimeMemoryOperationGuard { operation_id }
-}
-
-fn active_memory_operations() -> Vec<(String, String)> {
-    ACTIVE_MEMORY_OPERATIONS
-        .get()
-        .and_then(|active| active.lock().ok())
-        .map(|active| {
-            active
-                .iter()
-                .map(|(operation_id, workspace_identity)| {
-                    (operation_id.clone(), workspace_identity.clone())
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-pub fn try_record_to_active_runtime(observation: RuntimePerformanceObservation) -> bool {
-    let Some(active) = ACTIVE_RUNTIME_TELEMETRY.get() else {
-        return false;
-    };
-    let Ok(active) = active.lock() else {
-        return false;
-    };
-    active
-        .as_ref()
-        .is_some_and(|(_, handle)| handle.try_record(observation))
 }
 
 impl RuntimeServerOpenTelemetry {
@@ -140,7 +77,7 @@ impl RuntimeServerOpenTelemetry {
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
     ) -> Result<Self, String> {
-        let bus = crate::runtime_telemetry_bus::RuntimeTelemetryBus::new();
+        let bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
         Self::start_with_telemetry_receiver(
             database_path,
             ingress_socket_path,
@@ -154,7 +91,7 @@ impl RuntimeServerOpenTelemetry {
         database_path: std::path::PathBuf,
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
-        telemetry_receiver: crate::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
+        telemetry_receiver: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
     ) -> Result<Self, String> {
         Self::start_with_telemetry_receiver_inner(
             database_path,
@@ -169,15 +106,15 @@ impl RuntimeServerOpenTelemetry {
         database_path: std::path::PathBuf,
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
-        mut telemetry_receiver: crate::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
+        mut telemetry_receiver: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
     ) -> Result<Self, String> {
         let scheduler_probe_started = tokio::time::Instant::now();
         tokio::task::yield_now().await;
         let event_loop_lag_micros =
             u64::try_from(scheduler_probe_started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        let scheduler = super::process_memory::observe_runtime_scheduler();
+        let scheduler = process_memory::observe_runtime_scheduler();
         let initial_process_memory = tokio::task::spawn_blocking(move || {
-            super::process_memory::observe_process_memory(event_loop_lag_micros, scheduler)
+            process_memory::observe_process_memory(event_loop_lag_micros, scheduler)
         })
         .await
         .map_err(|error| {
@@ -205,13 +142,7 @@ impl RuntimeServerOpenTelemetry {
             sender,
             dropped_observations: Arc::clone(&dropped_observations),
         };
-        let registration_id = NEXT_RUNTIME_TELEMETRY_REGISTRATION_ID
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let active = ACTIVE_RUNTIME_TELEMETRY.get_or_init(|| std::sync::Mutex::new(None));
-        *active
-            .lock()
-            .map_err(|_| "Runtime Server OpenTelemetry registry lock poisoned".to_owned())? =
-            Some((registration_id, handle.clone()));
+        let registration = register_runtime_observation_sink(Arc::new(handle.clone()))?;
         let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
             "runtime-server-opentelemetry",
         );
@@ -266,7 +197,7 @@ impl RuntimeServerOpenTelemetry {
         )?;
         Ok(Self {
             handle,
-            registration_id,
+            registration: Some(registration),
             shutdown,
             task,
             telemetry_task,
@@ -281,16 +212,11 @@ impl RuntimeServerOpenTelemetry {
     }
 
     pub async fn shutdown(
-        self,
+        mut self,
     ) -> Result<agent_semantic_workspace_scheduler::RuntimeServerTaskLifecycleReceipt, String> {
         let drain_started = tokio::time::Instant::now();
-        if let Some(active) = ACTIVE_RUNTIME_TELEMETRY.get()
-            && let Ok(mut active) = active.lock()
-            && active
-                .as_ref()
-                .is_some_and(|(registration_id, _)| *registration_id == self.registration_id)
-        {
-            *active = None;
+        if let Some(registration) = self.registration.take() {
+            registration.unregister();
         }
         let _ = self.shutdown.send(true);
         drop(self.handle);
@@ -360,7 +286,7 @@ async fn run_resident_telemetry_lane(
     ingress: tokio::net::UnixListener,
     query_listener: tokio::net::UnixListener,
     dropped_observations: Arc<std::sync::atomic::AtomicU64>,
-    initial_process_memory: Option<super::process_memory::ProcessMemoryObservation>,
+    initial_process_memory: Option<process_memory::ProcessMemoryObservation>,
     mut shutdown: watch::Receiver<bool>,
     task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
 ) -> Result<(), String> {
@@ -412,13 +338,13 @@ async fn run_resident_telemetry_lane(
     }
     let mut ingress_connections = tokio::task::JoinSet::new();
     let ingress_supervisor =
-        crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
+        agent_semantic_client_db::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
             "runtime-server-telemetry-ingress",
         );
     let (memory_sender, mut memory_receiver) = watch::channel(initial_process_memory);
     let memory_sampler = task_scope.spawn(
         "runtime-server-process-memory-sampler",
-        super::process_memory::run_sampler(memory_sender, shutdown.clone()),
+        process_memory::run_sampler(memory_sender, shutdown.clone()),
     )?;
     let mut latest_process_memory = initial_process_memory;
     if let Some(memory) = initial_process_memory {
@@ -429,7 +355,7 @@ async fn run_resident_telemetry_lane(
             1,
             "within-budget",
         );
-        observation.record_runtime_process_memory(memory);
+        record_runtime_process_memory(&mut observation, memory);
         record_observation(&tracer, observation, &live_store);
     }
     let mut persisted_pressure_state =
@@ -468,7 +394,7 @@ async fn run_resident_telemetry_lane(
                         .try_admit()
                         .expect("capacity guard must admit one telemetry connection");
                     ingress_connections.spawn(async move {
-                        let result = crate::runtime_server_connection::within_connection_io_budget(
+                        let result = agent_semantic_client_db::runtime_server_connection::within_connection_io_budget(
                             "telemetry ingress frame",
                             read_ingress_observation(stream),
                         )
@@ -525,11 +451,11 @@ async fn run_resident_telemetry_lane(
                             "within-budget"
                         },
                     );
-                    observation.record_runtime_process_memory(memory);
+                    record_runtime_process_memory(&mut observation, memory);
                     record_observation(&tracer, observation, &live_store);
                 }
                 persisted_pressure_state = next_pressure_state;
-                let active_operations = active_memory_operations();
+                let active_operations = active_runtime_memory_operations();
                 recorded_memory_watermarks.retain(|operation_id, _| {
                     active_operations.iter().any(|(active_id, _)| active_id == operation_id)
                 });
@@ -544,14 +470,14 @@ async fn run_resident_telemetry_lane(
                     .with_operation_id(operation_id.clone());
                     observation.workspace_identity = Some(workspace_identity);
                     if let Some(memory) = latest_process_memory {
-                        observation.record_runtime_process_memory(memory);
+                        record_runtime_process_memory(&mut observation, memory);
                     }
                     let observed_peak = observation
                         .process_peak_resident_bytes
                         .or(observation.process_resident_bytes);
                     if let Some(observed_peak) = observed_peak {
                         let watermark = observed_peak
-                            / super::process_memory::MEMORY_WATERMARK_STEP_BYTES;
+                            / process_memory::MEMORY_WATERMARK_STEP_BYTES;
                         let should_record = recorded_memory_watermarks
                             .get(&operation_id)
                             .is_none_or(|recorded| watermark > *recorded);
@@ -591,7 +517,7 @@ async fn run_resident_telemetry_lane(
 fn commit_lane_message(
     message: RuntimeTelemetryLaneMessage,
     tracer: &opentelemetry_sdk::trace::SdkTracer,
-    memory: Option<super::process_memory::ProcessMemoryObservation>,
+    memory: Option<process_memory::ProcessMemoryObservation>,
     live_store: &super::live_store::RuntimePerformanceLiveStore,
 ) {
     match message {
@@ -618,13 +544,71 @@ async fn remove_socket_if_present(path: &std::path::Path) -> Result<(), String> 
 fn record_observation_with_memory(
     tracer: &opentelemetry_sdk::trace::SdkTracer,
     mut observation: RuntimePerformanceObservation,
-    memory: Option<super::process_memory::ProcessMemoryObservation>,
+    memory: Option<process_memory::ProcessMemoryObservation>,
     live_store: &super::live_store::RuntimePerformanceLiveStore,
 ) -> bool {
     if let Some(memory) = memory {
-        observation.record_runtime_process_memory(memory);
+        record_runtime_process_memory(&mut observation, memory);
     }
     record_observation(tracer, observation, live_store)
+}
+
+fn record_runtime_process_memory(
+    observation: &mut RuntimePerformanceObservation,
+    memory: process_memory::ProcessMemoryObservation,
+) {
+    observation.process_resident_bytes = memory.resident_bytes;
+    observation.process_peak_resident_bytes = memory.peak_resident_bytes;
+    observation.process_memory_budget_bytes = Some(memory.budget_bytes);
+    observation.process_memory_budget_status = Some(memory.budget_status().to_owned());
+    observation.process_disk_read_bytes = memory.disk_read_bytes;
+    observation.process_disk_write_bytes = memory.disk_write_bytes;
+    observation.process_page_ins = memory.page_ins;
+    observation.process_open_descriptors = memory.open_descriptors;
+    observation.process_open_descriptor_budget = Some(memory.open_descriptor_budget);
+    observation.process_open_descriptor_budget_status =
+        Some(memory.open_descriptor_budget_status().to_owned());
+    observation.runtime_event_loop_lag_micros = Some(memory.event_loop_lag_micros);
+    observation.runtime_event_loop_lag_budget_micros = Some(memory.event_loop_lag_budget_micros);
+    observation.runtime_event_loop_lag_budget_status =
+        Some(memory.event_loop_lag_budget_status().to_owned());
+    observation.runtime_worker_threads = Some(memory.runtime_worker_threads);
+    observation.runtime_alive_tasks = Some(memory.runtime_alive_tasks);
+    observation.runtime_global_queue_depth = Some(memory.runtime_global_queue_depth);
+    if memory.budget_exceeded() && observation.failure_reason.is_none() {
+        observation.failure_reason = Some("runtime-server-memory-budget-exceeded".to_owned());
+    }
+    if memory.event_loop_lag_budget_exceeded() && observation.failure_reason.is_none() {
+        observation.failure_reason =
+            Some("runtime-server-event-loop-lag-budget-exceeded".to_owned());
+    }
+    if memory.open_descriptor_budget_exceeded() && observation.failure_reason.is_none() {
+        observation.failure_reason =
+            Some("runtime-server-open-descriptor-budget-exceeded".to_owned());
+    }
+}
+
+fn push_optional(
+    attributes: &mut Vec<opentelemetry::KeyValue>,
+    key: &'static str,
+    value: Option<String>,
+) {
+    if let Some(value) = value.filter(|value| !value.is_empty()) {
+        attributes.push(opentelemetry::KeyValue::new(key, value));
+    }
+}
+
+fn push_optional_u64(
+    attributes: &mut Vec<opentelemetry::KeyValue>,
+    key: &'static str,
+    value: Option<u64>,
+) {
+    if let Some(value) = value {
+        attributes.push(opentelemetry::KeyValue::new(
+            key,
+            i64::try_from(value).unwrap_or(i64::MAX),
+        ));
+    }
 }
 
 fn record_observation(
@@ -936,13 +920,13 @@ async fn read_ingress_observation(
 async fn commit_ingress_completion(
     completed: Result<
         (
-            crate::runtime_server_connection::RuntimeServerConnectionLease,
+            agent_semantic_client_db::runtime_server_connection::RuntimeServerConnectionLease,
             Result<(RuntimePerformanceObservation, tokio::net::UnixStream), String>,
         ),
         tokio::task::JoinError,
     >,
     tracer: &opentelemetry_sdk::trace::SdkTracer,
-    memory: Option<super::process_memory::ProcessMemoryObservation>,
+    memory: Option<process_memory::ProcessMemoryObservation>,
     live_store: &super::live_store::RuntimePerformanceLiveStore,
     dropped_observations: &std::sync::atomic::AtomicU64,
 ) {

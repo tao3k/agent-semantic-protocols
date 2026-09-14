@@ -248,7 +248,7 @@ impl RuntimeServer {
                             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                     );
                     let _memory_operation =
-                        crate::runtime_server_opentelemetry::begin_runtime_memory_operation(
+                        agent_semantic_runtime_observability::begin_runtime_memory_operation(
                             workspace_identity.clone(),
                             operation_id.clone(),
                         );
@@ -336,7 +336,7 @@ impl RuntimeServer {
                             .as_micros()
                             .min(u128::from(u64::MAX)) as u64;
                         let restore_budget_micros = 800_000;
-                        let mut restore_observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                        let mut restore_observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
                             "workspace-generation-admission",
                             "durable-restore",
                             restore_elapsed_micros,
@@ -357,7 +357,7 @@ impl RuntimeServer {
                                 "workspace-generation-restored-provider-coverage-missing".to_owned(),
                             );
                         }
-                        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
+                        let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(
                             restore_observation,
                         );
                         match pointer_restore {
@@ -445,7 +445,7 @@ impl RuntimeServer {
                         .elapsed()
                         .as_micros()
                         .min(u128::from(u64::MAX)) as u64;
-                    let mut source_build_observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                    let mut source_build_observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
                         "workspace-generation-admission",
                         "source-builder",
                         source_build_elapsed_micros,
@@ -458,7 +458,7 @@ impl RuntimeServer {
                         source_build_observation.failure_reason =
                             Some("workspace-generation-source-builder-failed".to_owned());
                     }
-                    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
+                    let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(
                         source_build_observation,
                     );
                     let build = source_build?;

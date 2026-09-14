@@ -94,7 +94,7 @@ fn record_canonical_materialization_observation(
     } else {
         "budget-exceeded"
     };
-    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+    let mut observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
         "workspace-canonical-materialization",
         operation,
         elapsed_micros,
@@ -109,5 +109,5 @@ fn record_canonical_materialization_observation(
         metrics.projection_bytes,
     );
     observation.workspace_identity = Some(materialization.workspace_identity.to_string());
-    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
 }

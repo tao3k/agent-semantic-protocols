@@ -8,14 +8,14 @@ use std::sync::Arc;
 #[path = "runtime_resident_exact_descendant.rs"]
 mod exact_descendant;
 
-use crate::runtime_server_opentelemetry::{
-    RuntimePerformanceObservation, try_record_to_active_runtime,
-};
+use agent_semantic_runtime_observability::RuntimePerformanceObservation;
+
 use crate::runtime_server_workspace::{
     ExactProjectionKind, WorkspaceExactProjectionDataPlaneClient, WorkspaceOwnerSnapshot,
     WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeSelectorRead,
     WorkspaceSearchGenerationDataPlaneClient,
 };
+use agent_semantic_runtime_observability::try_record_to_active_runtime;
 
 /// A process-local, immutable view of one published Runtime generation.
 ///

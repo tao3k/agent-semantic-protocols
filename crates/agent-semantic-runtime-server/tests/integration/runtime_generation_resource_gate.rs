@@ -7,11 +7,14 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use super::{RuntimeSchedulerObservation, linux_statm_resident_bytes, observe_process_memory};
-use crate::runtime_server_admission::{
+use agent_semantic_client_db::runtime_server_admission::{
     WorkspaceGenerationAdmission, WorkspaceGenerationBuildCompletion,
     WorkspaceGenerationBuildFailure, WorkspaceGenerationCandidateIdentity,
     WorkspaceGenerationCommitReceipt, WorkspaceGenerationFailureStage,
+};
+use agent_semantic_runtime_process_observation::{
+    ProcessMemoryObservation, RuntimeSchedulerObservation, linux_statm_resident_bytes,
+    observe_process_memory,
 };
 
 const GENERATION_ADMISSION_DISK_READ_GATE_BYTES: u64 = 16 * 1024 * 1024;
@@ -37,12 +40,13 @@ fn completed_generation(
     WorkspaceGenerationBuildCompletion::new(
         candidate,
         WorkspaceGenerationCommitReceipt {
-            projection_capability: crate::fixture::ready_projection_capability_fixture(
-                workspace,
-                "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
-                "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
-                1,
-            ),
+            projection_capability:
+                agent_semantic_client_db::fixture::ready_projection_capability_fixture(
+                    workspace,
+                    "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+                    "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+                    1,
+                ),
             active_epoch: 1,
             generation_digest:
                 "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
@@ -60,7 +64,7 @@ fn completed_generation(
     })
 }
 
-fn resource_observation() -> super::ProcessMemoryObservation {
+fn resource_observation() -> ProcessMemoryObservation {
     observe_process_memory(
         0,
         RuntimeSchedulerObservation {
@@ -140,7 +144,7 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
         .expect("warm generation terminal");
     assert_eq!(
         warm.state,
-        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
         "{warm:?}"
     );
     build_count.store(0, Ordering::Relaxed);
@@ -176,7 +180,7 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
         .expect("measured generation terminal");
     assert_eq!(
         measured.state,
-        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
         "{measured:?}"
     );
     assert!(measured.commit.is_some());

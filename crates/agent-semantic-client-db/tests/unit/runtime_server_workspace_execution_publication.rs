@@ -7,7 +7,6 @@ use agent_semantic_artifacts::runtime_artifact_activation::{
     RuntimeArtifactActivationEvent, RuntimeArtifactCandidateIdentityReceipt,
 };
 use agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding;
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryIdentity;
 use agent_semantic_client_db::runtime_server_workspace::RuntimeWorkspaceExecutionPublicationStore;
 use agent_semantic_client_db::runtime_server_workspace::compose_runtime_workspace_execution_publication;
 use agent_semantic_client_protocol::RuntimeSearchClientTimingWitness;
@@ -23,6 +22,7 @@ use agent_semantic_content_identity::runtime_workspace_execution_publication::{
 use agent_semantic_content_identity::{
     HostWorkspaceInitializationBinding, ProjectWorkspaceBinding,
 };
+use agent_semantic_runtime_observability::RuntimeSearchTelemetryIdentity;
 
 fn digest(byte: char) -> String {
     format!(

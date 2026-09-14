@@ -183,23 +183,18 @@ pub(super) fn record_settled_client_timing_observations(
     provider_ids: Vec<String>,
     projection: Option<&str>,
     telemetry_sender: &RuntimeTelemetryBusSender,
-) -> Result<
-    agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
-    String,
-> {
-    let identity = agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryIdentity::settle_client_timing(
-        publication,
-        witness,
-        session_id,
-        request_id,
-        language_ids,
-        provider_ids,
-    )
-    .map_err(|error| error.reason_kind().to_owned())?;
-    let trace =
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace::new(
-            identity,
-        );
+) -> Result<agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace, String> {
+    let identity =
+        agent_semantic_runtime_observability::RuntimeSearchTelemetryIdentity::settle_client_timing(
+            publication,
+            witness,
+            session_id,
+            request_id,
+            language_ids,
+            provider_ids,
+        )
+        .map_err(|error| error.reason_kind().to_owned())?;
+    let trace = agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace::new(identity);
     let budget_micros = RUNTIME_CLIENT_DISPATCH_BUDGET
         .as_micros()
         .min(u128::from(u64::MAX)) as u64;
@@ -264,8 +259,8 @@ fn schedule_settled_query_client_timing_observations(
 pub(super) fn emit_runtime_search_trace_observation(
     telemetry_sender: &RuntimeTelemetryBusSender,
     observation: Result<
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation,
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryError,
+        agent_semantic_runtime_observability::RuntimePerformanceObservation,
+        agent_semantic_runtime_observability::RuntimeSearchTelemetryError,
     >,
 ) {
     if let Ok(observation) = observation {
@@ -292,7 +287,7 @@ fn materialize_query_playbook_receipt(
     manifest_project_workspace: &agent_semantic_content_identity::ProjectWorkspaceBinding,
     active_provider_targets: &[(String, String)],
     telemetry: Option<(
-        &agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+        &agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
         &RuntimeTelemetryBusSender,
     )>,
     read_selector: impl Fn(
@@ -621,7 +616,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
         Mutex<
             HashMap<
                 ClientRequestKey,
-                agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+                agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
             >,
         >,
     >,

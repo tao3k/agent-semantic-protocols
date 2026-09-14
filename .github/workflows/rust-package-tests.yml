@@ -47,6 +47,8 @@ jobs:
           - agent-semantic-provider-protocol
           - agent-semantic-provider-transport
           - agent-semantic-runtime
+          - agent-semantic-runtime-observability
+          - agent-semantic-runtime-process-observation
           - agent-semantic-runtime-server
           - agent-semantic-schema-manager
           - agent-semantic-scheme-syntax

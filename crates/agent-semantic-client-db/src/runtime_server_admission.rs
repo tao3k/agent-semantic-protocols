@@ -252,7 +252,7 @@ impl WorkspaceGenerationAdmission {
         self.submit_background_mutation(async move {
             if catalog.publish_resident_snapshot().await.is_err() {
                 let _ = telemetry_sender.try_send_transition(
-                    crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                    agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                         owner_epoch: 0,
                         workspace_identity: Some(workspace_identity),
                         generation_digest: None,
@@ -798,7 +798,7 @@ impl WorkspaceGenerationAdmission {
                     building.state = WorkspaceGenerationAdmissionState::Building;
                     completed_entry.receipt.send_replace(building);
                     let _ = telemetry_sender.try_send_transition(
-                        crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                        agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                             owner_epoch: attempt,
                             workspace_identity: Some(workspace_identity.clone()),
                             generation_digest: None,
@@ -817,7 +817,7 @@ impl WorkspaceGenerationAdmission {
                     continue;
                 }
                 telemetry_sender.try_send_transition(
-                    crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                    agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                         owner_epoch: attempt,
                         workspace_identity: Some(workspace_identity.clone()),
                         generation_digest: completed
@@ -856,7 +856,7 @@ impl WorkspaceGenerationAdmission {
             building.accepted = false;
             dispatcher_start_entry.receipt.send_replace(building);
             dispatcher_start_telemetry.try_send_transition(
-                crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                     owner_epoch: attempt,
                     workspace_identity: Some(dispatcher_start_workspace_identity),
                     generation_digest: None,
@@ -912,7 +912,7 @@ impl WorkspaceGenerationAdmission {
                 },
             );
             dispatcher_terminal_telemetry.try_send_transition(
-                crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                     owner_epoch: attempt,
                     workspace_identity: Some(dispatcher_terminal_workspace_identity),
                     generation_digest: None,
@@ -967,7 +967,7 @@ impl WorkspaceGenerationAdmission {
                 cancelled.commit = None;
                 entry.receipt.send_replace(cancelled);
                 let _ = telemetry_sender.try_send_transition(
-                    crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                    agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                         owner_epoch: entry.lane.observed().attempt,
                         workspace_identity: Some(entry.observed().workspace_identity),
                         generation_digest: None,

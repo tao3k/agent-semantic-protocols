@@ -11,6 +11,8 @@ members = [
     "crates/agent-semantic-content-identity",
     "crates/agent-semantic-context-product",
     "crates/agent-semantic-runtime",
+    "crates/agent-semantic-runtime-observability",
+    "crates/agent-semantic-runtime-process-observation",
     "crates/agent-semantic-client",
     "crates/agent-semantic-client-protocol",
     "crates/agent-semantic-client-core",
@@ -53,6 +55,8 @@ agent-semantic-provider-protocol = { path = "crates/agent-semantic-provider-prot
 agent-semantic-provider-transport = { path = "crates/agent-semantic-provider-transport" }
 agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" }
 agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
+agent-semantic-runtime-observability = { path = "crates/agent-semantic-runtime-observability" }
+agent-semantic-runtime-process-observation = { path = "crates/agent-semantic-runtime-process-observation" }
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 jsonschema = { version = "0.48.1", default-features = false }
 referencing = "0.48.1"

@@ -451,7 +451,7 @@ fn record_generation_stage(
 ) {
     let elapsed_micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
     let budget_micros = 800_000;
-    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+    let mut observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
         "workspace-generation-publication",
         stage,
         elapsed_micros,
@@ -465,7 +465,7 @@ fn record_generation_stage(
     observation.workspace_identity = Some(generation.workspace_identity.clone());
     observation.generation_digest = Some(generation.generation_digest.clone());
     observation.canonical_encoded_bytes = canonical_encoded_bytes;
-    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
 }
 
 async fn prune_obsolete_generation_segments(

@@ -5,8 +5,6 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry;
-use agent_semantic_client_db::runtime_server_opentelemetry::TursoOpenTelemetrySpanExporter;
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
 use agent_semantic_client_db::search_incident::IncidentIdentity;
 use agent_semantic_client_db::search_incident::IncidentObservation;
@@ -15,6 +13,8 @@ use agent_semantic_client_db::search_incident::IncidentSurface;
 use agent_semantic_client_db::search_incident::IncidentTelemetryEvent;
 use agent_semantic_client_db::search_incident::RequestedProjection;
 use agent_semantic_client_db::search_incident::ResourceObservation;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::RuntimeServerOpenTelemetry;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::TursoOpenTelemetrySpanExporter;
 
 fn socket_path(label: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -208,9 +208,9 @@ fn typed_terminal_adapter_deduplicates_and_sequences_failures() {
 
 #[tokio::test]
 async fn terminal_incident_lane_survives_transition_queue_pressure() {
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
     use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
     use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
+    use agent_semantic_runtime_observability::RuntimeLifecycleEvent;
 
     let mut bus = RuntimeTelemetryBus::new();
     for sequence in 0..CAPACITY {

@@ -17,6 +17,7 @@ turso-sync-server-e2e = []
 arc-swap.workspace = true
 agent-semantic-provider-protocol.workspace = true
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-runtime-observability.workspace = true
 agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-search = { path = "../agent-semantic-search" }
@@ -39,18 +40,12 @@ tokio-stream.workspace = true
 futures-util.workspace = true
 tracing = "0.1.44"
 parking_lot.workspace = true
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
 turso.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 blake3.workspace = true
 which = { workspace = true }
 dashmap = "6.2.1"
 libc.workspace = true
-
-[[test]]
-name = "runtime_server_opentelemetry_test"
-path = "tests/performance/runtime_server_opentelemetry_harness.rs"
 
 [[test]]
 name = "runtime_search_invalidation"

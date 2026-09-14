@@ -344,7 +344,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     // lifecycle concerns.
     let telemetry_task = task_scope.spawn(
         "runtime-server-telemetry",
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry::start_with_telemetry_receiver(
+        agent_semantic_runtime_server::runtime_server_opentelemetry::RuntimeServerOpenTelemetry::start_with_telemetry_receiver(
             state_home
                 .join("runtime")
                 .join("server")
@@ -723,7 +723,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         ("diagnostics", diagnostic_elapsed, diagnostic_result.is_ok()),
     ] {
         let _ = telemetry_handle.try_record_lifecycle(
-            agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+            agent_semantic_runtime_observability::RuntimeLifecycleEvent {
                 owner_epoch,
                 workspace_identity: None,
                 generation_digest: None,

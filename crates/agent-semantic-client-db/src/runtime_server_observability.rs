@@ -74,7 +74,7 @@ pub(crate) fn publish_event(
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
             .saturating_add(1);
         let mut observation =
-            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+            agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
                 "runtime-server-diagnostics",
                 "diagnostic-queue-saturated",
                 0,
@@ -84,6 +84,6 @@ pub(crate) fn publish_event(
         observation.runtime_diagnostic_queue_depth = Some(events.capacity as u64);
         observation.runtime_diagnostic_queue_capacity = Some(events.capacity as u64);
         observation.runtime_dropped_diagnostics = Some(dropped);
-        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+        let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
     }
 }

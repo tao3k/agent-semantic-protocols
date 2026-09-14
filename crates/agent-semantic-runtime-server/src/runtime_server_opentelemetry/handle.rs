@@ -4,9 +4,11 @@
 
 use std::sync::Arc;
 
+// Runtime Server owns the concrete observation ingress handle.
+
 use tokio::sync::{mpsc, oneshot};
 
-use super::observation::{RuntimeLifecycleEvent, RuntimePerformanceObservation};
+use agent_semantic_runtime_observability::{RuntimeLifecycleEvent, RuntimePerformanceObservation};
 
 #[derive(Clone, Debug)]
 pub struct RuntimeServerOpenTelemetryHandle {
@@ -62,5 +64,13 @@ impl RuntimeServerOpenTelemetryHandle {
         acknowledged.await.map_err(|_| {
             "Runtime Server telemetry lane closed before acknowledging fence".to_owned()
         })
+    }
+}
+
+impl agent_semantic_runtime_observability::RuntimeObservationSink
+    for RuntimeServerOpenTelemetryHandle
+{
+    fn try_record(&self, observation: RuntimePerformanceObservation) -> bool {
+        RuntimeServerOpenTelemetryHandle::try_record(self, observation)
     }
 }

@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 pub use super::query_model::{RuntimePerformanceQuery, RuntimePerformanceQueryReceipt};
+
+// Query transport stays colocated with the Runtime Server telemetry owner.
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 

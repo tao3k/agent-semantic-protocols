@@ -4,9 +4,10 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_db::runtime_server_opentelemetry::{
-    RuntimePerformanceObservation, RuntimePerformanceQuery, RuntimeServerOpenTelemetry,
-    TursoOpenTelemetrySpanExporter, admit_to_runtime, query_runtime_performance,
+use agent_semantic_runtime_observability::RuntimePerformanceObservation;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::{
+    RuntimePerformanceQuery, RuntimeServerOpenTelemetry, TursoOpenTelemetrySpanExporter,
+    admit_to_runtime, query_runtime_performance,
 };
 
 use super::short_unix_socket_path;

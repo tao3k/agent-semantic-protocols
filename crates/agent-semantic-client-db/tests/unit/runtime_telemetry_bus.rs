@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
 use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
 use agent_semantic_client_db::runtime_telemetry_bus::ResidentReadTerminalContext;
 use agent_semantic_client_db::runtime_telemetry_bus::ResidentReadTerminalOutcome;
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
 use agent_semantic_client_db::workspace_db_ipc::WorkspaceIpcResidentReadWorkCounters;
+use agent_semantic_runtime_observability::RuntimeLifecycleEvent;
 
 fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {
     RuntimeLifecycleEvent {

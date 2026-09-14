@@ -2,14 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Low-overhead resident-process memory evidence for Runtime Server telemetry.
+//! Low-overhead resident-process evidence behind a narrow, audited libc boundary.
 
-pub(super) const MEMORY_WATERMARK_STEP_BYTES: u64 = 256 * 1024 * 1024;
-pub(super) const RUNTIME_EVENT_LOOP_LAG_BUDGET_MICROS: u64 = 10_000;
-pub(super) const RUNTIME_SERVER_OPEN_DESCRIPTOR_BUDGET: u64 = 1_024;
+#![allow(unsafe_code)]
+
+pub const MEMORY_WATERMARK_STEP_BYTES: u64 = 256 * 1024 * 1024;
+pub const RUNTIME_EVENT_LOOP_LAG_BUDGET_MICROS: u64 = 10_000;
+pub const RUNTIME_SERVER_OPEN_DESCRIPTOR_BUDGET: u64 = 1_024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct ProcessMemoryObservation {
+pub struct ProcessMemoryObservation {
     pub resident_bytes: Option<u64>,
     pub peak_resident_bytes: Option<u64>,
     pub budget_bytes: u64,
@@ -26,13 +28,13 @@ pub(super) struct ProcessMemoryObservation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct RuntimeSchedulerObservation {
+pub struct RuntimeSchedulerObservation {
     pub worker_threads: u64,
     pub alive_tasks: u64,
     pub global_queue_depth: u64,
 }
 
-pub(super) fn observe_runtime_scheduler() -> RuntimeSchedulerObservation {
+pub fn observe_runtime_scheduler() -> RuntimeSchedulerObservation {
     let metrics = tokio::runtime::Handle::current().metrics();
     RuntimeSchedulerObservation {
         worker_threads: u64::try_from(metrics.num_workers()).unwrap_or(u64::MAX),
@@ -83,11 +85,7 @@ impl ProcessMemoryObservation {
     }
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/runtime_server_generation_resource_gate.rs"]
-mod runtime_server_generation_resource_gate;
-
-pub(super) fn observe_process_memory(
+pub fn observe_process_memory(
     event_loop_lag_micros: u64,
     scheduler: RuntimeSchedulerObservation,
 ) -> Option<ProcessMemoryObservation> {
@@ -280,8 +278,7 @@ fn current_resident_bytes() -> Option<u64> {
     linux_statm_resident_bytes(&statm, page_size)
 }
 
-#[cfg(any(test, target_os = "linux"))]
-fn linux_statm_resident_bytes(statm: &str, page_size: u64) -> Option<u64> {
+pub fn linux_statm_resident_bytes(statm: &str, page_size: u64) -> Option<u64> {
     let resident_pages = statm.split_ascii_whitespace().nth(1)?.parse::<u64>().ok()?;
     resident_pages.checked_mul(page_size)
 }
@@ -310,7 +307,7 @@ fn peak_resident_bytes() -> Option<u64> {
 fn peak_resident_bytes() -> Option<u64> {
     None
 }
-pub(super) async fn run_sampler(
+pub async fn run_sampler(
     memory: tokio::sync::watch::Sender<Option<ProcessMemoryObservation>>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
@@ -340,5 +337,39 @@ pub(super) async fn run_sampler(
                 return Ok(());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RuntimeSchedulerObservation, linux_statm_resident_bytes, observe_process_memory};
+
+    #[test]
+    fn linux_statm_pages_are_checked_before_conversion() {
+        assert_eq!(
+            linux_statm_resident_bytes("4096 1024 128 32 0 512 0\n", 4096),
+            Some(4 * 1024 * 1024)
+        );
+        assert_eq!(linux_statm_resident_bytes("4096", 4096), None);
+        assert_eq!(linux_statm_resident_bytes("4096 invalid", 4096), None);
+        assert_eq!(
+            linux_statm_resident_bytes("1 18446744073709551615", 2),
+            None
+        );
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn resident_process_observation_is_available() {
+        let observation = observe_process_memory(
+            0,
+            RuntimeSchedulerObservation {
+                worker_threads: 1,
+                alive_tasks: 0,
+                global_queue_depth: 0,
+            },
+        )
+        .expect("supported platforms expose a process observation");
+        assert!(observation.resident_bytes.is_some_and(|bytes| bytes > 0));
     }
 }

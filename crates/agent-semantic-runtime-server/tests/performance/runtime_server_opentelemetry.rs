@@ -7,10 +7,10 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation;
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceQuery;
-use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry;
-use agent_semantic_client_db::runtime_server_opentelemetry::query_runtime_performance;
+use agent_semantic_runtime_observability::RuntimePerformanceObservation;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::RuntimePerformanceQuery;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::RuntimeServerOpenTelemetry;
+use agent_semantic_runtime_server::runtime_server_opentelemetry::query_runtime_performance;
 
 fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
     std::path::Path::new("/tmp").join(format!(
@@ -24,11 +24,11 @@ fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
 }
 
 mod runtime_search_telemetry_red_contract {
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation;
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryCollector;
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryIdentity;
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryIdentityInput;
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace;
+    use agent_semantic_runtime_observability::RuntimePerformanceObservation;
+    use agent_semantic_runtime_observability::RuntimeSearchTelemetryCollector;
+    use agent_semantic_runtime_observability::RuntimeSearchTelemetryIdentity;
+    use agent_semantic_runtime_observability::RuntimeSearchTelemetryIdentityInput;
+    use agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace;
 
     const CANONICAL_PHASES: [&str; 10] = [
         "launcher",

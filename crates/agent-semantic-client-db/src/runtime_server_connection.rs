@@ -109,7 +109,7 @@ impl RuntimeServerConnectionSupervisor {
     fn record_pressure(&self, stage: &'static str) {
         let snapshot = self.snapshot();
         let mut observation =
-            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+            agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
                 self.surface,
                 stage,
                 0,
@@ -124,7 +124,7 @@ impl RuntimeServerConnectionSupervisor {
         observation.runtime_connection_limit = Some(snapshot.limit as u64);
         observation.runtime_connection_high_watermark = Some(snapshot.high_watermark as u64);
         observation.runtime_rejected_connections = Some(snapshot.rejected);
-        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+        let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
     }
 }
 

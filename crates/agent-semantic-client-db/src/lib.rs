@@ -56,7 +56,6 @@ mod runtime_server_generation_admission;
 pub mod runtime_server_health;
 pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;
-pub mod runtime_server_opentelemetry;
 pub mod runtime_server_workspace;
 pub mod runtime_telemetry_bus;
 pub mod search_incident;

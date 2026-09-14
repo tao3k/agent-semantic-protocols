@@ -164,10 +164,10 @@ async fn telemetry_bus_rejects_unsequenced_incident_transitions() {
 
 #[tokio::test]
 async fn terminal_incident_lane_is_not_starved_by_transition_pressure() {
-    use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
     use agent_semantic_client_db::runtime_telemetry_bus::CAPACITY;
     use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus;
     use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryEvent;
+    use agent_semantic_runtime_observability::RuntimeLifecycleEvent;
 
     let mut bus = RuntimeTelemetryBus::new();
     for sequence in 0..CAPACITY {

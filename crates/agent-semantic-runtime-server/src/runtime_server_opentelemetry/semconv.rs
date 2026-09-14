@@ -4,6 +4,7 @@
 
 //! Generated Rust projection of
 //! `schemas/telemetry/model/asp-performance.yaml`.
+//! The concrete projection is private to the Runtime Server exporter.
 
 pub(super) const SURFACE: &str = "asp.surface";
 pub(super) const STAGE: &str = "asp.stage";

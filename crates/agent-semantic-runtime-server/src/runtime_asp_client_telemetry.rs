@@ -21,18 +21,17 @@ pub(super) fn record_runtime_route_performance(
     elapsed_micros: u64,
 ) -> Result<(), String> {
     let budget_micros = 1_000;
-    let mut observation =
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-            surface,
-            stage,
-            elapsed_micros,
-            budget_micros,
-            if elapsed_micros <= budget_micros {
-                "within-budget"
-            } else {
-                "budget-exceeded"
-            },
-        );
+    let mut observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
+        surface,
+        stage,
+        elapsed_micros,
+        budget_micros,
+        if elapsed_micros <= budget_micros {
+            "within-budget"
+        } else {
+            "budget-exceeded"
+        },
+    );
     observation.workspace_identity = Some(workspace_identity.to_owned());
     observation.language_id = Some(language_id.to_owned());
     observation.generation_digest = Some(generation_digest.to_owned());

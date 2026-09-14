@@ -4,13 +4,12 @@
 
 use tokio::sync::mpsc;
 
-use crate::{
-    runtime_server_opentelemetry::{RuntimeLifecycleEvent, RuntimePerformanceObservation},
-    search_incident::{
-        IncidentRecord, IncidentState, IncidentSurface, IncidentTelemetryEvent,
-        SearchIncidentTerminalContext, SearchIncidentTerminalOutcome, TransitionError,
-        observe_terminal,
-    },
+use agent_semantic_runtime_observability::{RuntimeLifecycleEvent, RuntimePerformanceObservation};
+
+use crate::search_incident::{
+    IncidentRecord, IncidentState, IncidentSurface, IncidentTelemetryEvent,
+    SearchIncidentTerminalContext, SearchIncidentTerminalOutcome, TransitionError,
+    observe_terminal,
 };
 
 pub const CAPACITY: usize = 1024;

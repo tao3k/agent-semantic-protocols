@@ -189,7 +189,7 @@ async fn complete_published_generation_matches(
 fn record_generation_build(workspace_identity: &str, elapsed: std::time::Duration) {
     let elapsed_micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
     let budget_micros = 800_000;
-    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+    let mut observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
         "workspace-canonical-materialization",
         "generation-build",
         elapsed_micros,
@@ -201,7 +201,7 @@ fn record_generation_build(workspace_identity: &str, elapsed: std::time::Duratio
         },
     );
     observation.workspace_identity = Some(workspace_identity.to_owned());
-    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
 }
 
 fn reusable_receipt(

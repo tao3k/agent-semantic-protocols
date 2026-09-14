@@ -24,6 +24,7 @@ mod runtime_query_generation_key;
 mod runtime_resident_grep;
 mod runtime_search_execution_budget;
 mod runtime_search_graph;
+pub mod runtime_server_opentelemetry;
 
 pub use agent_semantic_client_server::AspClientGrpcTransport;
 pub use agent_semantic_client_server::bind_asp_client_grpc_tcp;

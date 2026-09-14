@@ -106,7 +106,7 @@ fn record_runtime_response_serialized(
     traces: &std::sync::Mutex<
         std::collections::HashMap<
             service::ClientRequestKey,
-            agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+            agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
         >,
     >,
     telemetry_sender: &agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -132,7 +132,7 @@ fn record_runtime_terminal_egressed(
     traces: &std::sync::Mutex<
         std::collections::HashMap<
             service::ClientRequestKey,
-            agent_semantic_client_db::runtime_server_opentelemetry::RuntimeSearchTelemetryTrace,
+            agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
         >,
     >,
     telemetry_sender: &agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,

@@ -34,6 +34,7 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-runtime-observability.workspace = true
 agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
 agent-semantic-loop = { path = "../agent-semantic-loop" }

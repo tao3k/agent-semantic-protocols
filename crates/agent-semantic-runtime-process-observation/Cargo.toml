@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-runtime-process-observation"
+version.workspace = true
+edition.workspace = true
+description = "Audited process-resource observation boundary for the ASP Runtime Server."
+license.workspace = true
+
+[dependencies]
+agent-semantic-workspace-scheduler.workspace = true
+libc.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

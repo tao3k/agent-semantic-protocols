@@ -37,7 +37,7 @@ where
 {
     let started = std::time::Instant::now();
     let result = future.await;
-    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+    let mut observation = agent_semantic_runtime_observability::RuntimePerformanceObservation::new(
         "workspace-generation-admission",
         stage.label(),
         u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
@@ -49,7 +49,7 @@ where
     if let Err(error) = &result {
         observation.failure_reason = Some(format!("{:?}", error.stage).to_lowercase());
     }
-    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    let _ = agent_semantic_runtime_observability::try_record_to_active_runtime(observation);
     result
 }
 
