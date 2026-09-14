@@ -23,6 +23,85 @@ use agent_semantic_workspace_scheduler::RuntimeServerTaskScope;
 use runtime_server_identity_handoff::RuntimeIdentityHandoffCoordinator;
 use runtime_server_search_service::serve_runtime_search_requests;
 
+async fn recover_startup_workspace_generation(
+    generation_admission: &std::sync::Arc<
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
+    >,
+    query_generation_authority: &agent_semantic_runtime_server::RuntimeQueryGenerationAuthority,
+    entry: &agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
+    provider_targets: &[(String, String)],
+) -> Result<String, String> {
+    let mut receipt = None;
+    for (language_id, provider_id) in provider_targets {
+        receipt = Some(
+            generation_admission
+                .ensure_runtime_generation_ready_for_provider(
+                    entry.workspace_identity.clone(),
+                    entry.project_root.clone(),
+                    Some(
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
+                            language_id: language_id.clone(),
+                            provider_id: Some(provider_id.clone()),
+                        },
+                    ),
+                )
+                .await?,
+        );
+    }
+    let receipt = match receipt {
+        Some(receipt) => receipt,
+        None => {
+            generation_admission
+                .ensure_runtime_generation_ready(
+                    entry.workspace_identity.clone(),
+                    entry.project_root.clone(),
+                )
+                .await?
+        }
+    };
+    let expected_digest = receipt
+        .commit
+        .as_ref()
+        .ok_or_else(|| "startup generation Ready receipt has no commit".to_owned())?
+        .generation_digest
+        .clone();
+    let key = agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::new(
+        agent_semantic_client_protocol::ClientProjectId::new(entry.project_id.clone())?,
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new(
+            entry.workspace_identity.clone(),
+        )?,
+    );
+    let mut states = query_generation_authority.subscribe();
+    let generation = loop {
+        let state = { states.borrow_and_update().get(&key).cloned() };
+        match state {
+            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Ready(generation))
+                if generation.generation_digest() == expected_digest =>
+            {
+                break generation;
+            }
+            // A previous provider-target successor may still be retained when
+            // admission for the next target returns. It is an ordered
+            // predecessor, not identity drift; wait for the exact digest that
+            // this admission committed.
+            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Ready(_)) => {
+                states.changed().await.map_err(|_| {
+                    "Runtime query generation observer closed during startup recovery".to_owned()
+                })?;
+            }
+            Some(agent_semantic_runtime_server::RuntimeQueryGenerationState::Failed {
+                reason,
+                ..
+            }) => return Err(format!("query generation publication failed: {reason}")),
+            None => states.changed().await.map_err(|_| {
+                "Runtime query generation observer closed during startup recovery".to_owned()
+            })?,
+        }
+    };
+    generation.await_lexical_attachment().await?;
+    Ok(expected_digest)
+}
+
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
@@ -186,6 +265,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             runtime_serving.workspace_admission_catalog(),
         )
         .await?;
+    let startup_admission_snapshot = admission_catalog.snapshot();
+    let (startup_readiness_sender, startup_readiness_receiver) = tokio::sync::watch::channel(false);
     // Agent-session state is a host/Hook control-plane concern.  It may be
     // contended by a live host process, so acquiring its Turso handle must
     // never be a prerequisite for binding or publishing the global Runtime
@@ -257,11 +338,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     });
     let server = server
         .with_provider_register(std::sync::Arc::clone(&provider_register))
+        .with_startup_readiness_barrier(startup_readiness_receiver)
         .with_event_sender(diagnostic_events)
         .with_runtime_telemetry_sender(lifecycle_bus.sender.clone())
         .with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
             generation_builder,
-            admission_catalog,
+            admission_catalog.clone(),
             runtime_bundle_digest_probe,
         )
         .with_runtime_search_service(runtime_search_service.clone())
@@ -285,7 +367,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         schema_bundles,
         std::sync::Arc::clone(&agent_session_registry),
         runtime_search_service.clone(),
-        generation_admission,
+        generation_admission.clone(),
         std::sync::Arc::clone(server.workspace_registry()),
         runtime_active_provider_projection.generation().to_owned(),
         std::sync::Arc::from(runtime_active_provider_projection.active_provider_targets()),
@@ -498,32 +580,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             }
         }
     })?;
-    if *server_readiness.borrow()
-        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-    {
-        tokio::select! {
-            changed = server_readiness.changed() => {
-                changed.map_err(|_| "Runtime Server readiness channel closed before healthy publication".to_owned())?;
-            }
-            result = &mut server_done_receiver => {
-                return Err(format!(
-                    "Runtime Server exited before healthy publication: {}",
-                    result
-                        .map_err(|_| "Runtime Server task dropped its terminal receipt".to_owned())?
-                        .err()
-                        .unwrap_or_else(|| "unexpected clean exit".to_owned())
-                ));
-            }
-        }
-    }
-    if *server_readiness.borrow()
-        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-    {
-        return Err(format!(
-            "Runtime Server published non-healthy readiness before activation: {:?}",
-            *server_readiness.borrow()
-        ));
-    }
     let running_artifact_digest =
         agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
             &std::env::var("ASP_RUNTIME_BINARY_CONTENT_DIGEST").map_err(|_| {
@@ -631,6 +687,60 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         );
     }
     activation_ready_sender.send_replace(true);
+    // Startup owns process-cold recovery. Search/Query must not discover and
+    // materialize an admitted durable generation after public health is
+    // already visible. Publications are deliberately serialized because the
+    // V1 handoff retains one observation slot.
+    for entry in startup_admission_snapshot.iter() {
+        match recover_startup_workspace_generation(
+            &generation_admission,
+            &query_generation_authority,
+            entry,
+            &provider_targets,
+        )
+        .await
+        {
+            Ok(generation_digest) => eprintln!(
+                "[runtime-server-startup-generation-ready] schemaId=agent.semantic-protocols.runtime-server-startup-generation-ready.v1 schemaVersion=1 projectId={} workspaceId={} generationDigest={generation_digest}",
+                entry.project_id, entry.workspace_identity,
+            ),
+            Err(error) => eprintln!(
+                "[runtime-server-startup-generation-failed] schemaId=agent.semantic-protocols.runtime-server-startup-generation-failed.v1 schemaVersion=1 projectId={} workspaceId={} projectRoot={} error={}",
+                entry.project_id,
+                entry.workspace_identity,
+                entry.project_root.display(),
+                serde_json::to_string(&error)
+                    .unwrap_or_else(|_| "\"failed to encode startup recovery error\"".to_owned()),
+            ),
+        }
+    }
+    startup_readiness_sender.send_replace(true);
+    if *server_readiness.borrow()
+        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+    {
+        tokio::select! {
+            changed = server_readiness.changed() => {
+                changed.map_err(|_| "Runtime Server readiness channel closed before resident recovery completed".to_owned())?;
+            }
+            result = &mut server_done_receiver => {
+                return Err(format!(
+                    "Runtime Server exited before resident recovery completed: {}",
+                    result
+                        .map_err(|_| "Runtime Server task dropped its terminal receipt".to_owned())?
+                        .err()
+                        .unwrap_or_else(|| "unexpected clean exit".to_owned())
+                ));
+            }
+        }
+    }
+    if *server_readiness.borrow()
+        != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+    {
+        return Err(format!(
+            "Runtime Server published non-healthy readiness after resident recovery: {:?}",
+            *server_readiness.borrow()
+        ));
+    }
     // The identity monitor observes the durable applied activation. Starting it
     // before the startup transaction commits lets Tokio's immediate first
     // interval tick see the previous applied generation and incorrectly drain

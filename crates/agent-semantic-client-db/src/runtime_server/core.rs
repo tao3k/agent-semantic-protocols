@@ -102,6 +102,7 @@ pub struct RuntimeServer {
     pub(super) shutdown: watch::Receiver<bool>,
     pub(super) shutdown_handle: RuntimeServerShutdownHandle,
     pub(super) readiness_sender: watch::Sender<crate::runtime_server_control::RuntimeServerState>,
+    pub(super) startup_readiness: Option<watch::Receiver<bool>>,
     pub(super) generation_publication:
         crate::runtime_server_publication::WorkspaceGenerationPublication,
     pub(super) durability_tasks: Arc<tokio::sync::Mutex<JoinSet<()>>>,
@@ -151,6 +152,15 @@ impl RuntimeServer {
         &self,
     ) -> watch::Receiver<crate::runtime_server_control::RuntimeServerState> {
         self.readiness_sender.subscribe()
+    }
+
+    /// Keep public health in `Starting` until the daemon closes its resident
+    /// recovery barrier. The listener remains available to the activation
+    /// owner while the barrier is open.
+    #[must_use]
+    pub fn with_startup_readiness_barrier(mut self, readiness: watch::Receiver<bool>) -> Self {
+        self.startup_readiness = Some(readiness);
+        self
     }
 
     pub fn workspace_generation_publication_subscribe(

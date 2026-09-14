@@ -45,6 +45,47 @@ async fn runtime_server_readiness_watch_starts_starting_and_publishes_healthy() 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn runtime_server_startup_barrier_keeps_health_starting_until_recovery_closes() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 902).await;
+    let (startup_ready, startup_barrier) = tokio::sync::watch::channel(false);
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint,
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server")
+    .with_startup_readiness_barrier(startup_barrier);
+    let mut readiness = server.readiness_subscribe();
+    let shutdown = server.shutdown_handle();
+    let task = tokio::spawn(server.serve());
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), readiness.changed())
+            .await
+            .is_err(),
+        "listener startup must not bypass resident recovery"
+    );
+    assert_eq!(*readiness.borrow(), RuntimeServerState::Starting);
+
+    startup_ready.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(2), readiness.changed())
+        .await
+        .expect("recovery completion must publish without polling")
+        .expect("readiness sender must remain alive");
+    assert_eq!(*readiness.borrow(), RuntimeServerState::Healthy);
+
+    shutdown.shutdown();
+    assert_eq!(
+        task.await
+            .expect("join Runtime Server")
+            .expect("serve Runtime Server"),
+        RuntimeServerExit::ShutdownRequested
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn runtime_endpoint_omits_workspace_and_process_identity() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let (endpoint, _artifact_catalog) = fixture_endpoint(&runtime_dir, 21).await;

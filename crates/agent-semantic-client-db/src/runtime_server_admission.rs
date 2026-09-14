@@ -506,7 +506,7 @@ impl WorkspaceGenerationAdmission {
             .await?;
         let accepted_receipt = inserted.then_some(receipt);
         if let Some(receipt) = accepted_receipt {
-            entry.begin_query_targets(&cold_target_paths)?;
+            entry.begin_query_targets(&cold_target_paths, provider_target.as_ref())?;
             self.spawn_build(
                 Arc::clone(&entry),
                 workspace_identity,
@@ -562,7 +562,7 @@ impl WorkspaceGenerationAdmission {
                 observed_build_mode != WorkspaceGenerationBuildMode::RebuildAfterMutation
                     && receipt.state == WorkspaceGenerationAdmissionState::Ready
                     && same_candidate(receipt)
-                    && entry.ready_covers(&cold_target_paths)
+                    && entry.ready_covers(&cold_target_paths, provider_target.as_ref())
             };
         let observed = loop {
             let observed = entry.observed();
@@ -574,7 +574,7 @@ impl WorkspaceGenerationAdmission {
             }
             if observed.state == WorkspaceGenerationAdmissionState::Building
                 && same_candidate(&observed)
-                && (cold_target_paths.is_empty() || entry.building_covers(&cold_target_paths))
+                && entry.building_covers(&cold_target_paths, provider_target.as_ref())
             {
                 return Ok(observed);
             }
@@ -591,7 +591,7 @@ impl WorkspaceGenerationAdmission {
         };
         candidate.validate()?;
         if observed.state == WorkspaceGenerationAdmissionState::Ready
-            && !entry.ready_covers(&cold_target_paths)
+            && !entry.ready_covers(&cold_target_paths, provider_target.as_ref())
         {
             build_mode = WorkspaceGenerationBuildMode::RebuildAfterMutation;
         }
@@ -607,8 +607,7 @@ impl WorkspaceGenerationAdmission {
                     if reusable_ready(&observed, build_mode)
                         || observed.state == WorkspaceGenerationAdmissionState::Queued
                         || (observed.state == WorkspaceGenerationAdmissionState::Building
-                            && (cold_target_paths.is_empty()
-                                || entry.building_covers(&cold_target_paths)))
+                            && entry.building_covers(&cold_target_paths, provider_target.as_ref()))
                     {
                         return Ok(observed);
                     }
@@ -636,7 +635,7 @@ impl WorkspaceGenerationAdmission {
             entry.lane.clear_pending().await?;
         }
         let attempt = entry.lane.queue_build().await?;
-        entry.begin_query_targets(&cold_target_paths)?;
+        entry.begin_query_targets(&cold_target_paths, provider_target.as_ref())?;
         let receipt = WorkspaceGenerationAdmissionReceipt {
             schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),

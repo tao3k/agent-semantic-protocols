@@ -201,6 +201,7 @@ impl RuntimeServer {
                 sender: shutdown_sender,
             },
             readiness_sender,
+            startup_readiness: None,
             generation_publication:
                 crate::runtime_server_publication::WorkspaceGenerationPublication::new(),
             durability_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),

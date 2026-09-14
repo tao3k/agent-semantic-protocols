@@ -15,31 +15,59 @@ pub(super) struct QueryTargetCoverage {
     building_full: bool,
     ready: BTreeSet<PathBuf>,
     ready_full: bool,
+    building_provider: Option<(String, Option<String>)>,
+    ready_providers: BTreeSet<(String, Option<String>)>,
 }
 
 impl AdmissionEntry {
-    pub(super) fn ready_covers(&self, requested: &BTreeSet<PathBuf>) -> bool {
+    pub(super) fn ready_covers(
+        &self,
+        requested: &BTreeSet<PathBuf>,
+        provider_target: Option<&super::WorkspaceGenerationProviderTarget>,
+    ) -> bool {
         self.query_target_coverage.lock().is_ok_and(|coverage| {
-            coverage.ready_full || requested.iter().all(|path| coverage.ready.contains(path))
+            let provider_covered = provider_target.map_or(coverage.ready_full, |target| {
+                coverage
+                    .ready_providers
+                    .contains(&(target.language_id.clone(), target.provider_id.clone()))
+            });
+            provider_covered
+                && (coverage.ready_full
+                    || requested.iter().all(|path| coverage.ready.contains(path)))
         })
     }
 
-    pub(super) fn building_covers(&self, requested: &BTreeSet<PathBuf>) -> bool {
+    pub(super) fn building_covers(
+        &self,
+        requested: &BTreeSet<PathBuf>,
+        provider_target: Option<&super::WorkspaceGenerationProviderTarget>,
+    ) -> bool {
         self.query_target_coverage.lock().is_ok_and(|coverage| {
-            coverage.building_full
-                || requested
-                    .iter()
-                    .all(|path| coverage.building.contains(path))
+            let provider_covered = provider_target.map_or(coverage.building_full, |target| {
+                coverage.building_provider.as_ref()
+                    == Some(&(target.language_id.clone(), target.provider_id.clone()))
+            });
+            provider_covered
+                && (coverage.building_full
+                    || requested
+                        .iter()
+                        .all(|path| coverage.building.contains(path)))
         })
     }
 
-    pub(super) fn begin_query_targets(&self, requested: &BTreeSet<PathBuf>) -> Result<(), String> {
+    pub(super) fn begin_query_targets(
+        &self,
+        requested: &BTreeSet<PathBuf>,
+        provider_target: Option<&super::WorkspaceGenerationProviderTarget>,
+    ) -> Result<(), String> {
         let mut coverage = self
             .query_target_coverage
             .lock()
             .map_err(|_| "workspace query target coverage lock poisoned".to_owned())?;
         coverage.building = requested.clone();
-        coverage.building_full = requested.is_empty();
+        coverage.building_full = requested.is_empty() && provider_target.is_none();
+        coverage.building_provider =
+            provider_target.map(|target| (target.language_id.clone(), target.provider_id.clone()));
         Ok(())
     }
 
@@ -54,8 +82,12 @@ impl AdmissionEntry {
             }
             let built = std::mem::take(&mut coverage.building);
             coverage.ready.extend(built);
+            if let Some(provider) = coverage.building_provider.take() {
+                coverage.ready_providers.insert(provider);
+            }
         } else {
             coverage.building.clear();
+            coverage.building_provider = None;
         }
         coverage.building_full = false;
         Ok(())

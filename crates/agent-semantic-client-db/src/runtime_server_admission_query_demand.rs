@@ -307,6 +307,14 @@ impl WorkspaceGenerationAdmission {
             }
         }
         loop {
+            let ready_covers_provider = self
+                .entries
+                .get(&WorkspaceGenerationAdmissionKey {
+                    workspace_identity: workspace_identity.clone(),
+                })
+                .is_some_and(|entry| {
+                    entry.ready_covers(&Default::default(), provider_target.as_ref())
+                });
             if let Some(observed) = self.current(&workspace_identity, &project_root) {
                 if matches!(
                     observed.state,
@@ -324,6 +332,7 @@ impl WorkspaceGenerationAdmission {
                 if observed.state == WorkspaceGenerationAdmissionState::Ready
                     && observed.admission_mode.is_complete_generation()
                     && observed.commit.is_some()
+                    && ready_covers_provider
                     && self.ready_validator.as_ref().is_none_or(|validator| {
                         validator(&workspace_identity, &project_root, &observed).is_ok()
                     })

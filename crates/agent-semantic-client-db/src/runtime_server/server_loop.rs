@@ -36,11 +36,19 @@ impl RuntimeServer {
             agent_session_status,
             telemetry_sender: _,
             readiness_sender,
+            mut startup_readiness,
             generation_publication,
             durability_tasks,
         } = self;
-        let (_lifecycle_state, lifecycle) =
-            watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
+        let startup_complete = startup_readiness
+            .as_ref()
+            .is_none_or(|readiness| *readiness.borrow());
+        let mut public_state = if startup_complete {
+            crate::runtime_server_control::RuntimeServerState::Healthy
+        } else {
+            crate::runtime_server_control::RuntimeServerState::Starting
+        };
+        let (lifecycle_state, lifecycle) = watch::channel(public_state);
         generation_publication.clear();
         // Socket liveness is Global; generation readiness is workspace-keyed.
         // Durable catalog locators stay lazy. A workspace request restores its
@@ -50,12 +58,14 @@ impl RuntimeServer {
         let slot_count = entry_counts.slot_count;
         let loaded_entry_count = entry_counts.loaded_entry_count;
         status_memory.publish(
-            crate::runtime_server_control::RuntimeServerState::Healthy,
+            public_state,
             slot_count
                 .max(loaded_entry_count)
                 .max(*workspace_count.borrow()),
         )?;
-        readiness_sender.send_replace(crate::runtime_server_control::RuntimeServerState::Healthy);
+        if *readiness_sender.borrow() != public_state {
+            readiness_sender.send_replace(public_state);
+        }
         let mut connections = JoinSet::new();
         let connection_supervisor =
             crate::runtime_server_connection::RuntimeServerConnectionSupervisor::for_current_runtime(
@@ -82,6 +92,32 @@ impl RuntimeServer {
         }
         let exit = loop {
             tokio::select! {
+                changed = async {
+                    match startup_readiness.as_mut() {
+                        Some(readiness) => Some(readiness.changed().await),
+                        None => std::future::pending().await,
+                    }
+                }, if public_state == crate::runtime_server_control::RuntimeServerState::Starting => {
+                    changed
+                        .expect("startup readiness branch requires a receiver")
+                        .map_err(|_| "Runtime startup readiness owner closed before recovery completed".to_owned())?;
+                    if startup_readiness
+                        .as_ref()
+                        .is_some_and(|readiness| *readiness.borrow())
+                    {
+                        public_state = crate::runtime_server_control::RuntimeServerState::Healthy;
+                        let entry_counts = registry.workspace_entry_counts();
+                        status_memory.publish(
+                            public_state,
+                            entry_counts
+                                .slot_count
+                                .max(entry_counts.loaded_entry_count)
+                                .max(*workspace_count.borrow()),
+                        )?;
+                        lifecycle_state.send_replace(public_state);
+                        readiness_sender.send_replace(public_state);
+                    }
+                }
                 connection = listener.accept(), if connection_supervisor.has_capacity() => {
                     let (stream, peer) = connection.map_err(|error| {
                         format!("failed to accept runtime server request: {error}")
@@ -153,7 +189,7 @@ impl RuntimeServer {
                     let slot_count = entry_counts.slot_count;
                     let loaded_entry_count = entry_counts.loaded_entry_count;
                     status_memory.publish(
-                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        public_state,
                         slot_count
                             .max(loaded_entry_count)
                             .max(*workspace_count.borrow_and_update()),
@@ -192,7 +228,7 @@ impl RuntimeServer {
                     let slot_count = entry_counts.slot_count;
                     let loaded_entry_count = entry_counts.loaded_entry_count;
                     status_memory.publish(
-                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        public_state,
                         slot_count
                             .max(loaded_entry_count)
                             .max(*workspace_count.borrow()),
@@ -214,7 +250,7 @@ impl RuntimeServer {
                     let slot_count = entry_counts.slot_count;
                     let loaded_entry_count = entry_counts.loaded_entry_count;
                     status_memory.publish(
-                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        public_state,
                         slot_count
                             .max(loaded_entry_count)
                             .max(*workspace_count.borrow()),

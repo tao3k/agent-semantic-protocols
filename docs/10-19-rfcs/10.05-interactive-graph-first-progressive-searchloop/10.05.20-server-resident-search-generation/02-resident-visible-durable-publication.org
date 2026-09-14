@@ -79,6 +79,32 @@ restart must neither omit that terminal nor start a second generation build.
 The wait inherits the request's existing deadline; it does not create a new
 timeout or convert =materializing= into success.
 
+* Runtime startup recovery barrier
+
+Runtime transport readiness and resident Search readiness are separate startup
+states.  The daemon may bind and serve its control transport in =Starting= so
+that artifact activation can commit, but it MUST NOT publish =Healthy= merely
+because the listener accepts connections.
+
+After activation is applied, the daemon restores every scope in the durable V1
+workspace-admission catalog in deterministic order, using the applied bundle's
+active provider targets rather than demanding capabilities absent from that
+bundle.  One scope must reach a terminal complete-generation admission,
+query-generation publication, and lexical-attachment terminal before the next
+scope starts.  This single-writer ordering is normative while generation
+handoff uses one retained publication slot: concurrent startup admissions could
+otherwise overwrite an unobserved handoff.
+
+Only after every catalog scope has produced a startup terminal may the daemon
+publish global =Healthy=.  A changed scope is rebuilt by the admission owner.
+A corrupt, identity-drifted, or provider-closure-incompatible scope publishes a
+workspace-keyed failed terminal and remains unavailable; it MUST NOT prevent
+independent valid scopes from recovering or turn global transport health into a
+cross-workspace conjunction.  Startup recovery is lifecycle work and is not
+charged to Search or Query dispatch latency.  Once =Healthy= is visible, a first
+request for an admitted successfully recovered scope consumes only resident
+state.
+
 * Performance qualification
 
 The empirical gate uses multiple workspaces, multiple sessions, repeated
