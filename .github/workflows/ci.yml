@@ -445,17 +445,6 @@ jobs:
           cache: npm
           cache-dependency-path: languages/asp-typescript/package-lock.json
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache syntax contract artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            . -> target
-          shared-key: asp-tree-sitter-query-contracts-${{ runner.os }}
-          cache-on-failure: true
-
       - name: Install TypeScript query validator dependencies
         run: npm --prefix languages/asp-typescript ci
 

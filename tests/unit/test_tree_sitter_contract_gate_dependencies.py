@@ -7,6 +7,7 @@
 from pathlib import Path
 
 from tools.tree_sitter import contract_gates
+from tools.tree_sitter.contract_query_corpus import QUERY_CORPUS_COMMANDS
 
 
 class _RecordedRuntimeEnv:
@@ -19,6 +20,15 @@ class _RecordedRuntimeEnv:
 
     def __exit__(self, *_exc: object) -> None:
         return None
+
+
+def test_query_corpus_contains_only_language_owned_validators() -> None:
+    commands = [" ".join(command) for command in QUERY_CORPUS_COMMANDS]
+    assert len(commands) == 3
+    assert any("rust-query-corpus" in command for command in commands)
+    assert any("typescript-query-corpus" in command for command in commands)
+    assert any("python-query-corpus" in command for command in commands)
+    assert all("cargo test" not in command for command in commands)
 
 
 def test_query_only_gate_neither_builds_nor_exports_complete_asp(monkeypatch) -> None:

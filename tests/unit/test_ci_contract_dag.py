@@ -67,6 +67,8 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "--no-build" in query_contracts
     assert "Build syntax provider runtimes" not in query_contracts
     assert "languages/asp-rust -> target" not in query_contracts
+    assert "Set up Rust" not in query_contracts
+    assert "cargo test" not in query_contracts
 
     provider_registry = contract_jobs.split(
         "  tree-sitter-provider-registry-gates:", 1

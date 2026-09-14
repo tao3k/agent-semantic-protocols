@@ -49,14 +49,6 @@ QUERY_CORPUS_COMMANDS = (
         "validate",
         "python-query-corpus",
     ],
-    [
-        "cargo",
-        "test",
-        "-p",
-        "agent-semantic-runtime-server",
-        "runtime_asp_client_syntax_query",
-        "--quiet",
-    ],
 )
 
 
