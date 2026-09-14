@@ -210,6 +210,27 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
         .expect("native Tantivy expression");
     assert_eq!(result.hits.len(), 1);
     assert_eq!(result.hits[0].owner_path, "crates/runtime.rs");
+    let scoped = index
+        .query_tantivy_language_for_owner_scope(
+            "body:artifact",
+            &agent_semantic_config::LanguageId::new("rust"),
+            &["crates/runtime.rs".to_owned()],
+            10,
+        )
+        .expect("native Tantivy expression restricted by indexed owner identity");
+    assert_eq!(scoped.hits.len(), 1);
+    assert_eq!(scoped.hits[0].owner_path, "crates/runtime.rs");
+    assert!(
+        index
+            .query_tantivy_language_for_owner_scope(
+                "body:artifact",
+                &agent_semantic_config::LanguageId::new("rust"),
+                &["crates/missing.rs".to_owned()],
+                10,
+            )
+            .expect_err("absent owner scope must fail closed")
+            .contains("owner scope is absent")
+    );
     assert!(
         index
             .query_tantivy_language(

@@ -1071,6 +1071,16 @@ immediately discarded is forbidden acquisition work.  This does not weaken
 the existing fail-closed rule: a bound that truncates the set still cannot be
 treated as complete fused scope.
 
+Retrieval planning must also preserve an already exact owner restriction.  If
+every rg clause names only generation-admitted owner files, their union is a
+sound upper bound for the rg side of the intersection.  Tantivy must execute
+the same native expression with that owner-id filter inside the index instead
+of searching the whole generation and discarding all other hits afterward.
+Directories, absent paths, or an implicit workspace root do not qualify and
+fall back to the complete generation query.  The owner-id field is an internal
+V1 index capability; changing it rotates the index engine digest, not the
+public schema version.
+
 * Verdict
 
 ASP does not need tgrep's product architecture, but it does need GREP's role.

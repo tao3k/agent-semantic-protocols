@@ -98,6 +98,18 @@ theorem candidate_scope_pushdown_preserves_hits
   · intro hit
     exact ⟨hit.2.2, hit.2.1⟩
 
+/-- When rg's exact admitted owner paths are already an upper bound for its
+result, pushing that scope into Tantivy is the same set intersection as
+searching the generation first. Ranking is deliberately absent from V1 fusion. -/
+def scopedTantivyCandidates (tantivy scope : OwnerSet) : OwnerSet :=
+  fun owner => tantivy owner ∧ scope owner
+
+theorem exact_rg_owner_scope_pushdown_preserves_fusion
+    (tantivy exactRgScope : OwnerSet) (owner : OwnerId) :
+    (tantivy owner ∧ exactRgScope owner) ↔
+      scopedTantivyCandidates tantivy exactRgScope owner := by
+  rfl
+
 /-- A regex plan without a sound mandatory trigram is typed not-materialized. -/
 inductive PlanAdmission where
   | selective

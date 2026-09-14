@@ -235,6 +235,18 @@ impl RuntimeResidentReadClient {
             .read_tantivy_for_language(expression, language_id, limit)
     }
 
+    pub fn read_tantivy_for_language_owner_scope(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        owner_paths: &[String],
+        limit: u32,
+    ) -> Result<std::sync::Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String>
+    {
+        self.search_projection
+            .read_tantivy_for_language_owner_scope(expression, language_id, owner_paths, limit)
+    }
+
     pub fn read_resident_grep_candidates(
         &self,
         query: &str,

@@ -467,6 +467,7 @@ fn execute_default_retrieval_layout(
             "Search Layout requires rg and Tantivy shared-scope inputs together".to_owned(),
         ));
     }
+    let exact_rg_owner_scope = exact_rg_owner_scope(plan, generation, &rg_clauses);
 
     // Tantivy is evaluated independently first. Besides ranked recall, its
     // bounded owner set is the sound fused scope for V1 regexes that cannot
@@ -481,6 +482,7 @@ fn execute_default_retrieval_layout(
             block,
             &plan.routes,
             generation,
+            exact_rg_owner_scope.as_deref(),
             budget.lexical_owner_limit(),
         )?;
         result.require_complete_fused_scope()?;
@@ -586,6 +588,29 @@ fn execute_default_retrieval_layout(
         fused_matches,
         tantivy_expressions_by_owner,
     })
+}
+
+fn exact_rg_owner_scope(
+    plan: &WorkspaceSearchPlaybookPlan,
+    generation: &RuntimeQueryGeneration,
+    rg_clauses: &[(SearchPlaybookClauseAxis, usize, usize)],
+) -> Option<Vec<String>> {
+    let mut owners = BTreeSet::new();
+    for (_, block_index, _) in rg_clauses {
+        let block = plan.axes.rg.get(*block_index)?;
+        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(block);
+        if !analysis.is_admitted() || analysis.search_roots.is_empty() {
+            return None;
+        }
+        for root in &analysis.search_roots {
+            let owner = root.value.trim_end_matches('/');
+            if !generation.resident().contains_indexed_owner(owner) {
+                return None;
+            }
+            owners.insert(owner.to_owned());
+        }
+    }
+    (!owners.is_empty()).then(|| owners.into_iter().collect())
 }
 
 fn resident_grep_candidate_scope(
@@ -820,6 +845,7 @@ fn execute_tantivy_block(
     block: &[String],
     routes: &[agent_semantic_search::WorkspaceSearchPlaybookRoute],
     generation: &RuntimeQueryGeneration,
+    exact_owner_scope: Option<&[String]>,
     limit: u32,
 ) -> Result<TantivyClauseResult, AspClientOperationError> {
     let mut owners = Vec::new();
@@ -841,10 +867,21 @@ fn execute_tantivy_block(
         .max(1);
     for route in routes {
         let language = agent_semantic_client_core::LanguageId::from(route.language_id.as_str());
-        let result = generation
-            .resident()
-            .read_tantivy_for_language(&expression, &language, generation_owner_limit)
-            .map_err(AspClientOperationError::Message)?;
+        let result = if let Some(owner_scope) = exact_owner_scope {
+            generation.resident().read_tantivy_for_language_owner_scope(
+                &expression,
+                &language,
+                owner_scope,
+                generation_owner_limit,
+            )
+        } else {
+            generation.resident().read_tantivy_for_language(
+                &expression,
+                &language,
+                generation_owner_limit,
+            )
+        }
+        .map_err(AspClientOperationError::Message)?;
         for hit in &result.hits {
             if generation
                 .resident()

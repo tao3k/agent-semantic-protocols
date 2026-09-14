@@ -213,6 +213,27 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         )
     }
 
+    pub fn read_tantivy_for_language_owner_scope(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        owner_paths: &[String],
+        limit: u32,
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+        let accelerator = self
+            .lexical_accelerator
+            .get()
+            .ok_or_else(|| "resident Tantivy attachment is not ready".to_owned())?
+            .as_ref()
+            .map_err(Clone::clone)?;
+        accelerator.query_tantivy_language_for_owner_scope(
+            expression,
+            &agent_semantic_config::LanguageId::new(language_id.as_str()),
+            owner_paths,
+            limit,
+        )
+    }
+
     fn cold_lexical_result(
         &self,
         query: &str,

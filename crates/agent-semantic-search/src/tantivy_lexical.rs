@@ -27,6 +27,7 @@ use tantivy::query::QueryParser;
 use tantivy::query::TermQuery;
 use tantivy::schema::FAST;
 use tantivy::schema::Field;
+use tantivy::schema::INDEXED;
 use tantivy::schema::IndexRecordOption;
 use tantivy::schema::Schema;
 use tantivy::schema::TEXT;
@@ -45,6 +46,7 @@ pub(crate) struct TantivyLexicalIndex {
     term_field: Field,
     title_field: Field,
     body_field: Field,
+    owner_id_field: Field,
     owner_count: usize,
 }
 
@@ -121,7 +123,7 @@ impl TantivyLexicalIndex {
         let body_field = schema
             .get_field("body")
             .map_err(|error| format!("Tantivy generation body field is absent: {error}"))?;
-        schema
+        let owner_id_field = schema
             .get_field("ownerId")
             .map_err(|error| format!("Tantivy generation ownerId field is absent: {error}"))?;
         let reader = index
@@ -138,6 +140,7 @@ impl TantivyLexicalIndex {
             term_field,
             title_field,
             body_field,
+            owner_id_field,
             owner_count: expected_owner_count,
         })
     }
@@ -184,6 +187,7 @@ impl TantivyLexicalIndex {
         &self,
         expression: &str,
         required_terms: &[String],
+        owner_ids: Option<&[usize]>,
         limit: usize,
     ) -> Result<Vec<usize>, String> {
         let mut parser =
@@ -192,10 +196,10 @@ impl TantivyLexicalIndex {
         let parsed = parser
             .parse_query(expression)
             .map_err(|error| format!("parse native Tantivy expression: {error}"))?;
-        let query: Box<dyn Query> = if required_terms.is_empty() {
+        let query: Box<dyn Query> = if required_terms.is_empty() && owner_ids.is_none() {
             parsed
         } else {
-            let mut clauses = Vec::<Box<dyn Query>>::with_capacity(required_terms.len() + 1);
+            let mut clauses = Vec::<Box<dyn Query>>::with_capacity(required_terms.len() + 2);
             clauses.push(parsed);
             clauses.extend(required_terms.iter().map(|term| {
                 Box::new(TermQuery::new(
@@ -203,6 +207,22 @@ impl TantivyLexicalIndex {
                     IndexRecordOption::Basic,
                 )) as Box<dyn Query>
             }));
+            if let Some(owner_ids) = owner_ids {
+                let owner_queries = owner_ids
+                    .iter()
+                    .map(|owner_id| {
+                        Box::new(TermQuery::new(
+                            Term::from_field_u64(self.owner_id_field, *owner_id as u64),
+                            IndexRecordOption::Basic,
+                        )) as Box<dyn Query>
+                    })
+                    .collect::<Vec<_>>();
+                clauses.push(if owner_queries.len() == 1 {
+                    owner_queries.into_iter().next().expect("one owner query")
+                } else {
+                    Box::new(BooleanQuery::union(owner_queries))
+                });
+            }
             Box::new(BooleanQuery::intersection(clauses))
         };
         let searcher = self.reader.searcher();
@@ -242,7 +262,7 @@ fn lexical_schema() -> (Schema, Field, Field, Field, Field) {
     let term_field = schema.add_text_field("term", term_options);
     let title_field = schema.add_text_field("title", TEXT);
     let body_field = schema.add_text_field("body", TEXT);
-    let owner_id_field = schema.add_u64_field("ownerId", FAST);
+    let owner_id_field = schema.add_u64_field("ownerId", FAST | INDEXED);
     (
         schema.build(),
         term_field,
@@ -328,6 +348,7 @@ fn build_index(
         term_field,
         title_field,
         body_field,
+        owner_id_field,
         owner_count: documents.len(),
     })
 }

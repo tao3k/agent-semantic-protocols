@@ -64,7 +64,7 @@ pub fn resident_index_engine_digest() -> String {
     identity.update(b"agent-semantic-search-resident-index-engine-v1\0");
     identity.update(env!("CARGO_PKG_VERSION").as_bytes());
     identity.update(&[0]);
-    identity.update(b"tantivy-0.26.1\0parallel-segments-no-merge\0");
+    identity.update(b"tantivy-0.26.1\0parallel-segments-no-merge\0indexed-owner-id\0");
     identity.update(crate::search_projection_analyzer_digest().as_bytes());
     identity.update(&[0]);
     identity
@@ -438,23 +438,7 @@ impl ResidentSourceIndex {
         language_id: &agent_semantic_config::LanguageId,
         limit: u32,
     ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
-        let mut authorities = self
-            .source_documents
-            .iter()
-            .filter_map(|document| document.authority.as_ref())
-            .filter(|authority| &authority.language_id == language_id);
-        let authority = authorities.next().cloned().ok_or_else(|| {
-            format!(
-                "resident source-index language authority is missing: languageId={}",
-                language_id.as_str()
-            )
-        })?;
-        if authorities.any(|candidate| candidate.provider_id != authority.provider_id) {
-            return Err(format!(
-                "resident source-index language authority is ambiguous: languageId={}",
-                language_id.as_str()
-            ));
-        }
+        let authority = self.language_authority(language_id)?;
         self.query(query, Some(&authority), limit)
     }
 
@@ -494,15 +478,70 @@ impl ResidentSourceIndex {
             authority_language_term(&authority),
             authority_provider_term(&authority),
         ];
+        self.query_tantivy_language_for_owner_ids(
+            expression,
+            &authority,
+            &required_terms,
+            None,
+            limit,
+        )
+    }
+
+    pub fn query_tantivy_language_for_owner_scope(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_config::LanguageId,
+        owner_paths: &[String],
+        limit: u32,
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
+        if expression.trim().is_empty() {
+            return Err("native Tantivy expression must be non-empty".to_owned());
+        }
+        if limit == 0 {
+            return Err("resident Tantivy query limit must be non-zero".to_owned());
+        }
+        if owner_paths.is_empty() {
+            return Err("resident Tantivy owner scope must be non-empty".to_owned());
+        }
+        let authority = self.language_authority(language_id)?;
+        let required_terms = [
+            authority_language_term(&authority),
+            authority_provider_term(&authority),
+        ];
+        let owner_ids = owner_paths
+            .iter()
+            .map(|owner_path| {
+                self.source_documents
+                    .binary_search_by(|document| document.owner_path.as_str().cmp(owner_path))
+                    .map_err(|_| format!("resident Tantivy owner scope is absent: {owner_path}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.query_tantivy_language_for_owner_ids(
+            expression,
+            &authority,
+            &required_terms,
+            Some(&owner_ids),
+            limit,
+        )
+    }
+
+    fn query_tantivy_language_for_owner_ids(
+        &self,
+        expression: &str,
+        authority: &ResidentSearchAuthority,
+        required_terms: &[String],
+        owner_ids: Option<&[usize]>,
+        limit: u32,
+    ) -> Result<Arc<agent_semantic_search_projection::ResidentSearchReadyResult>, String> {
         let query_terms = source_index_lookup_terms(expression)
             .into_iter()
             .filter(|term| !term.chars().any(char::is_whitespace))
             .collect::<BTreeSet<_>>();
         let hits = self
             .lexical_index
-            .search_expression(expression, &required_terms, limit as usize)?
+            .search_expression(expression, required_terms, owner_ids, limit as usize)?
             .into_iter()
-            .filter(|owner_id| self.matches_authority(*owner_id, Some(&authority)))
+            .filter(|owner_id| self.matches_authority(*owner_id, Some(authority)))
             .map(|owner_id| {
                 let matched_terms = query_terms
                     .iter()
@@ -520,6 +559,30 @@ impl ResidentSourceIndex {
                 hits,
             )?,
         ))
+    }
+
+    fn language_authority(
+        &self,
+        language_id: &agent_semantic_config::LanguageId,
+    ) -> Result<ResidentSearchAuthority, String> {
+        let mut authorities = self
+            .source_documents
+            .iter()
+            .filter_map(|document| document.authority.as_ref())
+            .filter(|authority| &authority.language_id == language_id);
+        let authority = authorities.next().cloned().ok_or_else(|| {
+            format!(
+                "resident source-index language authority is missing: languageId={}",
+                language_id.as_str()
+            )
+        })?;
+        if authorities.any(|candidate| candidate.provider_id != authority.provider_id) {
+            return Err(format!(
+                "resident source-index language authority is ambiguous: languageId={}",
+                language_id.as_str()
+            ));
+        }
+        Ok(authority)
     }
 
     pub fn result_for_owner_paths(

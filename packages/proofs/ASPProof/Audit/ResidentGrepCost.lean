@@ -17,6 +17,7 @@ open ASPProof.ResidentGrepCost
 #check more_mandatory_grams_never_widen
 #check empty_candidates_imply_no_exact_hits
 #check candidate_scope_pushdown_preserves_hits
+#check exact_rg_owner_scope_pushdown_preserves_fusion
 #check not_materialized_cannot_publish_absence
 #check complete_fused_scope_empty_implies_absence
 #check externally_pure_has_no_binary_or_filesystem_work
