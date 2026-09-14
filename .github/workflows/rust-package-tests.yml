@@ -98,7 +98,17 @@ jobs:
         run: cargo build -p agent-semantic-hook --bin asp-hook
 
       - name: Lint package
+        if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}
         run: cargo clippy -p "${{ matrix.package }}" --all-targets --all-features -- -D warnings
 
       - name: Test package
+        if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}
         run: cargo test -p "${{ matrix.package }}" --all-features
+
+      - name: Lint package-local policy API
+        if: ${{ matrix.package == 'asp-rust-project-harness-policy' }}
+        run: cargo clippy -p asp-rust-project-harness-policy --all-targets --no-default-features -- -D warnings
+
+      - name: Test package-local policy API
+        if: ${{ matrix.package == 'asp-rust-project-harness-policy' }}
+        run: cargo test -p asp-rust-project-harness-policy --no-default-features

@@ -4,7 +4,7 @@
 
 //! Connection completion and process-signal lifecycle support.
 
-pub(super) fn publish_connection_completion(
+pub(in crate::runtime_server) fn publish_connection_completion(
     events: Option<&crate::runtime_server_observability::RuntimeServerEventPublisher>,
     completed: Result<
         (

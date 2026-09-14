@@ -8,6 +8,7 @@ mod contract;
 pub(crate) mod facade;
 mod facade_support;
 mod facade_turso_report;
+mod runtime_observability;
 mod search_facade;
 mod session_control_plane;
 mod session_facade;
@@ -59,6 +60,7 @@ pub use facade::ClientDbEngineSourceIndexReadModelReport;
 pub use facade::{
     ClientDbEngine, ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
 };
+pub use runtime_observability::runtime_observability_database;
 pub use session_control_plane::{
     SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
     SessionControlPlaneRuntime, SessionControlPlaneRuntimeMetricsSnapshot,
@@ -69,14 +71,6 @@ pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
 pub(crate) use turso::shared_turso_database;
 
-/// Returns the DB Engine-owned shared database used by the Runtime Server's
-/// telemetry exporter. This purpose-limited API keeps pooling and database
-/// construction inside the storage engine without exposing its generic pool.
-pub async fn runtime_observability_database(
-    path: &std::path::Path,
-) -> Result<std::sync::Arc<::turso::Database>, String> {
-    turso::shared_turso_database(path).await
-}
 pub use turso_migration::{
     ClientDbTurso07ActiveMigration, ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,
     ClientDbTurso07ReplayFamilyReceipt, ClientDbTurso07RetiredDerivedReceipt,

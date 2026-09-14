@@ -33,3 +33,23 @@ fn release_and_developer_publication_share_the_single_workspace_policy_gate() {
         "the root workspace must own exactly one full ASP Rust policy recipe"
     );
 }
+
+#[test]
+fn package_matrix_keeps_the_workspace_scanner_out_of_package_local_tests() {
+    let workflow =
+        std::fs::read_to_string(workspace_root().join(".github/workflows/rust-package-tests.yml"))
+            .expect("read Rust package test workflow");
+
+    assert!(
+        workflow.contains("matrix.package != 'asp-rust-project-harness-policy'"),
+        "ordinary all-feature package steps must exclude the workspace-policy adapter"
+    );
+    assert!(
+        workflow.contains("cargo test -p asp-rust-project-harness-policy --no-default-features"),
+        "the policy package matrix atom must test only its package-local API"
+    );
+    assert!(
+        !workflow.contains("asp-rust-project-harness-policy --all-features"),
+        "the package matrix must not trigger the full workspace scanner"
+    );
+}
