@@ -174,14 +174,71 @@ impl ResidentOverlayStore {
         tombstones: Vec<String>,
         relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
     ) -> Result<ResidentOverlaySnapshot, String> {
-        let materialized = owners
-            .iter()
-            .map(|owner| owner.owner_path.clone())
-            .collect::<Vec<_>>();
-        let mut staged = self.publish_owner_delta(base, owners, tombstones, relations)?;
-        staged.state.semantic_owners.extend(materialized);
-        staged.state.advance();
-        Ok(staged)
+        if owners.is_empty() {
+            return Err("runtime semantic owner delta must contain an owner".to_owned());
+        }
+        if !tombstones.is_empty() {
+            return Err("runtime semantic owner delta cannot tombstone content".to_owned());
+        }
+
+        let mut state = self.staged_state(base);
+        let mut changed = HashSet::with_capacity(owners.len());
+        for owner in &owners {
+            validate_owner(owner)?;
+            if !changed.insert(owner.owner_path.as_str()) {
+                return Err(format!(
+                    "runtime semantic owner delta contains a duplicate owner: {}",
+                    owner.owner_path
+                ));
+            }
+            let current = state
+                .owners
+                .get(&owner.owner_path)
+                .or_else(|| base_owner(base, &owner.owner_path))
+                .ok_or_else(|| {
+                    format!(
+                        "runtime semantic owner is outside canonical content identity: {}",
+                        owner.owner_path
+                    )
+                })?;
+            if current.content_digest != owner.content_digest || current.bytes != owner.bytes {
+                return Err(format!(
+                    "runtime semantic owner content identity drift: {}",
+                    owner.owner_path
+                ));
+            }
+        }
+        for relation in &relations {
+            if !changed.contains(relation.owner_path.as_str()) {
+                return Err(format!(
+                    "runtime semantic owner delta relation is outside changed owner membership: {}",
+                    relation.owner_path
+                ));
+            }
+            relation.relation.validate()?;
+        }
+
+        for owner in owners {
+            let owner_path = owner.owner_path.clone();
+            state.owners.insert(owner_path.clone(), owner);
+            state.relations.insert(owner_path.clone(), Vec::new());
+            state.semantic_owners.insert(owner_path.clone());
+            state.tombstones.remove(&owner_path);
+            state
+                .selectors
+                .retain(|_, selector| selector.owner_path != owner_path);
+        }
+        for relation in relations {
+            state
+                .relations
+                .get_mut(relation.owner_path.as_str())
+                .expect("semantic owner relation bucket was initialized")
+                .push(relation);
+        }
+        // Parser projection changes semantic membership, not source content.
+        // Keep the canonical Merkle snapshot shared and advance this transaction once.
+        state.advance();
+        Ok(ResidentOverlaySnapshot { state })
     }
 
     pub(super) fn tombstone_owner(

@@ -12,6 +12,23 @@ use super::dispatch_budget_for_method;
 use super::enforce_completed_dispatch_budget;
 use super::query_generation_not_ready_error;
 
+fn generation_without_resident_authority(
+    digest: &str,
+) -> std::sync::Arc<crate::RuntimeQueryGeneration> {
+    std::sync::Arc::new(crate::RuntimeQueryGeneration {
+        generation_digest: digest.to_owned(),
+        generation_token: std::sync::atomic::AtomicU64::new(0),
+        resident: None,
+        execution_publication: None,
+        project_topology_attachment: std::sync::OnceLock::new(),
+        project_topology_completion: tokio::sync::watch::channel(false).0,
+        lexical_attachment_completion: tokio::sync::watch::channel(false).0,
+        build_resource_receipt: std::sync::OnceLock::new(),
+        search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
+        query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
+    })
+}
+
 #[tokio::test(start_paused = true)]
 async fn ready_request_keeps_one_ms_deadline_independent_of_another_first_request() {
     let method = agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD;
@@ -144,6 +161,45 @@ async fn missing_generation_with_closed_publication_is_terminal() {
             .unwrap()
             .contains("closed")
     );
+}
+
+#[tokio::test]
+async fn targeted_wait_does_not_accept_a_ready_generation_without_its_authority() {
+    let key = crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey::new(
+        agent_semantic_client_protocol::ClientProjectId::new("project-test").unwrap(),
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("workspace-test").unwrap(),
+    );
+    let stale = crate::RuntimeQueryGenerationState::Ready(generation_without_resident_authority(
+        "stale-generation",
+    ));
+    let (sender, receiver) = tokio::sync::watch::channel(std::sync::Arc::new(
+        std::collections::HashMap::from([(key.clone(), stale)]),
+    ));
+    let targets = vec![
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
+            language_id: "rust".to_owned(),
+            provider_id: Some("asp-rust".to_owned()),
+        },
+    ];
+    let wait =
+        super::await_runtime_query_generation_for_provider_targets(&receiver, &key, &targets);
+    tokio::pin!(wait);
+    assert!(
+        futures_util::poll!(&mut wait).is_pending(),
+        "workspace-level Ready is not target-relative readiness"
+    );
+    sender.send_replace(std::sync::Arc::new(std::collections::HashMap::from([(
+        key.clone(),
+        crate::RuntimeQueryGenerationState::Failed {
+            expected_generation_digest: std::sync::Arc::from("successor"),
+            reason: std::sync::Arc::from("targeted successor failed"),
+        },
+    )])));
+    let error = match wait.await {
+        Ok(_) => panic!("targeted successor failure was replaced with a stale Ready generation"),
+        Err(error) => error,
+    };
+    assert_eq!(error, "targeted successor failed");
 }
 
 #[test]

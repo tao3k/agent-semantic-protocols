@@ -167,6 +167,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         let owner_search_started = std::time::Instant::now();
         let (source_documents, callable_selector_by_owner) =
             build_admitted_owner_search_indexes(&owner_directory_records)?;
+        let provider_authorities = provider_authorities(&source_documents);
         let owner_search_micros = elapsed_micros(owner_search_started);
         let byte_coverage_started = std::time::Instant::now();
         let resident_byte_coverage =
@@ -215,6 +216,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             project_root,
             owner_directory_records,
             source_documents,
+            provider_authorities,
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
@@ -322,6 +324,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             Arc::from(graph_relations.clone());
         let (source_documents, callable_selector_by_owner) =
             build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
+        let provider_authorities = provider_authorities(&source_documents);
         let graph_generation = Arc::new(tokio::sync::OnceCell::new());
         let lexical_accelerator = Arc::new(tokio::sync::OnceCell::new());
         Ok(Self {
@@ -335,6 +338,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                 .to_owned(),
             owner_directory_records,
             source_documents,
+            provider_authorities,
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
@@ -533,4 +537,20 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         };
         (owner_count, lexical_bytes, changed_owner_count)
     }
+}
+
+fn provider_authorities(
+    source_documents: &[agent_semantic_search::ResidentSourceDocument],
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut authorities = BTreeMap::<String, BTreeSet<String>>::new();
+    for authority in source_documents
+        .iter()
+        .filter_map(|document| document.authority.as_ref())
+    {
+        authorities
+            .entry(authority.language_id.as_str().to_owned())
+            .or_default()
+            .insert(authority.provider_id.as_str().to_owned());
+    }
+    authorities
 }

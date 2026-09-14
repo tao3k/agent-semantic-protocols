@@ -74,6 +74,9 @@ fn release_install_checks_release_profile_before_and_after_copy() {
         "release profile must be checked before and after installation"
     );
     assert!(recipe.contains("asp_artifact=\"${cargo_target_dir}/release/asp\""));
+    assert!(recipe.contains(
+        "cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?"
+    ));
     assert!(recipe.contains("\"${asp_artifact}\" install binary"));
     assert!(!recipe.contains("target/debug/asp"));
 }

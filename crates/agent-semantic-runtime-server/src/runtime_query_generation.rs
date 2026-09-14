@@ -61,6 +61,21 @@ pub(crate) enum RuntimeQueryMaterializationState {
 }
 
 impl RuntimeQueryGeneration {
+    pub(crate) fn contains_provider_targets(
+        &self,
+        targets: &[agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget],
+    ) -> bool {
+        targets.is_empty()
+            || self.resident.as_ref().is_some_and(|resident| {
+                targets.iter().all(|target| {
+                    resident.contains_provider_authority(
+                        &target.language_id,
+                        target.provider_id.as_deref(),
+                    )
+                })
+            })
+    }
+
     /// Opens the resident Search authority and derives its fusion capabilities.
     pub async fn open(
         pointer_path: &std::path::Path,

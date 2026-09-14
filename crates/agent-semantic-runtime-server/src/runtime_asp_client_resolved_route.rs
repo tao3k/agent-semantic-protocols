@@ -534,9 +534,13 @@ pub(super) async fn dispatch_resolved_route(
         .get(&project_workspace_key)
         .cloned();
     let generation_result = match generation_state {
-        Some(RuntimeQueryGenerationState::Ready(generation)) => Ok(generation),
+        Some(RuntimeQueryGenerationState::Ready(generation))
+            if generation.contains_provider_targets(&generation_provider_targets) =>
+        {
+            Ok(generation)
+        }
         Some(RuntimeQueryGenerationState::Failed { reason, .. }) => Err(reason.to_string()),
-        None => {
+        Some(RuntimeQueryGenerationState::Ready(_)) | None => {
             dispatch_budget.observe_miss();
             let wait_started = tokio::time::Instant::now();
             let result = request_and_await_runtime_query_generation_ready(

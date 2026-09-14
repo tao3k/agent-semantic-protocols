@@ -357,6 +357,16 @@ impl RuntimeResidentReadClient {
         self.search_projection.indexed_owner_paths()
     }
 
+    #[must_use]
+    pub fn contains_provider_authority(
+        &self,
+        language_id: &str,
+        provider_id: Option<&str>,
+    ) -> bool {
+        self.search_projection
+            .contains_provider_authority(language_id, provider_id)
+    }
+
     pub fn search_generation_authority(
         &self,
     ) -> &crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority {

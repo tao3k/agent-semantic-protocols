@@ -1129,6 +1129,14 @@ Semantic owner publication is an in-memory compare-and-set in the workspace
 writer lane.  It retains the canonical base digest and publishes a new resident
 overlay revision; it MUST NOT call the complete-generation publisher, update the
 durable pointer, advance the canonical epoch, or serialize unrelated owners.
+Because parser materialization attaches semantic projections to an already
+indexed owner, admission MUST verify that owner path, content digest and source
+bytes equal the currently visible canonical content identity.  Semantic
+publication MUST reject tombstones and new or content-changed owners; those are
+content-generation mutations.  It MUST NOT rebuild or incrementally update the
+workspace content Merkle tree.  One admitted semantic batch produces exactly
+one atomic overlay revision and one derived overlay digest, rather than routing
+through a content-delta revision and then advancing a second time.
 The overlay is a read-through delta over the immutable generation lease: it
 MUST NOT clone canonical owner bytes or canonical Relations into overlay state.
 Only changed owners, tombstones, Relation deltas, selector deltas and semantic
@@ -1161,6 +1169,12 @@ membership.  It then replaces the previous membership for the exact
 language/provider authority in the active immutable base and publishes the
 result as one =CompleteGeneration=.  Unselected providers, their source blobs,
 relations, and ProjectResolution receipts are carried forward byte-for-byte.
+Generation readiness is target-relative: an already resident generation that
+lacks any provider authority selected by the request is not Ready for that
+request.  Runtime MUST submit the missing targeted successor and await the
+first published generation containing every requested =(language, provider)=
+authority; it MUST NOT dispatch Search against the stale resident generation
+or require a second client call.
 The first targeted demand on a cold workspace is the initial complete member
 set.  Publishing the target-only candidate directly, or rescanning every
 registered provider for one language demand, is forbidden: the former erases

@@ -127,6 +127,7 @@ impl RequestDispatchBudget {
 
 /// Retained publication state is inspected before every event wait. This is
 /// not a build retry loop: failed/closed publication terminates this request.
+#[cfg(test)]
 pub(super) async fn await_runtime_query_generation(
     states: &tokio::sync::watch::Receiver<
         std::sync::Arc<
@@ -138,17 +139,39 @@ pub(super) async fn await_runtime_query_generation(
     >,
     key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
 ) -> Result<std::sync::Arc<crate::runtime_query_generation::RuntimeQueryGeneration>, String> {
+    await_runtime_query_generation_for_provider_targets(states, key, &[]).await
+}
+
+pub(super) async fn await_runtime_query_generation_for_provider_targets(
+    states: &tokio::sync::watch::Receiver<
+        std::sync::Arc<
+            std::collections::HashMap<
+                crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+                crate::RuntimeQueryGenerationState,
+            >,
+        >,
+    >,
+    key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+    provider_targets: &[agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget],
+) -> Result<std::sync::Arc<crate::runtime_query_generation::RuntimeQueryGeneration>, String> {
     let mut states = states.clone();
     loop {
         let state = states.borrow_and_update().get(key).cloned();
         match state {
-            Some(crate::RuntimeQueryGenerationState::Ready(generation)) => return Ok(generation),
+            Some(crate::RuntimeQueryGenerationState::Ready(generation))
+                if generation.contains_provider_targets(provider_targets) =>
+            {
+                return Ok(generation);
+            }
             Some(crate::RuntimeQueryGenerationState::Failed { reason, .. }) => {
                 return Err(reason.to_string());
             }
-            None => states.changed().await.map_err(|_| {
-                "Runtime generation publication channel closed before readiness".to_owned()
-            })?,
+            Some(crate::RuntimeQueryGenerationState::Ready(_)) | None => {
+                states.changed().await.map_err(|_| {
+                    "Runtime generation publication channel closed before targeted readiness"
+                        .to_owned()
+                })?;
+            }
         }
     }
 }
@@ -363,6 +386,7 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
     >,
     key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
 ) -> Result<std::sync::Arc<crate::RuntimeQueryGeneration>, String> {
+    let required_provider_targets = provider_targets.clone();
     let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
     generation_admission.request_runtime_generations_ready_for_providers_with_terminal(
         workspace_identity,
@@ -372,7 +396,11 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
             let _ = terminal_sender.send(terminal.map(|_| ()));
         },
     )?;
-    let generation = await_runtime_query_generation(generations, key);
+    let generation = await_runtime_query_generation_for_provider_targets(
+        generations,
+        key,
+        &required_provider_targets,
+    );
     tokio::pin!(generation);
     match tokio::select! {
         result = &mut generation => return result,

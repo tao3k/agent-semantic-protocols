@@ -9,7 +9,7 @@ use super::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn resident_delta_keeps_canonical_semantic_owners_as_a_read_through_base() {
+async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_identity() {
     let root = fixture_root();
     let workspace_identity = "workspace-resident-overlay-base-read-through";
     let base_bytes = b"fn canonical() {}\n";
@@ -46,7 +46,7 @@ async fn resident_delta_keeps_canonical_semantic_owners_as_a_read_through_base()
         .clone();
     let delta_bytes = b"fn delta() {}\n";
 
-    registry
+    let error = registry
         .publish_resident_owner_delta(
             workspace_identity,
             &root,
@@ -67,26 +67,8 @@ async fn resident_delta_keeps_canonical_semantic_owners_as_a_read_through_base()
             },
         )
         .await
-        .expect("publish resident semantic delta");
-
-    let resident = registry
-        .resident_read_client(workspace_identity, &root)
-        .expect("open resident semantic read-through");
-    assert!(
-        resident
-            .semantic_owner_materialized("src/lib.rs")
-            .expect("read canonical semantic owner state")
-    );
-    assert!(
-        resident
-            .semantic_owner_materialized("src/delta.rs")
-            .expect("read delta semantic owner state")
-    );
-    let (projections, _, diagnostics) = resident
-        .native_syntax_playbook_projection(&["src/lib.rs".to_owned()])
-        .expect("project canonical semantic owner through overlay");
-    assert!(diagnostics.is_empty());
-    assert_eq!(projections[0].selectors[0].selector, base_selector);
+        .expect_err("reject semantic owner absent from canonical content identity");
+    assert!(error.contains("outside canonical content identity"));
 
     registry.shutdown().await.expect("drain writer lane");
     let _ = tokio::fs::remove_dir_all(root).await;
@@ -154,6 +136,20 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
         )
         .await
         .expect("publish resident parser delta");
+
+    let owner_content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
+    let mut expected = blake3::Hasher::new();
+    expected.update(base_generation_digest.as_bytes());
+    expected.update(&1_u64.to_le_bytes());
+    expected.update(b"src/lib.rs");
+    expected.update(owner_content_digest.as_bytes());
+    expected.update(b"src/lib.rs");
+    expected.update(b"\0semantic");
+    assert_eq!(
+        resident_digest,
+        format!("blake3-256:{}", expected.finalize().to_hex()),
+        "one semantic batch must advance the overlay revision exactly once"
+    );
 
     let current = registry
         .lease(workspace_identity, &root)

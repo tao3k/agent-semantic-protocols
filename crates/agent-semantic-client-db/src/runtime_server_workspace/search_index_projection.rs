@@ -50,6 +50,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) project_root: String,
     pub(super) owner_directory_records: BTreeMap<String, Arc<SearchOwnerRecord>>,
     pub(super) source_documents: Vec<agent_semantic_search::ResidentSourceDocument>,
+    pub(super) provider_authorities: BTreeMap<String, std::collections::BTreeSet<String>>,
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
     pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
@@ -68,6 +69,18 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
 }
 
 impl WorkspaceSearchGenerationDataPlaneClient {
+    pub fn contains_provider_authority(
+        &self,
+        language_id: &str,
+        provider_id: Option<&str>,
+    ) -> bool {
+        self.provider_authorities
+            .get(language_id)
+            .is_some_and(|providers| {
+                provider_id.is_none_or(|provider| providers.contains(provider))
+            })
+    }
+
     pub(super) fn lexical_source_documents(
         &self,
     ) -> Result<BTreeMap<String, agent_semantic_search::ResidentSourceDocument>, String> {

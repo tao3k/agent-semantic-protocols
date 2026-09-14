@@ -145,7 +145,7 @@ agent-tools-install-protocol bin_dir="": check-rust-workspace-policy
       fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/release/asp"; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary || exit $?; \
