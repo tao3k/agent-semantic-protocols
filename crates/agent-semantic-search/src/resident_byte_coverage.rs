@@ -413,19 +413,51 @@ impl ResidentByteCoverageIndex {
                 })
             }
             ResidentGrepCandidatePlan::And(plans) => {
-                let evaluations = plans
+                let mut plans_by_estimated_cardinality = plans
                     .iter()
-                    .map(|plan| self.evaluate_grep_plan(plan))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let decoded_posting_count = sum_decoded_postings(&evaluations)?;
-                let smallest_posting_count = smallest_posting(&evaluations);
-                let mut candidate_sets = evaluations
-                    .into_iter()
-                    .map(|evaluation| evaluation.owners)
-                    .collect::<Vec<_>>();
-                candidate_sets.sort_unstable_by_key(Vec::len);
+                    .map(|plan| {
+                        self.estimate_candidate_count(plan)
+                            .map(|estimated| (estimated, plan))
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                plans_by_estimated_cardinality
+                    .sort_unstable_by_key(|(estimated_candidates, _)| *estimated_candidates);
+                let mut candidates: Option<Vec<u32>> = None;
+                let mut decoded_posting_count = 0usize;
+                let mut smallest_posting_count = None;
+                for (_, plan) in plans_by_estimated_cardinality {
+                    let evaluation = self.evaluate_grep_plan(plan)?;
+                    decoded_posting_count = decoded_posting_count
+                        .checked_add(evaluation.decoded_posting_count)
+                        .ok_or_else(|| {
+                            "resident GREP decoded posting count overflows".to_owned()
+                        })?;
+                    if let Some(value) = evaluation.smallest_posting_count {
+                        smallest_posting_count = Some(
+                            smallest_posting_count
+                                .map_or(value, |smallest: usize| smallest.min(value)),
+                        );
+                    }
+                    candidates = Some(match candidates {
+                        Some(current) => intersect_sorted(&current, &evaluation.owners),
+                        None => evaluation.owners,
+                    });
+                    // Every AND child is a necessary condition. Its candidate
+                    // set alone remains a sound superset for the full regex,
+                    // whose exact matcher is authoritative. Decoding further
+                    // branches after zero or one candidate cannot reduce exact
+                    // verification work and only adds posting I/O.
+                    if candidates
+                        .as_ref()
+                        .is_some_and(|candidates| candidates.len() <= 1)
+                    {
+                        break;
+                    }
+                }
                 Ok(PlanEvaluation {
-                    owners: intersect_postings(candidate_sets)?,
+                    owners: candidates.ok_or_else(|| {
+                        "resident GREP AND candidate plan is empty".to_owned()
+                    })?,
                     decoded_posting_count,
                     smallest_posting_count,
                 })
@@ -455,42 +487,45 @@ impl ResidentByteCoverageIndex {
             }
         }
     }
+
+    fn estimate_candidate_count(&self, plan: &ResidentGrepCandidatePlan) -> Result<usize, String> {
+        match plan {
+            ResidentGrepCandidatePlan::MatchAll => Ok(self.owners.len()),
+            ResidentGrepCandidatePlan::Grams(grams) => {
+                let mut estimate = None;
+                for gram in grams {
+                    let Some(posting_count) = self
+                        .layout
+                        .lookup_posting_count(self.storage.bytes(), *gram)?
+                    else {
+                        return Ok(0);
+                    };
+                    estimate = Some(
+                        estimate.map_or(posting_count, |current: usize| current.min(posting_count)),
+                    );
+                }
+                estimate
+                    .ok_or_else(|| "resident GREP candidate plan contains no postings".to_owned())
+            }
+            ResidentGrepCandidatePlan::And(plans) => plans
+                .iter()
+                .map(|plan| self.estimate_candidate_count(plan))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .min()
+                .ok_or_else(|| "resident GREP AND candidate plan is empty".to_owned()),
+            ResidentGrepCandidatePlan::Or(plans) => plans.iter().try_fold(0usize, |total, plan| {
+                self.estimate_candidate_count(plan)
+                    .map(|count| total.saturating_add(count).min(self.owners.len()))
+            }),
+        }
+    }
 }
 
 struct PlanEvaluation {
     owners: Vec<u32>,
     decoded_posting_count: usize,
     smallest_posting_count: Option<usize>,
-}
-
-fn sum_decoded_postings(evaluations: &[PlanEvaluation]) -> Result<usize, String> {
-    evaluations.iter().try_fold(0usize, |total, evaluation| {
-        total
-            .checked_add(evaluation.decoded_posting_count)
-            .ok_or_else(|| "resident GREP decoded posting count overflows".to_owned())
-    })
-}
-
-fn smallest_posting(evaluations: &[PlanEvaluation]) -> Option<usize> {
-    evaluations
-        .iter()
-        .filter_map(|evaluation| evaluation.smallest_posting_count)
-        .min()
-}
-
-fn intersect_postings(mut postings: Vec<Vec<u32>>) -> Result<Vec<u32>, String> {
-    postings.sort_unstable_by_key(Vec::len);
-    let mut posting_iter = postings.into_iter();
-    let Some(mut intersection) = posting_iter.next() else {
-        return Err("resident GREP candidate plan contains no postings".to_owned());
-    };
-    for posting in posting_iter {
-        intersection = intersect_sorted(&intersection, &posting);
-        if intersection.is_empty() {
-            break;
-        }
-    }
-    Ok(intersection)
 }
 
 fn union_sorted(left: &[u32], right: &[u32]) -> Vec<u32> {

@@ -367,6 +367,18 @@ authority.  Decoding every remaining common posting cannot improve the work
 bound in that state.  Rust receipts report =decodedPostingCount= so the
 theorem-side cost model can be calibrated against actual executions.
 
+The same rule applies recursively to regex-HIR =And= children.  Runtime first
+estimates each child from the mmap directory without decoding its posting
+payload, executes the lowest-cardinality necessary branch, and stops when that
+sound candidate superset is empty or a singleton.  It does not first
+materialize every child vector and sort afterward.  The Rust test
+=and_plan_uses_directory_cardinality_before_decoding_common_branch= binds a
+common branch plus an absent branch and requires zero decoded postings; Lean's
+=mandatory_subset_retains_candidate_soundness= and
+=empty_candidates_imply_no_exact_hits= provide the corresponding candidate
+soundness obligations.  This changes query work only, not the V1 artifact or
+Search schema.
+
 For regexes with no sound mandatory trigram, V1's required =rg ∩ Tantivy=
 composition provides the bounded fallback: Tantivy is evaluated first and the
 resident exact matcher scans only that owner scope.  A standalone

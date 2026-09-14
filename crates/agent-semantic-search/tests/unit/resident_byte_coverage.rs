@@ -185,3 +185,47 @@ fn rarest_first_stops_decoding_at_a_singleton_for_exact_verification() {
     assert_eq!(receipt.requested_gram_count, 4);
     assert_eq!(receipt.decoded_posting_count, 1);
 }
+
+#[test]
+fn and_plan_uses_directory_cardinality_before_decoding_common_branch() {
+    let values = [
+        ("src/a.txt", b"common alpha".as_slice()),
+        ("src/b.txt", b"common beta".as_slice()),
+        ("src/c.txt", b"common gamma".as_slice()),
+    ];
+    let index = ResidentByteCoverageIndex::new(owners(&values)).unwrap();
+    let plan = ResidentGrepCandidatePlan::And(vec![
+        ResidentGrepCandidatePlan::Grams(vec![u32::from_be_bytes([0, b'c', b'o', b'm'])]),
+        ResidentGrepCandidatePlan::Grams(vec![u32::from_be_bytes([0, b'z', b'z', b'z'])]),
+    ]);
+    let (candidates, receipt) = index
+        .candidate_owner_paths_for_grep_plan_with_receipt(&plan, None, values.len())
+        .unwrap();
+
+    assert!(candidates.is_empty());
+    assert_eq!(receipt.decoded_posting_count, 0);
+    assert_eq!(receipt.smallest_posting_count, 0);
+}
+
+#[test]
+fn and_plan_stops_when_accumulated_intersection_reaches_singleton() {
+    let values = [
+        ("src/a.txt", b"aaa bbb ccc".as_slice()),
+        ("src/b.txt", b"aaa ccc".as_slice()),
+        ("src/c.txt", b"aaa ccc".as_slice()),
+        ("src/d.txt", b"bbb ccc".as_slice()),
+    ];
+    let index = ResidentByteCoverageIndex::new(owners(&values)).unwrap();
+    let gram = |bytes: [u8; 3]| {
+        ResidentGrepCandidatePlan::Grams(vec![u32::from_be_bytes([
+            0, bytes[0], bytes[1], bytes[2],
+        ])])
+    };
+    let plan = ResidentGrepCandidatePlan::And(vec![gram(*b"ccc"), gram(*b"aaa"), gram(*b"bbb")]);
+    let (candidates, receipt) = index
+        .candidate_owner_paths_for_grep_plan_with_receipt(&plan, None, values.len())
+        .unwrap();
+
+    assert_eq!(candidates, ["src/a.txt"]);
+    assert_eq!(receipt.decoded_posting_count, 5);
+}
