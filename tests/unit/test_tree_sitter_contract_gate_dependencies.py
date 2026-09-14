@@ -23,7 +23,6 @@ class _RecordedRuntimeEnv:
 
 def test_query_only_gate_neither_builds_nor_exports_complete_asp(monkeypatch) -> None:
     built: list[Path | None] = []
-    environments: list[Path | None] = []
     invoked: list[tuple[dict[str, str], str]] = []
 
     monkeypatch.setattr(
@@ -35,14 +34,17 @@ def test_query_only_gate_neither_builds_nor_exports_complete_asp(monkeypatch) ->
     monkeypatch.setattr(
         contract_gates,
         "_runtime_env",
-        lambda asp_bin: _RecordedRuntimeEnv(asp_bin, environments),
+        lambda _asp_bin: (_ for _ in ()).throw(
+            AssertionError(
+                "query-only gates must not enter the provider runtime environment"
+            )
+        ),
     )
     monkeypatch.setattr(contract_gates, "emit", lambda _message: None)
 
     assert contract_gates.main(["--gate", "query-corpus"]) == 0
     assert built == [None]
-    assert environments == [None]
-    assert invoked == [({"contract": "env"}, "")]
+    assert invoked == [(contract_gates._contract_env(contract_gates.os.environ), "")]
 
 
 def test_provider_registry_gate_retains_complete_asp_dependency(

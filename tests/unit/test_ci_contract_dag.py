@@ -65,6 +65,8 @@ def test_contract_gates_form_a_parallel_dag_around_one_asp_binary() -> None:
     assert "--gate runtime-boundary" in query_contracts
     assert "--gate query-corpus" in query_contracts
     assert "--no-build" in query_contracts
+    assert "Build syntax provider runtimes" not in query_contracts
+    assert "languages/asp-rust -> target" not in query_contracts
 
     provider_registry = contract_jobs.split(
         "  tree-sitter-provider-registry-gates:", 1

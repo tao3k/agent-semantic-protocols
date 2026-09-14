@@ -42,11 +42,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.build:
         _build_runtime(asp_bin)
-    with _runtime_env(asp_bin) as env:
-        for name, gate in selected:
-            emit(f"[tree-sitter-contract] gate={name} status=running")
-            gate(env, "" if asp_bin is None else str(asp_bin))
-            emit(f"[tree-sitter-contract] gate={name} status=ok")
+    if asp_bin is None:
+        _run_selected_gates(selected, _contract_env(os.environ), "")
+    else:
+        with _runtime_env(asp_bin) as env:
+            _run_selected_gates(selected, env, str(asp_bin))
     emit(f"tree-sitter rollout contracts are valid: gates={len(selected)}")
     return 0
 
@@ -113,10 +113,20 @@ def _selected_gates(names: list[str] | None) -> list[tuple[str, Gate]]:
     return [(name, _GATES[name]) for name in names]
 
 
+def _run_selected_gates(
+    selected: list[tuple[str, Gate]], env: dict[str, str], asp_bin: str
+) -> None:
+    for name, gate in selected:
+        emit(f"[tree-sitter-contract] gate={name} status=running")
+        gate(env, asp_bin)
+        emit(f"[tree-sitter-contract] gate={name} status=ok")
+
+
 def _build_runtime(asp_bin: Path | None) -> None:
+    if asp_bin is None:
+        return
     run(["npm", "--prefix", "languages/asp-typescript", "run", "build"])
-    if asp_bin is not None:
-        run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
+    run(["cargo", "build", "-q", "-p", "agent-semantic-client", "--bin", "asp"])
     run(
         [
             "cargo",
@@ -130,7 +140,7 @@ def _build_runtime(asp_bin: Path | None) -> None:
             "asp-rust",
         ],
     )
-    if asp_bin is not None and not asp_bin.exists():
+    if not asp_bin.exists():
         raise ContractFailure(f"asp binary not built: {asp_bin}")
 
 

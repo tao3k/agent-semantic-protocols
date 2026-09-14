@@ -453,18 +453,11 @@ jobs:
         with:
           workspaces: |
             . -> target
-            languages/asp-rust -> target
           shared-key: asp-tree-sitter-query-contracts-${{ runner.os }}
           cache-on-failure: true
 
-      - name: Build syntax provider runtimes
-        run: |
-          npm --prefix languages/asp-typescript ci
-          npm --prefix languages/asp-typescript run build
-          cargo build --quiet \
-            --manifest-path languages/asp-rust/Cargo.toml \
-            --features provider-server \
-            --bin asp-rust
+      - name: Install TypeScript query validator dependencies
+        run: npm --prefix languages/asp-typescript ci
 
       - name: Tree-sitter query and ABI gates
         run: >-
