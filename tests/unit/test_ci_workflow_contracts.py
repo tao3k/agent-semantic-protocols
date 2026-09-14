@@ -28,9 +28,10 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
         workspace_packages.append(manifest["package"]["name"])
 
     assert len(matrix_packages) == len(set(matrix_packages))
-    assert len(matrix_packages) == 28
     assert set(matrix_packages) == set(workspace_packages)
-    assert "max-parallel: 28" in workflow
+    max_parallel = re.search(r"^      max-parallel: (\d+)$", workflow, re.MULTILINE)
+    assert max_parallel is not None
+    assert int(max_parallel.group(1)) == len(matrix_packages)
     assert "github.event.pull_request.number || github.ref" in workflow
     assert "cancel-in-progress: true" in workflow
     assert (
