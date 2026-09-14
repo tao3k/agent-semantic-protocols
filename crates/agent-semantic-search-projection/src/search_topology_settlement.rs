@@ -85,8 +85,6 @@ impl SearchTopologySettlement {
         }
 
         let library_packet = required_object(library.as_json(), "Project Topology library")?;
-        let library_nodes = required_array(library_packet, "nodes")?;
-        let library_edges = required_array(library_packet, "edges")?;
         let mut rank_by_selector = BTreeMap::<String, u64>::new();
         let mut hit_by_selector = BTreeMap::<String, Value>::new();
         let mut selected_ids = BTreeSet::<String>::new();
@@ -110,10 +108,9 @@ impl SearchTopologySettlement {
                 );
             }
             hit_by_selector.insert(selector.to_owned(), Value::Object(hit.clone()));
-            let node_id = library_nodes
-                .iter()
-                .filter_map(Value::as_object)
-                .find(|node| node.get("selector").and_then(Value::as_str) == Some(selector))
+            let node_id = library
+                .search_node_by_selector(selector)
+                .and_then(Value::as_object)
                 .and_then(|node| node.get("id"))
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
@@ -129,7 +126,7 @@ impl SearchTopologySettlement {
         // a relationship graph rather than a list of independently rendered hits.
         const TOPOLOGY_NODE_LIMIT: usize = 90;
         if !selected_ids.is_empty() {
-            for edge in library_edges {
+            for edge in library.search_incident_edges(&selected_ids) {
                 let edge = required_object(edge, "Project Topology edges[]")?;
                 let from = required_text(edge, "from")?;
                 let to = required_text(edge, "to")?;
@@ -157,7 +154,7 @@ impl SearchTopologySettlement {
         }
 
         let mut nodes = Vec::new();
-        for node in library_nodes {
+        for node in library.search_nodes_by_id(&selected_ids) {
             let node = required_object(node, "Project Topology nodes[]")?;
             let id = required_text(node, "id")?;
             if !selected_ids.contains(id) {
@@ -193,7 +190,7 @@ impl SearchTopologySettlement {
         }
 
         let mut edges = Vec::new();
-        for edge in library_edges {
+        for edge in library.search_incident_edges(&selected_ids) {
             let edge = required_object(edge, "Project Topology edges[]")?;
             let from = required_text(edge, "from")?;
             let to = required_text(edge, "to")?;

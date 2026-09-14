@@ -706,6 +706,16 @@ impl RuntimeQueryGeneration {
             .expect("ready query generation always owns a resident read client")
     }
 
+    /// Clones the generation-owned resident handle without reopening or
+    /// rebuilding its process lease.
+    pub(crate) fn resident_arc(&self) -> Arc<RuntimeResidentReadClient> {
+        Arc::clone(
+            self.resident
+                .as_ref()
+                .expect("ready query generation always owns a resident read client"),
+        )
+    }
+
     /// Borrows the immutable source/Runtime product installed with this generation.
     pub fn execution_publication(
         &self,

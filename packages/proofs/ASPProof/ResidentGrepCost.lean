@@ -620,6 +620,32 @@ def residentRegistryAcquisitions (allOwnersReady : Bool) : Nat :=
 theorem ready_owner_scope_has_zero_registry_acquisitions :
     residentRegistryAcquisitions true = 0 := rfl
 
+/-- Generation-owned topology indexes make request lookup depend only on the
+selected bounded subgraph, not on complete workspace topology size. -/
+def indexedSettlementLookupWork
+    (selectedNodes incidentEdges _totalNodes _totalEdges : Nat) : Nat :=
+  selectedNodes + 2 * incidentEdges
+
+def fullScanSettlementLookupWork
+    (evidenceItems totalNodes totalEdges : Nat) : Nat :=
+  evidenceItems * totalNodes + totalNodes + 2 * totalEdges
+
+theorem indexed_settlement_work_is_independent_of_workspace
+    (selectedNodes incidentEdges firstTotalNodes secondTotalNodes
+      firstTotalEdges secondTotalEdges : Nat) :
+    indexedSettlementLookupWork selectedNodes incidentEdges
+        firstTotalNodes firstTotalEdges =
+      indexedSettlementLookupWork selectedNodes incidentEdges
+        secondTotalNodes secondTotalEdges := by
+  rfl
+
+theorem full_scan_settlement_pays_workspace_node_scan
+    (evidenceItems totalNodes totalEdges : Nat) :
+    totalNodes ≤
+      fullScanSettlementLookupWork evidenceItems totalNodes totalEdges := by
+  unfold fullScanSettlementLookupWork
+  omega
+
 /-- Default Search projects exact grounded selectors. The complete owner
 projection remains available to Query but is not expanded into Search output. -/
 def defaultSearchSelectorWork (exactGroundedSelectors : Nat) : Nat :=

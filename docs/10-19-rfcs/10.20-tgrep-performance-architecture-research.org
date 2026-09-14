@@ -720,9 +720,10 @@ flowchart TD
   J -->|typed miss| L[Group misses by provider]
   L --> T[One lifecycle check plus byte-bounded batch frames]
   T --> K
-  K --> S[Immutable base reference plus delta-only resident semantic overlay]
+  K --> S[Immutable Arc handle plus delta-only resident semantic overlay]
   S --> M[Exact selector and Relation grounding]
-  M --> N[Return first usable Search result]
+  M --> Z[Indexed bounded topology settlement]
+  Z --> N[Return first usable Search result]
   G -. independent attachment .-> O[Content-addressed segment durability]
   G -. independent attachment .-> P[Tantivy acceleration]
   K -. candidate scoped .-> Q[Request graph and Project Topology refinement]
@@ -754,6 +755,11 @@ cardinality.  A different generation or any narrower/wider owner set is a
 mandatory miss.  The Rust cache therefore remains a one-entry bounded
 optimization; the Lean model proves admission identity, while Runtime timing
 receipts determine whether the reuse removes material wall time.
+For selected topology nodes $n$, incident edges $e$, complete nodes $N$ and
+complete edges $E$, request settlement lookup work is
+$ W_("indexed") = n + 2e $, independent of $N$ and $E$.
+The forbidden full scans pay at least
+$ W_("scan") = n N + N + 2E $ before rendering and digest construction.
 First-computation observation and ready resident read have distinct budgets:
 $ B_("ready") = 1 "ms", quad T_("first") = T_("generation wait") + T_("compute wait") + T_("return") $
 The temporary 60-second observation deadline bounds diagnosis, not acceptance.
@@ -1105,21 +1111,40 @@ materialization inside Runtime (CLI startup/transport excluded):
 | Exact owner-id pushdown | 508--580us | 873--911us | 1,876--2,004us |
 | Direct owner iteration | 575--581us | 643--660us | 1,743--1,803us |
 | Exact structural-evidence hot slot | 437--499us | 24--31us | 918--1,064us |
+| Generation topology projection index | 360--451us | 29--110us | 697--901us |
 
 A following 20-expression sample of the final row observed 923us minimum,
 approximately 992us median, 1,065us p95 and 1,069us p99/max.  This is evidence
 of roughly sevenfold to eightfold improvement and occasional sub-millisecond
 completion for this selective cohort, not a stable sub-millisecond
 qualification: p95 remains above 1ms and the sample is smaller than the full
-acceptance matrix.  Remaining visible costs include resident owner readiness
+acceptance matrix.  At that point, visible costs included resident owner readiness
 (about 90--110us) and Search topology settlement (about 250--290us).
 
+A following 20-expression sample after generation-owned topology indexing,
+using boosts 51--70 over the same exact owner and syntax plan, observed 697us
+minimum, approximately 764us median, 867us p95 and 901us p99/max.  Every sample
+completed below 1ms.  Settlement itself fell to 96--126us from the preceding
+250--415us range, while owner readiness remained 98--163us and therefore does
+not yet show a wall-clock benefit from the shared =Arc=/batch boundary.  This is
+a selective hot-cohort qualification, not the complete concurrency, memory,
+incremental and cold acceptance matrix.
+
 An already admitted Runtime generation is also the owner-read authority.  When
-every requested owner is resident-semantic-ready, Search forks that exact
-generation lease by reference; reopening the same lease through the workspace
-registry, then refreshing it a second time, is forbidden resident-hit work.
+every requested owner is resident-semantic-ready, Search clones the exact
+generation-owned =Arc= read handle after one batch readiness decision;
+reopening through the workspace registry, forking another lease, or dispatching
+one authority decision per owner is forbidden resident-hit work.
 Any missing owner continues through the existing claimed materialization and
 publication path.
+
+Project Topology admission builds immutable selector, node-position, and
+incident-edge indexes beside the V1 packet.  Settlement resolves each evidence
+selector directly and traverses only the bounded incident subgraph while
+preserving canonical packet order.  These are process-local derived
+capabilities and do not alter the public schema.  The former request path paid
+one whole-node scan per selector plus another node scan and two whole-edge
+scans; that workspace-sized work is forbidden after admission.
 
 Settlement has distinct trusted-construction and untrusted-admission
 boundaries.  Externally supplied settlement JSON always receives complete V1

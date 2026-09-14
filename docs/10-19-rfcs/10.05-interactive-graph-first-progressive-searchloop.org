@@ -1860,6 +1860,17 @@ work is not serialized.  This one-slot policy bounds retained topology memory
 while removing repeated proof construction from the common refine-in-place
 SearchLoop.
 
+The admitted topology library also owns immutable request-projection indexes:
+exact selector to node, node id to canonical node position, and node id to
+canonical incident-edge positions.  Settlement MUST use those indexes to
+construct its bounded one-hop subgraph.  Re-scanning every topology node once
+per evidence selector, or scanning the complete edge table for both expansion
+and projection, is forbidden resident request work.  Packet order remains the
+deterministic rendering order, and external V1 settlement admission remains
+unchanged; these indexes are internal generation capabilities, not schema
+fields.  A ready owner scope borrows the generation-owned resident =Arc= after
+one batch readiness decision.  It does not reopen or fork another lease.
+
 The resident lexical attachment snapshot has exactly one slot per
 =(ProjectId, WorkspaceId, attachmentKind)=.  Content digest proves what was
 built; a nonzero Runtime generation token proves ordering.  Publishing a newer

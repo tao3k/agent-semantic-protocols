@@ -30,7 +30,8 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) graph_relation_patterns: Vec<agent_semantic_search::ResidentGraphRelationPattern>,
     pub(super) execution_budget:
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget,
-    pub(super) resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    pub(super) resident:
+        Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>,
     pub(super) topology_scope: BTreeSet<String>,
     pub(super) retrieval_micros: u128,
     pub(super) owner_materialization_micros: u128,
@@ -149,25 +150,25 @@ pub(super) async fn execute_progressive_search_clauses(
     })??;
     let retrieval_micros = retrieval_started.elapsed().as_micros();
     let owner_materialization_started = std::time::Instant::now();
-    let mut resident = if let Some(resident) =
-        resident_semantic_scope(generation.resident(), &retrieval.fused_scope)?
-    {
-        resident
-    } else {
-        owner_materializer
-            .ensure_candidates(
-                request_id,
-                workspace_identity,
-                project_root,
-                parser_artifact_root,
-                generation.generation_digest(),
-                &retrieval.fused_scope,
-                providers,
-                runtime_search_service,
-                workspace_registry,
-            )
-            .await?
-    };
+    let mut resident =
+        if let Some(resident) = resident_semantic_scope(&generation, &retrieval.fused_scope)? {
+            resident
+        } else {
+            owner_materializer
+                .ensure_candidates(
+                    request_id,
+                    workspace_identity,
+                    project_root,
+                    parser_artifact_root,
+                    generation.generation_digest(),
+                    &retrieval.fused_scope,
+                    providers,
+                    runtime_search_service,
+                    workspace_registry,
+                )
+                .await?
+                .into()
+        };
     let topology_scope = if graph_query_clauses.is_empty() {
         retrieval.fused_scope.clone()
     } else {
@@ -180,9 +181,7 @@ pub(super) async fn execute_progressive_search_clauses(
         )?
     };
     if topology_scope != retrieval.fused_scope {
-        resident = if let Some(resident) =
-            resident_semantic_scope(generation.resident(), &topology_scope)?
-        {
+        resident = if let Some(resident) = resident_semantic_scope(&generation, &topology_scope)? {
             resident
         } else {
             owner_materializer
@@ -198,6 +197,7 @@ pub(super) async fn execute_progressive_search_clauses(
                     workspace_registry,
                 )
                 .await?
+                .into()
         };
     }
     let owner_materialization_micros = owner_materialization_started.elapsed().as_micros();
@@ -421,21 +421,20 @@ pub(super) async fn execute_progressive_search_clauses(
 }
 
 fn resident_semantic_scope(
-    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    generation: &RuntimeQueryGeneration,
     owners: &BTreeSet<String>,
 ) -> Result<
-    Option<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>,
+    Option<Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>>,
     AspClientOperationError,
 > {
-    for owner in owners {
-        if !resident
-            .semantic_owner_materialized(owner)
-            .map_err(AspClientOperationError::Message)?
-        {
-            return Ok(None);
-        }
+    if !generation
+        .resident()
+        .semantic_owners_materialized(owners)
+        .map_err(AspClientOperationError::Message)?
+    {
+        return Ok(None);
     }
-    Ok(resident.fork_process_resident().ok())
+    Ok(Some(generation.resident_arc()))
 }
 
 pub(super) fn relation_neighbor_scope(

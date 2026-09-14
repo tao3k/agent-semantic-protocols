@@ -13,6 +13,10 @@ use serde_json::Value;
 
 use agent_semantic_content_identity::ProjectWorkspaceBinding;
 
+#[path = "project_topology_search_projection_index.rs"]
+mod search_projection_index;
+use search_projection_index::ProjectTopologySearchProjectionIndex;
+
 pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_ID: &str =
     "agent.semantic-protocols.project-topology-library";
 pub const PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION: &str = "1";
@@ -52,6 +56,7 @@ pub struct ProjectTopologyLibrary {
     node_count: usize,
     segment_count: usize,
     consumers: BTreeSet<String>,
+    search_projection_index: ProjectTopologySearchProjectionIndex,
 }
 
 impl ProjectTopologyLibrary {
@@ -388,12 +393,14 @@ impl ProjectTopologyLibrary {
             );
         }
 
+        let search_projection_index = ProjectTopologySearchProjectionIndex::build(&packet)?;
         Ok(Self {
             packet,
             project_workspace: decoded_project_workspace,
             node_count: nodes.len(),
             segment_count: segments.len(),
             consumers,
+            search_projection_index,
         })
     }
 

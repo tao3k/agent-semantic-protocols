@@ -39,16 +39,6 @@ pub struct RuntimeResidentReadWorkCounters {
 }
 
 impl RuntimeResidentReadClient {
-    /// Fork the exact process-resident generation lease by reference.
-    /// Durable readers are reopened only at admission and cannot use this
-    /// request-path shortcut.
-    pub fn fork_process_resident(&self) -> Result<Self, String> {
-        match (&self.exact_projection, &self.resident_lease) {
-            (None, Some(lease)) => Self::from_resident_lease(lease.clone()),
-            _ => Err("Runtime resident read is not backed by a process lease".to_owned()),
-        }
-    }
-
     /// Returns the owner-attributed parser topology inputs from this exact
     /// immutable generation without filesystem, DB, socket, or provider work.
     pub fn topology_source_segments(
@@ -356,6 +346,26 @@ impl RuntimeResidentReadClient {
     pub fn semantic_owner_materialized(&self, owner_path: &str) -> Result<bool, String> {
         match (&self.exact_projection, &self.resident_lease) {
             (None, Some(lease)) => Ok(lease.semantic_owner_materialized(owner_path)),
+            (Some(_), None) => Err(
+                "semantic owner materialization state requires a resident workspace lease"
+                    .to_owned(),
+            ),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    /// Tests one complete owner scope against the immutable resident overlay.
+    ///
+    /// Keeping the batch at this boundary avoids repeating authority dispatch
+    /// and makes the all-or-nothing ready-scope decision explicit.
+    pub fn semantic_owners_materialized(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Result<bool, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (None, Some(lease)) => Ok(owner_paths
+                .iter()
+                .all(|owner_path| lease.semantic_owner_materialized(owner_path))),
             (Some(_), None) => Err(
                 "semantic owner materialization state requires a resident workspace lease"
                     .to_owned(),
