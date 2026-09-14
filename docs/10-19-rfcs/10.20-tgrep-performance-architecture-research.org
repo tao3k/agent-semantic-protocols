@@ -765,6 +765,17 @@ Completed response retention is constant per generation:
 $ R_("terminal") = R_("Search") + R_("Query") <= 2 $.
 Concurrent single-flight claims are task-lifetime state and publish their
 terminal through their own watch channel before leaving the in-flight table.
+
+2026-09-15 real Runtime replacement qualification used A--B--A expressions
+against binary
+=blake3-256:5a75a752df1e0a8b21ad02aa602f9ed53b20c026a0f155c2f25a1694960581d4=.
+Search A first completed its cold candidate topology in 12,514us; B completed
+in 661us; the second A had been evicted from the terminal slot, recomputed, and
+returned Ready in 698us under the same materialization key.  Exact-selector
+Query A--B--A similarly returned Ready in 324us, 377us and 343us; the first and
+third A receipts carried the same key.  These receipts demonstrate bounded
+replacement and successful recomputation.  They do not count CLI startup and
+do not claim that eviction itself improves request latency.
 First-computation observation and ready resident read have distinct budgets:
 $ B_("ready") = 1 "ms", quad T_("first") = T_("generation wait") + T_("compute wait") + T_("return") $
 The temporary 60-second observation deadline bounds diagnosis, not acceptance.
