@@ -32,10 +32,9 @@ pub(super) struct ProgressiveSearchEvidence {
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget,
     pub(super) resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
     pub(super) topology_scope: BTreeSet<String>,
-}
-
-pub(super) struct ProgressiveSearchProjection {
-    pub(super) result: serde_json::Value,
+    pub(super) retrieval_micros: u128,
+    pub(super) owner_materialization_micros: u128,
+    pub(super) structural_micros: u128,
 }
 
 struct SearchClauseExecution {
@@ -134,6 +133,7 @@ pub(super) async fn execute_progressive_search_clauses(
     let retrieval_plan = plan.clone();
     let retrieval_generation = Arc::clone(&generation);
     let retrieval_budget = execution_budget.clone();
+    let retrieval_started = std::time::Instant::now();
     let mut retrieval = tokio::task::spawn_blocking(move || {
         let _cpu_permit = cpu_permit;
         execute_default_retrieval_layout(
@@ -147,6 +147,8 @@ pub(super) async fn execute_progressive_search_clauses(
     .map_err(|error| {
         AspClientOperationError::Message(format!("resident Search CPU lane failed: {error}"))
     })??;
+    let retrieval_micros = retrieval_started.elapsed().as_micros();
+    let owner_materialization_started = std::time::Instant::now();
     let mut resident = owner_materializer
         .ensure_candidates(
             request_id,
@@ -186,6 +188,8 @@ pub(super) async fn execute_progressive_search_clauses(
             )
             .await?;
     }
+    let owner_materialization_micros = owner_materialization_started.elapsed().as_micros();
+    let structural_started = std::time::Instant::now();
     if structural_clauses.is_empty() {
         let grounding_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
             .acquire_owned()
@@ -371,6 +375,7 @@ pub(super) async fn execute_progressive_search_clauses(
         clause_receipts.push(execution.receipt);
         syntax_candidates.extend(execution.syntax_candidates);
     }
+    let structural_micros = structural_started.elapsed().as_micros();
 
     Ok(ProgressiveSearchEvidence {
         clause_receipts,
@@ -380,6 +385,9 @@ pub(super) async fn execute_progressive_search_clauses(
         execution_budget,
         resident,
         topology_scope,
+        retrieval_micros,
+        owner_materialization_micros,
+        structural_micros,
     })
 }
 
@@ -629,105 +637,7 @@ fn fused_file_context_scope(
     rg_scope.intersection(tantivy_scope).cloned().collect()
 }
 
-pub(super) async fn synthesize_progressive_search_projection(
-    request_id: &str,
-    language_id: &str,
-    evidence: ProgressiveSearchEvidence,
-    generation: &RuntimeQueryGeneration,
-    project_root: &std::path::Path,
-) -> Result<ProgressiveSearchProjection, AspClientOperationError> {
-    let ProgressiveSearchEvidence {
-        clause_receipts,
-        syntax_candidates,
-        graph_query_clauses,
-        graph_relation_patterns,
-        execution_budget,
-        resident,
-        topology_scope,
-    } = evidence;
-    execution_budget
-        .validate_for_generation(generation.generation_digest())
-        .map_err(AspClientOperationError::Message)?;
-    let graph_candidate_owner_limit = execution_budget.graph_candidate_owner_limit();
-    let evidence_item_limit = execution_budget.evidence_item_limit();
-    let graph_fan_in = if graph_query_clauses.is_empty() {
-        None
-    } else {
-        let (candidate_owners, candidate_frontier_truncated) =
-            structural_candidate_owner_scope(&syntax_candidates, graph_candidate_owner_limit);
-        let graph_generation = resident
-            .build_graph_generation_for_owner_scope(&topology_scope)
-            .map_err(AspClientOperationError::Message)?;
-        let graph_evaluation_budget =
-            execution_budget.graph_evaluation_budget_for(&graph_generation);
-        let graph = crate::runtime_search_graph::evaluate_resident_workspace_playbook_graph(
-            request_id,
-            language_id,
-            &graph_query_clauses,
-            &graph_relation_patterns,
-            &candidate_owners,
-            graph_evaluation_budget,
-            &resident,
-            &graph_generation,
-        )
-        .map_err(|error| {
-            AspClientOperationError::Terminal(
-                agent_semantic_client_server::AspClientDispatchError {
-                    reason_kind: error.reason_kind.to_owned(),
-                    message: error.message,
-                    details: error.details,
-                },
-            )
-        })?;
-        let truncated = candidate_frontier_truncated
-            || graph_evaluation_budget.is_some_and(|budget| {
-                candidate_owners.len() > budget.max_results
-                    && graph.candidate_owner_ids.len() == budget.max_results
-            });
-        Some(agent_semantic_search::WorkspaceSearchGraphFanIn {
-            ranked_candidate_owners: graph.candidate_owner_ids,
-            applied_clause_count: graph_query_clauses.len(),
-            complete: true,
-            truncated,
-        })
-    };
-    let workspace_result = agent_semantic_search::synthesize_workspace_search_playbook_result(
-        clause_receipts,
-        syntax_candidates,
-        graph_fan_in,
-        evidence_item_limit,
-    )?;
-    let workspace_result = serde_json::to_value(workspace_result)
-        .map_err(|error| AspClientOperationError::Message(error.to_string()))?;
-    let attachment = generation
-        .build_project_topology_for_owner_scope(project_root, &resident, &topology_scope)
-        .await
-        .map_err(AspClientOperationError::Message)?;
-    let settlement =
-        agent_semantic_search_projection::SearchTopologySettlement::from_workspace_result(
-            request_id,
-            &workspace_result,
-            attachment.library(),
-        )
-        .map_err(|error| {
-            AspClientOperationError::Terminal(
-                agent_semantic_client_server::AspClientDispatchError {
-                    reason_kind: error.reason_kind().to_owned(),
-                    message: error.to_string(),
-                    details: Some(serde_json::json!({
-                        "failureStage": "search-topology-settlement",
-                        "runtimeGenerationDigest": generation.generation_digest(),
-                        "terminalCount": 1
-                    })),
-                },
-            )
-        })?;
-    Ok(ProgressiveSearchProjection {
-        result: settlement.as_json().clone(),
-    })
-}
-
-fn structural_candidate_owner_scope(
+pub(super) fn structural_candidate_owner_scope(
     candidates: &[WorkspaceSearchSyntaxCandidate],
     limit: usize,
 ) -> (Vec<String>, bool) {

@@ -48,6 +48,18 @@ theorem activation_tokens_cannot_make_a_build_publishable :
       topologyBuildPublishable runtimeA [receiptA] build = false := by
   decide
 
+theorem matching_owner_path_without_generation_identity_cannot_reuse :
+    let staleRuntime := { runtimeA with generationDigest := 999 }
+    scopeCacheA.ownerScope = scopeA ∧
+      topologyScopeReusable staleRuntime scopeA scopeCacheA = false := by
+  decide
+
+theorem matching_generation_without_exact_owner_scope_cannot_reuse :
+    let widerScope : OwnerScopeBinding := ⟨[201, 202, 203]⟩
+    scopeCacheA.runtimeGeneration = runtimeA ∧
+      topologyScopeReusable runtimeA widerScope scopeCacheA = false := by
+  decide
+
 #print axioms exact_attachment_is_admitted
 #print axioms missing_attachment_cannot_mint_a_search_settlement
 #print axioms flat_evidence_without_attachment_has_no_gql_authority
@@ -73,5 +85,10 @@ theorem activation_tokens_cannot_make_a_build_publishable :
 #print axioms exactly_one_joint_ready_product_is_publishable
 #print axioms a_late_blocking_result_cannot_escape_cancellation
 #print axioms activation_tokens_cannot_make_a_build_publishable
+#print axioms exact_generation_and_owner_scope_reuse_is_sound
+#print axioms another_generation_cannot_reuse_the_scope_attachment
+#print axioms another_owner_scope_cannot_reuse_the_scope_attachment
+#print axioms matching_owner_path_without_generation_identity_cannot_reuse
+#print axioms matching_generation_without_exact_owner_scope_cannot_reuse
 
 end ASPProof.Audit.RuntimeProjectTopologyAttachment

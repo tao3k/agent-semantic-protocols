@@ -20,7 +20,7 @@ use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::workspace_search_playbook::execute_progressive_search_clauses;
-use super::workspace_search_playbook::synthesize_progressive_search_projection;
+use super::workspace_search_projection::synthesize_progressive_search_projection;
 use super::{
     AspClientExactQueryRequest, AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest,
     AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxPlanContextRequest,

@@ -46,6 +46,24 @@ structure RuntimeProjectTopologyAttachment where
   inferenceReceipt : TopologyInferenceReceipt
   deriving DecidableEq, Repr
 
+structure OwnerScopeBinding where
+  canonicalOwners : List Nat
+  deriving DecidableEq, Repr
+
+structure ProjectTopologyScopeCacheEntry where
+  runtimeGeneration : RuntimeGenerationBinding
+  ownerScope : OwnerScopeBinding
+  attachment : RuntimeProjectTopologyAttachment
+  deriving DecidableEq, Repr
+
+def topologyScopeReusable
+    (requestedRuntime : RuntimeGenerationBinding)
+    (requestedScope : OwnerScopeBinding)
+    (entry : ProjectTopologyScopeCacheEntry) : Bool :=
+  requestedRuntime == entry.runtimeGeneration &&
+    requestedScope == entry.ownerScope &&
+    entry.attachment.runtimeGeneration == entry.runtimeGeneration
+
 def attachmentAdmitted
     (expectedRuntime : RuntimeGenerationBinding)
     (independentlyAdmitted : List TopologyInferenceReceipt)
@@ -155,6 +173,12 @@ def receiptA : TopologyInferenceReceipt :=
 def attachmentA : RuntimeProjectTopologyAttachment :=
   ⟨runtimeA, bindingA, 61, receiptA⟩
 
+def scopeA : OwnerScopeBinding :=
+  ⟨[201, 202]⟩
+
+def scopeCacheA : ProjectTopologyScopeCacheEntry :=
+  ⟨runtimeA, scopeA, attachmentA⟩
+
 def settlementA : SearchSettlementCandidate :=
   ⟨81, runtimeA, attachmentA.libraryIdentity, bindingA.topologyRootDigest,
     bindingA.topologyClosureDigest, 91, true, false, false⟩
@@ -167,6 +191,21 @@ def queryA : QueryMaterializationCandidate :=
 
 theorem exact_attachment_is_admitted :
     attachmentAdmitted runtimeA [receiptA] attachmentA = true := by
+  decide
+
+theorem exact_generation_and_owner_scope_reuse_is_sound :
+    topologyScopeReusable runtimeA scopeA scopeCacheA = true ∧
+      scopeCacheA.attachment.runtimeGeneration = runtimeA := by
+  decide
+
+theorem another_generation_cannot_reuse_the_scope_attachment :
+    let nextRuntime := { runtimeA with generationDigest := 32 }
+    topologyScopeReusable nextRuntime scopeA scopeCacheA = false := by
+  decide
+
+theorem another_owner_scope_cannot_reuse_the_scope_attachment :
+    let narrowerScope : OwnerScopeBinding := ⟨[201]⟩
+    topologyScopeReusable runtimeA narrowerScope scopeCacheA = false := by
   decide
 
 theorem missing_attachment_cannot_mint_a_search_settlement :

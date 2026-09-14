@@ -15,7 +15,7 @@ use tantivy::IndexSettings;
 use tantivy::Order;
 use tantivy::TantivyDocument;
 use tantivy::Term;
-use tantivy::collector::TopDocs;
+use tantivy::collector::{DocSetCollector, TopDocs};
 use tantivy::directory::MmapDirectory;
 use tantivy::doc;
 use tantivy::indexer::NoMergePolicy;
@@ -207,14 +207,17 @@ impl TantivyLexicalIndex {
         };
         let searcher = self.reader.searcher();
         let matches = searcher
-            .search(
-                &query,
-                &TopDocs::with_limit(limit.min(self.owner_count).max(1)).order_by_score(),
-            )
+            .search(&query, &DocSetCollector)
             .map_err(|error| format!("query resident Tantivy expression: {error}"))?;
+        // Search consumes this route as a complete candidate set before GREP
+        // intersection. Scores are not protocol data, so avoid TopDocs'
+        // scoring/top-k work and restore deterministic generation order here.
+        let mut matches = matches.into_iter().collect::<Vec<_>>();
+        matches.sort_unstable_by_key(|address| (address.segment_ord, address.doc_id));
         matches
             .into_iter()
-            .map(|(_, address)| {
+            .take(limit.min(self.owner_count).max(1))
+            .map(|address| {
                 searcher
                     .segment_reader(address.segment_ord)
                     .fast_fields()

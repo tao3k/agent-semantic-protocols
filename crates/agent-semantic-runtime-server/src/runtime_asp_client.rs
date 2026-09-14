@@ -52,6 +52,9 @@ mod syntax_plan_context_route;
 #[path = "runtime_workspace_search_playbook.rs"]
 mod workspace_search_playbook;
 
+#[path = "runtime_workspace_search_projection.rs"]
+mod workspace_search_projection;
+
 #[path = "runtime_asp_client_projection.rs"]
 mod projection_routes;
 

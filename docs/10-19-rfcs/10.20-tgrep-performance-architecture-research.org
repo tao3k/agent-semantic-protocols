@@ -726,6 +726,9 @@ flowchart TD
   G -. independent attachment .-> O[Content-addressed segment durability]
   G -. independent attachment .-> P[Tantivy acceleration]
   K -. candidate scoped .-> Q[Request graph and Project Topology refinement]
+  Q --> V{Same generation and exact owner scope?}
+  V -->|yes| W[Reuse one-slot topology attachment]
+  V -->|no| Y[Build outside cache lock and replace slot]
   O --> R[DurableReady for restart]
 #+end_src
 
@@ -744,6 +747,13 @@ It removes provider projection only when all required identities match.
 Reuse requires the cached digest to be computed from the same immutable bytes.
 Durable reuse additionally requires current content, execution and scope
 identity; request-coalescing identity alone is insufficient.
+The generation-owned Project Topology hot slot uses the same rule:
+$ Reuse_("topology") = G_("requested") = G_("cached") and S_("requested") = S_("cached") $.
+Here $S$ is the canonical exact owner set, not one representative path or a
+cardinality.  A different generation or any narrower/wider owner set is a
+mandatory miss.  The Rust cache therefore remains a one-entry bounded
+optimization; the Lean model proves admission identity, while Runtime timing
+receipts determine whether the reuse removes material wall time.
 First-computation observation and ready resident read have distinct budgets:
 $ B_("ready") = 1 "ms", quad T_("first") = T_("generation wait") + T_("compute wait") + T_("return") $
 The temporary 60-second observation deadline bounds diagnosis, not acceptance.
@@ -1051,6 +1061,15 @@ The selected architecture is therefore an ASP-owned trigram candidate artifact
 plus an independently qualified in-process exact matcher.  This retains the
 role of GREP while eliminating query-time rg processes and duplicate lifecycle
 authority.
+
+The V1 Tantivy axis is a complete candidate-set authority before GREP
+intersection; Search does not consume Tantivy score order.  Native expression
+execution therefore collects the matching document set without scoring, sorts
+stable document addresses only for deterministic output, and applies the
+existing bound afterward.  Maintaining a scored top-k heap for a rank that is
+immediately discarded is forbidden acquisition work.  This does not weaken
+the existing fail-closed rule: a bound that truncates the set still cannot be
+treated as complete fused scope.
 
 * Verdict
 
