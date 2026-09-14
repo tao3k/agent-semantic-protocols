@@ -251,6 +251,33 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
 }
 
 #[test]
+fn durable_restore_and_new_build_publish_the_same_query_generation_handoff() {
+    let source = include_str!("../../src/runtime_server/core.rs");
+    let publication_calls = source
+        .match_indices("workspace_generation_publication(")
+        .count();
+    assert_eq!(
+        publication_calls, 3,
+        "one definition plus restore and build call sites must share the handoff composer"
+    );
+    let restore = source
+        .find("Ok(published) if restored_generation_covers_demand =>")
+        .expect("durable restore Ready branch");
+    let restore_publication = source[restore..]
+        .find("generation_publication.publish(")
+        .map(|offset| restore + offset)
+        .expect("restored generation handoff publication");
+    let restore_completion = source[restore..]
+        .find("WorkspaceGenerationBuildCompletion::new(")
+        .map(|offset| restore + offset)
+        .expect("restored generation Ready completion");
+    assert!(
+        restore_publication < restore_completion,
+        "durable restore must publish the query-generation handoff before Ready"
+    );
+}
+
+#[test]
 fn cold_byte_generation_is_published_before_source_index_durability_attachment() {
     let source = include_str!("../../src/runtime_server/core.rs");
     let durability_source = include_str!("../../src/runtime_server/durability.rs");

@@ -64,6 +64,21 @@ stored on the workspace resident entry.  Healthcheck reports =failed= and the
 repair lane republishes from the still-complete resident generation.  A server
 restart may restore only a =durable-ready= generation.
 
+A process-cold durable restore MUST publish the same
+=WorkspaceGenerationPublished= observation as a newly built resident
+generation before the restore admission returns =Ready=.  That observation is
+the sole handoff to the Runtime query-generation observer, which constructs the
+content-bound in-process generation and schedules its lexical attachment under
+one single-flight lane.  Restoring the resident pointer without publishing this
+observation is a partial restore: exact bytes may be mapped, but Search has no
+lexical terminal and therefore MUST NOT be represented as a complete recovery.
+
+The lexical attachment may finish asynchronously after resident publication,
+but every Search that requires it waits on the one published terminal.  A
+restart must neither omit that terminal nor start a second generation build.
+The wait inherits the request's existing deadline; it does not create a new
+timeout or convert =materializing= into success.
+
 * Performance qualification
 
 The empirical gate uses multiple workspaces, multiple sessions, repeated

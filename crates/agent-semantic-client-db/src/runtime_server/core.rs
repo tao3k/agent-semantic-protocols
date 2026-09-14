@@ -20,6 +20,34 @@ use crate::WorkspaceDbRegistry;
 
 type RuntimeBundleDigestProbe = Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync>;
 
+fn workspace_generation_publication(
+    registry_root: &std::path::Path,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    generation_digest: String,
+) -> Result<crate::runtime_server_publication::WorkspaceGenerationPublished, String> {
+    let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
+        registry_root,
+        workspace_identity,
+        project_root,
+    )?;
+    let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    let project_id =
+        agent_semantic_client_protocol::ClientProjectId::new(resolved.repo.repo_id.to_string())?;
+    let workspace_id = agent_semantic_client_protocol::ClientWorkspaceIdentity::new(
+        workspace_identity.to_owned(),
+    )?;
+    Ok(
+        crate::runtime_server_publication::WorkspaceGenerationPublished {
+            project_id,
+            workspace_id,
+            project_root: project_root.to_path_buf(),
+            resident_pointer_path: pointer_path,
+            generation_digest,
+        },
+    )
+}
+
 #[path = "durability.rs"]
 mod durability;
 use durability::{
@@ -398,6 +426,20 @@ impl RuntimeServer {
                         );
                         match pointer_restore {
                             Ok(published) if restored_generation_covers_demand => {
+                            generation_publication.publish(
+                                workspace_generation_publication(
+                                    memory_registry.root(),
+                                    &workspace_identity,
+                                    &project_root,
+                                    published.generation_digest.clone(),
+                                )
+                                .map_err(|error| {
+                                    crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                                        error,
+                                    )
+                                })?,
+                            );
                             publish_event(
                                 events.as_ref(),
                                 RuntimeServerEvent::WorkspaceGenerationResidentPublished {
@@ -576,44 +618,21 @@ impl RuntimeServer {
                             "elapsedMicros": u64::try_from(resident_publication_started.elapsed().as_micros()).unwrap_or(u64::MAX),
                         })
                     );
-                    let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
-                        memory_registry.root(), &workspace_identity, &project_root,
-                    ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                        error,
-                    ))?;
-                    let project_id = agent_semantic_client_protocol::ClientProjectId::new(
-                        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+                    let query_publication = workspace_generation_publication(
+                        memory_registry.root(),
+                        &workspace_identity,
+                        &project_root,
+                        published.generation_digest.clone(),
+                    )
                     .map_err(|error| {
                         crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                            format!("failed to resolve publication ProjectId: {error}"),
-                        )
-                    })?
-                    .repo
-                    .repo_id
-                    .to_string(),
-                    ).map_err(|error| {
-                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
                             error,
                         )
                     })?;
-                    let workspace_id = agent_semantic_client_protocol::ClientWorkspaceIdentity::new(
-                        workspace_identity.clone(),
-                    ).map_err(|error| {
-                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                            error,
-                        )
-                    })?;
-                    generation_publication.publish(crate::runtime_server_publication::WorkspaceGenerationPublished {
-                        project_id: project_id.clone(),
-                        workspace_id: workspace_id.clone(),
-                        project_root: project_root.clone(),
-                        resident_pointer_path: pointer_path,
-                        generation_digest: published.generation_digest.clone(),
-                    });
+                    let project_id = query_publication.project_id.clone();
+                    let workspace_id = query_publication.workspace_id.clone();
+                    generation_publication.publish(query_publication);
                     let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| {
                         crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
