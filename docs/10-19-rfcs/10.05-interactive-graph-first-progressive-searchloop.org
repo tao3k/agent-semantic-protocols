@@ -1850,6 +1850,16 @@ automatic grounding only to discard it afterward.  This preserves the same
 result semantics while removing a redundant selector scan and blocking-lane
 handoff from every structurally composed Search.
 
+Project Topology construction is keyed by the exact generation-bound owner
+scope, not by the textual Search expression.  Each Runtime Query generation
+retains at most one immutable scope attachment.  A refined Search over the same
+owner set reuses that admitted inference library and receipt; a different owner
+set may replace the slot.  Cache inspection and replacement are constant-time,
+and a miss performs inference outside the lock, so unrelated concurrent Search
+work is not serialized.  This one-slot policy bounds retained topology memory
+while removing repeated proof construction from the common refine-in-place
+SearchLoop.
+
 The resident lexical attachment snapshot has exactly one slot per
 =(ProjectId, WorkspaceId, attachmentKind)=.  Content digest proves what was
 built; a nonzero Runtime generation token proves ordering.  Publishing a newer

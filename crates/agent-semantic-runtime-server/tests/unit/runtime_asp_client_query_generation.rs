@@ -21,6 +21,7 @@ fn generation_without_resident_authority(
         resident: None,
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
+        project_topology_scope_attachment: std::sync::Mutex::new(None),
         project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),

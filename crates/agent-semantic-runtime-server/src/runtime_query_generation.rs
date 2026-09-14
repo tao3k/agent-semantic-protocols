@@ -34,6 +34,12 @@ pub struct RuntimeQueryGeneration {
                 Arc<str>,
             >,
         >,
+    pub(super) project_topology_scope_attachment: Mutex<
+        Option<(
+            BTreeSet<String>,
+            Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
+        )>,
+    >,
     pub(super) project_topology_completion: tokio::sync::watch::Sender<bool>,
     pub(super) lexical_attachment_completion: tokio::sync::watch::Sender<bool>,
     pub(super) build_resource_receipt:
@@ -93,6 +99,7 @@ impl RuntimeQueryGeneration {
             resident: Some(Arc::new(resident)),
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
+            project_topology_scope_attachment: Mutex::new(None),
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
@@ -115,6 +122,7 @@ impl RuntimeQueryGeneration {
             resident: Some(Arc::new(resident)),
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
+            project_topology_scope_attachment: Mutex::new(None),
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
@@ -356,9 +364,25 @@ impl RuntimeQueryGeneration {
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
         owner_scope: &BTreeSet<String>,
-    ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
-        self.build_project_topology(project_root, resident, Some(owner_scope))
-            .await
+    ) -> Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, String> {
+        if let Some((_, attachment)) = self
+            .project_topology_scope_attachment
+            .lock()
+            .map_err(|_| "Runtime Project Topology scope cache poisoned".to_owned())?
+            .as_ref()
+            .filter(|(cached_scope, _)| cached_scope == owner_scope)
+        {
+            return Ok(Arc::clone(attachment));
+        }
+        let attachment = Arc::new(
+            self.build_project_topology(project_root, resident, Some(owner_scope))
+                .await?,
+        );
+        self.project_topology_scope_attachment
+            .lock()
+            .map_err(|_| "Runtime Project Topology scope cache poisoned".to_owned())?
+            .replace((owner_scope.clone(), Arc::clone(&attachment)));
+        Ok(attachment)
     }
 
     async fn build_project_topology(
