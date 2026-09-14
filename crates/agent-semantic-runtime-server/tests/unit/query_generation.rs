@@ -330,12 +330,48 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
         project_topology_scope_attachment: std::sync::Mutex::new(None),
+        resident_syntax_scope_evidence: std::sync::Mutex::new(None),
         project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
         search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
         query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
     })
+}
+
+#[test]
+fn resident_syntax_scope_cache_requires_exact_plan_and_owner_set() {
+    let generation = test_generation("syntax-scope-cache-generation");
+    let scope = std::collections::BTreeSet::from(["src/lib.rs".to_owned()]);
+    let evidence = std::sync::Arc::new(Vec::new());
+    generation
+        .publish_resident_syntax_scope_evidence(
+            "plan-a".to_owned(),
+            scope.clone(),
+            std::sync::Arc::clone(&evidence),
+        )
+        .expect("publish exact structural evidence");
+    assert!(
+        generation
+            .resident_syntax_scope_evidence("plan-a", &scope)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        generation
+            .resident_syntax_scope_evidence("plan-b", &scope)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        generation
+            .resident_syntax_scope_evidence(
+                "plan-a",
+                &std::collections::BTreeSet::from(["src/other.rs".to_owned()]),
+            )
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

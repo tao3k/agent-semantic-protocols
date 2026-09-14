@@ -1088,6 +1088,14 @@ then testing set membership repeats workspace-sized work on each distinct
 Search expression.  The resident projection lookup remains fail-closed for an
 absent or diagnostic owner, so direct iteration does not weaken admission.
 
+Different lexical expressions may converge on the same generation, structural
+plan digest and exact owner set.  Runtime may retain one successful structural
+evidence vector under that complete key.  The slot is generation-owned,
+constant-cardinality and replaced on a different plan or scope; it is not a
+global query cache and never reuses failures.  Computing a miss occurs outside
+the mutex.  This removes repeated selector filtering without weakening the
+content/generation binding carried by the resident plan.
+
 * Verdict
 
 ASP does not need tgrep's product architecture, but it does need GREP's role.

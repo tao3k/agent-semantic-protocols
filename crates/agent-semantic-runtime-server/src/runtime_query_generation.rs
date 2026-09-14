@@ -40,6 +40,7 @@ pub struct RuntimeQueryGeneration {
             Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
         )>,
     >,
+    pub(super) resident_syntax_scope_evidence: Mutex<Option<RuntimeSyntaxScopeEvidence>>,
     pub(super) project_topology_completion: tokio::sync::watch::Sender<bool>,
     pub(super) lexical_attachment_completion: tokio::sync::watch::Sender<bool>,
     pub(super) build_resource_receipt:
@@ -64,6 +65,12 @@ pub(crate) enum RuntimeQueryMaterializationState {
     Building(Arc<tokio::sync::watch::Sender<bool>>),
     Ready(Arc<serde_json::Value>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
+}
+
+pub(super) struct RuntimeSyntaxScopeEvidence {
+    plan_digest: String,
+    owner_scope: BTreeSet<String>,
+    evidence: Arc<Vec<agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryEvidence>>,
 }
 
 impl RuntimeQueryGeneration {
@@ -100,6 +107,7 @@ impl RuntimeQueryGeneration {
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             project_topology_scope_attachment: Mutex::new(None),
+            resident_syntax_scope_evidence: Mutex::new(None),
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
@@ -123,6 +131,7 @@ impl RuntimeQueryGeneration {
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             project_topology_scope_attachment: Mutex::new(None),
+            resident_syntax_scope_evidence: Mutex::new(None),
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
@@ -383,6 +392,42 @@ impl RuntimeQueryGeneration {
             .map_err(|_| "Runtime Project Topology scope cache poisoned".to_owned())?
             .replace((owner_scope.clone(), Arc::clone(&attachment)));
         Ok(attachment)
+    }
+
+    pub(crate) fn resident_syntax_scope_evidence(
+        &self,
+        plan_digest: &str,
+        owner_scope: &BTreeSet<String>,
+    ) -> Result<
+        Option<Arc<Vec<agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryEvidence>>>,
+        String,
+    > {
+        Ok(self
+            .resident_syntax_scope_evidence
+            .lock()
+            .map_err(|_| "Runtime resident syntax scope cache poisoned".to_owned())?
+            .as_ref()
+            .filter(|cached| {
+                cached.plan_digest == plan_digest && cached.owner_scope == *owner_scope
+            })
+            .map(|cached| Arc::clone(&cached.evidence)))
+    }
+
+    pub(crate) fn publish_resident_syntax_scope_evidence(
+        &self,
+        plan_digest: String,
+        owner_scope: BTreeSet<String>,
+        evidence: Arc<Vec<agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryEvidence>>,
+    ) -> Result<(), String> {
+        self.resident_syntax_scope_evidence
+            .lock()
+            .map_err(|_| "Runtime resident syntax scope cache poisoned".to_owned())?
+            .replace(RuntimeSyntaxScopeEvidence {
+                plan_digest,
+                owner_scope,
+                evidence,
+            });
+        Ok(())
     }
 
     async fn build_project_topology(

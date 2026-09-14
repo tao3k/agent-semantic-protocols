@@ -264,15 +264,32 @@ pub(super) async fn execute_progressive_search_clauses(
                 let structural_resident = workspace_registry
                     .resident_read_client(workspace_identity, project_root)
                     .map_err(AspClientOperationError::Message)?;
-                let evidence = execute_workspace_syntax_query_evidence(
-                    &syntax_request,
-                    generation.generation_digest(),
-                    &structural_resident,
-                    providers,
-                    execution_budget.syntax_selector_limit(),
-                    Some(&retrieval.fused_scope),
-                )
-                .await?;
+                let evidence = if let Some(evidence) = generation
+                    .resident_syntax_scope_evidence(&block.plan.plan_digest, &retrieval.fused_scope)
+                    .map_err(AspClientOperationError::Message)?
+                {
+                    evidence
+                } else {
+                    let evidence = Arc::new(
+                        execute_workspace_syntax_query_evidence(
+                            &syntax_request,
+                            generation.generation_digest(),
+                            &structural_resident,
+                            providers,
+                            execution_budget.syntax_selector_limit(),
+                            Some(&retrieval.fused_scope),
+                        )
+                        .await?,
+                    );
+                    generation
+                        .publish_resident_syntax_scope_evidence(
+                            block.plan.plan_digest.clone(),
+                            retrieval.fused_scope.clone(),
+                            Arc::clone(&evidence),
+                        )
+                        .map_err(AspClientOperationError::Message)?;
+                    evidence
+                };
                 let owners = evidence
                     .iter()
                     .map(|item| item.owner.clone())
