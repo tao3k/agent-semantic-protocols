@@ -10,6 +10,8 @@ use super::qualification_receipt_path;
 use super::select_qualification_cases;
 use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerminal;
 use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
+use crate::command::live_corpus::qualification::client_protocol::workspace_search_qualification_request;
+use crate::command::live_corpus::qualification::client_protocol::workspace_search_scheme_source;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
 use crate::command::live_corpus::qualification::contract::QualificationCase;
 use crate::command::live_corpus::qualification::contract::QualificationQuery;
@@ -46,6 +48,33 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
         },
         required_telemetry_events: Vec::new(),
     }
+}
+
+#[test]
+fn qualification_search_is_lowered_through_one_scheme_expression() {
+    let search = QualificationSearch {
+        rg: vec![
+            "-n".to_owned(),
+            "-F".to_owned(),
+            "owner \"identity\"".to_owned(),
+            ".".to_owned(),
+        ],
+        tantivy: vec!["title:\"owner identity\"^2 OR body:owner".to_owned()],
+        minimum_candidates: 1,
+        maximum_search_micros: 500_000,
+    };
+    let source = workspace_search_scheme_source("rust", true, false, &search)
+        .expect("canonical Search Scheme source");
+    assert!(source.starts_with("(search (producers (language rust)) (intersect (rg "));
+    assert!(source.contains("owner \\\"identity\\\""));
+
+    let request = workspace_search_qualification_request("rust", &search)
+        .expect("Scheme-lowered Search request");
+    assert_eq!(request.language.as_deref(), Some("rust"));
+    assert_eq!(request.documents, None);
+    assert_eq!(request.rg, Some(vec![search.rg]));
+    assert_eq!(request.tantivy, Some(vec![search.tantivy]));
+    assert_eq!(request.clause_order.len(), 2);
 }
 
 fn error_frame(

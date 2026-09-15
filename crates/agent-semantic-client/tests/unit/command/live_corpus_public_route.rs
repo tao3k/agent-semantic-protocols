@@ -24,6 +24,8 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "RuntimeLanguageCommandClient",
         "LanguageCommandClient",
         "LanguageCommandRequest",
+        "parse_progressive_search_playbook_args",
+        "workspace_search_scheme_source",
     ] {
         assert!(
             owner.contains(required),
@@ -36,6 +38,8 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "read_runtime_exact_projection",
         "restore_runtime_generation_from_pointer",
         concat!("AspClientProtocol", "HttpClient"),
+        "rg: Some(vec![search.rg.clone()])",
+        "tantivy: Some(vec![search.tantivy.clone()])",
     ] {
         assert!(
             !owner.contains(forbidden),

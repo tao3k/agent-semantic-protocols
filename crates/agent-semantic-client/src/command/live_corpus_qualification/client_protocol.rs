@@ -679,7 +679,7 @@ pub(crate) async fn search_receipt_for_literal<C: LanguageCommandClient>(
     search_receipt(client, project_root, language_id, &search).await
 }
 
-fn workspace_search_qualification_request(
+pub(super) fn workspace_search_qualification_request(
     producer_id: &str,
     search: &super::contract::QualificationSearch,
 ) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
@@ -732,29 +732,99 @@ fn workspace_search_qualification_request(
         ));
     }
 
+    let scheme_source = workspace_search_scheme_source(
+        producer_id,
+        language.is_some(),
+        documents.is_some(),
+        search,
+    )?;
+    let parsed = agent_semantic_search::parse_progressive_search_playbook_args(&[
+        "search".to_owned(),
+        "playbook".to_owned(),
+        scheme_source,
+    ])
+    .map_err(|error| format!("lower Live Corpus Search Scheme: {error}"))?;
     Ok(AspClientWorkspaceSearchPlaybookRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
         schema_version: "1".to_owned(),
-        language,
-        documents,
-        workspace: None,
-        rg: Some(vec![search.rg.clone()]),
-        tantivy: Some(vec![search.tantivy.clone()]),
+        language: parsed.language,
+        documents: parsed.documents,
+        workspace: parsed.workspace,
+        rg: (!parsed.rg.is_empty()).then_some(parsed.rg),
+        tantivy: (!parsed.tantivy.is_empty()).then_some(parsed.tantivy),
         syntax: None,
-        native_syntax: None,
-        graph: None,
-        clause_order: vec![
-            AspClientSearchPlaybookClauseRef {
-                axis: AspClientSearchPlaybookClauseAxis::Rg,
-                block_index: 0,
-            },
-            AspClientSearchPlaybookClauseRef {
-                axis: AspClientSearchPlaybookClauseAxis::Tantivy,
-                block_index: 0,
-            },
-        ],
+        native_syntax: (!parsed.native_syntax.is_empty()).then_some(parsed.native_syntax),
+        graph: (!parsed.graph.is_empty()).then(|| {
+            parsed
+                .graph
+                .into_iter()
+                .map(
+                    |block| agent_semantic_client_protocol::AspClientSearchPlaybookGraphBlock {
+                        language: block.language,
+                        argv: block.argv,
+                    },
+                )
+                .collect()
+        }),
+        clause_order: parsed
+            .clause_order
+            .into_iter()
+            .map(|clause| AspClientSearchPlaybookClauseRef {
+                axis: match clause.axis {
+                    agent_semantic_search::SearchPlaybookClauseAxis::Rg => {
+                        AspClientSearchPlaybookClauseAxis::Rg
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Tantivy => {
+                        AspClientSearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Syntax => {
+                        AspClientSearchPlaybookClauseAxis::Syntax
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::NativeSyntax => {
+                        AspClientSearchPlaybookClauseAxis::NativeSyntax
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Graph => {
+                        AspClientSearchPlaybookClauseAxis::Graph
+                    }
+                },
+                block_index: clause.block_index,
+            })
+            .collect(),
     })
+}
+
+pub(super) fn workspace_search_scheme_source(
+    producer_id: &str,
+    language_axis: bool,
+    document_axis: bool,
+    search: &super::contract::QualificationSearch,
+) -> Result<String, String> {
+    if language_axis == document_axis {
+        return Err(format!(
+            "Live Corpus Search producer must resolve to exactly one axis: {producer_id}"
+        ));
+    }
+    let axis = if language_axis {
+        "language"
+    } else {
+        "documents"
+    };
+    let encode_leaf = |name: &str, argv: &[String]| -> Result<String, String> {
+        let encoded = argv
+            .iter()
+            .map(|argument| {
+                serde_json::to_string(argument)
+                    .map_err(|error| format!("encode Search Scheme string: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(format!("({name} {})", encoded.join(" ")))
+    };
+    Ok(format!(
+        "(search (producers ({axis} {producer_id})) (intersect {} {}))",
+        encode_leaf("rg", &search.rg)?,
+        encode_leaf("tantivy", &search.tantivy)?,
+    ))
 }
 
 fn workspace_search_qualification_receipt(

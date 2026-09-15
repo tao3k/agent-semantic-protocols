@@ -63,6 +63,16 @@ coverage declared by =appliesToCaseCount=.  An aggregation step may join shard
 receipts only after all declared resource identities and the common plan and
 lock digests agree.
 
+The V1 plan's =rg= and =tantivy= arrays are immutable workload tokens, not an
+alternate public argument grammar.  Before dispatch, the test target MUST
+encode those tokens into one canonical =(search ...)= Scheme expression and
+lower that expression through the same =parse_progressive_search_playbook_args=
+authority as =asp search playbook=.  Constructing
+=AspClientWorkspaceSearchPlaybookRequest= directly from the arrays is a test
+bypass and is forbidden.  Exact Query qualification must likewise converge on
+the public Query Playbook parser; direct =ExactQuery= dispatch remains an
+explicitly visible gap until that Scheme grammar is the public V1 authority.
+
 * First divergence
 
 The qualification test can be admitted and enumerate the declared
