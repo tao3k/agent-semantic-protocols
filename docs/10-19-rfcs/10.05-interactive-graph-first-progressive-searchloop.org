@@ -34,6 +34,22 @@ single-flight submission; neither a failed generation nor a timeout is retried.
 The V1 zero-work resident-read receipt applies only to the cache-ready phase.
 First-computation timing is a separate diagnostic, never a forged resident receipt.
 
+A generation-bound Search materialization hit is resolved before request-local
+provider planning, workspace-root cloning, parser grounding, graph evaluation,
+or topology settlement.  Its hot-path algorithm is one normalized request
+identity computation, one current-generation lookup, and one materialization
+map lookup.  The cached terminal already binds the provider/catalog and
+generation identities established by its first computation; replaying those
+expensive stages on a hit is neither additional validation nor admissible
+resident work.
+
+The lightweight Search-core Project Topology is a generation-scoped
+single-flight attachment built only from immutable Search projection segments.
+Its identity cannot depend on one request's candidate set: a zero-match and a
+positive Search over the same generation settle against the same base topology.
+Request-local parser/Relation enrichment remains an on-demand overlay and does
+not rebuild or rename that base closure.
+
 ** Process-cold generation reuse is proof-bound
 
 A Runtime restart MUST NOT turn an unchanged workspace into an unconditional

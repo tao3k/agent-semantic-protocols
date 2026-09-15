@@ -16,6 +16,7 @@ use super::{
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct ProjectTopologySearchProjectionIndex {
     node_by_selector: BTreeMap<String, usize>,
+    node_by_owner_locator: BTreeMap<String, usize>,
     node_by_id: BTreeMap<String, usize>,
     incident_edges_by_node: BTreeMap<String, Vec<usize>>,
 }
@@ -37,6 +38,17 @@ impl ProjectTopologySearchProjectionIndex {
                 return invalid(
                     "topology-duplicate-selector",
                     format!("duplicate topology selector {selector}"),
+                );
+            }
+            if let Some(owner_locator) = node.get("ownerLocator").and_then(Value::as_str)
+                && index
+                    .node_by_owner_locator
+                    .insert(owner_locator.to_owned(), position)
+                    .is_some()
+            {
+                return invalid(
+                    "topology-duplicate-owner-locator",
+                    format!("duplicate topology owner locator {owner_locator}"),
                 );
             }
         }
@@ -62,6 +74,15 @@ impl ProjectTopologyLibrary {
             .search_projection_index
             .node_by_selector
             .get(selector)?;
+        self.packet.get("nodes")?.as_array()?.get(index)
+    }
+
+    /// Resolves one immutable Search-core owner without scanning all nodes.
+    pub fn search_node_by_owner_locator(&self, owner_locator: &str) -> Option<&Value> {
+        let index = *self
+            .search_projection_index
+            .node_by_owner_locator
+            .get(owner_locator)?;
         self.packet.get("nodes")?.as_array()?.get(index)
     }
 

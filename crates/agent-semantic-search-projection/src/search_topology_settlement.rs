@@ -88,9 +88,13 @@ impl SearchTopologySettlement {
         let mut rank_by_selector = BTreeMap::<String, u64>::new();
         let mut hit_by_selector = BTreeMap::<String, Value>::new();
         let mut selected_ids = BTreeSet::<String>::new();
+        let mut grounded_nodes = Vec::<Value>::new();
+        let mut grounding_edges = Vec::<Value>::new();
         for (rank, item) in evidence.iter().enumerate() {
             let item = required_object(item, "evidence[]")?;
             let selector = required_text(item, "selector")?;
+            let owner = required_text(item, "owner")?;
+            let item_identity = required_text(item, "item")?;
             if rank_by_selector
                 .insert(selector.to_owned(), rank as u64 + 1)
                 .is_some()
@@ -108,18 +112,75 @@ impl SearchTopologySettlement {
                 );
             }
             hit_by_selector.insert(selector.to_owned(), Value::Object(hit.clone()));
-            let node_id = library
+            if let Some(node_id) = library
                 .search_node_by_selector(selector)
+                .and_then(Value::as_object)
+                .and_then(|node| node.get("id"))
+                .and_then(Value::as_str)
+            {
+                selected_ids.insert(node_id.to_owned());
+                continue;
+            }
+            let parsed =
+                agent_semantic_content_identity::CanonicalItemSelector::parse(selector.to_owned())
+                    .map_err(|cause| {
+                        error(
+                            "search-selector-invalid",
+                            format!("Search selector is not canonical: {cause}"),
+                        )
+                    })?;
+            if parsed.owner_path().map_err(|cause| {
+                error(
+                    "search-selector-owner-invalid",
+                    format!("Search selector owner is invalid: {cause}"),
+                )
+            })? != owner
+                || selector.split_once("#item/").map(|(_, identity)| identity)
+                    != Some(item_identity)
+            {
+                return invalid(
+                    "search-selector-grounding-mismatch",
+                    "Search selector does not bind its declared owner and item",
+                );
+            }
+            let owner_locator = format!("{}://{owner}", parsed.language_id.as_str());
+            let owner_node_id = library
+                .search_node_by_owner_locator(&owner_locator)
                 .and_then(Value::as_object)
                 .and_then(|node| node.get("id"))
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
                     error(
                         "search-selector-absent-from-topology",
-                        format!("Search selector is absent from Project Topology: {selector}"),
+                        format!("Search selector owner is absent from Project Topology: {owner}"),
                     )
                 })?;
-            selected_ids.insert(node_id.to_owned());
+            selected_ids.insert(owner_node_id.to_owned());
+            let node_id = format!(
+                "grounded-{}",
+                &blake3::hash(selector.as_bytes()).to_hex().as_str()[..24]
+            );
+            grounded_nodes.push(serde_json::json!({
+                "id": node_id,
+                "language": parsed.language_id.as_str(),
+                "kind": parsed.kind.as_str(),
+                "name": parsed.symbol.as_str(),
+                "selector": selector,
+                "projection": {
+                    "rank": rank as u64 + 1,
+                    "depth": 0,
+                    "hit": hit_by_selector[selector].clone(),
+                },
+            }));
+            grounding_edges.push(serde_json::json!({
+                "from": owner_node_id,
+                "to": node_id,
+                "relation": "CONTAINS",
+                "modality": "parser-direct",
+                "producerAuthority": "provider-parser",
+                "evidenceAuthority": "provider-witness",
+                "witnesses": ["search-result-grounding"],
+            }));
         }
 
         // Add a bounded one-hop topology neighborhood so the Search result is
@@ -188,6 +249,7 @@ impl SearchTopologySettlement {
             }
             nodes.push(Value::Object(projected));
         }
+        nodes.extend(grounded_nodes);
 
         let mut edges = Vec::new();
         for edge in library.search_incident_edges(&selected_ids) {
@@ -227,6 +289,7 @@ impl SearchTopologySettlement {
             }
             edges.push(projected);
         }
+        edges.extend(grounding_edges);
 
         let mut selectors = rank_by_selector.keys().cloned().collect::<Vec<_>>();
         selectors.sort();

@@ -49,6 +49,12 @@ async fn generated_v2_library_with_frontier() -> ProjectTopologyLibrary {
         "src/registry.rs",
         digest('1'),
         vec![
+            ProjectTopologySourceNode::new_owner(
+                "registry-owner",
+                "rust",
+                "src/registry.rs",
+            )
+            .expect("registry owner node"),
             ProjectTopologySourceNode::new(
                 "registry",
                 "rust://src/registry.rs#item/struct/Registry",
@@ -527,4 +533,49 @@ fn workspace_result_cannot_mint_a_selector_absent_from_attached_topology() {
     )
     .expect_err("flat evidence cannot bypass topology authority");
     assert_eq!(error.reason_kind(), "search-selector-absent-from-topology");
+}
+
+#[tokio::test]
+async fn request_grounded_selector_joins_its_generation_owned_base_owner() {
+    let library = generated_v2_library_with_frontier().await;
+    let selector = "rust://src/registry.rs#item/function/new_runtime_selector";
+    let settlement = SearchTopologySettlement::from_workspace_result(
+        "search-request-grounded-selector",
+        &serde_json::json!({
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
+            "schemaVersion": "1",
+            "result": "exact-selector-ready",
+            "evidenceItemLimit": 30,
+            "evidence": [{
+                "owner": "src/registry.rs",
+                "item": "function/new_runtime_selector",
+                "selector": selector,
+                "matchedBy": ["rg:0", "tantivy:0"],
+                "relation": "syntax-capture:function",
+                "hit": {"rg": [[1, 1]], "tantivy": ["new_runtime_selector"]}
+            }]
+        }),
+        &library,
+    )
+    .expect("request-grounded selector must join an admitted base owner");
+
+    assert_eq!(
+        settlement.as_json()["binding"]["topologyGenerationDigest"],
+        library.generation_digest()
+    );
+    assert!(
+        settlement.as_json()["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["selector"] == selector)
+    );
+    assert!(
+        settlement.as_json()["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["relation"] == "CONTAINS"
+                && edge["witnesses"] == serde_json::json!(["search-result-grounding"]))
+    );
 }

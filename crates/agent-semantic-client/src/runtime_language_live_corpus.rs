@@ -80,10 +80,17 @@ impl AspClient {
         language_id: &str,
         provider_id: &str,
     ) -> Result<agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt, String>{
+        let canonical_project_root =
+            agent_semantic_client_core::state_core::ResolvedState::resolve_with_state_home(
+                &self.project_root,
+                &self.state_home,
+            )?
+            .workspace
+            .root;
         let request = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationRequest {
             schema_id: agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RUNTIME_MERKLE_OWNER_PROOF_QUALIFICATION_REQUEST_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
-            project_root: self.project_root.display().to_string(),
+            project_root: canonical_project_root.display().to_string(),
             owner_paths: owner_paths.to_vec(),
             case_id: case_id.to_owned(),
             resource_id: resource_id.to_owned(),

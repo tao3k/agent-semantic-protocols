@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use super::client_protocol::ResidentSearchLatencyBudget;
 use super::client_protocol::qualify_public_client_case;
 use super::client_protocol::search_receipt_for_scheme;
 use super::query_protocol::public_query_set;
@@ -58,6 +59,7 @@ struct PreparedRun {
     concurrent_sample_count: usize,
     cold_load_sample_count: usize,
     protocol_qualified_case_count: usize,
+    resident_search_latency_budget: ResidentSearchLatencyBudget,
     cases: Vec<PreparedCase>,
 }
 
@@ -355,6 +357,7 @@ pub(crate) async fn run(
         concurrent_sample_count,
         cold_load_sample_count,
         protocol_qualified_case_count,
+        resident_search_latency_budget,
         cases,
     } = prepared;
     let selected_case_count = cases.len();
@@ -475,6 +478,7 @@ pub(crate) async fn run(
                 multi_source_query,
                 multi_callable_skeleton_query,
                 minimum_composed_candidates,
+                resident_search_latency_budget,
             )
             .await?;
             if qualified.root_digest != source_merkle_root {
@@ -763,6 +767,11 @@ fn prepare_run(
         .map(|state| state.sample_count)
         .ok_or_else(|| "Live Corpus plan omitted cold-load cache state".to_owned())?;
     let protocol_qualified_case_count = plan.client_protocol.applies_to_case_count;
+    let resident_search_latency_budget = ResidentSearchLatencyBudget {
+        p50_micros: plan.client_protocol.p50_maximum_micros,
+        p99_micros: plan.client_protocol.p99_maximum_micros,
+        max_micros: plan.client_protocol.max_maximum_micros,
+    };
     let cases = select_qualification_cases(
         plan.cases,
         args.language_id.as_deref(),
@@ -885,6 +894,7 @@ fn prepare_run(
         concurrent_sample_count,
         cold_load_sample_count,
         protocol_qualified_case_count,
+        resident_search_latency_budget,
         cases: prepared_cases,
     })
 }
@@ -926,6 +936,7 @@ async fn qualify_case<C>(
     multi_source_query: String,
     multi_callable_skeleton_query: String,
     minimum_composed_candidates: usize,
+    resident_search_latency_budget: ResidentSearchLatencyBudget,
 ) -> Result<(QualificationCaseReceipt, AgentOrgTopologyEvidence), String>
 where
     C: agent_semantic_client::LanguageCommandClient + Clone + Send + Sync + 'static,
@@ -940,6 +951,7 @@ where
         cold_load_sample_count,
         cache_client,
         artifact_digest,
+        resident_search_latency_budget,
     )
     .await?;
     let selector = evidence.selected_selector.clone();
@@ -978,14 +990,15 @@ where
     )
     .await?;
     for query in [&composed_source, &composed_callable_skeleton] {
-        if query.generation_digest != composed.source_generation_digest
+        if query.content_generation_digest != composed.source_generation_digest
             || query.root_digest != evidence.source.root_digest
             || query.materializations.len() != composed_selectors.len()
         {
             return Err(format!(
-                "Live Corpus composed Scheme Search/Query authority drift: case={} searchGeneration={} queryGeneration={} expectedRoot={} queryRoot={} expectedSelectors={} materializations={}",
+                "Live Corpus composed Scheme Search/Query authority drift: case={} searchContentGeneration={} queryContentGeneration={} queryParserGeneration={} expectedRoot={} queryRoot={} expectedSelectors={} materializations={}",
                 case.case_id,
                 composed.source_generation_digest,
+                query.content_generation_digest,
                 query.generation_digest,
                 evidence.source.root_digest,
                 query.root_digest,
@@ -1058,6 +1071,13 @@ where
         "providerCatalogDigest": evidence.search.provider_catalog_digest,
         "topologyGenerationDigest": evidence.search.topology_generation_digest,
     });
+    let composed_search_operation_id = composed.operation_id.clone();
+    let composed_search_elapsed_micros = composed.elapsed_micros;
+    let composed_candidate_count = composed.selectors.len();
+    let composed_source_query_operation_id = composed_source.operation_id.clone();
+    let composed_source_query_elapsed_micros = composed_source.elapsed_micros;
+    let composed_callable_skeleton_operation_id = composed_callable_skeleton.operation_id.clone();
+    let composed_callable_skeleton_elapsed_micros = composed_callable_skeleton.elapsed_micros;
     let topology_evidence = AgentOrgTopologyEvidence::admit(
         case.case_id.clone(),
         case.resource_id.clone(),
@@ -1115,6 +1135,14 @@ where
         resident_sample_count,
         search_total_latency_micros: evidence.search_total_latency_micros,
         candidate_count: evidence.search.selectors.len(),
+        composed_search_operation_id,
+        composed_search_elapsed_micros,
+        composed_candidate_count,
+        composed_selector_count: composed_selectors.len(),
+        composed_source_query_operation_id,
+        composed_source_query_elapsed_micros,
+        composed_callable_skeleton_operation_id,
+        composed_callable_skeleton_elapsed_micros,
         selector,
         query_operation_id: evidence.source.operation_id,
         query_elapsed_micros: evidence.source.elapsed_micros,

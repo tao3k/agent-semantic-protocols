@@ -507,10 +507,8 @@ impl AspClient {
         if !self.uses_published_loopback_transport() {
             return Ok(self);
         }
-        let mut ready =
-            crate::server::runtime_server::ensure_healthy_runtime_server_for_workspace(
-                &self.project_root,
-            )
+        let mut ready = crate::server::runtime_server::
+            ensure_healthy_runtime_server_for_workspace_at(&self.state_home, &self.project_root)
             .await
             .map_err(|error| {
                 format!(

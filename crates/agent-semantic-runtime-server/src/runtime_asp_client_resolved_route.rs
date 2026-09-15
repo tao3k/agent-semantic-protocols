@@ -475,6 +475,41 @@ pub(super) async fn dispatch_resolved_route(
         } else {
             None
         };
+    let resident_search_generation = workspace_search_playbook_params.as_ref().and_then(|_| {
+        query_generation
+            .borrow()
+            .get(&project_workspace_key)
+            .cloned()
+    });
+    if let Some(params) = workspace_search_playbook_params.as_ref()
+        && let Some(RuntimeQueryGenerationState::Ready(generation)) = resident_search_generation
+    {
+        let materialization_key =
+            workspace_search_materialization_key(params, generation.generation_digest())?;
+        match generation.search_materialization(&materialization_key)? {
+            Some(crate::runtime_query_generation::RuntimeSearchMaterializationState::Ready(
+                result,
+            )) => {
+                dispatch_budget.observe_resident_hit();
+                return Ok(
+                    agent_semantic_client_protocol::ClientResponsePayload::from_shared(result),
+                );
+            }
+            Some(crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(
+                error,
+            )) => {
+                dispatch_budget.observe_resident_hit();
+                return Err(AspClientOperationError::Terminal(error.as_ref().clone()));
+            }
+            Some(crate::runtime_query_generation::RuntimeSearchMaterializationState::Building(
+                _,
+            )) => {
+                dispatch_budget.observe_miss();
+                return settled_search_materialization(&generation, &materialization_key).await;
+            }
+            None => {}
+        }
+    }
     let workspace_syntax_query_params = if matches!(&route, ServerClientRoute::WorkspaceSyntaxQuery)
     {
         let params: AspClientWorkspaceSyntaxQueryRequest =

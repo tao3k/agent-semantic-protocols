@@ -144,6 +144,13 @@ pub(crate) struct WorkspaceSearchQualificationReceipt {
     pub(crate) elapsed_micros: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ResidentSearchLatencyBudget {
+    pub(super) p50_micros: u64,
+    pub(super) p99_micros: u64,
+    pub(super) max_micros: u64,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "qualification binds corpus identity, expected result, budget, and client evidence explicitly"
@@ -158,6 +165,7 @@ pub(super) async fn qualify_public_client_case<C>(
     cold_load_sample_count: usize,
     cache_client: &agent_semantic_client::AspClient,
     artifact_digest: &str,
+    resident_search_budget: ResidentSearchLatencyBudget,
 ) -> Result<PublicQualificationEvidence, String>
 where
     C: LanguageCommandClient + Clone + Send + Sync + 'static,
@@ -438,11 +446,11 @@ where
         zero_match,
         merkle_proof,
         selected_selector: selector,
-        search_total_latency_micros: distribution_with_budget(
+        search_total_latency_micros: distribution_with_percentile_budget(
             "search-total",
             case,
             search_total_samples,
-            case.maximum_search_micros,
+            resident_search_budget,
         )?,
         exact_source_latency_micros: distribution_with_budget(
             "exact-source",
@@ -659,6 +667,31 @@ fn distribution_with_budget(
         return Err(format!(
             "Live Corpus resident distribution exceeded budget: case={} operation={operation} maxMicros={} maximumMicros={maximum_micros}",
             case.case_id, distribution.max_micros
+        ));
+    }
+    Ok(distribution)
+}
+
+fn distribution_with_percentile_budget(
+    operation: &str,
+    case: &QualificationCase,
+    samples: Vec<u64>,
+    budget: ResidentSearchLatencyBudget,
+) -> Result<LatencyDistribution, String> {
+    let distribution = LatencyDistribution::from_samples(samples)?;
+    if distribution.p50_micros > budget.p50_micros
+        || distribution.p99_micros > budget.p99_micros
+        || distribution.max_micros > budget.max_micros
+    {
+        return Err(format!(
+            "Live Corpus resident distribution exceeded percentile budget: case={} operation={operation} p50Micros={} p50MaximumMicros={} p99Micros={} p99MaximumMicros={} maxMicros={} maxMaximumMicros={}",
+            case.case_id,
+            distribution.p50_micros,
+            budget.p50_micros,
+            distribution.p99_micros,
+            budget.p99_micros,
+            distribution.max_micros,
+            budget.max_micros,
         ));
     }
     Ok(distribution)

@@ -548,7 +548,7 @@ fn execute_default_retrieval_layout(
     // bounded owner set is the sound fused scope for V1 regexes that cannot
     // produce mandatory trigrams (short patterns and Unicode case folding).
     let mut tantivy_results = Vec::with_capacity(tantivy_clauses.len());
-    let mut tantivy_scope = BTreeSet::new();
+    let mut tantivy_clause_scopes = Vec::with_capacity(tantivy_clauses.len());
     for (_, block_index, priority_rank) in tantivy_clauses {
         let block = plan.axes.tantivy.get(block_index).ok_or_else(|| {
             AspClientOperationError::Message("Tantivy clause index is out of bounds".to_owned())
@@ -561,12 +561,13 @@ fn execute_default_retrieval_layout(
             budget.lexical_owner_limit(),
         )?;
         result.require_complete_fused_scope()?;
-        tantivy_scope.extend(result.owners.iter().cloned());
+        tantivy_clause_scopes.push(result.owners.iter().cloned().collect());
         tantivy_results.push((block_index, priority_rank, block.join(" "), result));
     }
+    let tantivy_scope = intersect_clause_owner_scopes(&tantivy_clause_scopes);
 
     let mut rg_results = Vec::with_capacity(rg_clauses.len());
-    let mut rg_scope = BTreeSet::new();
+    let mut rg_clause_scopes = Vec::with_capacity(rg_clauses.len());
     for (_, block_index, priority_rank) in rg_clauses {
         let block = plan.axes.rg.get(block_index).ok_or_else(|| {
             AspClientOperationError::Message("rg clause index is out of bounds".to_owned())
@@ -603,10 +604,11 @@ fn execute_default_retrieval_layout(
                 AspClientOperationError::Message(message)
             }
         })?;
-        rg_scope.extend(result.candidate_owner_paths.iter().cloned());
+        rg_clause_scopes.push(result.candidate_owner_paths.iter().cloned().collect());
         rg_results.push((block_index, priority_rank, result));
     }
 
+    let rg_scope = intersect_clause_owner_scopes(&rg_clause_scopes);
     let fused_scope = fused_file_context_scope(&rg_scope, &tantivy_scope);
     let fused_matches = rg_results
         .iter()
@@ -735,6 +737,27 @@ fn fused_file_context_scope(
     tantivy_scope: &BTreeSet<String>,
 ) -> BTreeSet<String> {
     rg_scope.intersection(tantivy_scope).cloned().collect()
+}
+
+fn intersect_clause_owner_scopes(scopes: &[BTreeSet<String>]) -> BTreeSet<String> {
+    let Some((smallest_index, smallest)) = scopes
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, scope)| scope.len())
+    else {
+        return BTreeSet::new();
+    };
+    let mut intersection = smallest.clone();
+    for (index, scope) in scopes.iter().enumerate() {
+        if index == smallest_index {
+            continue;
+        }
+        intersection.retain(|owner| scope.contains(owner));
+        if intersection.is_empty() {
+            break;
+        }
+    }
+    intersection
 }
 
 pub(super) fn structural_candidate_owner_scope(

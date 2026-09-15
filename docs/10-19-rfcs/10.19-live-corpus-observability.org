@@ -30,6 +30,14 @@ shard MUST NOT run =install client=, rebuild the ASP Server, reuse the user's
 resident Runtime, or count Cargo/linker time as a Search or Query sample.
 Fixture phases emit visible =starting= and terminal events so a build stall,
 server-readiness stall, and request-plane stall cannot be confused.
+The test runner and Server artifact MUST be compiled with one Cargo feature
+graph in one build preparation.  Building the Server without the test feature
+and then compiling the runner with it causes Cargo to rebuild and relink the
+same dependency closure twice; that is a test-feedback defect, not useful
+qualification work.  Qualification resolves its corpus lock through the
+declared plan =lock_path=.  The orchestration layer MUST NOT add a second
+=--lock= input to =qualify=; explicit lock arguments belong only to =path=,
+=sync=, and =materialize=.
 The runner copies the selected provider artifact into its test-owned Runtime
 root, computes the complete file-tree Merkle digest, and binds that digest into
 the provider launcher member of the execution closure.  A mutable workspace
@@ -94,6 +102,52 @@ forms.  These expressions are lowered by the same public Scheme parsers and
 dispatched through the same Runtime client route.  A scenario that merely
 loads the TOML, checks relation names, or executes the old single-selector
 baseline cannot qualify this stage.
+
+** V1 Scheme algebra and search cost model
+
+The V1 acquisition grammar admits exactly one =intersect= whose leaves are
+=rg= and Tantivy.  Consequently the denotation of a request with regex owner
+sets =R_i= and Tantivy owner sets =T_j= is fixed and needs no second public
+plan schema:
+
+#+begin_src text
+C = (intersection over i of R_i) intersection (intersection over j of T_j)
+#+end_src
+
+The Runtime MUST NOT erase this algebra by unioning leaves that share an axis.
+In particular, =(R1 union R2) intersection (T1 union T2)= is not an execution
+of =intersect(R1, R2, T1, T2)=.  That flattening is both semantically unsound
+and a performance amplification: it admits owners disproved by another leaf
+into exact regex scans, parser grounding, and possible on-demand owner
+materialization.
+
+For a resident generation, let =G_i= be the sound trigram superset for regex
+leaf =i= and let =T= be the complete intersection of all Tantivy leaves.  The
+exact regex work must be bounded by candidates surviving the shared proof
+scope, not the per-axis union:
+
+#+begin_src text
+regex_owner_reads <= sum_i |G_i intersection T|
+parser_grounding_owners <= |(intersection_i R_i) intersection T|
+#+end_src
+
+Within a trigram plan, postings are intersected rarest-first.  Across Scheme
+leaves, the Runtime must retain per-leaf receipts while intersecting complete
+owner sets.  A truncated leaf cannot prove an empty intersection.  Future
+cost-based fusion may push several Tantivy expressions or regex candidate
+plans into one backend operation, but it must preserve the same denotation and
+attribution.
+
+Live Corpus performance evidence MUST record per-stage wall time, each leaf's
+candidate cardinality and completeness, the final intersection cardinality,
+posting decode work, exact owner reads, regex scans, parser-grounding owners,
+and output quality against declared positive/negative expectations.  A single
+end-to-end duration or a pass count is insufficient to distinguish search
+planning, index access, materialization, and projection costs.
+The =maximum_search_micros= case budget applies to first computation only.
+Warm Search samples MUST satisfy the client protocol's independent p50, p99,
+and maximum resident budgets.  Using the first-computation ceiling for warm
+samples is a false-green qualification.
 
 * Architectural counterexample closure
 
@@ -160,6 +214,20 @@ one path and defeats isolation.  Runtime generations and benchmark workspaces
 remain under the temporary Runtime root; pinned repositories and artifacts are
 read from the explicit resource authority, and receipts are atomically
 published to its receipt subtree.
+Every lifecycle observation and workspace-admission control request made by
+the runner MUST consume that explicit isolated Runtime State Home.  A client
+that already carries an isolated Runtime handoff MUST NOT call a helper that
+re-resolves the process-global State Home: doing so admits the workspace in one
+Server's catalog and sends the data-plane request to another Server.
+Request-plane workspace-root evidence MUST use the same canonical root emitted
+by State Core admission.  Comparing an uncanonical =/var= spelling with the
+admitted macOS =/private/var= root is a false cross-workspace failure.
+Search =sourceGenerationDigest= belongs to the Runtime content binding, while a
+Query receipt's top-level =sourceGenerationDigest= identifies its parser
+materialization generation.  Qualification MUST join Search to
+=runtimeExecutionBinding.contentBinding.sourceGenerationDigest= and join Query
+projections to each other through the parser generation plus source root.  It
+MUST NOT compare those two generation domains directly.
 
 * First divergence
 

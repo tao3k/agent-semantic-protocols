@@ -163,6 +163,19 @@ def test_live_corpus_setup_builds_artifacts_without_installation() -> None:
     assert 'agent-tools-install-global bin_dir=""' not in justfile
     assert 'agent-tools-install-hook bin_dir=""' not in justfile
 
+    build = justfile.split("build-live-corpus-test-runtime:", 1)[1]
+    build = build.split("check-live-corpus-search-query-resource", 1)[0]
+    assert (
+        "cargo build --release -p agent-semantic-client "
+        "--features live-corpus-test --bin asp"
+    ) in build
+
+    resource = justfile.split("check-live-corpus-search-query-resource resource:", 1)[1]
+    resource = resource.split("check-live-corpus-search-query-all-setup:", 1)[0]
+    qualify = next(line for line in resource.splitlines() if '"${runner}" qualify' in line)
+    assert "--plan benchmarks/live-corpus-scheme-scenarios.v1.toml" in qualify
+    assert "--lock" not in qualify
+
 
 def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")

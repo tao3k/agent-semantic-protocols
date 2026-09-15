@@ -296,7 +296,7 @@ build-live-corpus-test-runtime:
     set -euo pipefail
     artifact_dir="$PWD/.cache/live-corpus-test/bin"
     mkdir -p "${artifact_dir}"
-    cargo build --release -p agent-semantic-client --bin asp
+    cargo build --release -p agent-semantic-client --features live-corpus-test --bin asp
     runner="$({ cargo test --release -p agent-semantic-client --no-default-features --features live-corpus-test --test live_corpus --no-run --message-format=json; } | jq -r 'select(.reason == "compiler-artifact" and .target.name == "live_corpus") | .executable // empty' | tail -n 1)"
     test -n "${runner}"
     cp "${runner}" "${artifact_dir}/live-corpus"
@@ -327,7 +327,7 @@ check-live-corpus-search-query-resource resource:
     if [[ -n "${descriptor}" ]]; then export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="${descriptor}"; else unset ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR || true; fi
     "${runner}" sync --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
     "${runner}" materialize --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
-    "${runner}" qualify --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
+    "${runner}" qualify --resource "{{resource}}" --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
 
 # Local all-provider qualification remains an explicit aggregate convenience;
 # CI owns one isolated Matrix Job per corpus.

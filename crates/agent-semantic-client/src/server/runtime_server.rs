@@ -377,13 +377,13 @@ pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation_at(
 /// Workspace admission is deliberately not inferred from a Query payload. The
 /// canonical project root is resolved by the shared State identity owner and
 /// committed by the Runtime's single workspace-admission catalog authority.
-pub(crate) async fn ensure_healthy_runtime_server_for_workspace(
+pub(crate) async fn ensure_healthy_runtime_server_for_workspace_at(
+    state_home: &Path,
     project_root: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    let mut ready = ensure_healthy_runtime_server_for_bounded_operation().await?;
-    let state_home = state_home()?;
+    let mut ready = ensure_healthy_runtime_server_for_bounded_operation_at(state_home).await?;
     let (observed_transaction, endpoint) = agent_semantic_client_db::runtime_server_lifecycle::
-        observe_resident_transaction_with_endpoint(&state_home)
+        observe_resident_transaction_with_endpoint(state_home)
         .await?;
     let ready_transaction = ready.resident_transaction.as_ref().ok_or_else(|| {
         "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction".to_owned()

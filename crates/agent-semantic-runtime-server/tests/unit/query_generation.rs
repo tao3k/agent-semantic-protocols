@@ -340,7 +340,7 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         ),
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
-        project_topology_scope_attachment: std::sync::Mutex::new(None),
+        project_topology_build_lock: tokio::sync::Mutex::new(()),
         resident_syntax_scope_evidence: std::sync::Mutex::new(None),
         project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,

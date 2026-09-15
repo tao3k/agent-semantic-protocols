@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    compile_graph_relation_pattern, fused_file_context_scope, resident_grep_candidate_scope,
-    smallest_selector_overlapping_line, source_line_ranges, structural_candidate_owner_scope,
+    compile_graph_relation_pattern, fused_file_context_scope, intersect_clause_owner_scopes,
+    resident_grep_candidate_scope, smallest_selector_overlapping_line, source_line_ranges,
+    structural_candidate_owner_scope,
 };
 
 #[test]
@@ -46,6 +47,34 @@ fn rg_and_tantivy_intersection_owns_the_file_context_scope() {
         fused_file_context_scope(&rg, &tantivy),
         ["src/shared.rs"].into_iter().map(str::to_owned).collect()
     );
+}
+
+#[test]
+fn every_same_axis_leaf_remains_a_required_intersection_predicate() {
+    let scopes = [
+        ["a.rs", "shared.rs"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        ["shared.rs", "b.rs"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    ];
+    assert_eq!(
+        intersect_clause_owner_scopes(&scopes),
+        ["shared.rs"].into_iter().map(str::to_owned).collect()
+    );
+}
+
+#[test]
+fn an_empty_leaf_proves_the_whole_intersection_empty() {
+    let scopes = [
+        ["a.rs"].into_iter().map(str::to_owned).collect(),
+        Default::default(),
+        ["a.rs"].into_iter().map(str::to_owned).collect(),
+    ];
+    assert!(intersect_clause_owner_scopes(&scopes).is_empty());
 }
 
 #[test]

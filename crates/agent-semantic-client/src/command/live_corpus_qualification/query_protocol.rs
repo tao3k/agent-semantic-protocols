@@ -19,6 +19,7 @@ pub(crate) struct WorkspaceQueryQualificationReceipt {
     pub(crate) language_id: String,
     pub(crate) provider_id: String,
     pub(crate) generation_digest: String,
+    pub(crate) content_generation_digest: String,
     pub(crate) root_digest: String,
     pub(crate) selector: String,
     pub(crate) projection: String,
@@ -32,7 +33,9 @@ pub(crate) struct WorkspaceQueryQualificationReceipt {
 pub(crate) struct WorkspaceQuerySetQualificationReceipt {
     pub(crate) operation_id: String,
     pub(crate) generation_digest: String,
+    pub(crate) content_generation_digest: String,
     pub(crate) root_digest: String,
+    pub(crate) elapsed_micros: u64,
     pub(crate) materializations: Vec<WorkspaceQuerySetMaterialization>,
 }
 
@@ -123,6 +126,7 @@ pub(crate) async fn public_query<C: LanguageCommandClient>(
     validate_receipt_identity(&receipt, &operation_id)?;
     validate_complete_terminal(&receipt, selector, projection)?;
     validate_content_identity(&receipt)?;
+    let content_generation_digest = runtime_content_generation_digest(&receipt)?;
     let materialization = receipt
         .materializations
         .into_iter()
@@ -138,6 +142,7 @@ pub(crate) async fn public_query<C: LanguageCommandClient>(
         language_id: materialization.language_id,
         provider_id: materialization.provider_id,
         generation_digest: receipt.source_generation_digest,
+        content_generation_digest,
         root_digest: receipt.source_root_digest,
         selector: materialization.selector,
         projection: materialization.projection,
@@ -193,6 +198,7 @@ pub(crate) async fn public_query_set<C: LanguageCommandClient>(
     if parsed_selectors != selectors || parsed_projection != projection {
         return Err("Live Corpus composed Query Scheme identity drift".to_owned());
     }
+    let round_trip_started = Instant::now();
     let response = client
         .dispatch(LanguageCommandRequest {
             language_id: crate::LanguageId::new(producer_id),
@@ -212,8 +218,13 @@ pub(crate) async fn public_query_set<C: LanguageCommandClient>(
     let payload = typed_terminal(response.frame)?.require_ready("workspace.query.playbook")?;
     let receipt = serde_json::from_value::<WorkspaceQueryPlaybookReceipt>(payload)
         .map_err(|error| format!("decode Live Corpus composed QueryBook: {error}"))?;
+    let round_trip_elapsed_micros = round_trip_started
+        .elapsed()
+        .as_micros()
+        .min(u128::from(u64::MAX)) as u64;
     validate_receipt_identity(&receipt, &operation_id)?;
     validate_content_identity(&receipt)?;
+    let content_generation_digest = runtime_content_generation_digest(&receipt)?;
     if receipt.terminal.state != "ready"
         || receipt.terminal.terminal_count != 1
         || receipt.terminal.reason_kind.is_some()
@@ -228,10 +239,15 @@ pub(crate) async fn public_query_set<C: LanguageCommandClient>(
     for (selector, materialization) in selectors.iter().zip(&receipt.materializations) {
         validate_materialization(materialization, producer_id, selector, projection)?;
     }
+    if round_trip_elapsed_micros < receipt.request_plane_elapsed_micros {
+        return Err("Live Corpus composed Query Runtime time exceeds client round trip".to_owned());
+    }
     Ok(WorkspaceQuerySetQualificationReceipt {
         operation_id,
         generation_digest: receipt.source_generation_digest,
+        content_generation_digest,
         root_digest: receipt.source_root_digest,
+        elapsed_micros: receipt.request_plane_elapsed_micros,
         materializations: receipt
             .materializations
             .into_iter()
@@ -398,6 +414,20 @@ fn validate_content_identity(receipt: &WorkspaceQueryPlaybookReceipt) -> Result<
         return Err("Live Corpus Query Playbook content identity is invalid".to_owned());
     }
     Ok(())
+}
+
+fn runtime_content_generation_digest(
+    receipt: &WorkspaceQueryPlaybookReceipt,
+) -> Result<String, String> {
+    let digest = receipt
+        .runtime_execution_binding
+        .pointer("/contentBinding/sourceGenerationDigest")
+        .and_then(serde_json::Value::as_str)
+        .filter(|digest| digest.starts_with("blake3-256:") && digest.len() == 75)
+        .ok_or_else(|| {
+            "Live Corpus Query Playbook Runtime content generation identity is invalid".to_owned()
+        })?;
+    Ok(digest.to_owned())
 }
 
 fn decode_projection_result(projection: &str, bytes: &[u8]) -> Result<serde_json::Value, String> {
