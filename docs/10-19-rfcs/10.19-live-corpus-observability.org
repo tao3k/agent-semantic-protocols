@@ -155,6 +155,8 @@ count, coverage-certificate count, and client-side decode/admission wall time.
 These values are invariant across resident samples of the same materialization.
 They distinguish projection-size amplification from Runtime computation and
 make a compact-locator transport proposal falsifiable instead of speculative.
+The same projection profile MUST be present in a resident latency failure;
+diagnostic evidence cannot depend on first reaching a qualified terminal.
 
 * Architectural counterexample closure
 

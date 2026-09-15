@@ -445,6 +445,23 @@ where
             .await?,
         );
     }
+    let search_total_latency_micros = distribution_with_percentile_budget(
+        "search-total",
+        case,
+        search_total_samples,
+        resident_search_budget,
+    )
+    .map_err(|error| {
+        format!(
+            "{error} packetBytes={} nodeCount={} edgeCount={} frontierCount={} coverageCertificateCount={} baselineDecodeMicros={}",
+            search.packet_bytes,
+            search.node_count,
+            search.edge_count,
+            search.frontier_count,
+            search.coverage_certificate_count,
+            search.response_decode_elapsed_micros,
+        )
+    })?;
     Ok(PublicQualificationEvidence {
         search,
         source,
@@ -452,12 +469,7 @@ where
         zero_match,
         merkle_proof,
         selected_selector: selector,
-        search_total_latency_micros: distribution_with_percentile_budget(
-            "search-total",
-            case,
-            search_total_samples,
-            resident_search_budget,
-        )?,
+        search_total_latency_micros,
         exact_source_latency_micros: distribution_with_budget(
             "exact-source",
             case,
