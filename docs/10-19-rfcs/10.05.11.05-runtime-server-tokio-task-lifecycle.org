@@ -170,6 +170,66 @@ caller-runtime borrowing, and the resident sub-millisecond executor lookup.
 Cold package timing remains an empirical qualification and MUST be reported
 separately from these proofs.
 
+* Request-stage resource lifecycle and Scenario authority
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-REQUEST-RESOURCE-LIFECYCLE
+:END:
+
+Resident Search is a sequence of CPU stages whose intermediate values may
+remain live across stage boundaries.  Retrieval, parser grounding, graph
+evaluation, and topology projection MUST consume the same daemon-owned
+=RuntimeServerResourceSupervisor=.  A file-static semaphore derived from host
+=available_parallelism= is a second, unobservable capacity authority and is
+forbidden.  CPU-heavy closures cross a =spawn_blocking= boundary only after
+admission; they MUST NOT block an async worker.
+
+CPU and memory lifetimes are deliberately different.  Completion of stage
+=i= releases its CPU permit immediately, but retains the memory permit for its
+live result until the last consumer settles or drops it.  This prevents both a
+one-lane deadlock and false memory availability.  New requests acquire memory
+before CPU, so a memory waiter cannot hoard execution capacity required by an
+admitted stage to finish and release retained memory:
+
+#+begin_src mermaid :exports code
+flowchart LR
+  Request[resident Search request] --> Supervisor[Runtime resource supervisor]
+  Supervisor -->|CPU + memory| Retrieval[retrieval spawn_blocking]
+  Retrieval -->|release CPU; retain result memory| Evidence[resident evidence]
+  Supervisor -->|reused CPU + additional memory| Grounding[parser grounding spawn_blocking]
+  Grounding -->|release CPU; retain result memory| Evidence
+  Evidence --> Settlement[graph and topology settlement]
+  Settlement -->|drop retained memory permits| Supervisor
+  Request -. forbidden .-> LocalSemaphore[file-static CPU semaphore]
+#+end_src
+
+For CPU capacity =C=, stage demand =c_i=, retained result memory =m_i=, and
+daemon memory capacity =M=, stage =i+1= is admissible after stage =i= exactly
+when CPU has been released and the cumulative live memory still fits:
+
+#+name: runtime-search-stage-resource-admission
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code
+#let admitted(c, c-next, held-memory, next-memory, memory) = c-next <= c and held-memory + next-memory <= memory
+$ "releaseCPU"(i) => c_(i+1) <= C quad "and" quad sum_(j=0)^(i+1) m_j <= M $
+#+end_src
+
+=ASPProof.RuntimeSchedulerOwnership= proves that CPU release preserves retained
+memory and makes the next one-lane stage admissible when cumulative memory is
+within capacity.
+
+Empirical timing authority belongs to executable Scenarios, not prose.  The
+=runtime-search-tokio-resource-lifecycle= Scenario owns immutable inputs,
+warmup and sample counts, monotonic-clock distributions, memory, queue wait,
+and work metrics.  Its generated =benchmark.toml= records total and per-phase
+=p50/p95/p99/max=.  =Maximum= metrics aggregate the worst sample, =Minimum=
+metrics aggregate the least sample, and =Stable/Exact= metrics reject sample
+drift.  RFC text records the invariant and interpretation only; a copied
+timing table is never qualification evidence.
+
+With =n= samples, =k= named phases, and =q= metrics, Scenario collection is
+=O(n(k+q))= and percentile calculation is =O(kn log n)=.  This harness cost is
+reported outside the measured stage durations and cannot be presented as
+Runtime Search latency.
+
 * Observation model and exporter separation
 :PROPERTIES:
 :CLAUSE_ID: ASP-RFC-10.05.11.05-OBSERVATION-AUTHORITY
@@ -213,8 +273,8 @@ flowchart LR
 For active registration =a= and stale token =s=, unregister is identity when
 =a != s= and clears the sink only when =a = s=:
 
-#+begin_src typst :exports code
-$ unregister(some(a), s) = cases(none, a = s; some(a), a != s) $
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code
+$ "unregister"("some"(a), s) = "cases"("none", a = s; "some"(a), a != s) $
 #+end_src
 
 =ASPProof.RuntimeObservationAuthority= proves the model, OS boundary, sampler,

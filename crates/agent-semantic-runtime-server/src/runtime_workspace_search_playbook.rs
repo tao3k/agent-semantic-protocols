@@ -5,7 +5,7 @@
 //! Runtime execution of the Agent-authored progressive Search Playbook.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
@@ -15,13 +15,6 @@ use agent_semantic_search::{
     GraphNativeBlock, SearchPlaybookClauseAxis, WorkspaceSearchAxisKind,
     WorkspaceSearchClauseReceipt, WorkspaceSearchPlaybookPlan, WorkspaceSearchSyntaxCandidate,
 };
-
-static RESIDENT_SEARCH_CPU_LANES: LazyLock<Arc<tokio::sync::Semaphore>> = LazyLock::new(|| {
-    let lanes = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .clamp(1, 8);
-    Arc::new(tokio::sync::Semaphore::new(lanes))
-});
 
 pub(super) struct ProgressiveSearchEvidence {
     pub(super) clause_receipts: Vec<WorkspaceSearchClauseReceipt>,
@@ -36,6 +29,12 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) retrieval_micros: u128,
     pub(super) owner_materialization_micros: u128,
     pub(super) structural_micros: u128,
+    pub(super) retrieval_resource_receipt:
+        agent_semantic_workspace_scheduler::RuntimeServerResourcePermitReceipt,
+    pub(super) structural_resource_receipt:
+        Option<agent_semantic_workspace_scheduler::RuntimeServerResourcePermitReceipt>,
+    pub(super) resource_permits:
+        Vec<agent_semantic_workspace_scheduler::RuntimeServerResourcePermit>,
 }
 
 struct SearchClauseExecution {
@@ -125,29 +124,38 @@ pub(super) async fn execute_progressive_search_clauses(
     // rg and Tantivy first determine one fused file-context scope; explicit
     // syntax/native-syntax queries then determine the structural frontier
     // inside it.
-    let cpu_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
-        .acquire_owned()
+    let retrieval_started = std::time::Instant::now();
+    let retrieval_permit = generation
+        .acquire_search_resources(
+            agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                cpu: 1,
+                memory_bytes: super::workspace_search_resources::retrieval_working_memory_bytes(
+                    generation.as_ref(),
+                ),
+            },
+        )
         .await
-        .map_err(|_| {
-            AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
-        })?;
+        .map_err(AspClientOperationError::Message)?;
+    let retrieval_resource_receipt = retrieval_permit.receipt();
     let retrieval_plan = plan.clone();
     let retrieval_generation = Arc::clone(&generation);
     let retrieval_budget = execution_budget.clone();
-    let retrieval_started = std::time::Instant::now();
-    let mut retrieval = tokio::task::spawn_blocking(move || {
-        let _cpu_permit = cpu_permit;
-        execute_default_retrieval_layout(
-            &retrieval_plan,
-            retrieval_generation.as_ref(),
-            &retrieval_budget,
-            &retrieval_clauses,
-        )
-    })
-    .await
-    .map_err(|error| {
-        AspClientOperationError::Message(format!("resident Search CPU lane failed: {error}"))
-    })??;
+    let retrieval_task = generation
+        .spawn_search_blocking("runtime-search-retrieval", move || {
+            execute_default_retrieval_layout(
+                &retrieval_plan,
+                retrieval_generation.as_ref(),
+                &retrieval_budget,
+                &retrieval_clauses,
+            )
+            .map(|retrieval| (retrieval, retrieval_permit))
+        })
+        .map_err(AspClientOperationError::Message)?;
+    let (mut retrieval, mut retrieval_permit) =
+        retrieval_task.join().await.map_err(|error| {
+            AspClientOperationError::Message(format!("resident Search CPU lane failed: {error}"))
+        })??;
+    retrieval_permit.release_cpu();
     let retrieval_micros = retrieval_started.elapsed().as_micros();
     let owner_materialization_started = std::time::Instant::now();
     let mut resident =
@@ -202,32 +210,47 @@ pub(super) async fn execute_progressive_search_clauses(
     }
     let owner_materialization_micros = owner_materialization_started.elapsed().as_micros();
     let structural_started = std::time::Instant::now();
+    let mut structural_resource_receipt = None;
+    let mut resource_permits = vec![retrieval_permit];
     if structural_clauses.is_empty() {
-        let grounding_permit = Arc::clone(&RESIDENT_SEARCH_CPU_LANES)
-            .acquire_owned()
+        let grounding_permit = generation
+            .acquire_search_resources(
+                agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes:
+                        super::workspace_search_resources::structural_working_memory_bytes(
+                            generation.as_ref(),
+                            &retrieval.fused_scope,
+                            retrieval.fused_matches.len(),
+                        ),
+                },
+            )
             .await
-            .map_err(|_| {
-                AspClientOperationError::Message("resident Search CPU lanes closed".to_owned())
-            })?;
+            .map_err(AspClientOperationError::Message)?;
+        structural_resource_receipt = Some(grounding_permit.receipt());
         let grounding_scope = retrieval.fused_scope.clone();
         let grounding_matches = retrieval.fused_matches.clone();
         let grounding_resident = workspace_registry
             .resident_read_client(workspace_identity, project_root)
             .map_err(AspClientOperationError::Message)?;
-        let mut syntax_candidates = tokio::task::spawn_blocking(move || {
-            let _cpu_permit = grounding_permit;
-            syntax_candidates_enclosing_rg_matches(
-                &grounding_resident,
-                &grounding_scope,
-                grounding_matches.iter(),
-            )
-        })
-        .await
-        .map_err(|error| {
-            AspClientOperationError::Message(format!(
-                "resident parser grounding lane failed: {error}"
-            ))
-        })??;
+        let grounding_task = generation
+            .spawn_search_blocking("runtime-search-parser-grounding", move || {
+                syntax_candidates_enclosing_rg_matches(
+                    &grounding_resident,
+                    &grounding_scope,
+                    grounding_matches.iter(),
+                )
+                .map(|candidates| (candidates, grounding_permit))
+            })
+            .map_err(AspClientOperationError::Message)?;
+        let (mut syntax_candidates, mut grounding_permit) =
+            grounding_task.join().await.map_err(|error| {
+                AspClientOperationError::Message(format!(
+                    "resident parser grounding lane failed: {error}"
+                ))
+            })??;
+        grounding_permit.release_cpu();
+        resource_permits.push(grounding_permit);
         for candidate in &mut syntax_candidates {
             candidate.hit.tantivy = retrieval
                 .tantivy_expressions_by_owner
@@ -417,6 +440,9 @@ pub(super) async fn execute_progressive_search_clauses(
         retrieval_micros,
         owner_materialization_micros,
         structural_micros,
+        retrieval_resource_receipt,
+        structural_resource_receipt,
+        resource_permits,
     })
 }
 

@@ -348,7 +348,14 @@ impl RuntimeQueryGenerationAuthority {
             Some(RuntimeQueryGenerationState::Ready(generation)) => Some(Arc::clone(generation)),
             _ => None,
         };
-        match RuntimeQueryGeneration::open(pointer_path, project_root).await {
+        match RuntimeQueryGeneration::open(
+            pointer_path,
+            project_root,
+            self.builder.resource_supervisor(),
+            self.builder.task_scope(),
+        )
+        .await
+        {
             Ok(generation) if generation.generation_digest() == expected_generation_digest => {
                 let generation = Arc::new(generation);
                 self.reserve_generation_token(&generation);
@@ -464,9 +471,15 @@ impl RuntimeQueryGenerationAuthority {
                 RuntimeQueryGeneration::from_resident_with_execution_publication(
                     resident,
                     execution_publication,
+                    self.builder.resource_supervisor(),
+                    self.builder.task_scope(),
                 )?
             }
-            None => RuntimeQueryGeneration::from_resident(resident)?,
+            None => RuntimeQueryGeneration::from_resident(
+                resident,
+                self.builder.resource_supervisor(),
+                self.builder.task_scope(),
+            )?,
         });
         if generation.generation_digest() != expected_generation_digest {
             return Err(format!(

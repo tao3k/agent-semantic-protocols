@@ -32,6 +32,9 @@ pub(super) async fn synthesize_progressive_search_projection(
         retrieval_micros,
         owner_materialization_micros,
         structural_micros,
+        retrieval_resource_receipt,
+        structural_resource_receipt,
+        resource_permits,
     } = evidence;
     execution_budget
         .validate_for_generation(generation.generation_digest())
@@ -118,9 +121,16 @@ pub(super) async fn synthesize_progressive_search_projection(
             )
         })?;
     let settlement_micros = settlement_started.elapsed().as_micros();
+    let structural_queue_micros =
+        structural_resource_receipt.map_or(0, |receipt| receipt.queue_wait_micros);
+    let structural_admitted_memory_bytes =
+        structural_resource_receipt.map_or(0, |receipt| receipt.admitted_memory_bytes);
     eprintln!(
-        "[runtime-search-stage-wall] key={request_id} retrievalMicros={retrieval_micros} ownerMaterializationMicros={owner_materialization_micros} structuralMicros={structural_micros} graphMicros={graph_micros} resultMicros={result_micros} topologyMicros={topology_micros} settlementMicros={settlement_micros}"
+        "[runtime-search-stage-wall] key={request_id} retrievalMicros={retrieval_micros} retrievalQueueMicros={} retrievalAdmittedMemoryBytes={} ownerMaterializationMicros={owner_materialization_micros} structuralMicros={structural_micros} structuralQueueMicros={structural_queue_micros} structuralAdmittedMemoryBytes={structural_admitted_memory_bytes} graphMicros={graph_micros} resultMicros={result_micros} topologyMicros={topology_micros} settlementMicros={settlement_micros}",
+        retrieval_resource_receipt.queue_wait_micros,
+        retrieval_resource_receipt.admitted_memory_bytes,
     );
+    drop(resource_permits);
     Ok(ProgressiveSearchProjection {
         result: settlement.as_json().clone(),
     })

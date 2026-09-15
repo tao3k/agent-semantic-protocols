@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use crate::{
-    RuntimeServerClientExecutor, RuntimeServerOwnedTask, RuntimeServerRuntimeBuilder,
-    RuntimeServerTaskScope, adaptive_tokio_worker_count,
+    RuntimeServerClientExecutor, RuntimeServerOwnedTask, RuntimeServerResourceRequest,
+    RuntimeServerResourceSupervisor, RuntimeServerRuntimeBuilder, RuntimeServerTaskScope,
+    adaptive_tokio_worker_count,
 };
 
 #[test]
@@ -128,4 +129,142 @@ fn client_executor_lookup_is_sub_millisecond() {
     }
     samples.sort_unstable();
     assert!(samples[samples.len() * 99 / 100] < 1_000);
+}
+
+#[test]
+fn runtime_search_resource_lifecycle_is_scenario_measured() {
+    use asp_rust_project_harness_policy::{
+        AspRustProjectHarnessScenarioObservation, asp_search_scenario_package,
+        measure_asp_rust_scenario, render_asp_rust_scenario_benchmark_toml,
+        search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID,
+    };
+
+    let scenario = asp_search_scenario_package()
+        .scenarios
+        .into_iter()
+        .find(|scenario| scenario.name == RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID)
+        .expect("Runtime Search resource Scenario");
+    let runtime = RuntimeServerRuntimeBuilder::new_client()
+        .enable_all()
+        .build()
+        .expect("Scenario runtime");
+    let measurement = measure_asp_rust_scenario(&scenario, || {
+        runtime.block_on(async {
+            let supervisor = RuntimeServerResourceSupervisor::new(2, 2 * 1024 * 1024);
+            let retrieval_started = std::time::Instant::now();
+            let mut retrieval = supervisor
+                .acquire(RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: 1024 * 1024,
+                })
+                .await
+                .expect("retrieval admission");
+            let retrieval_admission = retrieval_started.elapsed();
+            let retrieval_receipt = retrieval.receipt();
+            retrieval.release_cpu();
+
+            let grounding_started = std::time::Instant::now();
+            let mut grounding = supervisor
+                .acquire(RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: 1024 * 1024,
+                })
+                .await
+                .expect("grounding admission while retrieval result memory remains charged");
+            let grounding_admission = grounding_started.elapsed();
+            let grounding_receipt = grounding.receipt();
+            grounding.release_cpu();
+            let peak_admitted_memory_bytes = supervisor.active_memory_bytes();
+            drop(grounding);
+            drop(retrieval);
+            assert_eq!(supervisor.active_background_cpu(), 0);
+            assert_eq!(supervisor.active_memory_bytes(), 0);
+
+            AspRustProjectHarnessScenarioObservation::default()
+                .with_memory_bytes(peak_admitted_memory_bytes as u64)
+                .with_timing("retrieval_admission", retrieval_admission)
+                .with_timing("grounding_admission", grounding_admission)
+                .with_metric(
+                    "queue_wait_micros",
+                    retrieval_receipt
+                        .queue_wait_micros
+                        .max(grounding_receipt.queue_wait_micros),
+                )
+                .with_metric("admitted_cpu", retrieval_receipt.admitted_cpu as u64)
+                .with_metric(
+                    "peak_admitted_memory_bytes",
+                    peak_admitted_memory_bytes as u64,
+                )
+                .with_metric("completed_stage_count", 2)
+        })
+    })
+    .expect("measure Runtime Search resource Scenario");
+    let rendered = render_asp_rust_scenario_benchmark_toml(&scenario, &measurement)
+        .expect("render Runtime Search resource receipt");
+    assert!(rendered.contains("total_p99"));
+    assert!(rendered.contains("[phase_distributions.retrieval_admission]"));
+    println!("{rendered}");
+}
+
+#[tokio::test]
+async fn completed_cpu_work_retains_memory_without_blocking_the_next_cpu_stage() {
+    let supervisor = RuntimeServerResourceSupervisor::new(2, 2 * 1024 * 1024);
+    let mut retained = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            memory_bytes: 1024 * 1024,
+        })
+        .await
+        .expect("first stage resources");
+    retained.release_cpu();
+
+    let next = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        supervisor.acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            memory_bytes: 1024 * 1024,
+        }),
+    )
+    .await
+    .expect("released CPU admits the next stage")
+    .expect("remaining memory admits the next stage");
+    assert_eq!(supervisor.active_background_cpu(), 1);
+    drop(next);
+    drop(retained);
+    assert_eq!(supervisor.active_background_cpu(), 0);
+}
+
+#[tokio::test]
+async fn memory_pressure_never_hoards_cpu_while_waiting() {
+    let supervisor = RuntimeServerResourceSupervisor::new(3, 1024 * 1024);
+    let mut retained = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            memory_bytes: 1024 * 1024,
+        })
+        .await
+        .expect("retained stage");
+    retained.release_cpu();
+    let waiting_supervisor = supervisor.clone();
+    let (started, observe_started) = tokio::sync::oneshot::channel();
+    let waiting = tokio::spawn(async move {
+        started.send(()).expect("publish waiter start");
+        waiting_supervisor
+            .acquire(RuntimeServerResourceRequest {
+                cpu: 1,
+                memory_bytes: 1024 * 1024,
+            })
+            .await
+    });
+    observe_started.await.expect("waiter started");
+    assert_eq!(
+        supervisor.active_background_cpu(),
+        0,
+        "a memory waiter cannot reserve a CPU lane"
+    );
+    drop(retained);
+    waiting
+        .await
+        .expect("waiting task joins")
+        .expect("waiting request admits after memory release");
 }

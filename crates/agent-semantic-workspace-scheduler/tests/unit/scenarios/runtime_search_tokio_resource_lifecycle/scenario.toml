@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "runtime-search-tokio-resource-lifecycle"
+policy = "SEARCH-RUNTIME-TOKIO-RESOURCE-LIFECYCLE-001"
+phase = "resident"
+route = "retrieval-to-parser-grounding"
+authority = "runtime-server-resource-supervisor"
+
+[expected]
+shared_cpu_authority = true
+retain_intermediate_memory_charge = true
+release_cpu_between_stages = true
+forbid_detached_cpu_semaphore = true
+require_zero_resources_after_settlement = true

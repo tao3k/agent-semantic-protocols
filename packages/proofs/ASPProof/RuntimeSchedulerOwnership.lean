@@ -61,4 +61,32 @@ theorem scheduler_extraction_strictly_reduces_positive_client_db_closure
   simp [directSchedulerClosure, oldQueryGenerationClosure]
   omega
 
+structure StageResources where
+  cpuHeld : Nat
+  memoryHeld : Nat
+deriving DecidableEq, Repr
+
+def releaseCpu (resources : StageResources) : StageResources :=
+  { resources with cpuHeld := 0 }
+
+def CanAdmitNext
+    (cpuCapacity memoryCapacity : Nat)
+    (retained next : StageResources) : Prop :=
+  retained.cpuHeld + next.cpuHeld ≤ cpuCapacity ∧
+    retained.memoryHeld + next.memoryHeld ≤ memoryCapacity
+
+theorem release_cpu_preserves_retained_memory (resources : StageResources) :
+    (releaseCpu resources).memoryHeld = resources.memoryHeld := by
+  rfl
+
+theorem released_one_lane_admits_next_stage_when_memory_fits
+    (retained next : StageResources)
+    (nextUsesOneLane : next.cpuHeld ≤ 1)
+    (memoryFits :
+      retained.memoryHeld + next.memoryHeld ≤ memoryCapacity) :
+    CanAdmitNext 1 memoryCapacity (releaseCpu retained) next := by
+  constructor
+  · simpa [releaseCpu] using nextUsesOneLane
+  · simpa [releaseCpu] using memoryFits
+
 end ASPProof.RuntimeSchedulerOwnership

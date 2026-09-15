@@ -267,6 +267,16 @@ impl RuntimeSearchGenerationBuilder {
         })
     }
 
+    pub(super) fn resource_supervisor(
+        &self,
+    ) -> agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor {
+        self.resource_supervisor.clone()
+    }
+
+    pub(super) fn task_scope(&self) -> agent_semantic_workspace_scheduler::RuntimeServerTaskScope {
+        self.task_scope.clone()
+    }
+
     pub(super) fn schedule(
         self: &Arc<Self>,
         key: RuntimeProjectWorkspaceKey,

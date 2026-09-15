@@ -38,7 +38,30 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_DEGRADED_ROUTE_BOUNDED_SCENARIO_ID
     ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
+    ));
     assert!(names.contains(&"tree-sitter-querycursor-native-hot-path"));
+
+    let runtime_resources = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
+        })
+        .expect("Runtime Search resource lifecycle Scenario is registered");
+    let benchmark = runtime_resources
+        .benchmark
+        .as_ref()
+        .expect("Runtime Search Scenario owns executable benchmark metadata");
+    assert_eq!(benchmark.measure_iterations, 128);
+    assert!(
+        benchmark
+            .metrics
+            .iter()
+            .any(|metric| metric.name == "queue_wait_micros")
+    );
 
     let lexical = package
         .scenarios

@@ -22,6 +22,9 @@ pub struct RuntimeQueryGeneration {
     pub(super) generation_digest: String,
     pub(super) generation_token: AtomicU64,
     pub(super) resident: Option<Arc<RuntimeResidentReadClient>>,
+    pub(super) resource_supervisor:
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    pub(super) task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     pub(super) execution_publication: Option<
         Arc<
             agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
@@ -123,6 +126,8 @@ impl RuntimeQueryGeneration {
     pub async fn open(
         pointer_path: &std::path::Path,
         project_root: &std::path::Path,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     ) -> Result<Self, String> {
         let resident = RuntimeResidentReadClient::open(pointer_path, project_root).await?;
         let generation_digest = resident.generation_digest();
@@ -134,6 +139,8 @@ impl RuntimeQueryGeneration {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
+            resource_supervisor,
+            task_scope,
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             project_topology_scope_attachment: Mutex::new(None),
@@ -148,6 +155,8 @@ impl RuntimeQueryGeneration {
 
     pub fn from_resident(
         resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     ) -> Result<Self, String> {
         let generation_digest = resident.generation_digest();
         resident
@@ -158,6 +167,8 @@ impl RuntimeQueryGeneration {
             generation_digest,
             generation_token: AtomicU64::new(0),
             resident: Some(Arc::new(resident)),
+            resource_supervisor,
+            task_scope,
             execution_publication: None,
             project_topology_attachment: OnceLock::new(),
             project_topology_scope_attachment: Mutex::new(None),
@@ -335,8 +346,10 @@ impl RuntimeQueryGeneration {
     pub fn from_resident_with_execution_publication(
         resident: agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
         execution_publication: agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     ) -> Result<Self, String> {
-        let generation = Self::from_resident(resident)?;
+        let generation = Self::from_resident(resident, resource_supervisor, task_scope)?;
         execution_publication.validate().map_err(|error| {
             format!("validate resident Runtime execution publication: {error:?}")
         })?;
@@ -354,6 +367,25 @@ impl RuntimeQueryGeneration {
             execution_publication: Some(Arc::new(execution_publication)),
             ..generation
         })
+    }
+
+    pub(crate) async fn acquire_search_resources(
+        &self,
+        request: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest,
+    ) -> Result<agent_semantic_workspace_scheduler::RuntimeServerResourcePermit, String> {
+        self.resource_supervisor.acquire(request).await
+    }
+
+    pub(crate) fn spawn_search_blocking<T, F>(
+        &self,
+        name: &'static str,
+        operation: F,
+    ) -> Result<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<T>, String>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
+        self.task_scope.spawn_blocking(name, operation)
     }
 
     /// Atomically joins the already admitted Runtime generation and Project

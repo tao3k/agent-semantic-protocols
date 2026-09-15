@@ -330,6 +330,14 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         generation_digest: digest.to_owned(),
         generation_token: std::sync::atomic::AtomicU64::new(0),
         resident: None,
+        resource_supervisor:
+            agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::new(
+                2,
+                16 * 1024 * 1024,
+            ),
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
+            "query-generation-test",
+        ),
         execution_publication: None,
         project_topology_attachment: std::sync::OnceLock::new(),
         project_topology_scope_attachment: std::sync::Mutex::new(None),

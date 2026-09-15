@@ -69,7 +69,7 @@ pub struct RuntimeServerResourcePermitReceipt {
 }
 
 pub struct RuntimeServerResourcePermit {
-    _cpu: tokio::sync::OwnedSemaphorePermit,
+    cpu: Option<tokio::sync::OwnedSemaphorePermit>,
     _memory: tokio::sync::OwnedSemaphorePermit,
     receipt: RuntimeServerResourcePermitReceipt,
 }
@@ -121,6 +121,13 @@ impl RuntimeServerResourceSupervisor {
             .saturating_sub(self.cpu.available_permits())
     }
 
+    #[must_use]
+    pub fn active_memory_bytes(&self) -> usize {
+        self.memory_units
+            .saturating_sub(self.memory.available_permits())
+            .saturating_mul(MEMORY_PERMIT_UNIT_BYTES)
+    }
+
     pub async fn acquire(
         &self,
         request: RuntimeServerResourceRequest,
@@ -144,16 +151,19 @@ impl RuntimeServerResourceSupervisor {
         let memory_permits = u32::try_from(memory_units)
             .map_err(|_| "Runtime Server memory permit count overflows".to_owned())?;
         let started = std::time::Instant::now();
-        let cpu = std::sync::Arc::clone(&self.cpu)
-            .acquire_many_owned(cpu_permits)
-            .await
-            .map_err(|_| "Runtime Server CPU resource authority is closed".to_owned())?;
+        // Acquire memory first. A request waiting for memory must never hoard
+        // CPU capacity needed by an admitted stage to finish and release its
+        // retained result memory.
         let memory = std::sync::Arc::clone(&self.memory)
             .acquire_many_owned(memory_permits)
             .await
             .map_err(|_| "Runtime Server memory resource authority is closed".to_owned())?;
+        let cpu = std::sync::Arc::clone(&self.cpu)
+            .acquire_many_owned(cpu_permits)
+            .await
+            .map_err(|_| "Runtime Server CPU resource authority is closed".to_owned())?;
         Ok(RuntimeServerResourcePermit {
-            _cpu: cpu,
+            cpu: Some(cpu),
             _memory: memory,
             receipt: RuntimeServerResourcePermitReceipt {
                 effective_cpu: self.effective_cpu,
@@ -171,5 +181,11 @@ impl RuntimeServerResourcePermit {
     #[must_use]
     pub fn receipt(&self) -> RuntimeServerResourcePermitReceipt {
         self.receipt
+    }
+
+    /// Release execution capacity after CPU work finishes while retaining the
+    /// memory reservation for result data that remains live downstream.
+    pub fn release_cpu(&mut self) {
+        self.cpu.take();
     }
 }

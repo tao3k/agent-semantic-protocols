@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "runtime_search_resource_lifecycle_is_scenario_measured"
+snapshot = "runtime_search_tokio_resource_lifecycle_v1"
+target_total = "250us"
+max_total = "5ms"
+observed_total = "958ns"
+regression_budget = "250us"
+memory_budget_bytes = 2097152
+observed_memory_bytes = 2097152
+target_rationale = "Two resident CPU stages require O(1) permit operations; retained intermediate memory is charged until Search projection completes."
+
+[measurement]
+clock = "std::time::Instant"
+statistic = "p95"
+warmup_iterations = 16
+measure_iterations = 128
+total_p50 = "834ns"
+total_p95 = "958ns"
+total_p99 = "1us"
+total_max = "1041ns"
+
+[observed_timings]
+grounding_admission = "125ns"
+retrieval_admission = "125ns"
+
+[phase_distributions.grounding_admission]
+p50 = "84ns"
+p95 = "125ns"
+p99 = "167ns"
+max = "208ns"
+
+[phase_distributions.retrieval_admission]
+p50 = "84ns"
+p95 = "125ns"
+p99 = "125ns"
+max = "125ns"
+
+[metrics.queue_wait_micros]
+unit = "microseconds"
+kind = "maximum"
+target = 5000
+observed = 0
+
+[metrics.admitted_cpu]
+unit = "lanes"
+kind = "exact"
+target = 1
+observed = 1
+
+[metrics.peak_admitted_memory_bytes]
+unit = "bytes"
+kind = "exact"
+target = 2097152
+observed = 2097152
+
+[metrics.completed_stage_count]
+unit = "count"
+kind = "exact"
+target = 2
+observed = 2
