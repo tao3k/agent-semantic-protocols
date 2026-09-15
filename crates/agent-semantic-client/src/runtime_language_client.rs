@@ -366,6 +366,7 @@ pub struct AspClient {
     project_root: PathBuf,
     transport_capability: AspClientTransportCapability,
     runtime_handoff: Option<AspClientRuntimeHandoff>,
+    project_workspace_ids: tokio::sync::OnceCell<(String, String)>,
 }
 
 impl AspClient {
@@ -376,6 +377,7 @@ impl AspClient {
             project_root: project_root.into(),
             transport_capability: AspClientTransportCapability::PublishedLoopbackTcp,
             runtime_handoff: None,
+            project_workspace_ids: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -392,6 +394,7 @@ impl AspClient {
             project_root: project_root.into(),
             transport_capability: AspClientTransportCapability::PublishedLoopbackTcp,
             runtime_handoff: Some(runtime_handoff),
+            project_workspace_ids: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -489,6 +492,7 @@ impl AspClient {
                 std::sync::Mutex::new(Some(descriptor)),
             ),
             runtime_handoff: None,
+            project_workspace_ids: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -575,7 +579,11 @@ impl AspClient {
                 return Err(error);
             }
         };
-        let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
+        let (project_id, workspace_id) = self
+            .project_workspace_ids
+            .get_or_try_init(|| async { project_workspace_ids(&self.project_root) })
+            .await?
+            .clone();
         let session_key =
             SessionKey::from_publication(&publication, project_id.clone(), workspace_id.clone());
         let (session, session_cell) = session_for_endpoint(

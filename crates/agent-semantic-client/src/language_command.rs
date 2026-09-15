@@ -7,6 +7,7 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use crate::AspClient;
 use crate::AspClientRuntimeHandoff;
@@ -115,9 +116,8 @@ pub struct RuntimeLanguageCommandClient;
 /// without re-entering lifecycle admission or endpoint discovery.
 #[derive(Clone)]
 pub struct RuntimeLanguageSessionClient {
-    state_home: PathBuf,
     project_root: PathBuf,
-    runtime_handoff: AspClientRuntimeHandoff,
+    client: Arc<AspClient>,
 }
 
 impl RuntimeLanguageSessionClient {
@@ -126,16 +126,21 @@ impl RuntimeLanguageSessionClient {
         project_root: impl Into<PathBuf>,
         runtime_handoff: AspClientRuntimeHandoff,
     ) -> Self {
+        let state_home = state_home.into();
+        let project_root = project_root.into();
         Self {
-            state_home: state_home.into(),
-            project_root: project_root.into(),
-            runtime_handoff,
+            project_root: project_root.clone(),
+            client: Arc::new(AspClient::new_from_runtime_handoff(
+                state_home,
+                project_root,
+                runtime_handoff,
+            )),
         }
     }
 }
 
 async fn dispatch_with_client(
-    client: AspClient,
+    client: &AspClient,
     request: LanguageCommandRequest,
 ) -> Result<LanguageCommandResponse, String> {
     let (route, params) = request.operation.into_route_and_params()?;
@@ -158,20 +163,15 @@ async fn dispatch_with_client(
 
 impl LanguageCommandClient for RuntimeLanguageSessionClient {
     fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
-        let state_home = self.state_home.clone();
         let project_root = self.project_root.clone();
-        let runtime_handoff = self.runtime_handoff.clone();
+        let client = Arc::clone(&self.client);
         Box::pin(async move {
             if request.project_root != project_root {
                 return Err(
                     "Runtime language session request crossed its admitted project root".to_owned(),
                 );
             }
-            dispatch_with_client(
-                AspClient::new_from_runtime_handoff(state_home, project_root, runtime_handoff),
-                request,
-            )
-            .await
+            dispatch_with_client(client.as_ref(), request).await
         })
     }
 }
@@ -192,7 +192,7 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
             // inherited, the Runtime service performs the bounded activation
             // transaction; clients never observe or reconstruct an endpoint.
             let client = client.admit_runtime_workspace("Search/Query").await?;
-            dispatch_with_client(client, request).await
+            dispatch_with_client(&client, request).await
         })
     }
 }

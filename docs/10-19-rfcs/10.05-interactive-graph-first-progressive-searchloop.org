@@ -2027,15 +2027,13 @@ automatic grounding only to discard it afterward.  This preserves the same
 result semantics while removing a redundant selector scan and blocking-lane
 handoff from every structurally composed Search.
 
-Project Topology construction is keyed by the exact generation-bound owner
-scope, not by the textual Search expression.  Each Runtime Query generation
-retains at most one immutable scope attachment.  A refined Search over the same
-owner set reuses that admitted inference library and receipt; a different owner
-set may replace the slot.  Cache inspection and replacement are constant-time,
-and a miss performs inference outside the lock, so unrelated concurrent Search
-work is not serialized.  This one-slot policy bounds retained topology memory
-while removing repeated proof construction from the common refine-in-place
-SearchLoop.
+Project Topology construction is keyed by the immutable Runtime generation,
+not by the textual Search expression or its request-local result scope.  Each
+Runtime Query generation retains one immutable base topology behind a
+double-checked single-flight cell.  Refined and no-match Search requests reuse
+that base; request-grounded selectors join through a deterministic topology
+delta without replacing it.  Cache inspection is constant-time and only the
+first build owns the generation-local build lock.
 
 A complete =no-match= acquisition has an explicitly empty request-local owner
 scope.  Runtime admits a deterministic empty topology /cut/ bound to the exact
@@ -2254,6 +2252,13 @@ cross-workspace target. The CLI adapter resolves it through the Runtime-owned
 workspace-admission catalog before opening the target-bound Client session;
 Runtime then validates the request identity against that session binding before
 retrieval. A filesystem path never becomes the execution identity.
+
+A pinned Runtime language session also pins the resolved ProjectId,
+WorkspaceId, Runtime handoff, and initialized transport.  Resident dispatch
+MUST NOT reconstruct an =AspClient=, canonicalize the checkout, rediscover Git
+identity, or reread State Home receipts per request.  Those are session
+admission effects; the request plane performs only an in-memory identity read,
+bounded session lookup, frame encode, and transport call.
 
 =seeds= is removed rather than hidden.  =--view seeds=, =--seeds=,
 =searchSynthesis.seeds=, and seed-frontier output are not part of the new
