@@ -20,8 +20,6 @@ pub(super) fn temp_project_root(label: &str) -> std::path::PathBuf {
 }
 
 pub(super) const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
-pub(super) const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
-pub(super) const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
 pub(super) const JULIA_DATAFRAMES_BATCH_STEP_MAX_ELAPSED_MS: u64 = 75;
 pub(super) const JULIA_DATAFRAMES_BATCH_SAMPLE_COUNT: usize = 3;
 pub(super) const REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
@@ -113,8 +111,6 @@ pub(super) struct SharedBenchmarkToml {
     pub(super) test: Option<String>,
     #[serde(default)]
     pub(super) bench: Option<String>,
-    #[serde(default)]
-    pub(super) phase: Option<String>,
     pub(super) target_total: String,
     pub(super) max_total: String,
     pub(super) observed_total: String,

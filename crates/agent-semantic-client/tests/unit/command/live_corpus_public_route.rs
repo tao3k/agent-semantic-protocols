@@ -35,7 +35,7 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         );
     }
 
-    let justfile = include_str!("../../../../../justfile");
+    let justfile = include_str!("../../../../../Justfile");
     assert!(
         justfile.contains("--no-default-features --features live-corpus-test --test live_corpus")
     );

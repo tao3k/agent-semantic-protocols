@@ -18,7 +18,7 @@ fn release_and_developer_publication_share_the_single_workspace_policy_gate() {
     let justfile =
         std::fs::read_to_string(workspace_root().join("Justfile")).expect("read root Justfile");
 
-    let release_recipe = "agent-tools-install-client bin_dir=\"\": check-rust-workspace-policy";
+    let release_recipe = "agent-tools-install-client: check-rust-workspace-policy";
     assert!(
         justfile.contains(release_recipe),
         "release publication must depend on the one-shot workspace policy gate"

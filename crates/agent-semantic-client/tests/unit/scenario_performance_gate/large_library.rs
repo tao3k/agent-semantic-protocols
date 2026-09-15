@@ -9,16 +9,6 @@ use serde_json::Value;
 use super::scenario_performance_gate_impl::{
     is_non_scenario_dir, read_dir_sorted, read_json, string_field,
 };
-use super::shared::{JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS, LARGE_LIBRARY_STEP_MAX_ELAPSED_MS};
-
-pub(super) fn large_library_step_max_elapsed_ms(language: &str) -> u64 {
-    if language == "julia" {
-        JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS
-    } else {
-        LARGE_LIBRARY_STEP_MAX_ELAPSED_MS
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(super) struct LargeLibraryElapsedGate {
     pub(crate) path: PathBuf,

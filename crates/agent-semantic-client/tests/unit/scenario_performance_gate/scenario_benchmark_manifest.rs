@@ -120,6 +120,14 @@ pub(super) fn validate_toml_scenario_benchmark(
             benchmark_path.display()
         ));
     }
+    if benchmark.observed_memory_bytes > benchmark.memory_budget_bytes {
+        invalid.push(format!(
+            "{}: observed memory {} exceeds budget {}",
+            benchmark_path.display(),
+            benchmark.observed_memory_bytes,
+            benchmark.memory_budget_bytes
+        ));
+    }
     require_non_empty_manifest_field(
         invalid,
         &benchmark_path,
