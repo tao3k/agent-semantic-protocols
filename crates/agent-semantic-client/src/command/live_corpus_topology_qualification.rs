@@ -53,10 +53,22 @@ pub(super) fn run(args: &[String], resource_state_home: &Path) -> Result<(), Str
     {
         return Err("reasonKind=semantic-topology-agent-contribution-binding-mismatch".to_owned());
     }
+    let observed_relation_kinds = contribution
+        .relationships
+        .iter()
+        .map(|relationship| relationship.relation.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    if evidence
+        .required_relation_kinds
+        .iter()
+        .any(|required| !observed_relation_kinds.contains(required.as_str()))
+    {
+        return Err("reasonKind=semantic-topology-required-relationship-missing".to_owned());
+    }
     let overlay = agent_semantic_topology::AgentOrgTopologyOverlay::admit(
         evidence.source_generation_digest.clone(),
         evidence.base_topology_generation_digest.clone(),
-        evidence.selector.clone(),
+        evidence.anchor_selector.clone(),
         evidence.evidence_digest.clone(),
         contribution.agent_identity_digest,
         evidence.prompt_digest.clone(),
@@ -181,10 +193,36 @@ mod tests {
             digest('1'),
             digest('2'),
             "rust://src/lib.rs#item/function/run".to_owned(),
+            vec![
+                "rust://src/lib.rs#item/function/run".to_owned(),
+                "rust://src/runtime.rs#item/function/dispatch".to_owned(),
+            ],
+            "search-composed-1".to_owned(),
+            "(search (producers (language rust)) (intersect (rg \"run\") (tantivy \"run\")))",
             "query-source-1".to_owned(),
-            b"pub fn run() {}\n",
+            vec![
+                (
+                    "rust://src/lib.rs#item/function/run".to_owned(),
+                    b"pub fn run() {}\n".to_vec(),
+                ),
+                (
+                    "rust://src/runtime.rs#item/function/dispatch".to_owned(),
+                    b"pub fn dispatch() {}\n".to_vec(),
+                ),
+            ],
             "query-skeleton-1".to_owned(),
-            br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#,
+            vec![
+                (
+                    "rust://src/lib.rs#item/function/run".to_owned(),
+                    br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#.to_vec(),
+                ),
+                (
+                    "rust://src/runtime.rs#item/function/dispatch".to_owned(),
+                    br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#.to_vec(),
+                ),
+            ],
+            "Analyze exact evidence and return an Org topology contribution.".to_owned(),
+            vec!["dispatches-to".to_owned()],
         )
         .expect("evidence");
         let evidence_path = live_corpus_receipts(state.path())

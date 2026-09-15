@@ -721,6 +721,15 @@ pub(crate) async fn search_receipt_for_literal<C: LanguageCommandClient>(
     search_receipt(client, project_root, language_id, &source).await
 }
 
+pub(crate) async fn search_receipt_for_scheme<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    language_id: &str,
+    scheme_source: &str,
+) -> Result<WorkspaceSearchQualificationReceipt, String> {
+    search_receipt(client, project_root, language_id, scheme_source).await
+}
+
 pub(super) fn workspace_search_qualification_request(
     producer_id: &str,
     scheme_source: &str,
@@ -798,7 +807,7 @@ pub(super) fn workspace_search_qualification_request(
     })
 }
 
-fn registered_producer_axis(producer_id: &str) -> Result<&'static str, String> {
+pub(crate) fn registered_producer_axis(producer_id: &str) -> Result<&'static str, String> {
     let profile = include_str!("../../../../../schemas/language-schema-profiles.json");
     let profile: serde_json::Value = serde_json::from_str(profile)
         .map_err(|error| format!("decode embedded Search producer profile registry: {error}"))?;

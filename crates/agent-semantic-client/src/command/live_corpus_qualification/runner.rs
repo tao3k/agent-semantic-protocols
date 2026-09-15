@@ -4,12 +4,17 @@
 
 //! Live Corpus qualification runner over the shared ASP Client application boundary.
 
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use super::client_protocol::qualify_public_client_case;
+use super::client_protocol::search_receipt_for_scheme;
+use super::query_protocol::public_query_set;
+use super::query_protocol::validate_workspace_query_set_scheme_template;
 use crate::command::live_corpus::LiveCorpusQualification;
 use crate::command::live_corpus::live_corpus_git_repository_paths;
 use crate::command::live_corpus::live_corpus_lock_digest;
@@ -17,6 +22,8 @@ use crate::command::live_corpus::load_lock;
 use crate::command::live_corpus::unique_resource;
 
 const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-scheme-scenarios.v1.toml";
+const DEFAULT_TOPOLOGY_PLAN_PATH: &str =
+    "benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml";
 
 #[derive(Debug)]
 pub(super) struct QualifyArgs {
@@ -28,6 +35,12 @@ pub(super) struct QualifyArgs {
 
 struct PreparedCase {
     case: QualificationCase,
+    agent_prompt: String,
+    required_relation_kinds: Vec<String>,
+    composed_search: String,
+    multi_source_query: String,
+    multi_callable_skeleton_query: String,
+    minimum_composed_candidates: usize,
     checkout_path: PathBuf,
     remote: String,
     qualification: LiveCorpusQualification,
@@ -433,6 +446,12 @@ pub(crate) async fn run(
                 .backpressure_probe()
                 .await?;
             let source_merkle_root = prepared_case.qualification.source_merkle_root.clone();
+            let agent_prompt = prepared_case.agent_prompt;
+            let required_relation_kinds = prepared_case.required_relation_kinds;
+            let composed_search = prepared_case.composed_search;
+            let multi_source_query = prepared_case.multi_source_query;
+            let multi_callable_skeleton_query = prepared_case.multi_callable_skeleton_query;
+            let minimum_composed_candidates = prepared_case.minimum_composed_candidates;
             let (mut qualified, topology_evidence) = qualify_case(
                 &client,
                 &checkout_path,
@@ -450,6 +469,12 @@ pub(crate) async fn run(
                 materialization_elapsed_micros,
                 cancellation_elapsed,
                 backpressure,
+                agent_prompt,
+                required_relation_kinds,
+                composed_search,
+                multi_source_query,
+                multi_callable_skeleton_query,
+                minimum_composed_candidates,
             )
             .await?;
             if qualified.root_digest != source_merkle_root {
@@ -707,6 +732,19 @@ fn prepare_run(
     let plan = toml::from_str::<QualificationPlan>(plan_source)
         .map_err(|error| format!("failed to decode Live Corpus Scheme scenario suite: {error}"))?;
     validate_plan(&plan)?;
+    let topology_plan_path = qualification_input_path(Path::new(DEFAULT_TOPOLOGY_PLAN_PATH));
+    let topology_plan_source = std::fs::read_to_string(&topology_plan_path).map_err(|error| {
+        format!(
+            "failed to read Live Corpus Agent Org topology scenario suite {}: {error}",
+            topology_plan_path.display()
+        )
+    })?;
+    let topology_plan = toml::from_str::<AgentOrgTopologyScenarioSuite>(&topology_plan_source)
+        .map_err(|error| {
+            format!("failed to decode Live Corpus Agent Org topology scenario suite: {error}")
+        })?;
+    let (topology_prompt_contract, topology_scenarios) =
+        validate_topology_scenarios(&plan.cases, topology_plan)?;
     let lock_path = qualification_input_path(&plan.lock_path);
     let lock_bytes = std::fs::read(&lock_path).map_err(|error| {
         format!(
@@ -732,6 +770,13 @@ fn prepare_run(
     )?;
     let mut prepared_cases = Vec::with_capacity(cases.len());
     for case in cases {
+        let topology_scenario = topology_scenarios.get(&case.case_id).ok_or_else(|| {
+            format!(
+                "Live Corpus topology scenario is unavailable after admission: case={}",
+                case.case_id
+            )
+        })?;
+        let agent_prompt = render_agent_prompt(&topology_prompt_contract, topology_scenario);
         let corpus = unique_resource(&lock.corpora, &case.resource_id)?;
         if corpus.scenario_id != case.scenario_id
             || corpus.language.as_str() != case.language_id
@@ -817,6 +862,12 @@ fn prepare_run(
         }
         prepared_cases.push(PreparedCase {
             case,
+            agent_prompt,
+            required_relation_kinds: topology_scenario.required_relation_kinds.clone(),
+            composed_search: topology_scenario.composed_search.clone(),
+            multi_source_query: topology_scenario.multi_source_query.clone(),
+            multi_callable_skeleton_query: topology_scenario.multi_callable_skeleton_query.clone(),
+            minimum_composed_candidates: topology_scenario.minimum_composed_candidates,
             checkout_path,
             remote: corpus.git.remote.clone(),
             qualification,
@@ -869,6 +920,12 @@ async fn qualify_case<C>(
     benchmark_workspace_materialization_elapsed_micros: u64,
     cancellation_probe_elapsed_micros: u64,
     backpressure: agent_semantic_client::ClientBackpressureProbeReceipt,
+    agent_prompt: String,
+    required_relation_kinds: Vec<String>,
+    composed_search: String,
+    multi_source_query: String,
+    multi_callable_skeleton_query: String,
+    minimum_composed_candidates: usize,
 ) -> Result<(QualificationCaseReceipt, AgentOrgTopologyEvidence), String>
 where
     C: agent_semantic_client::LanguageCommandClient + Clone + Send + Sync + 'static,
@@ -886,6 +943,57 @@ where
     )
     .await?;
     let selector = evidence.selected_selector.clone();
+    let composed =
+        search_receipt_for_scheme(client, project_root, &case.language_id, &composed_search)
+            .await?;
+    if composed.selectors.len() < minimum_composed_candidates {
+        return Err(format!(
+            "Live Corpus composed Scheme Search returned too few selectors: case={} observed={} minimum={minimum_composed_candidates}",
+            case.case_id,
+            composed.selectors.len()
+        ));
+    }
+    let composed_selectors = composed
+        .selectors
+        .iter()
+        .take(minimum_composed_candidates)
+        .cloned()
+        .collect::<Vec<_>>();
+    let composed_source = public_query_set(
+        client,
+        project_root,
+        &case.language_id,
+        &composed_selectors,
+        "source",
+        &multi_source_query,
+    )
+    .await?;
+    let composed_callable_skeleton = public_query_set(
+        client,
+        project_root,
+        &case.language_id,
+        &composed_selectors,
+        "callable-skeleton",
+        &multi_callable_skeleton_query,
+    )
+    .await?;
+    for query in [&composed_source, &composed_callable_skeleton] {
+        if query.generation_digest != composed.source_generation_digest
+            || query.root_digest != evidence.source.root_digest
+            || query.materializations.len() != composed_selectors.len()
+        {
+            return Err(format!(
+                "Live Corpus composed Scheme Search/Query authority drift: case={} searchGeneration={} queryGeneration={} expectedRoot={} queryRoot={} expectedSelectors={} materializations={}",
+                case.case_id,
+                composed.source_generation_digest,
+                query.generation_digest,
+                evidence.source.root_digest,
+                query.root_digest,
+                composed_selectors.len(),
+                query.materializations.len(),
+            ));
+        }
+    }
     for query in [&evidence.source, &evidence.callable_skeleton] {
         if query.generation_digest != evidence.source.generation_digest
             || query.root_digest != evidence.source.root_digest
@@ -955,11 +1063,24 @@ where
         case.resource_id.clone(),
         evidence.search.source_generation_digest.clone(),
         evidence.search.topology_generation_digest.clone(),
-        selector.clone(),
-        evidence.source.operation_id.clone(),
-        &evidence.source.bytes,
-        evidence.callable_skeleton.operation_id.clone(),
-        &evidence.callable_skeleton.bytes,
+        composed_selectors[0].clone(),
+        composed_selectors.clone(),
+        composed.operation_id,
+        &composed_search,
+        composed_source.operation_id,
+        composed_source
+            .materializations
+            .into_iter()
+            .map(|materialization| (materialization.selector, materialization.bytes))
+            .collect(),
+        composed_callable_skeleton.operation_id,
+        composed_callable_skeleton
+            .materializations
+            .into_iter()
+            .map(|materialization| (materialization.selector, materialization.bytes))
+            .collect(),
+        agent_prompt,
+        required_relation_kinds,
     )?;
     let receipt = QualificationCaseReceipt {
         case_id: case.case_id,
@@ -1047,6 +1168,8 @@ fn qualification_result_string(result: &serde_json::Value, field: &str) -> Resul
 mod contract_validation;
 
 use super::contract::AgentOrgTopologyEvidence;
+use super::contract::AgentOrgTopologyScenario;
+use super::contract::AgentOrgTopologyScenarioSuite;
 use super::contract::ClientProtocolReceipt;
 use super::contract::QualificationCase;
 use super::contract::QualificationCaseReceipt;
@@ -1055,6 +1178,126 @@ use super::contract::QualificationReceipt;
 use contract_validation::parse_args;
 use contract_validation::select_qualification_cases;
 use contract_validation::validate_plan;
+
+fn validate_topology_scenarios(
+    search_cases: &[QualificationCase],
+    suite: AgentOrgTopologyScenarioSuite,
+) -> Result<(String, BTreeMap<String, AgentOrgTopologyScenario>), String> {
+    if suite.schema_id != "agent.semantic-protocols.live-corpus-agent-org-topology-scenario-suite"
+        || suite.schema_version != "1"
+        || suite.prompt_contract.trim().is_empty()
+    {
+        return Err("unsupported Live Corpus Agent Org topology scenario suite".to_owned());
+    }
+    let expected = search_cases
+        .iter()
+        .map(|case| case.case_id.clone())
+        .collect::<BTreeSet<_>>();
+    let mut scenarios = BTreeMap::new();
+    for mut scenario in suite.cases {
+        let search_case = search_cases
+            .iter()
+            .find(|case| case.case_id == scenario.case_id)
+            .ok_or_else(|| {
+                format!(
+                    "Live Corpus Agent Org topology scenario has no Search/Query case: {}",
+                    scenario.case_id
+                )
+            })?;
+        if scenario.case_id.is_empty()
+            || scenario.resource_id.is_empty()
+            || scenario.reasoning_focus.trim().is_empty()
+            || scenario.required_relation_kinds.is_empty()
+            || scenario.minimum_composed_candidates < 2
+            || scenario.composed_search.trim().is_empty()
+            || scenario.multi_source_query.matches("{{selectors}}").count() != 1
+            || scenario
+                .multi_callable_skeleton_query
+                .matches("{{selectors}}")
+                .count()
+                != 1
+            || scenario
+                .required_relation_kinds
+                .iter()
+                .any(|relation| relation.is_empty())
+        {
+            return Err("Live Corpus Agent Org topology scenario is incomplete".to_owned());
+        }
+        scenario.required_relation_kinds.sort();
+        scenario.required_relation_kinds.dedup();
+        let parsed = agent_semantic_search::parse_progressive_search_playbook_args(&[
+            "search".to_owned(),
+            "playbook".to_owned(),
+            scenario.composed_search.clone(),
+        ])
+        .map_err(|error| {
+            format!(
+                "Live Corpus composed Search Scheme is invalid: case={} error={error}",
+                scenario.case_id
+            )
+        })?;
+        if parsed.rg.len() < 2 || parsed.tantivy.len() < 2 {
+            return Err(format!(
+                "Live Corpus composed Search must contain multiple rg and Tantivy leaves: case={}",
+                scenario.case_id
+            ));
+        }
+        validate_workspace_query_set_scheme_template(
+            &search_case.language_id,
+            &scenario.multi_source_query,
+            "source",
+        )
+        .map_err(|error| {
+            format!(
+                "Live Corpus composed source Query Scheme is invalid: case={} error={error}",
+                scenario.case_id
+            )
+        })?;
+        validate_workspace_query_set_scheme_template(
+            &search_case.language_id,
+            &scenario.multi_callable_skeleton_query,
+            "callable-skeleton",
+        )
+        .map_err(|error| {
+            format!(
+                "Live Corpus composed callable-skeleton Query Scheme is invalid: case={} error={error}",
+                scenario.case_id
+            )
+        })?;
+        if scenarios
+            .insert(scenario.case_id.clone(), scenario)
+            .is_some()
+        {
+            return Err("Live Corpus Agent Org topology scenario is duplicated".to_owned());
+        }
+    }
+    let observed = scenarios.keys().cloned().collect::<BTreeSet<_>>();
+    if observed != expected {
+        return Err(format!(
+            "Live Corpus Agent Org topology scenarios must map one-to-one to Search/Query cases: expected={expected:?} observed={observed:?}"
+        ));
+    }
+    for case in search_cases {
+        if scenarios
+            .get(&case.case_id)
+            .is_none_or(|scenario| scenario.resource_id != case.resource_id)
+        {
+            return Err(format!(
+                "Live Corpus Agent Org topology resource drift: case={}",
+                case.case_id
+            ));
+        }
+    }
+    Ok((suite.prompt_contract, scenarios))
+}
+
+fn render_agent_prompt(prompt_contract: &str, scenario: &AgentOrgTopologyScenario) -> String {
+    format!(
+        "{prompt_contract}\n\nReasoning focus: {}\nRequired relationship kinds: {}",
+        scenario.reasoning_focus,
+        scenario.required_relation_kinds.join(", ")
+    )
+}
 
 #[cfg(test)]
 #[path = "../../../tests/unit/command/live_corpus_qualification.rs"]

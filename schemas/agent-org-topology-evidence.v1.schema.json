@@ -7,10 +7,11 @@
   "additionalProperties": false,
   "required": [
     "schemaId", "schemaVersion", "caseId", "resourceId",
-    "sourceGenerationDigest", "baseTopologyGenerationDigest", "selector",
-    "sourceQueryOperationId", "sourceBytesBase64",
-    "callableSkeletonOperationId", "callableSkeletonBytesBase64",
-    "evidenceDigest", "prompt", "promptDigest", "terminal"
+    "sourceGenerationDigest", "baseTopologyGenerationDigest", "anchorSelector", "scopeSelectors",
+    "composedSearchOperationId", "composedSearchScheme", "composedSearchSchemeDigest",
+    "sourceQueryOperationId", "sourceMaterializations",
+    "callableSkeletonOperationId", "callableSkeletonMaterializations",
+    "evidenceDigest", "prompt", "promptDigest", "requiredRelationKinds", "terminal"
   ],
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.agent-org-topology-evidence"},
@@ -19,14 +20,29 @@
     "resourceId": {"type": "string", "minLength": 1},
     "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
     "baseTopologyGenerationDigest": {"$ref": "#/$defs/digest"},
-    "selector": {"type": "string", "minLength": 1},
+    "anchorSelector": {"type": "string", "minLength": 1},
+    "scopeSelectors": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "composedSearchOperationId": {"type": "string", "minLength": 1},
+    "composedSearchScheme": {"type": "string", "pattern": "^\\s*\\(search\\s"},
+    "composedSearchSchemeDigest": {"$ref": "#/$defs/digest"},
     "sourceQueryOperationId": {"type": "string", "minLength": 1},
-    "sourceBytesBase64": {"type": "string", "minLength": 1, "contentEncoding": "base64"},
+    "sourceMaterializations": {"$ref": "#/$defs/materializations"},
     "callableSkeletonOperationId": {"type": "string", "minLength": 1},
-    "callableSkeletonBytesBase64": {"type": "string", "minLength": 1, "contentEncoding": "base64"},
+    "callableSkeletonMaterializations": {"$ref": "#/$defs/materializations"},
     "evidenceDigest": {"$ref": "#/$defs/digest"},
     "prompt": {"type": "string", "minLength": 1},
     "promptDigest": {"$ref": "#/$defs/digest"},
+    "requiredRelationKinds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+    },
     "terminal": {
       "type": "object",
       "additionalProperties": false,
@@ -39,6 +55,19 @@
     }
   },
   "$defs": {
-    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "materializations": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["selector", "bytesBase64"],
+        "properties": {
+          "selector": {"type": "string", "minLength": 1},
+          "bytesBase64": {"type": "string", "minLength": 1, "contentEncoding": "base64"}
+        }
+      }
+    }
   }
 }

@@ -59,7 +59,11 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "parse_progressive_search_playbook_args",
         "parse_progressive_query_args",
         "live-corpus-scheme-scenarios.v1.toml",
+        "live-corpus-agent-org-topology-scenarios.v1.toml",
         "render_workspace_query_scheme_source",
+        "search_receipt_for_scheme",
+        "public_query_set",
+        "validate_workspace_query_set_scheme_template",
         "WorkspaceQueryPlaybook",
     ] {
         assert!(

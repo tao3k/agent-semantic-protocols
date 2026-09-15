@@ -9,14 +9,19 @@ use super::artifact_current_pointer;
 use super::parse_args;
 use super::qualification_receipt_path;
 use super::select_qualification_cases;
+use super::validate_topology_scenarios;
 use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerminal;
 use crate::command::live_corpus::qualification::client_protocol::render_workspace_query_scheme_source;
 use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
 use crate::command::live_corpus::qualification::client_protocol::workspace_query_qualification_request;
 use crate::command::live_corpus::qualification::client_protocol::workspace_search_qualification_request;
 use crate::command::live_corpus::qualification::contract::AgentOrgTopologyEvidence;
+use crate::command::live_corpus::qualification::contract::AgentOrgTopologyScenarioSuite;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
 use crate::command::live_corpus::qualification::contract::QualificationCase;
+use crate::command::live_corpus::qualification::contract::QualificationPlan;
+use crate::command::live_corpus::qualification::query_protocol::render_workspace_query_set_scheme_source;
+use crate::command::live_corpus::qualification::query_protocol::validate_workspace_query_set_scheme_template;
 
 fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCase {
     QualificationCase {
@@ -81,6 +86,37 @@ fn qualification_query_is_lowered_through_one_scheme_expression() {
     assert_eq!(request.documents, None);
     assert_eq!(request.selectors, [selector]);
     assert_eq!(request.projection, "callable-skeleton");
+}
+
+#[test]
+fn composed_query_preserves_the_ordered_selector_set() {
+    let template = "(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))";
+    validate_workspace_query_set_scheme_template("rust", template, "source")
+        .expect("valid multi-selector Query Scheme");
+    let source = render_workspace_query_set_scheme_source(
+        template,
+        &[
+            "rust://src/a.rs#item/a".to_owned(),
+            "rust://src/b.rs#item/b".to_owned(),
+        ],
+    )
+    .expect("rendered selector set");
+    assert!(source.contains("\"rust://src/a.rs#item/a\" \"rust://src/b.rs#item/b\""));
+}
+
+#[test]
+fn every_live_corpus_case_admits_its_complex_scheme_intent() {
+    let plan: QualificationPlan = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
+    ))
+    .expect("baseline Scheme suite");
+    let suite: AgentOrgTopologyScenarioSuite = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
+    ))
+    .expect("complex Scheme suite");
+    let (_, admitted) =
+        validate_topology_scenarios(&plan.cases, suite).expect("all complex Scheme intents admit");
+    assert_eq!(admitted.len(), 17);
 }
 
 fn error_frame(
@@ -265,16 +301,36 @@ fn latency_distribution_reports_executed_sample_count_and_nearest_ranks() {
 fn topology_evidence_binds_exact_query_bytes_and_base_topology() {
     let digest = |byte: char| format!("blake3-256:{}", byte.to_string().repeat(64));
     let admit = |source: &[u8]| {
+        let selectors = vec![
+            "rust://src/lib.rs#item/function/run".to_owned(),
+            "rust://src/runtime.rs#item/function/dispatch".to_owned(),
+        ];
         AgentOrgTopologyEvidence::admit(
             "rust.bytes.core".to_owned(),
             "rust.bytes".to_owned(),
             digest('1'),
             digest('2'),
-            "rust://src/lib.rs#item/function/run".to_owned(),
+            selectors[0].clone(),
+            selectors.clone(),
+            "search-composed-1".to_owned(),
+            "(search (producers (language rust)) (intersect (rg \"run\") (tantivy \"run\")))",
             "query-source-1".to_owned(),
-            source,
+            vec![
+                (selectors[0].clone(), source.to_vec()),
+                (selectors[1].clone(), b"pub fn dispatch() {}\n".to_vec()),
+            ],
             "query-skeleton-1".to_owned(),
-            br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#,
+            selectors
+                .into_iter()
+                .map(|selector| {
+                    (
+                        selector,
+                        br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#.to_vec(),
+                    )
+                })
+                .collect(),
+            "Analyze exact evidence and return an Org topology contribution.".to_owned(),
+            vec!["dispatches-to".to_owned()],
         )
         .expect("admitted exact Query evidence")
     };
@@ -287,7 +343,7 @@ fn topology_evidence_binds_exact_query_bytes_and_base_topology() {
     assert!(baseline.terminal.reason_kind.is_none());
 
     let mut self_attested = baseline;
-    self_attested.source_bytes_base64 = "bXV0YXRlZA==".to_owned();
+    self_attested.source_materializations[0].bytes_base64 = "bXV0YXRlZA==".to_owned();
     assert!(
         self_attested
             .validate()

@@ -8,8 +8,6 @@ use base64::Engine;
 use serde::Deserialize;
 use serde::Serialize;
 
-const AGENT_ORG_TOPOLOGY_PROMPT_V1: &str = "Analyze only the exact source and callable-skeleton evidence in this packet. Return one Agent Org Topology Contribution V1 with a concise summary, a valid Org document, and typed relationships touching the selected scope. Do not infer from filenames or mutate the base Search topology.";
-
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct QualificationPlan {
@@ -73,6 +71,28 @@ pub(super) struct QualificationCase {
     pub(super) maximum_search_micros: u64,
     pub(super) maximum_resident_query_micros: u64,
     pub(super) required_telemetry_events: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AgentOrgTopologyScenarioSuite {
+    pub(super) schema_id: String,
+    pub(super) schema_version: String,
+    pub(super) prompt_contract: String,
+    pub(super) cases: Vec<AgentOrgTopologyScenario>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AgentOrgTopologyScenario {
+    pub(super) case_id: String,
+    pub(super) resource_id: String,
+    pub(super) reasoning_focus: String,
+    pub(super) required_relation_kinds: Vec<String>,
+    pub(super) composed_search: String,
+    pub(super) multi_source_query: String,
+    pub(super) multi_callable_skeleton_query: String,
+    pub(super) minimum_composed_candidates: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -222,15 +242,29 @@ pub(in crate::command::live_corpus) struct AgentOrgTopologyEvidence {
     pub(in crate::command::live_corpus) resource_id: String,
     pub(in crate::command::live_corpus) source_generation_digest: String,
     pub(in crate::command::live_corpus) base_topology_generation_digest: String,
-    pub(in crate::command::live_corpus) selector: String,
+    pub(in crate::command::live_corpus) anchor_selector: String,
+    pub(in crate::command::live_corpus) scope_selectors: Vec<String>,
+    pub(in crate::command::live_corpus) composed_search_operation_id: String,
+    pub(in crate::command::live_corpus) composed_search_scheme: String,
+    pub(in crate::command::live_corpus) composed_search_scheme_digest: String,
     pub(in crate::command::live_corpus) source_query_operation_id: String,
-    pub(in crate::command::live_corpus) source_bytes_base64: String,
+    pub(in crate::command::live_corpus) source_materializations:
+        Vec<AgentOrgTopologyQueryMaterialization>,
     pub(in crate::command::live_corpus) callable_skeleton_operation_id: String,
-    pub(in crate::command::live_corpus) callable_skeleton_bytes_base64: String,
+    pub(in crate::command::live_corpus) callable_skeleton_materializations:
+        Vec<AgentOrgTopologyQueryMaterialization>,
     pub(in crate::command::live_corpus) evidence_digest: String,
     pub(in crate::command::live_corpus) prompt: String,
     pub(in crate::command::live_corpus) prompt_digest: String,
+    pub(in crate::command::live_corpus) required_relation_kinds: Vec<String>,
     pub(in crate::command::live_corpus) terminal: AgentOrgTopologyEvidenceTerminal,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::command::live_corpus) struct AgentOrgTopologyQueryMaterialization {
+    pub(in crate::command::live_corpus) selector: String,
+    pub(in crate::command::live_corpus) bytes_base64: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -251,11 +285,16 @@ impl AgentOrgTopologyEvidence {
         resource_id: String,
         source_generation_digest: String,
         base_topology_generation_digest: String,
-        selector: String,
+        anchor_selector: String,
+        scope_selectors: Vec<String>,
+        composed_search_operation_id: String,
+        composed_search_scheme: &str,
         source_query_operation_id: String,
-        source_bytes: &[u8],
+        source_materializations: Vec<(String, Vec<u8>)>,
         callable_skeleton_operation_id: String,
-        callable_skeleton_bytes: &[u8],
+        callable_skeleton_materializations: Vec<(String, Vec<u8>)>,
+        prompt: String,
+        mut required_relation_kinds: Vec<String>,
     ) -> Result<Self, String> {
         for (field, value) in [
             ("sourceGenerationDigest", source_generation_digest.as_str()),
@@ -275,24 +314,59 @@ impl AgentOrgTopologyEvidence {
         }
         if case_id.is_empty()
             || resource_id.is_empty()
-            || selector.is_empty()
+            || anchor_selector.is_empty()
+            || scope_selectors.len() < 2
+            || scope_selectors.first() != Some(&anchor_selector)
+            || composed_search_operation_id.is_empty()
+            || composed_search_scheme.trim().is_empty()
             || source_query_operation_id.is_empty()
-            || source_bytes.is_empty()
+            || source_materializations.len() != scope_selectors.len()
             || callable_skeleton_operation_id.is_empty()
-            || callable_skeleton_bytes.is_empty()
+            || callable_skeleton_materializations.len() != scope_selectors.len()
+            || prompt.trim().is_empty()
+            || required_relation_kinds.is_empty()
+            || required_relation_kinds.iter().any(|relation| {
+                relation.is_empty()
+                    || !relation.bytes().enumerate().all(|(index, byte)| {
+                        byte.is_ascii_lowercase()
+                            || (index > 0 && (byte.is_ascii_digit() || byte == b'-'))
+                    })
+            })
         {
             return Err("reasonKind=live-corpus-topology-evidence-content-empty".to_owned());
         }
+        if scope_selectors.iter().any(String::is_empty)
+            || scope_selectors.windows(2).any(|pair| pair[0] == pair[1])
+            || !materializations_match_scope(&source_materializations, &scope_selectors)
+            || !materializations_match_scope(&callable_skeleton_materializations, &scope_selectors)
+        {
+            return Err("reasonKind=live-corpus-topology-evidence-scope-invalid".to_owned());
+        }
+        required_relation_kinds.sort();
+        required_relation_kinds.dedup();
+        let composed_search_scheme_digest = format!(
+            "blake3-256:{}",
+            blake3::hash(composed_search_scheme.as_bytes()).to_hex()
+        );
+        let source_materializations = encode_query_materializations(source_materializations);
+        let callable_skeleton_materializations =
+            encode_query_materializations(callable_skeleton_materializations);
         let identity = serde_json::to_vec(&(
             &case_id,
             &resource_id,
             &source_generation_digest,
             &base_topology_generation_digest,
-            &selector,
+            &anchor_selector,
+            &scope_selectors,
+            &composed_search_operation_id,
+            composed_search_scheme,
+            &composed_search_scheme_digest,
             &source_query_operation_id,
-            source_bytes,
+            &source_materializations,
             &callable_skeleton_operation_id,
-            callable_skeleton_bytes,
+            &callable_skeleton_materializations,
+            &prompt,
+            &required_relation_kinds,
         ))
         .map_err(|error| format!("encode Live Corpus topology evidence identity: {error}"))?;
         Ok(Self {
@@ -302,18 +376,19 @@ impl AgentOrgTopologyEvidence {
             resource_id,
             source_generation_digest,
             base_topology_generation_digest,
-            selector,
+            anchor_selector,
+            scope_selectors,
+            composed_search_operation_id,
+            composed_search_scheme: composed_search_scheme.to_owned(),
+            composed_search_scheme_digest,
             source_query_operation_id,
-            source_bytes_base64: base64::engine::general_purpose::STANDARD.encode(source_bytes),
+            source_materializations,
             callable_skeleton_operation_id,
-            callable_skeleton_bytes_base64: base64::engine::general_purpose::STANDARD
-                .encode(callable_skeleton_bytes),
+            callable_skeleton_materializations,
             evidence_digest: format!("blake3-256:{}", blake3::hash(&identity).to_hex()),
-            prompt: AGENT_ORG_TOPOLOGY_PROMPT_V1.to_owned(),
-            prompt_digest: format!(
-                "blake3-256:{}",
-                blake3::hash(AGENT_ORG_TOPOLOGY_PROMPT_V1.as_bytes()).to_hex()
-            ),
+            prompt_digest: format!("blake3-256:{}", blake3::hash(prompt.as_bytes()).to_hex()),
+            prompt,
+            required_relation_kinds,
             terminal: AgentOrgTopologyEvidenceTerminal {
                 state: "ready".to_owned(),
                 terminal_count: 1,
@@ -323,22 +398,27 @@ impl AgentOrgTopologyEvidence {
     }
 
     pub(in crate::command::live_corpus) fn validate(&self) -> Result<(), String> {
-        let source_bytes = base64::engine::general_purpose::STANDARD
-            .decode(&self.source_bytes_base64)
-            .map_err(|error| format!("decode Live Corpus source evidence: {error}"))?;
-        let callable_skeleton_bytes = base64::engine::general_purpose::STANDARD
-            .decode(&self.callable_skeleton_bytes_base64)
-            .map_err(|error| format!("decode Live Corpus skeleton evidence: {error}"))?;
+        let source_materializations =
+            decode_query_materializations(&self.source_materializations, "source")?;
+        let callable_skeleton_materializations = decode_query_materializations(
+            &self.callable_skeleton_materializations,
+            "callable-skeleton",
+        )?;
         let rebuilt = Self::admit(
             self.case_id.clone(),
             self.resource_id.clone(),
             self.source_generation_digest.clone(),
             self.base_topology_generation_digest.clone(),
-            self.selector.clone(),
+            self.anchor_selector.clone(),
+            self.scope_selectors.clone(),
+            self.composed_search_operation_id.clone(),
+            &self.composed_search_scheme,
             self.source_query_operation_id.clone(),
-            &source_bytes,
+            source_materializations,
             self.callable_skeleton_operation_id.clone(),
-            &callable_skeleton_bytes,
+            callable_skeleton_materializations,
+            self.prompt.clone(),
+            self.required_relation_kinds.clone(),
         )?;
         if rebuilt == *self {
             Ok(())
@@ -346,4 +426,38 @@ impl AgentOrgTopologyEvidence {
             Err("reasonKind=live-corpus-topology-evidence-derived-identity-mismatch".to_owned())
         }
     }
+}
+
+fn materializations_match_scope(materializations: &[(String, Vec<u8>)], scope: &[String]) -> bool {
+    materializations
+        .iter()
+        .zip(scope)
+        .all(|((selector, bytes), expected)| selector == expected && !bytes.is_empty())
+}
+
+fn encode_query_materializations(
+    materializations: Vec<(String, Vec<u8>)>,
+) -> Vec<AgentOrgTopologyQueryMaterialization> {
+    materializations
+        .into_iter()
+        .map(|(selector, bytes)| AgentOrgTopologyQueryMaterialization {
+            selector,
+            bytes_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        })
+        .collect()
+}
+
+fn decode_query_materializations(
+    materializations: &[AgentOrgTopologyQueryMaterialization],
+    projection: &str,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    materializations
+        .iter()
+        .map(|materialization| {
+            base64::engine::general_purpose::STANDARD
+                .decode(&materialization.bytes_base64)
+                .map(|bytes| (materialization.selector.clone(), bytes))
+                .map_err(|error| format!("decode Live Corpus {projection} evidence: {error}"))
+        })
+        .collect()
 }

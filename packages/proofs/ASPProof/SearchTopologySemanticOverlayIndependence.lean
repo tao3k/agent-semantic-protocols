@@ -30,7 +30,13 @@ structure QueryOverlay where
 structure AgentOrgSummaryArtifact where
   contentGenerationDigest : Nat
   baseTopologyDigest : Nat
-  selectorDigest : Nat
+  anchorSelectorDigest : Nat
+  selectorSetDigest : Nat
+  selectorCount : Nat
+  composedSearchOperationDigest : Nat
+  composedSearchSchemeDigest : Nat
+  sourceMaterializationSetDigest : Nat
+  callableSkeletonMaterializationSetDigest : Nat
   evidenceDigest : Nat
   modelIdentityDigest : Nat
   promptDigest : Nat
@@ -53,7 +59,13 @@ def summaryOverlayAdmitted
     (core : SearchCoreIdentity) (artifact : AgentOrgSummaryArtifact) : Bool :=
   artifact.contentGenerationDigest == core.contentGenerationDigest &&
       artifact.baseTopologyDigest == core.topologyDigest &&
-      artifact.selectorDigest != 0 &&
+      artifact.anchorSelectorDigest != 0 &&
+      artifact.selectorSetDigest != 0 &&
+      decide (2 ≤ artifact.selectorCount) &&
+      artifact.composedSearchOperationDigest != 0 &&
+      artifact.composedSearchSchemeDigest != 0 &&
+      artifact.sourceMaterializationSetDigest != 0 &&
+      artifact.callableSkeletonMaterializationSetDigest != 0 &&
       artifact.evidenceDigest != 0 &&
       artifact.modelIdentityDigest != 0 &&
     artifact.promptDigest != 0 &&
@@ -119,9 +131,12 @@ theorem query_and_summary_publication_commute
 def coreA : SearchCoreIdentity := ⟨11, 12, 13, 14⟩
 def stateA : RuntimeSemanticState := ⟨coreA, none, none⟩
 def queryA : QueryOverlay := ⟨11, 21, 22⟩
-def summaryA : AgentOrgSummaryArtifact := ⟨11, 14, 21, 22, 31, 32, 33, 34, 35⟩
-def staleSummary : AgentOrgSummaryArtifact := ⟨99, 14, 21, 22, 31, 32, 33, 34, 35⟩
-def wrongBaseTopology : AgentOrgSummaryArtifact := ⟨11, 99, 21, 22, 31, 32, 33, 34, 35⟩
+def summaryA : AgentOrgSummaryArtifact :=
+  ⟨11, 14, 21, 22, 2, 23, 24, 25, 26, 27, 31, 32, 33, 34, 35⟩
+def staleSummary : AgentOrgSummaryArtifact :=
+  ⟨99, 14, 21, 22, 2, 23, 24, 25, 26, 27, 31, 32, 33, 34, 35⟩
+def wrongBaseTopology : AgentOrgSummaryArtifact :=
+  ⟨11, 99, 21, 22, 2, 23, 24, 25, 26, 27, 31, 32, 33, 34, 35⟩
 
 theorem matching_summary_is_admitted :
     summaryOverlayAdmitted coreA summaryA = true := by
@@ -146,6 +161,19 @@ theorem summary_requires_an_org_ast_digest :
 
 theorem summary_requires_exact_query_evidence :
     summaryOverlayAdmitted coreA { summaryA with evidenceDigest := 0 } = false := by
+  decide
+
+theorem baseline_single_selector_query_cannot_qualify_composed_topology :
+    summaryOverlayAdmitted coreA { summaryA with selectorCount := 1 } = false := by
+  decide
+
+theorem summary_requires_composed_scheme_identity :
+    summaryOverlayAdmitted coreA { summaryA with composedSearchSchemeDigest := 0 } = false := by
+  decide
+
+theorem summary_requires_both_multi_selector_materialization_sets :
+    summaryOverlayAdmitted coreA
+      { summaryA with callableSkeletonMaterializationSetDigest := 0 } = false := by
   decide
 
 theorem summary_requires_an_overlay_digest :

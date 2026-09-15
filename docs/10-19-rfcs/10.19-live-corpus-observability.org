@@ -77,7 +77,7 @@ coverage declared by =appliesToCaseCount=.  An aggregation step may join shard
 receipts only after all declared resource identities and the common plan and
 lock digests agree.
 
-The V1 TOML suite stores complete Search and Query Scheme sources. It MUST NOT
+The V1 baseline TOML suite stores complete Search and Query Scheme sources. It MUST NOT
 store rg/Tantivy argv arrays or synthesize a semantic form from benchmark
 flags. Before dispatch, the test target lowers the stored =(search ...)= form
 through the same =parse_progressive_search_playbook_args= authority as the
@@ -85,6 +85,15 @@ public client. Exact Query scenarios store a single ={{selector}}= slot; the
 runner binds the parser-owned Search result with JSON string encoding and then
 lowers the complete =(query ...)= form through the public Query parser.
 Producer, selector, and projection drift is terminal test evidence.
+
+The Agent Org topology scenario suite is not a topology-only checklist.  For
+every baseline case it stores a second executable, complex V1 intent: a
+=chain(intersect(...))= Search with at least two =rg= leaves and two Tantivy
+leaves, followed by ordered multi-selector source and callable-skeleton Query
+forms.  These expressions are lowered by the same public Scheme parsers and
+dispatched through the same Runtime client route.  A scenario that merely
+loads the TOML, checks relation names, or executes the old single-selector
+baseline cannot qualify this stage.
 
 * Architectural counterexample closure
 
@@ -97,8 +106,8 @@ closure.
 The closed scenario pipeline is:
 
 #+begin_src text
-Scheme Search -> content-bound candidate owner/selector frontier
-  -> exact parser Query for that bounded scope
+complex Scheme Search -> content-bound ordered selector frontier
+  -> multi-selector exact parser Query for that bounded scope
   -> Agent summary over only the admitted evidence
   -> content-bound Org AST artifact
   -> separately identified semantic Topology overlay
@@ -132,9 +141,12 @@ base topology library.
 
 Search/Query qualification publishes a separate V1 evidence sidecar,
 =agent.semantic-protocols.agent-org-topology-evidence=.  It binds the exact
-source and callable-skeleton byte arrays returned by Query to the source
-generation, base topology generation, selector, case, resource, and Query
-operation identities.  This sidecar is the only permitted Agent input for the
+source and callable-skeleton byte arrays returned for every ordered selector to
+the complex Scheme source and digest, composed Search operation, source
+generation, base topology generation, anchor and full selector scope, case,
+resource, and both multi-selector Query operation identities.  The composed
+Query results MUST NOT be discarded in favor of the baseline single-selector
+sample.  This sidecar is the only permitted Agent input for the
 next topology stage.  It also carries the runner-owned prompt bytes and digest;
 the Agent contribution cannot choose or self-attest another prompt.  It is published outside the Search/Query qualification
 receipt so that the existing V1 receipt remains stable and its Runtime timing

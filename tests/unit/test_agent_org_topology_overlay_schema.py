@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 import json
+import tomllib
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -13,6 +14,33 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def digest(byte: str) -> str:
     return f"blake3-256:{byte * 64}"
+
+
+def test_agent_org_topology_suite_executes_complex_scheme_for_every_corpus() -> None:
+    suite_path = ROOT / "benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
+    suite = tomllib.loads(suite_path.read_text())
+    baseline = tomllib.loads(
+        (ROOT / "benchmarks/live-corpus-scheme-scenarios.v1.toml").read_text()
+    )
+    schema = json.loads(
+        (ROOT / "schemas/agent-org-topology-scenario-suite.v1.schema.json").read_text()
+    )
+    Draft202012Validator(schema).validate(suite)
+    cases = {case["case_id"]: case for case in suite["cases"]}
+    baseline_cases = {case["case_id"]: case for case in baseline["cases"]}
+    assert len(cases) == 17
+    assert cases.keys() == baseline_cases.keys()
+    for case_id, case in cases.items():
+        assert case["resource_id"] == baseline_cases[case_id]["resource_id"]
+        assert "(chain " in case["composed_search"]
+        assert "(intersect " in case["composed_search"]
+        assert case["composed_search"].count("(rg ") >= 2
+        assert case["composed_search"].count("(tantivy ") >= 2
+        assert case["minimum_composed_candidates"] >= 2
+        assert case["multi_source_query"].count("{{selectors}}") == 1
+        assert "(projection source)" in case["multi_source_query"]
+        assert case["multi_callable_skeleton_query"].count("{{selectors}}") == 1
+        assert "(projection callable-skeleton)" in case["multi_callable_skeleton_query"]
 
 
 def test_agent_org_topology_overlay_v1_contract_accepts_separate_identities() -> None:
@@ -55,14 +83,28 @@ def test_agent_org_topology_evidence_v1_keeps_exact_query_bytes_separate() -> No
         "resourceId": "rust.bytes",
         "sourceGenerationDigest": digest("1"),
         "baseTopologyGenerationDigest": digest("2"),
-        "selector": "rust://src/lib.rs#item/function/run",
+        "anchorSelector": "rust://src/lib.rs#item/function/run",
+        "scopeSelectors": [
+            "rust://src/lib.rs#item/function/run",
+            "rust://src/runtime.rs#item/function/dispatch",
+        ],
+        "composedSearchOperationId": "search-composed-1",
+        "composedSearchScheme": "(search (producers (language rust)) (chain (intersect (rg \"run\") (tantivy \"run\"))))",
+        "composedSearchSchemeDigest": digest("5"),
         "sourceQueryOperationId": "query-source-1",
-        "sourceBytesBase64": "cHViIGZuIHJ1bigpIHt9Cg==",
+        "sourceMaterializations": [
+            {"selector": "rust://src/lib.rs#item/function/run", "bytesBase64": "cHViIGZuIHJ1bigpIHt9Cg=="},
+            {"selector": "rust://src/runtime.rs#item/function/dispatch", "bytesBase64": "cHViIGZuIGRpc3BhdGNoKCkge30K"},
+        ],
         "callableSkeletonOperationId": "query-skeleton-1",
-        "callableSkeletonBytesBase64": "e30=",
+        "callableSkeletonMaterializations": [
+            {"selector": "rust://src/lib.rs#item/function/run", "bytesBase64": "e30="},
+            {"selector": "rust://src/runtime.rs#item/function/dispatch", "bytesBase64": "e30="},
+        ],
         "evidenceDigest": digest("3"),
         "prompt": "Analyze only the exact evidence in this packet.",
         "promptDigest": digest("4"),
+        "requiredRelationKinds": ["dispatches-to"],
         "terminal": {"state": "ready", "terminalCount": 1, "reasonKind": None},
     }
     Draft202012Validator(schema).validate(packet)

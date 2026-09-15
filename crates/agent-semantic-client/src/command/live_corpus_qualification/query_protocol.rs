@@ -11,7 +11,7 @@ use agent_semantic_client_protocol::{AspClientWorkspaceQueryPlaybookRequest, Cli
 
 use crate::{LanguageCommandClient, LanguageCommandOperation, LanguageCommandRequest};
 
-use super::client_protocol::typed_terminal;
+use super::client_protocol::{registered_producer_axis, typed_terminal};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct WorkspaceQueryQualificationReceipt {
@@ -26,6 +26,20 @@ pub(crate) struct WorkspaceQueryQualificationReceipt {
     pub(crate) bytes: Vec<u8>,
     pub(crate) result: serde_json::Value,
     pub(crate) elapsed_micros: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WorkspaceQuerySetQualificationReceipt {
+    pub(crate) operation_id: String,
+    pub(crate) generation_digest: String,
+    pub(crate) root_digest: String,
+    pub(crate) materializations: Vec<WorkspaceQuerySetMaterialization>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WorkspaceQuerySetMaterialization {
+    pub(crate) selector: String,
+    pub(crate) bytes: Vec<u8>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -132,6 +146,154 @@ pub(crate) async fn public_query<C: LanguageCommandClient>(
         result,
         elapsed_micros: receipt.request_plane_elapsed_micros,
     })
+}
+
+pub(crate) async fn public_query_set<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    producer_id: &str,
+    selectors: &[String],
+    projection: &str,
+    scheme_template: &str,
+) -> Result<WorkspaceQuerySetQualificationReceipt, String> {
+    if selectors.len() < 2 {
+        return Err("Live Corpus composed Query requires at least two selectors".to_owned());
+    }
+    let source = render_workspace_query_set_scheme_source(scheme_template, selectors)?;
+    let parsed = agent_semantic_search::parse_progressive_query_args(&[
+        "query".to_owned(),
+        "playbook".to_owned(),
+        source,
+    ])
+    .map_err(|error| format!("lower Live Corpus composed Query Scheme: {error}"))?;
+    let agent_semantic_search::ProgressiveQueryRequest::Selector {
+        language,
+        documents,
+        selectors: parsed_selectors,
+        projection: parsed_projection,
+        ..
+    } = parsed;
+    let expected_axis = registered_producer_axis(producer_id)?;
+    if language.as_deref() != (expected_axis == "language").then_some(producer_id)
+        || documents.as_deref() != (expected_axis == "documents").then_some(producer_id)
+    {
+        return Err(format!(
+            "Live Corpus composed Query Scheme producer drift: expectedAxis={expected_axis} expectedProducer={producer_id} language={language:?} documents={documents:?}"
+        ));
+    }
+    let request = AspClientWorkspaceQueryPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-query-playbook-request"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        language,
+        documents,
+        selectors: parsed_selectors.clone(),
+        projection: parsed_projection.clone(),
+    };
+    if parsed_selectors != selectors || parsed_projection != projection {
+        return Err("Live Corpus composed Query Scheme identity drift".to_owned());
+    }
+    let response = client
+        .dispatch(LanguageCommandRequest {
+            language_id: crate::LanguageId::new(producer_id),
+            operation: LanguageCommandOperation::WorkspaceQueryPlaybook(request),
+            project_root: project_root.to_path_buf(),
+            machine_readable: true,
+        })
+        .await?;
+    let operation_id = match &response.frame {
+        ClientFrame::Response { request_id, .. } => request_id.as_str().to_owned(),
+        frame => {
+            return Err(format!(
+                "Live Corpus composed Query returned a non-response frame: {frame:?}"
+            ));
+        }
+    };
+    let payload = typed_terminal(response.frame)?.require_ready("workspace.query.playbook")?;
+    let receipt = serde_json::from_value::<WorkspaceQueryPlaybookReceipt>(payload)
+        .map_err(|error| format!("decode Live Corpus composed QueryBook: {error}"))?;
+    validate_receipt_identity(&receipt, &operation_id)?;
+    validate_content_identity(&receipt)?;
+    if receipt.terminal.state != "ready"
+        || receipt.terminal.terminal_count != 1
+        || receipt.terminal.reason_kind.is_some()
+        || receipt.requested_selectors != selectors
+        || receipt.projection != projection
+        || receipt.materializations.len() != selectors.len()
+    {
+        return Err(
+            "Live Corpus composed Query did not materialize the exact selector set".to_owned(),
+        );
+    }
+    for (selector, materialization) in selectors.iter().zip(&receipt.materializations) {
+        validate_materialization(materialization, producer_id, selector, projection)?;
+    }
+    Ok(WorkspaceQuerySetQualificationReceipt {
+        operation_id,
+        generation_digest: receipt.source_generation_digest,
+        root_digest: receipt.source_root_digest,
+        materializations: receipt
+            .materializations
+            .into_iter()
+            .map(|materialization| WorkspaceQuerySetMaterialization {
+                selector: materialization.selector,
+                bytes: materialization.bytes,
+            })
+            .collect(),
+    })
+}
+
+pub(crate) fn validate_workspace_query_set_scheme_template(
+    producer_id: &str,
+    scheme_template: &str,
+    projection: &str,
+) -> Result<(), String> {
+    let selectors = vec![
+        format!("{producer_id}://fixture/a#item/function/a"),
+        format!("{producer_id}://fixture/b#item/function/b"),
+    ];
+    let source = render_workspace_query_set_scheme_source(scheme_template, &selectors)?;
+    let parsed = agent_semantic_search::parse_progressive_query_args(&[
+        "query".to_owned(),
+        "playbook".to_owned(),
+        source,
+    ])
+    .map_err(|error| format!("lower Live Corpus composed Query Scheme: {error}"))?;
+    let agent_semantic_search::ProgressiveQueryRequest::Selector {
+        language,
+        documents,
+        selectors: parsed_selectors,
+        projection: parsed_projection,
+        ..
+    } = parsed;
+    let expected_axis = registered_producer_axis(producer_id)?;
+    if language.as_deref() != (expected_axis == "language").then_some(producer_id)
+        || documents.as_deref() != (expected_axis == "documents").then_some(producer_id)
+        || parsed_selectors != selectors
+        || parsed_projection != projection
+    {
+        return Err("Live Corpus composed Query Scheme identity drift".to_owned());
+    }
+    Ok(())
+}
+
+pub(crate) fn render_workspace_query_set_scheme_source(
+    scheme_template: &str,
+    selectors: &[String],
+) -> Result<String, String> {
+    if scheme_template.matches("{{selectors}}").count() != 1 {
+        return Err(
+            "Live Corpus composed Query Scheme must contain exactly one {{selectors}} slot"
+                .to_owned(),
+        );
+    }
+    let selectors = selectors
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("encode composed Query selector set: {error}"))?
+        .join(" ");
+    Ok(scheme_template.replace("{{selectors}}", &selectors))
 }
 
 fn validate_receipt_identity(
