@@ -102,8 +102,8 @@ positiveCommands = [
 ]
 negativeCommands = [
   "asp healthcheck",
-  "asp query playbook --language rust --selector 'rust://src/lib.rs#item/function/run' --projection source",
-  "asp query playbook --language python --selector 'python://src/project.py#item/function/run' --projection source",
+  "asp query playbook '(query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/run\") (projection source)))'",
+  "asp query playbook '(query (producers (language python)) (select (selectors \"python://src/project.py#item/function/run\") (projection source)))'",
 ]
 
 [[rules]]
@@ -114,9 +114,9 @@ ruleComposition = [
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "asp query playbook --language rust --selector 'rust://src/lib.rs#item/function/run' --projection source",
-  "rtk --ultra-compact err asp query playbook --language typescript --selector 'typescript://src/app.ts#item/function/run' --projection source",
-  "asp query playbook --language python --selector 'python://src/project.py#item/function/run' --projection callable-skeleton",
+  "asp query playbook '(query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/run\") (projection source)))'",
+  "rtk --ultra-compact err asp query playbook '(query (producers (language typescript)) (select (selectors \"typescript://src/app.ts#item/function/run\") (projection source)))'",
+  "asp query playbook '(query (producers (language python)) (select (selectors \"python://src/project.py#item/function/run\") (projection callable-skeleton)))'",
 ]
 negativeCommands = [
   "asp healthcheck",

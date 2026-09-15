@@ -542,7 +542,7 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
             serde_json::json!({"patch":"*** Begin Patch\n*** Update File: README.md\n*** End Patch"}),
         ),
         decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust --rg owner"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp query playbook --language rust --selector rust://owner"})),
+        decide("Bash", "Bash", serde_json::json!({"command":"asp query playbook '(query (producers (language rust)) (select (selectors \"rust://owner#item/function/run\")))'"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo test -p agent-semantic-hook"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo fmt --all -- --check"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo clippy -p agent-semantic-hook"})),

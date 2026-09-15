@@ -750,7 +750,7 @@ structure ExecutableSearchEvidence where
   relation : String
 
 def exactQueryGrammar : String :=
-  "asp query playbook --language <producer|...> --selector <exact-selector> --projection <callable-skeleton|source>"
+  "asp query playbook '(query (producers (language <producer>)) (select (selectors \"<exact-selector>\") (projection <callable-skeleton|source>)))'"
 
 structure SearchAgentHandoff where
   evidence : List ExecutableSearchEvidence

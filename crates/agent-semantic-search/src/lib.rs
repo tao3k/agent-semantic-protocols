@@ -224,7 +224,7 @@ pub use merkle_search_generation::search_owner_graph_fragment_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use merkle_search_generation::search_projection_analyzer_digest;
 pub use progressive_query::{
-    ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args, query_output_format,
+    ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args,
 };
 pub use provider_candidate_annotations::ProviderFactsEnvelope;
 pub use provider_candidate_annotations::compact_provider_fact_nodes;

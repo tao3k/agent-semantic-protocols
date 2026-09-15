@@ -522,6 +522,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-mrr",
  "agent-semantic-provider-protocol",
+ "agent-semantic-scheme-syntax",
  "agent-semantic-search-playbook",
  "agent-semantic-search-projection",
  "agent-semantic-shell-parser",

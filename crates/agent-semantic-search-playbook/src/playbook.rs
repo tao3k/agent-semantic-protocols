@@ -211,6 +211,53 @@ pub fn parse_search_playbook_producer_declaration(
     })
 }
 
+/// Reads producer axes from the sole public Query Playbook Scheme expression.
+/// Hook routing uses this lightweight structural view; the Client performs the
+/// complete selector/projection lowering before Runtime dispatch.
+pub fn parse_query_playbook_producer_declaration(
+    source: &str,
+) -> Result<SearchPlaybookProducerDeclaration, ProgressiveSearchPlaybookError> {
+    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
+        invalid_parameter(
+            error.reason_kind,
+            format!("invalid Query Playbook Scheme source: {error}"),
+        )
+    })?;
+    let [SchemeDatum::List(root)] = datums.as_slice() else {
+        return Err(invalid_parameter(
+            "query-playbook-root-invalid",
+            "expected one (query ...) expression",
+        ));
+    };
+    if symbol(root.first()) != Some("query") {
+        return Err(invalid_parameter(
+            "query-playbook-root-invalid",
+            "expected one (query ...) expression",
+        ));
+    }
+    let producers_index = match root.as_slice() {
+        [_, SchemeDatum::List(target), _, _] if symbol(target.first()) == Some("workspace") => 2,
+        [_, _, _] => 1,
+        _ => {
+            return Err(invalid_parameter(
+                "query-playbook-root-invalid",
+                "expected (query [(workspace \"id\")] (producers ...) (select ...))",
+            ));
+        }
+    };
+    let SchemeDatum::List(producers) = &root[producers_index] else {
+        return Err(invalid_parameter(
+            "query-playbook-producers-invalid",
+            "expected a producers declaration",
+        ));
+    };
+    let (language, documents) = lower_producers(producers)?;
+    Ok(SearchPlaybookProducerDeclaration {
+        language: split_producer_expression(language.as_deref()),
+        documents: split_producer_expression(documents.as_deref()),
+    })
+}
+
 fn split_producer_expression(expression: Option<&str>) -> Vec<String> {
     expression
         .into_iter()

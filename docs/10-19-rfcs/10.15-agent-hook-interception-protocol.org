@@ -142,7 +142,7 @@ the public root operations:
 
 #+begin_src text
 asp search playbook '<one (search ...) Scheme expression>'
-asp query playbook --language <producer|...> --selector <exact-selector> --projection <source|callable-skeleton>
+asp query playbook '<one (query ...) Scheme expression>'
 #+end_src
 
 Language-first =asp <language> search|query= aliases and provider-owned

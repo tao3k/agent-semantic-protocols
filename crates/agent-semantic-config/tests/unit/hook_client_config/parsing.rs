@@ -141,7 +141,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 21);
+    assert_eq!(config.rules.len(), 20);
     assert_eq!(
         config
             .rules

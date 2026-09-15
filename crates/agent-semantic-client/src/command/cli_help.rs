@@ -342,9 +342,7 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("wrap"), _) => Command::new("wrap")
             .bin_name("asp wrap")
             .about("Run a command through the ASP client runtime"),
-        (Some("cache"), Some("clean")) => {
-            agent_semantic_client::cache_clean_clap_command()
-        }
+        (Some("cache"), Some("clean")) => agent_semantic_client::cache_clean_clap_command(),
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),
@@ -359,10 +357,8 @@ fn selected_command_default(args: &[String]) -> Command {
             .subcommand(workspace_search_playbook_command()),
         (Some("query"), _) => Command::new("query")
             .bin_name("asp query playbook")
-            .about("Materialize one canonical set of exact parser-owned selectors")
-            .override_usage(
-                "asp query playbook [--language <CODE_PRODUCER(|CODE_PRODUCER)*>] [--documents <DOCUMENT_PRODUCER(|DOCUMENT_PRODUCER)*>] --selector <SELECTOR>... [--projection <source|callable-skeleton>] [--json] [--workspace <REGISTERED_WORKSPACE_ID>]",
-            ),
+            .about("Materialize exact parser-owned selectors from one V1 Scheme expression")
+            .override_usage("asp query playbook '<one (query ...) Scheme expression>'"),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

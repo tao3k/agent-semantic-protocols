@@ -10,5 +10,5 @@ pub use playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
     SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
-    parse_search_playbook_producer_declaration,
+    parse_query_playbook_producer_declaration, parse_search_playbook_producer_declaration,
 };

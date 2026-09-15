@@ -11,19 +11,10 @@ fn query_playbook_is_a_real_facade_before_workspace_admission() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("workspace root");
+    let source = "(query (producers (language rust) (documents org)) (select (selectors \"org://docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org#item/heading/SDD-Search-Evidence-Output\" \"rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient\")))";
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "org|rust",
-            "--selector",
-            "org://docs/10-19-rfcs/10.06-agent-search-projection/10.06.14-search-evidence-output-reflection.org#item/heading/SDD-Search-Evidence-Output",
-            "--selector",
-            "rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient",
-            "--workspace",
-        ])
-        .arg(workspace)
+        .args(["query", "playbook", source])
+        .current_dir(workspace)
         .env("ASP_STATE_HOME", state_home.path())
         .output()
         .expect("run current-tree asp query playbook");
@@ -38,11 +29,11 @@ fn query_playbook_is_a_real_facade_before_workspace_admission() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        !terminal.contains("query does not support option `playbook`"),
+        !terminal.contains("use `asp query playbook`"),
         "playbook must be parsed as the Query facade before Runtime admission: {terminal}"
     );
     assert!(
-        terminal.contains("Runtime Server workspace admission catalog has no binding"),
-        "Query facade must fail at the registered-workspace admission boundary: {terminal}"
+        terminal.contains("reasonKind=activation-event-missing"),
+        "Query facade must parse Scheme and fail at Runtime activation: {terminal}"
     );
 }

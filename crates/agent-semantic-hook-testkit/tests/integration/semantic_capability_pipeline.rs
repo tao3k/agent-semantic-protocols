@@ -180,7 +180,7 @@ fn emitted_action_ir_conforms_to_the_v1_schema() {
 fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() {
     let decision = classify(
         &runtime("."),
-        "asp search playbook --language typescript --rg projectRoot",
+        "asp search playbook '(search (producers (language typescript)) (intersect (rg \"projectRoot\" \".\") (tantivy \"body:projectRoot\")))'",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
@@ -217,7 +217,7 @@ fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() 
 fn only_playbook_is_routed_as_the_public_search_operation() {
     let playbook = classify(
         &runtime("."),
-        "asp search playbook --language rust --rg --files -g src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'",
+        "asp search playbook '(search (producers (language rust)) (intersect (rg \"--files\" \"-g\" \"src/lib.rs\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'",
     );
     assert_eq!(
         playbook["fields"]["configRuleId"],
@@ -229,7 +229,7 @@ fn only_playbook_is_routed_as_the_public_search_operation() {
 fn agent_search_json_denial_is_owned_by_the_declared_rule() {
     let decision = classify(
         &runtime("."),
-        "asp search playbook --language typescript --rg projectRoot --json",
+        "asp search playbook '(search (producers (language typescript)) (intersect (rg \"projectRoot\" \".\") (tantivy \"body:projectRoot\")))' --json",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["fields"]["configRuleId"], "deny-agent-search-json");
@@ -313,7 +313,7 @@ fn verified_explorer_search_is_authorized_once_and_post_tool_remains_observation
         "agent_role": "asp_explorer",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "rtk --ultra-compact err asp search playbook --language rust --rg HookDecision"
+            "command": "rtk --ultra-compact err asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'"
         }
     })];
 
@@ -343,13 +343,13 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
     let cases = [
         (
             "asp_explorer",
-            "asp search playbook --language typescript --rg projectRoot",
+            "asp search playbook '(search (producers (language typescript)) (intersect (rg \"projectRoot\" \".\") (tantivy \"body:projectRoot\")))'",
             "allow",
             "reasoning-search",
         ),
         (
             "asp_explorer",
-            "asp query playbook --language rust --selector rust://crates/example.rs#item/function/example --projection source",
+            "asp query playbook '(query (producers (language rust)) (select (selectors \"rust://crates/example.rs#item/function/example\") (projection source)))'",
             "allow",
             "structured-projection",
         ),
@@ -367,7 +367,7 @@ fn config_agent_roles_satisfy_only_their_declared_dispatch_routes() {
         ),
         (
             "asp_testing",
-            "asp search playbook --language typescript --rg projectRoot",
+            "asp search playbook '(search (producers (language typescript)) (intersect (rg \"projectRoot\" \".\") (tantivy \"body:projectRoot\")))'",
             "deny",
             "reasoning-search",
         ),

@@ -129,8 +129,8 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
         "Preserve every native argv token as a Scheme string",
         "one admitted immutable workspace generation",
         "without prescribing the Agent's next action",
-        "one `asp query playbook` request",
-        "`--selector <exact-selector>`",
+        "one `asp query playbook '<scheme-expression>'` request",
+        "`(query ...)` form",
         "Query has no implicit Search state",
     ] {
         assert!(
@@ -164,8 +164,8 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         "Preserve every native argv token as a Scheme string",
         "one admitted immutable workspace generation",
         "without prescribing the Agent's next action",
-        "one `asp query playbook` request",
-        "`--selector <exact-selector>`",
+        "one `asp query playbook '<scheme-expression>'` request",
+        "`(query ...)` form",
         "Query has no implicit Search state",
     ] {
         assert!(

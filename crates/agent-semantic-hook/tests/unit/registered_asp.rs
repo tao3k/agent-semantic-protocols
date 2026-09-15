@@ -28,7 +28,7 @@ fn rust_runtime() -> HookRuntime {
 #[test]
 fn direct_registered_asp_search_matches_the_declarative_language_pattern() {
     let action = ToolAction::normalized_shell_command_action(
-        "asp search playbook --language 'rust|python' --rg --files -g src/lib.rs --tantivy 'title:[* TO *] OR body:[* TO *]'".to_owned(),
+        "asp search playbook '(search (producers (language rust python)) (intersect (rg \"--files\" \"-g\" \"src/lib.rs\") (tantivy \"title:[* TO *] OR body:[* TO *]\")))'".to_owned(),
         "Bash".to_owned(),
     );
     let patterns = vec![vec![
@@ -46,7 +46,7 @@ fn direct_registered_asp_search_matches_the_declarative_language_pattern() {
 #[test]
 fn root_query_playbook_requires_matching_language_and_selector_scheme() {
     let action = ToolAction::normalized_shell_command_action(
-        "asp query playbook --language rust --selector rust://src/lib.rs#item/function/run --projection source"
+        "asp query playbook '(query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/run\") (projection source)))'"
             .to_owned(),
         "Bash".to_owned(),
     );

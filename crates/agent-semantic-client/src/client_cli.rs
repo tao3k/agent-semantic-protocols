@@ -15,7 +15,7 @@ pub async fn run_cli_from_env() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if matches!(args.first().map(String::as_str), Some("query")) {
         return Err(
-            "direct Query was removed; use `asp query playbook --language <producer|...> --selector <exact-selector>...`"
+            "direct Query was removed; use `asp query playbook '<one (query ...) Scheme expression>'`"
                 .to_string(),
         );
     }
@@ -57,7 +57,7 @@ pub async fn run_cli_args(
             )
         }
         Some("query") => Err(
-            "Query is Playbook-only; use `asp query playbook --language <producer|...> --selector <exact-selector>...`"
+            "Query is Playbook-only; use `asp query playbook '<one (query ...) Scheme expression>'`"
                 .to_owned(),
         ),
         Some(command) => Err(format!("unknown client command: {command}")),

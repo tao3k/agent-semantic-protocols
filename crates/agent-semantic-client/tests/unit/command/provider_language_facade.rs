@@ -12,7 +12,13 @@ fn workspace_root() -> PathBuf {
         .expect("canonical workspace root")
 }
 
-fn assert_workspace_admission_missing(output: &std::process::Output, operation: &str) {
+fn exact_query_source(axis: &str, producer: &str, selector: &str) -> String {
+    format!(
+        "(query (producers ({axis} {producer})) (select (selectors {selector:?}) (projection source)))"
+    )
+}
+
+fn assert_query_runtime_admission_missing(output: &std::process::Output, operation: &str) {
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -23,8 +29,9 @@ fn assert_workspace_admission_missing(output: &std::process::Output, operation: 
         "{operation} unexpectedly succeeded: {text}"
     );
     assert!(
-        text.contains("Runtime Server workspace admission catalog has no binding"),
-        "{operation} did not reach registered-workspace admission: {text}"
+        text.contains("state=runtime-server-client-bootstrap-failed")
+            && text.contains("reasonKind=activation-event-missing"),
+        "{operation} did not parse Scheme and reach Runtime activation: {text}"
     );
     assert!(
         !text.contains("language-first")
@@ -53,49 +60,37 @@ fn assert_runtime_activation_missing(output: &std::process::Output, operation: &
 #[test]
 fn structural_item_source_query_does_not_use_cli_breaker() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
+    let source = exact_query_source(
+        "language",
+        "rust",
+        "rust://crates/agent-semantic-client/src/command/provider_dispatch.rs#item/function/run_language_command",
+    );
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "rust",
-            "--selector",
-            "rust://crates/agent-semantic-client/src/command/provider_dispatch.rs#item/function/run_language_command",
-            "--workspace",
-            ".",
-            "--projection",
-            "source",
-        ])
+        .args(["query", "playbook", &source])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
         .output()
         .expect("run public exact-query facade");
 
-    assert_workspace_admission_missing(&output, "public exact query");
+    assert_query_runtime_admission_missing(&output, "public exact query");
 }
 
 #[test]
 fn gerbil_owner_source_query_enters_runtime_instead_of_the_cli_breaker() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
+    let source = exact_query_source(
+        "language",
+        "gerbil-scheme",
+        "gerbil-scheme://scheme/reasoning/core.ss#item/function/missing",
+    );
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "gerbil-scheme",
-            "--selector",
-            "gerbil-scheme://scheme/reasoning/core.ss#item/function/missing",
-            "--workspace",
-            ".",
-            "--projection",
-            "source",
-        ])
+        .args(["query", "playbook", &source])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
         .output()
         .expect("run public Gerbil owner-source query");
 
-    assert_workspace_admission_missing(&output, "Gerbil exact query");
+    assert_query_runtime_admission_missing(&output, "Gerbil exact query");
 }
 
 #[test]
@@ -118,67 +113,46 @@ fn search_playbook_uses_runtime_admission_for_registered_languages() {
 #[test]
 fn structural_item_source_query_requires_current_runtime_authority_before_provider_resolution() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
+    let source = exact_query_source(
+        "language",
+        "typescript",
+        "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
+    );
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "typescript",
-            "--selector",
-            "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
-            "--workspace",
-            ".",
-            "--projection",
-            "source",
-        ])
+        .args(["query", "playbook", &source])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
         .output()
         .expect("run asp structural item query");
 
-    assert_workspace_admission_missing(&output, "TypeScript exact query");
+    assert_query_runtime_admission_missing(&output, "TypeScript exact query");
 }
 
 #[test]
 fn exact_structural_selector_does_not_require_a_term() {
     let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
     let selector = "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery";
+    let source = exact_query_source("language", "typescript", selector);
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "typescript",
-            "--selector",
-            selector,
-            "--workspace",
-            ".",
-            "--projection",
-            "source",
-        ])
+        .args(["query", "playbook", &source])
         .current_dir(workspace_root())
         .env("ASP_STATE_HOME", state_home.path())
         .output()
         .expect("run exact structural selector query");
 
-    assert_workspace_admission_missing(&output, "term-free exact query");
+    assert_query_runtime_admission_missing(&output, "term-free exact query");
 }
 
 #[test]
 fn removed_exact_query_flags_are_rejected_by_cli_admission() {
     for removed_flag in ["--code", "--names-only"] {
+        let source = exact_query_source(
+            "language",
+            "typescript",
+            "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
+        );
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .args([
-                "query",
-                "playbook",
-                "--language",
-                "typescript",
-                "--selector",
-                "typescript://languages/asp-typescript/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
-                "--workspace",
-                ".",
-                removed_flag,
-            ])
+            .args(["query", "playbook", &source, removed_flag])
             .current_dir(workspace_root())
             .output()
             .expect("run removed exact-query flag");
@@ -186,7 +160,7 @@ fn removed_exact_query_flags_are_rejected_by_cli_admission() {
         assert!(!output.status.success(), "{removed_flag} was admitted");
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("query playbook does not support option"),
+            stderr.contains("accepts exactly one Scheme expression"),
             "removed flag did not use ordinary CLI rejection: flag={removed_flag} stderr={stderr}"
         );
         assert!(
@@ -198,19 +172,13 @@ fn removed_exact_query_flags_are_rejected_by_cli_admission() {
 
 #[test]
 fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
+    let source = exact_query_source(
+        "documents",
+        "org",
+        "org://docs/missing.org#item/heading/missing",
+    );
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--documents",
-            "org",
-            "--selector",
-            "org://docs/missing.org#item/heading/missing",
-            "--workspace",
-            ".",
-            "--projection",
-            "source",
-        ])
+        .args(["query", "playbook", &source])
         .current_dir(workspace_root())
         .output()
         .expect("run org exact structural selector query");
@@ -234,23 +202,17 @@ fn language_query_reports_missing_activation_through_client_bootstrap() {
     std::fs::create_dir_all(temporary.path().join(".agent-semantic-protocols"))
         .expect("create empty State Home");
 
+    let source = exact_query_source(
+        "language",
+        "rust",
+        "rust://src/lib.rs#item/function/missing",
+    );
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .env_remove("ASP_STATE_HOME")
         .env_remove("ASP_RUNTIME_CLIENT_FD")
         .env("HOME", temporary.path())
         .current_dir(&project_root)
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "rust",
-            "--selector",
-            "rust://src/lib.rs#item/function/missing",
-            "--projection",
-            "source",
-            "--workspace",
-        ])
-        .arg(&project_root)
+        .args(["query", "playbook", &source])
         .output()
         .expect("run language query without a published transport");
 
@@ -261,8 +223,8 @@ fn language_query_reports_missing_activation_through_client_bootstrap() {
     );
     assert!(!output.status.success());
     assert!(
-        output_text.contains("Runtime Server workspace admission catalog has no binding"),
-        "language query must report registered-workspace admission: {output_text}"
+        output_text.contains("reasonKind=activation-event-missing"),
+        "language query must parse Scheme and report missing Runtime activation: {output_text}"
     );
     assert!(
         !temporary

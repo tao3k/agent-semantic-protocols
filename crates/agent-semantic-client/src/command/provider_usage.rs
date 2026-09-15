@@ -10,7 +10,7 @@ pub(super) fn is_guide(args: &[String]) -> bool {
 
 pub(super) fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|cache|info|bench|projection|agent doctor|ast-patch> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nSearch and Query are Playbook-only root operations: `asp search playbook '<scheme-expression>'` and `asp query playbook --language <producer|...> --selector <parser-owned-selector>...`. Language policy verification is build/CI-owned; typed Runtime receipts carry result provenance.",
+        "usage: asp <{}> [--help|--version] <guide|cache|info|bench|projection|agent doctor|ast-patch> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nSearch and Query are Playbook-only root operations: `asp search playbook '<scheme-expression>'` and `asp query playbook '<scheme-expression>'`. Language policy verification is build/CI-owned; typed Runtime receipts carry result provenance.",
         registered_language_facades_line()
     )
 }

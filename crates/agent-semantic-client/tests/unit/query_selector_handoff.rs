@@ -11,17 +11,10 @@ fn exact_query_requires_a_registered_workspace_before_runtime_bootstrap() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("workspace root");
+    let source = "(query (producers (language rust)) (select (selectors \"rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient\")))";
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "query",
-            "playbook",
-            "--language",
-            "rust",
-            "--selector",
-            "rust://crates/agent-semantic-client/src/language_command.rs#item/struct/RuntimeLanguageCommandClient",
-            "--workspace",
-        ])
-        .arg(workspace)
+        .args(["query", "playbook", source])
+        .current_dir(workspace)
         .env("ASP_STATE_HOME", state_home.path())
         .env_remove("ASP_RUNTIME_CLIENT_FD")
         .output()
@@ -37,8 +30,8 @@ fn exact_query_requires_a_registered_workspace_before_runtime_bootstrap() {
         "isolated State Home has no handoff"
     );
     assert!(
-        terminal.contains("Runtime Server workspace admission catalog has no binding"),
-        "Query must fail at the registered-workspace admission boundary: {terminal}"
+        terminal.contains("reasonKind=activation-event-missing"),
+        "Query must parse Scheme and fail at Runtime activation: {terminal}"
     );
     assert!(
         !terminal.contains("endpoint.v1.json")

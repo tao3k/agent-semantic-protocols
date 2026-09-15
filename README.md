@@ -172,10 +172,12 @@ native syntax, lexical retrieval, or graph reasoning. The `asp-python-graphs`
 service is managed by the ASP Server and is not invoked as a second executable:
 
 ```sh
-asp search playbook --language rust \
-  --rg -n -e graphs_timeline crates/agent-semantic-client/src \
-  --tantivy term graphs_timeline \
-  --graph gql --query 'node(kind = "owner")'
+asp search playbook '(search (producers (language rust))
+  (chain
+    (intersect
+      (rg "-n" "-e" "graphs_timeline" "crates/agent-semantic-client/src")
+      (tantivy "body:graphs_timeline"))
+    (graph gql "--query" "node(kind = \"owner\")")))'
 ```
 
 Graph-turbo request packets use the ranking engine through schema-owned JSON:
@@ -218,15 +220,15 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search playbook --language rust --rg -n -e '<term>' . --tantivy 'title:<term>^2 OR body:<term>'
-asp query playbook --language '<producer|...>' --selector '<provider-owned-selector>'
-asp query playbook --documents org --selector 'org://docs/spec.org#item/heading/Contract'
+asp search playbook '(search (producers (language rust)) (intersect (rg "-n" "-e" "<term>" ".") (tantivy "title:<term>^2 OR body:<term>")))'
+asp query playbook '(query (producers (language rust)) (select (selectors "rust://src/lib.rs#item/function/run") (projection source)))'
+asp query playbook '(query (producers (documents org)) (select (selectors "org://docs/spec.org#item/heading/Contract") (projection source)))'
 ```
 
 `asp search playbook` and `asp query playbook` are the only public Search and Query
-surfaces. Use `--language <rust|typescript|python|julia>` for code producers
-and `--documents <org|md>` for document producers; a cross-domain request may
-use both. Search
+surfaces. Use `(language rust typescript python julia)` for code producers and
+`(documents org md)` for document producers; a cross-domain request may use
+both. Search
 accepts native argument blocks; Query accepts only selectors returned on the
 owning GQL nodes. Dependency discovery therefore starts with manifest terms in
 the Playbook and continues through returned selectors, rather than a separate

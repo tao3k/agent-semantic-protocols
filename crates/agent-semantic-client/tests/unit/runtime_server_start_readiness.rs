@@ -15,12 +15,7 @@ use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_arti
 const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
     "query",
     "playbook",
-    "--language",
-    "rust",
-    "--selector",
-    "rust://src/lib.rs#item/function/missing",
-    "--projection",
-    "source",
+    "(query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/missing\") (projection source)))",
 ];
 
 fn asp_binary() -> PathBuf {

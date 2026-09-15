@@ -468,9 +468,10 @@ owner projection MUST be materialized before the immutable
 cannot mint a content search generation and therefore cannot authorize public
 evidence.  The =CompleteGeneration= commit is the Search-to-Query
 linearization point: Search emits only selectors already admitted by that
-generation. The following =asp query playbook= request declares code selectors
-with =--language= and document selectors with =--documents= before =--selector=;
-it is a resident read that
+generation. The following =asp query playbook= request carries exactly one
+=(query ...)= Scheme expression. Its =(producers ...)= form declares code and
+document producers, while =(selectors ...)= carries parser-owned exact
+identities; it is a resident read that
 MUST NOT repair, reparse, retry, or call the provider.
 Selector identity includes source-root, provider, parser identity/version, and
 selector-grammar version; a generation digest plus display node name is
@@ -1958,8 +1959,9 @@ namespace. The only public leaves are =asp search playbook= and
 =asp query playbook=. Search requires at least one producer axis inside its
 single Scheme expression: programming languages use =(language ...)= and
 document formats such as Org and Markdown use =(documents ...)=. Both axes may
-appear in one cross-domain Search request. Query retains its normalized
-=--language=/=--documents= producer fields alongside exact selectors.
+appear in one cross-domain Search request. Query uses the same producer form
+inside its sole Scheme expression; public flags never encode producer,
+selector, projection, output, or workspace semantics.
 =asp <language> search|query= fails
 closed and is never retained as an alias. Language/document calibration may
 narrow the registered fact-producer set; it does not select files, establish
@@ -2031,10 +2033,13 @@ materialization route:
 #+begin_src shell
 asp search playbook '<one (search ...) Scheme expression>'
 
-asp query playbook --language '<producer|...>' \
-  --selector <exact-selector> \
-  --projection <source|callable-skeleton> \
-  [--workspace <registered WorkspaceId>]
+asp query playbook \
+  '(query (workspace "registered-workspace-id")
+     (producers (language rust) (documents org))
+     (select
+       (selectors "rust://...#item/..." "org://...#item/...")
+       (projection source)
+       (output human)))'
 
 #+end_src
 
@@ -2044,6 +2049,14 @@ shared Search namespace, never command namespaces and never separate
 entrypoints. A language-specific =syntax= leaf may repeat; its second value is
 one quoted enhanced Tree-sitter Query source string, not a second
 =(where ...)= DSL.
+Query likewise accepts exactly one Scheme expression. Its V1 root is
+=(query [(workspace "registered WorkspaceId")] (producers ...)
+  (select (selectors "...") (projection source|callable-skeleton)
+  (output human|json)))=. =workspace= and =output= are optional; the defaults
+are the caller's registered workspace and human output. =projection= is
+optional and defaults to =source=. The selector order is preserved, selectors
+must be unique, and every selector producer must occur in the declared
+producer axes. No flag grammar is retained as an alias or compatibility path.
 The retired language-first =semantic-tree-sitter-query= JSON packet runner is
 not a V1 qualification surface. Query-corpus qualification validates each
 provider-owned catalog and corpus, then executes the Runtime-owned native

@@ -74,7 +74,7 @@ pub(crate) async fn run_language_command(
         }
         Some("query") => {
             return Err(
-                "language-first Query was removed; use `asp query playbook --language <producer|...> --selector <exact-selector>...`; provider-native syntax discovery belongs to `asp search playbook`"
+                "language-first Query was removed; use `asp query playbook '<one (query ...) Scheme expression>'`; provider-native syntax discovery belongs to `asp search playbook`"
                     .to_owned(),
             );
         }

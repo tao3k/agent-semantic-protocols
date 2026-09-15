@@ -2,39 +2,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Direct syntax-query and exact-selector grammar for the shared Query surface.
+//! Canonical Scheme grammar for the shared exact-selector Query Playbook.
 
+use agent_semantic_scheme_syntax::SchemeDatum;
 use serde::{Deserialize, Serialize};
-
-const QUERY_OPTIONS: &[&str] = &[
-    "--language",
-    "--documents",
-    "--selector",
-    "--workspace",
-    "--projection",
-    "--json",
-];
 
 /// Presentation selected for the public Query surface.
 ///
-/// Query is an agent-facing source/syntax operation by default.  The typed
-/// Runtime packet is an implementation detail unless the caller explicitly
-/// requests it with `--json`.
+/// Query is an agent-facing source/syntax operation by default. The typed
+/// Runtime packet is an implementation detail unless the Scheme expression
+/// explicitly selects `(output json)`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum QueryOutputFormat {
     Human,
     Json,
-}
-
-/// Resolve the public presentation contract for either root or language-facade
-/// Query arguments.  Only an explicit `--json` opts into wire output.
-pub fn query_output_format(args: &[String]) -> QueryOutputFormat {
-    if args.iter().any(|argument| argument == "--json") {
-        QueryOutputFormat::Json
-    } else {
-        QueryOutputFormat::Human
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -54,69 +36,109 @@ pub enum ProgressiveQueryRequest {
 }
 
 pub fn parse_progressive_query_args(args: &[String]) -> Result<ProgressiveQueryRequest, String> {
-    if args.first().map(String::as_str) != Some("query") {
+    if args.first().map(String::as_str) != Some("query")
+        || args.get(1).map(String::as_str) != Some("playbook")
+    {
         return Err("use `asp query playbook`".to_owned());
     }
-
-    if args.get(1).map(String::as_str) != Some("playbook") {
-        return Err("use `asp query playbook`".to_owned());
+    let Some(source) = args.get(2) else {
+        return Err("Query Playbook requires one Scheme expression".to_owned());
+    };
+    if args.len() != 3 {
+        return Err("Query Playbook accepts exactly one Scheme expression argument".to_owned());
     }
+    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source)
+        .map_err(|error| format!("invalid Query Playbook Scheme source: {error}"))?;
+    let [SchemeDatum::List(root)] = datums.as_slice() else {
+        return Err("expected one (query ...) expression".to_owned());
+    };
+    lower_query(root)
+}
 
+fn lower_query(root: &[SchemeDatum]) -> Result<ProgressiveQueryRequest, String> {
+    if symbol(root.first()) != Some("query") {
+        return Err("expected one (query ...) expression".to_owned());
+    }
+    let (workspace, producers_index, select_index) = match root {
+        [_, SchemeDatum::List(target), _, _] if symbol(target.first()) == Some("workspace") => {
+            let [_, SchemeDatum::String(workspace)] = target.as_slice() else {
+                return Err(
+                    "workspace requires exactly one registered WorkspaceId string".to_owned(),
+                );
+            };
+            if !valid_registered_name(workspace) {
+                return Err("workspace requires one registered WorkspaceId, not a path".to_owned());
+            }
+            (Some(workspace.clone()), 2, 3)
+        }
+        [_, _, _] => (None, 1, 2),
+        _ => {
+            return Err(
+                "expected (query [(workspace \"id\")] (producers ...) (select ...))".to_owned(),
+            );
+        }
+    };
+    let SchemeDatum::List(producers) = &root[producers_index] else {
+        return Err("expected a producers declaration".to_owned());
+    };
+    let (language, documents) = lower_producers(producers)?;
+    let SchemeDatum::List(select) = &root[select_index] else {
+        return Err("expected a select form".to_owned());
+    };
+    if symbol(select.first()) != Some("select") {
+        return Err("expected a select form".to_owned());
+    }
     let mut selectors = Vec::new();
-    let mut language = None;
-    let mut documents = None;
-    let mut workspace = None;
     let mut projection = None;
-    let output_format = query_output_format(args);
-    let mut index = 2;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--language" => {
-                if language.is_some() {
-                    return Err("query playbook accepts exactly one --language".to_owned());
+    let mut output_format = None;
+    for clause in &select[1..] {
+        let SchemeDatum::List(values) = clause else {
+            return Err("select clauses must be lists".to_owned());
+        };
+        match symbol(values.first()) {
+            Some("selectors") => {
+                if !selectors.is_empty() {
+                    return Err("selectors may occur only once".to_owned());
                 }
-                language = Some(single_value(args, &mut index, "--language")?);
+                selectors = values[1..]
+                    .iter()
+                    .map(|value| match value {
+                        SchemeDatum::String(value) if !value.is_empty() => Ok(value.clone()),
+                        _ => Err("selectors must be non-empty strings".to_owned()),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
             }
-            "--documents" => {
-                if documents.is_some() {
-                    return Err("query playbook accepts exactly one --documents".to_owned());
+            Some("projection") => {
+                let [_, SchemeDatum::Symbol(value)] = values.as_slice() else {
+                    return Err("projection requires exactly one symbol".to_owned());
+                };
+                if projection.replace(value.clone()).is_some() {
+                    return Err("projection may occur only once".to_owned());
                 }
-                documents = Some(single_value(args, &mut index, "--documents")?);
             }
-            "--selector" => selectors.push(single_value(args, &mut index, "--selector")?),
-            "--workspace" => {
-                workspace = Some(single_value(args, &mut index, "--workspace")?);
+            Some("output") => {
+                let [_, SchemeDatum::Symbol(value)] = values.as_slice() else {
+                    return Err("output requires exactly one symbol".to_owned());
+                };
+                let value = match value.as_str() {
+                    "human" => QueryOutputFormat::Human,
+                    "json" => QueryOutputFormat::Json,
+                    _ => return Err("query output must be human or json".to_owned()),
+                };
+                if output_format.replace(value).is_some() {
+                    return Err("output may occur only once".to_owned());
+                }
             }
-            "--projection" => {
-                projection = Some(single_value(args, &mut index, "--projection")?);
+            Some(operator) => {
+                return Err(format!(
+                    "Query Playbook does not support operator `{operator}`"
+                ));
             }
-            "--json" => index += 1,
-            option => return Err(format!("query playbook does not support option `{option}`")),
+            None => return Err("select clause must begin with an operator".to_owned()),
         }
     }
-
-    if language.is_none() && documents.is_none() {
-        return Err("query playbook requires --language or --documents".to_owned());
-    }
-    if language
-        .as_deref()
-        .is_some_and(|value| !valid_producer_expression(value))
-    {
-        return Err(
-            "query playbook --language must be a registered-producer expression".to_owned(),
-        );
-    }
-    if documents
-        .as_deref()
-        .is_some_and(|value| !valid_producer_expression(value))
-    {
-        return Err(
-            "query playbook --documents must be a registered-producer expression".to_owned(),
-        );
-    }
     if selectors.is_empty() {
-        return Err("query playbook requires at least one --selector".to_owned());
+        return Err("Query Playbook requires at least one selector".to_owned());
     }
     if selectors
         .iter()
@@ -124,7 +146,7 @@ pub fn parse_progressive_query_args(args: &[String]) -> Result<ProgressiveQueryR
         .len()
         != selectors.len()
     {
-        return Err("query playbook selectors must be unique".to_owned());
+        return Err("Query Playbook selectors must be unique".to_owned());
     }
     let projection = projection.unwrap_or_else(|| "source".to_owned());
     validate_projection(&projection)?;
@@ -138,41 +160,76 @@ pub fn parse_progressive_query_args(args: &[String]) -> Result<ProgressiveQueryR
             .split_once("://")
             .is_none_or(|(producer, _)| !selected.contains(producer))
     }) {
-        return Err(
-            "query playbook selectors must belong to the declared --language/--documents producer set".to_owned(),
-        );
+        return Err("Query Playbook selectors must belong to the declared producer set".to_owned());
     }
     Ok(ProgressiveQueryRequest::Selector {
         language,
         documents,
         selectors,
         projection,
-        output_format,
+        output_format: output_format.unwrap_or(QueryOutputFormat::Human),
         workspace,
     })
 }
 
-fn valid_producer_expression(value: &str) -> bool {
-    !value.is_empty()
-        && value.split('|').all(|producer| {
-            producer
-                .bytes()
-                .next()
-                .is_some_and(|byte| byte.is_ascii_alphanumeric())
-                && producer.bytes().all(|byte| {
-                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-')
-                })
-        })
+fn lower_producers(form: &[SchemeDatum]) -> Result<(Option<String>, Option<String>), String> {
+    if symbol(form.first()) != Some("producers") {
+        return Err("expected (producers (language ...) (documents ...))".to_owned());
+    }
+    let mut language = None;
+    let mut documents = None;
+    for axis in &form[1..] {
+        let SchemeDatum::List(values) = axis else {
+            return Err("producer axis must be a list".to_owned());
+        };
+        let Some(name) = symbol(values.first()) else {
+            return Err("producer axis must begin with language or documents".to_owned());
+        };
+        let atoms = values[1..]
+            .iter()
+            .map(|value| match value {
+                SchemeDatum::Symbol(value) if valid_registered_name(value) => Ok(value.as_str()),
+                _ => Err("producer values must be registered-name symbols".to_owned()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if atoms.is_empty() {
+            return Err(format!("{name} producer axis is empty"));
+        }
+        let target = match name {
+            "language" => &mut language,
+            "documents" => &mut documents,
+            other => {
+                return Err(format!(
+                    "Query Playbook does not support producer axis `{other}`"
+                ));
+            }
+        };
+        if target.replace(atoms.join("|")).is_some() {
+            return Err(format!("producer axis `{name}` may occur only once"));
+        }
+    }
+    if language.is_none() && documents.is_none() {
+        return Err("Query Playbook requires at least one producer axis".to_owned());
+    }
+    Ok((language, documents))
 }
 
-fn single_value(args: &[String], index: &mut usize, option: &str) -> Result<String, String> {
-    let value = args
-        .get(*index + 1)
-        .filter(|value| !QUERY_OPTIONS.contains(&value.as_str()))
-        .cloned()
-        .ok_or_else(|| format!("{option} requires a value"))?;
-    *index += 2;
-    Ok(value)
+fn symbol(datum: Option<&SchemeDatum>) -> Option<&str> {
+    match datum {
+        Some(SchemeDatum::Symbol(value)) => Some(value),
+        _ => None,
+    }
+}
+
+fn valid_registered_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-'))
 }
 
 fn validate_projection(projection: &str) -> Result<(), String> {

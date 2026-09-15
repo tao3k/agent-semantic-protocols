@@ -37,7 +37,7 @@ pub(crate) async fn run_language_command_with_config(
     };
     if matches!(command, "search" | "query" | "elements-query") {
         return Err(format!(
-            "language-first {command} was removed; use `asp search playbook '<scheme-expression>'` with `{language_id}` in its producers declaration, or `asp query playbook --language {language_id} --selector <exact-selector>...`"
+            "language-first {command} was removed; use `asp search playbook '<scheme-expression>'` or `asp query playbook '<scheme-expression>'` with `{language_id}` in its producers declaration"
         ));
     }
     if command == "contract" && language_id == "org" {
