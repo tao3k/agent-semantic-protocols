@@ -53,6 +53,16 @@ NOT route it through =asp=, a language facade, a Hook matcher, or a compatibilit
 alias.  Receipts keep their existing V1 schema identities; separating the
 executable is not a schema revision.
 
+One test process qualifies exactly one explicit =--resource=.  Cross-resource
+parallelism belongs to the CI Matrix, where every process has its own Runtime
+and resource budget; the test target must not fan out an omitted selector or a
+language selector into several workspaces.  In a resource receipt the outer
+=qualifiedCaseCount= is the number of cases executed by that Matrix shard,
+while =clientProtocol.qualifiedCaseCount= remains the V1 plan-wide protocol
+coverage declared by =appliesToCaseCount=.  An aggregation step may join shard
+receipts only after all declared resource identities and the common plan and
+lock digests agree.
+
 * First divergence
 
 The qualification test can be admitted and enumerate the declared

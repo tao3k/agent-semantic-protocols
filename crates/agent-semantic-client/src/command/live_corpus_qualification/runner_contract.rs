@@ -184,7 +184,6 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
 pub(super) fn parse_args(args: &[String]) -> Result<QualifyArgs, String> {
     let mut plan_path = PathBuf::from(DEFAULT_PLAN_PATH);
     let mut resource_id = None;
-    let mut language_id = None;
     let mut json = false;
     let mut index = 0;
     while index < args.len() {
@@ -210,30 +209,19 @@ pub(super) fn parse_args(args: &[String]) -> Result<QualifyArgs, String> {
                     );
                 }
             }
-            "--language" => {
-                index += 1;
-                let value = args.get(index).ok_or_else(|| {
-                    "live_corpus qualify requires a language id after --language".to_owned()
-                })?;
-                if value.trim().is_empty() {
-                    return Err("live_corpus qualify language id must be non-empty text".to_owned());
-                }
-                if language_id.replace(value.clone()).is_some() {
-                    return Err(
-                        "live_corpus qualify accepts exactly one --language option".to_owned()
-                    );
-                }
-            }
             option => {
                 return Err(format!("unknown live_corpus qualify option: {option}"));
             }
         }
         index += 1;
     }
+    if resource_id.is_none() {
+        return Err("live_corpus qualify requires exactly one --resource".to_owned());
+    }
     Ok(QualifyArgs {
         plan_path,
         resource_id,
-        language_id,
+        language_id: None,
         json,
     })
 }

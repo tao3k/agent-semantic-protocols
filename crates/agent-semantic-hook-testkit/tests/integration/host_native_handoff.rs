@@ -199,11 +199,7 @@ fn forged_deferred_command_digest_is_rejected_before_publication() {
     let _environment = environment_lock().lock().expect("environment lock");
     let scenario = ScenarioRoot::new("forged-digest");
     let workspace = scenario.workspace();
-    let mut payload = post_tool_payload(
-        &workspace,
-        "root-thread",
-        "asp healthcheck",
-    );
+    let mut payload = post_tool_payload(&workspace, "root-thread", "asp healthcheck");
     let forged = payload
         .pointer_mut("/tool_response/output")
         .and_then(|value| value.as_str())

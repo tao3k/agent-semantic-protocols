@@ -43,6 +43,7 @@ struct PreparedRun {
     sequential_sample_count: usize,
     concurrent_sample_count: usize,
     cold_load_sample_count: usize,
+    protocol_qualified_case_count: usize,
     cases: Vec<PreparedCase>,
 }
 
@@ -260,6 +261,7 @@ pub(crate) async fn run(
         sequential_sample_count,
         concurrent_sample_count,
         cold_load_sample_count,
+        protocol_qualified_case_count,
         cases,
     } = prepared;
     let selected_case_count = cases.len();
@@ -553,7 +555,7 @@ pub(crate) async fn run(
             p50_maximum_micros: 250,
             p99_maximum_micros: 700,
             max_maximum_micros: 1_000,
-            qualified_case_count: receipts.len(),
+            qualified_case_count: protocol_qualified_case_count,
         },
         qualified_case_count: receipts.len(),
         cases: receipts,
@@ -622,6 +624,7 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
         .find(|state| state.state == "cold-load")
         .map(|state| state.sample_count)
         .ok_or_else(|| "Live Corpus plan omitted cold-load cache state".to_owned())?;
+    let protocol_qualified_case_count = plan.client_protocol.applies_to_case_count;
     let cases = select_qualification_cases(
         plan.cases,
         args.language_id.as_deref(),
@@ -717,6 +720,7 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
         sequential_sample_count,
         concurrent_sample_count,
         cold_load_sample_count,
+        protocol_qualified_case_count,
         cases: prepared_cases,
     })
 }

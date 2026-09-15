@@ -140,10 +140,21 @@ fn qualification_rejects_duplicate_resource_selectors() {
 }
 
 #[test]
-fn qualification_accepts_one_explicit_language_selector() {
-    let args = parse_args(&["--language".to_owned(), "rust".to_owned()])
-        .expect("parse one language selector");
-    assert_eq!(args.language_id.as_deref(), Some("rust"));
+fn qualification_requires_one_atomic_resource_selector() {
+    let error = parse_args(&[]).expect_err("an omitted resource must not fan out");
+    assert_eq!(error, "live_corpus qualify requires exactly one --resource");
+}
+
+#[test]
+fn qualification_rejects_language_fan_out() {
+    let error = parse_args(&[
+        "--language".to_owned(),
+        "rust".to_owned(),
+        "--resource".to_owned(),
+        "rust.tokio".to_owned(),
+    ])
+    .expect_err("language selection must not create a multi-workspace test process");
+    assert_eq!(error, "unknown live_corpus qualify option: --language");
 }
 
 #[test]
