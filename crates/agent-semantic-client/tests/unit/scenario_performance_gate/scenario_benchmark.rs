@@ -8,6 +8,11 @@ fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {
 }
 
 #[test]
+fn scenario_performance_gate_registers_every_source_module() {
+    super::scenario_benchmark_manifest::scenario_performance_gate_registers_every_source_module();
+}
+
+#[test]
 fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
     super::graph_rank::asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate();
 }

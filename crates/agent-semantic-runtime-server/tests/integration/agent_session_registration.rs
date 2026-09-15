@@ -4,7 +4,40 @@
 
 //! Agent session registration integration tests.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
+
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct RegistrationBenchmark {
+    max_total: String,
+    memory_budget_bytes: u64,
+    observed_memory_bytes: u64,
+    route_source: String,
+    max_provider_process_count: u32,
+    fallback_reason: String,
+}
+
+fn registration_benchmark() -> RegistrationBenchmark {
+    toml::from_str(include_str!(
+        "scenarios/asp_session_register_child_runtime_handoff/benchmark.toml"
+    ))
+    .expect("parse register-child runtime handoff benchmark")
+}
+
+fn duration_micros(value: &str) -> u128 {
+    let value = value.trim();
+    if let Some(micros) = value.strip_suffix("us") {
+        return micros.parse::<u128>().expect("microsecond duration");
+    }
+    if let Some(millis) = value.strip_suffix("ms") {
+        return millis.parse::<u128>().expect("millisecond duration") * 1_000;
+    }
+    if let Some(seconds) = value.strip_suffix('s') {
+        return seconds.parse::<u128>().expect("second duration") * 1_000_000;
+    }
+    panic!("unsupported benchmark duration {value:?}");
+}
 
 async fn test_generation_admission(
     project_root: &std::path::Path,
@@ -123,6 +156,15 @@ fn registered_language_provider_pairs() -> Vec<(String, String)> {
 
 #[tokio::test]
 async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owner() {
+    let benchmark = registration_benchmark();
+    assert_eq!(
+        benchmark.route_source,
+        "runtime-grpc-agent-session-register"
+    );
+    assert_eq!(benchmark.max_provider_process_count, 0);
+    assert_eq!(benchmark.fallback_reason, "none");
+    assert!(benchmark.memory_budget_bytes > 0);
+    assert!(benchmark.observed_memory_bytes <= benchmark.memory_budget_bytes);
     let directory = tempfile::tempdir().expect("temporary workspace");
     let project_root = directory.path().join("project");
     std::fs::create_dir_all(&project_root).expect("create project root");
@@ -227,6 +269,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
     else {
         panic!("initialize must return the exact Runtime catalog")
     };
+    let request_started = Instant::now();
     let response = client
         .call(ClientFrame::Request {
             base,
@@ -251,6 +294,17 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
     let receipt: AgentSessionRegisterReceipt =
         serde_json::from_value(result.into_value()).expect("decode registration receipt");
     receipt.validate().expect("valid registration receipt");
+    let request_plane_elapsed = request_started.elapsed();
+    assert!(
+        request_plane_elapsed.as_micros() <= duration_micros(&benchmark.max_total),
+        "register-child Runtime request plane exceeded max_total={} observed={}us",
+        benchmark.max_total,
+        request_plane_elapsed.as_micros()
+    );
+    eprintln!(
+        "[scenario-benchmark] id=asp-session-register-child-runtime-handoff requestPlaneElapsedMicros={} providerProcessCount=0 fallbackReason=none",
+        request_plane_elapsed.as_micros()
+    );
     assert_eq!(receipt.project_id.as_str(), project_id);
     assert_eq!(receipt.root_session_id.as_str(), "root-1");
     assert_eq!(receipt.parent_thread_id.as_str(), "parent-1");

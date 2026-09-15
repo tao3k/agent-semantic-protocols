@@ -29,6 +29,29 @@ pub(super) fn discover_toml_scenario_benchmark_roots(root: &Path) -> Vec<PathBuf
     roots
 }
 
+pub(super) fn scenario_performance_gate_registers_every_source_module() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let module_root = crate_root.join("tests/unit/scenario_performance_gate.rs");
+    let module_source = std::fs::read_to_string(&module_root)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", module_root.display()));
+    let module_dir = crate_root.join("tests/unit/scenario_performance_gate");
+    let mut missing = read_dir_sorted(&module_dir)
+        .into_iter()
+        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
+        .filter_map(|path| {
+            let file_name = path.file_name()?.to_str()?;
+            let registration = format!("scenario_performance_gate/{file_name}");
+            (!module_source.contains(&registration)).then_some(file_name.to_owned())
+        })
+        .collect::<Vec<_>>();
+    missing.sort();
+    assert!(
+        missing.is_empty(),
+        "scenario performance source modules must be registered by {}; unregistered={missing:?}",
+        module_root.display()
+    );
+}
+
 fn collect_toml_scenario_benchmark_roots(root: &Path, roots: &mut Vec<PathBuf>) {
     let scenario_path = root.join("scenario.toml");
     let benchmark_path = root.join("benchmark.toml");

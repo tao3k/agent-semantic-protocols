@@ -48,6 +48,11 @@ pub(super) const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS:
         syntax: ScenarioBenchmarkSyntax::TomlPair,
     },
     LanguageScenarioBenchmarkRequirement {
+        language: "rust",
+        root: "crates/agent-semantic-runtime-server/tests/integration/scenarios",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+    LanguageScenarioBenchmarkRequirement {
         language: "typescript",
         root: "languages/asp-typescript/tests/unit/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,

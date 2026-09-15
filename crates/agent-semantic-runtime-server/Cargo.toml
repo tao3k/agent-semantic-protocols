@@ -92,3 +92,4 @@ tonic-prost-build.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 criterion.workspace = true
 tempfile.workspace = true
+toml.workspace = true
