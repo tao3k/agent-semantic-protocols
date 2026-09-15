@@ -142,6 +142,12 @@ pub(crate) struct WorkspaceSearchQualificationReceipt {
     pub(crate) selectors: Vec<String>,
     pub(crate) owner_paths: Vec<String>,
     pub(crate) elapsed_micros: u64,
+    pub(crate) response_decode_elapsed_micros: u64,
+    pub(crate) packet_bytes: usize,
+    pub(crate) node_count: usize,
+    pub(crate) edge_count: usize,
+    pub(crate) frontier_count: usize,
+    pub(crate) coverage_certificate_count: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -579,6 +585,11 @@ fn validate_sampled_search(
         || sample.topology_generation_digest != baseline.topology_generation_digest
         || sample.selectors != baseline.selectors
         || sample.owner_paths != baseline.owner_paths
+        || sample.packet_bytes != baseline.packet_bytes
+        || sample.node_count != baseline.node_count
+        || sample.edge_count != baseline.edge_count
+        || sample.frontier_count != baseline.frontier_count
+        || sample.coverage_certificate_count != baseline.coverage_certificate_count
     {
         let drift = [
             (
@@ -595,6 +606,17 @@ fn validate_sampled_search(
             ),
             ("selectors", sample.selectors != baseline.selectors),
             ("ownerPaths", sample.owner_paths != baseline.owner_paths),
+            ("packetBytes", sample.packet_bytes != baseline.packet_bytes),
+            ("nodeCount", sample.node_count != baseline.node_count),
+            ("edgeCount", sample.edge_count != baseline.edge_count),
+            (
+                "frontierCount",
+                sample.frontier_count != baseline.frontier_count,
+            ),
+            (
+                "coverageCertificateCount",
+                sample.coverage_certificate_count != baseline.coverage_certificate_count,
+            ),
         ]
         .into_iter()
         .filter_map(|(field, drifted)| drifted.then_some(field))
@@ -721,13 +743,19 @@ async fn search_receipt<C: LanguageCommandClient>(
             ));
         }
     };
+    let decode_started = Instant::now();
     let payload = typed_terminal(response.frame)?.require_ready("workspace.search.playbook")?;
     let settlement = agent_semantic_search_projection::SearchTopologySettlement::admit(payload)
         .map_err(|error| format!("decode Live Corpus Search settlement: {error}"))?;
+    let response_decode_elapsed_micros = decode_started
+        .elapsed()
+        .as_micros()
+        .min(u128::from(u64::MAX)) as u64;
     workspace_search_qualification_receipt(
         settlement.as_json(),
         operation_id,
         started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+        response_decode_elapsed_micros,
     )
 }
 
@@ -881,6 +909,7 @@ fn workspace_search_qualification_receipt(
     settlement: &serde_json::Value,
     operation_id: String,
     elapsed_micros: u64,
+    response_decode_elapsed_micros: u64,
 ) -> Result<WorkspaceSearchQualificationReceipt, String> {
     let binding = settlement
         .get("binding")
@@ -938,5 +967,21 @@ fn workspace_search_qualification_receipt(
         selectors,
         owner_paths,
         elapsed_micros,
+        response_decode_elapsed_micros,
+        packet_bytes: serde_json::to_vec(settlement)
+            .map_err(|error| format!("encode admitted Search settlement profile: {error}"))?
+            .len(),
+        node_count: settlement_array_len(settlement, "nodes")?,
+        edge_count: settlement_array_len(settlement, "edges")?,
+        frontier_count: settlement_array_len(settlement, "frontiers")?,
+        coverage_certificate_count: settlement_array_len(settlement, "coverageCertificates")?,
     })
+}
+
+fn settlement_array_len(settlement: &serde_json::Value, field: &str) -> Result<usize, String> {
+    settlement
+        .get(field)
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::len)
+        .ok_or_else(|| format!("Search settlement has no {field} array"))
 }

@@ -149,6 +149,13 @@ Warm Search samples MUST satisfy the client protocol's independent p50, p99,
 and maximum resident budgets.  Using the first-computation ceiling for warm
 samples is a false-green qualification.
 
+Before changing the public V1 Search packet, qualification MUST also record
+the admitted settlement's encoded byte count, node count, edge count, frontier
+count, coverage-certificate count, and client-side decode/admission wall time.
+These values are invariant across resident samples of the same materialization.
+They distinguish projection-size amplification from Runtime computation and
+make a compact-locator transport proposal falsifiable instead of speculative.
+
 * Architectural counterexample closure
 
 Live Corpus is not only a latency benchmark.  Every declared scenario is an
