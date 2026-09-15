@@ -13,7 +13,6 @@ use super::document_provider;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
-use super::live_corpus::run_live_corpus_command;
 use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
 use super::root_language_facade::{run_workspace_query, run_workspace_search_playbook};
@@ -72,7 +71,6 @@ pub(crate) async fn run_protocol_command_started(
         Some("server") => run_runtime_server_command(&args[1..]).await,
         Some("schema") => run_schema_command(&args[1..]).await,
         Some("session") => run_session_command(&args[1..]).await,
-        Some("live-corpus") => run_live_corpus_command(&args[1..]).await,
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some(document_id) if document_provider::is_document_language(document_id) => {
             document_provider::run_language_command(document_id, &args[1..]).await
@@ -117,7 +115,7 @@ fn env_var_nonempty(name: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|clean|cloud|hook|config|session|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|clean|cloud|hook|config|session|install|paths|healthcheck|server|schema|workspace-db|ast-patch|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 async fn run_client_command(args: Vec<String>) -> Result<(), String> {

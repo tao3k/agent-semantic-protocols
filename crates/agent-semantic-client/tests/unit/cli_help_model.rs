@@ -20,6 +20,9 @@ fn assert_selected(parts: &[&str], expected_name: &str, usage: &str) {
 #[test]
 fn root_and_first_level_paths_select_their_own_commands() {
     assert_selected(&["--help"], "asp", "asp");
+    let mut root = help_model::selected_command(&owned_args(&["--help"]));
+    let root_help = root.render_long_help().to_string();
+    assert!(!root_help.contains("live-corpus"), "help={root_help}");
     for command in [
         "providers",
         "tools",

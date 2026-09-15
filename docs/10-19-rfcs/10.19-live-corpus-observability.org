@@ -8,9 +8,17 @@
 
 * Status
 
-This RFC defines the V1, source-only qualification contract for live corpus
-search and query measurements. It does not publish a corpus, refresh a
-Runtime artifact, change a provider route, or change a Hook contract.
+This RFC defines the V1 qualification contract for live corpus Search and
+Query measurements.  Live Corpus is test infrastructure, not an end-user ASP
+capability.  It MUST NOT appear in the normal =asp= subcommand tree, public
+help, language facade, provider registry, or Hook routing contract.
+
+The dedicated =live_corpus= Cargo test target owns test orchestration.  It is
+compiled only through its explicit test feature and invokes the same ordinary
+public Search and Query client boundary that users exercise.  The test may
+prepare declared test inputs through explicit =sync= and =materialize= phases;
+those phases do not become Search/Query fallbacks and are never run implicitly
+by =qualify=.
 
 The existing shared schemas remain the contract authority:
 
@@ -23,9 +31,31 @@ The existing shared schemas remain the contract authority:
 Schema identity and schema version are fields in those schemas. They are not
 encoded into this RFC's namespace or into an artifact path.
 
+* Product/test surface boundary
+
+The normal =asp= executable owns product operations.  It neither dispatches
+nor advertises a =live-corpus= operation.  A production install therefore does
+not acquire a benchmark command, benchmark dependency, or Hook policy simply
+because the client can execute Search and Query.
+
+The feature-gated Cargo test target has four explicit operations:
+operations are:
+
+1. =path= resolves the declared immutable State Home checkout identity;
+2. =sync= acquires the exact lockfile revision for a test resource;
+3. =materialize= verifies that checkout and publishes its immutable test
+   artifact;
+4. =qualify= consumes only a previously published artifact and measures the
+   public Search -> exact Query path.
+
+CI and local benchmark scenarios invoke this test target directly.  They MUST
+NOT route it through =asp=, a language facade, a Hook matcher, or a compatibility
+alias.  Receipts keep their existing V1 schema identities; separating the
+executable is not a schema revision.
+
 * First divergence
 
-The qualification command can be admitted and enumerate the declared
+The qualification test can be admitted and enumerate the declared
 corpus, but a qualification run is not ready when a required immutable
 resource pointer is absent. In that state it must return a typed data
 availability result and must not sync, materialize, substitute, or silently
@@ -255,16 +285,18 @@ deterministic replay. Candidate C is selected.
 - ASP Server owns plan admission, immutable resource resolution, queue,
   single-flight, cancellation, terminalization, and receipt publication.
 - Language providers own parser/index/query facts only.
-- The live-corpus harness owns workload declaration and report aggregation,
-  not corpus publication or provider lifecycle.
+- The =live_corpus= Cargo test target owns explicit test-input synchronization,
+  materialization, workload declaration, and report aggregation. It does not
+  own provider lifecycle and =qualify= never performs input preparation.
 
 The qualification plan and validation matrix are recorded in
 =packages/proofs/receipts/live-corpus-observability-validation-plan.json=.
 
 * Recovery and deferred gate
 
-The current qualification remains blocked until the declared immutable
-=julia.dataframes= resource is prepublished by its owner. The recovery is to
-publish that exact resource through the approved owner path, then replay the
-same plan. No sync, materialize, restart, plugin refresh, or Hook-disable path
-is part of this RFC's acceptance.
+A missing immutable resource blocks =qualify=.  The test orchestrator may then
+run the test target's explicit =sync= and =materialize= phases for that exact
+lockfile resource before replaying =qualify=.  Qualification itself never
+performs those phases.  Runtime restart, plugin refresh, Hook mutation,
+provider fallback, compatibility aliases, and hidden retry remain outside this
+RFC's acceptance path.

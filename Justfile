@@ -289,7 +289,14 @@ check-language-facade-smoke:
 check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
-# Qualify every locked large-library corpus through resident search, exact projection, and OTel.
+# Qualify a locked corpus through the Cargo-owned Live Corpus test target.
+check-live-corpus-search-query-resource resource:
+    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- sync --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
+    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- materialize --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
+    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- qualify --resource "{{resource}}" --plan benchmarks/live-corpus-search-query-qualification.json
+
+# Local all-provider qualification remains an explicit aggregate convenience;
+# CI owns one isolated Matrix Job per corpus.
 check-live-corpus-search-query-all-setup:
     just agent-tools-install-client
     just agent-tools-install-rs
@@ -299,8 +306,7 @@ check-live-corpus-search-query-all-setup:
     just agent-tools-install-gerbil
 
 check-live-corpus-search-query-all: check-live-corpus-search-query-all-setup
-    "{{asp_runtime_bin}}/asp" server start >/dev/null
-    "{{asp_runtime_bin}}/asp" live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
+    jq -r '.corpora[].resourceId' benchmarks/large-library-runtime-corpora.json | while IFS= read -r resource_id; do just check-live-corpus-search-query-resource "$resource_id"; done
 
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-tree-sitter-query-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
 

@@ -24,10 +24,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
         "schema",
         "Materialize or verify shared language schema bundles",
     ),
-    (
-        "live-corpus",
-        "Qualify and publish provider live-corpus artifacts",
-    ),
     ("ast-patch", "Verify or render parser-owned AST patches"),
     (
         "search",

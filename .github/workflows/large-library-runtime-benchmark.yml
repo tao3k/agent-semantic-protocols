@@ -17,10 +17,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  benchmark:
-    name: V1 Search Runtime Matrix
+  matrix:
+    name: Resolve V1 corpus matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    outputs:
+      corpora: ${{ steps.corpora.outputs.corpora }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(jq -c '{include: [.corpora[] | {resource: .resourceId, language: .language}]}' benchmarks/large-library-runtime-corpora.json)"
+          echo "corpora=$matrix" >> "$GITHUB_OUTPUT"
+
+  benchmark:
+    name: V1 ${{ matrix.resource }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.corpora) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -45,19 +63,11 @@ jobs:
       - name: Install Nix for the project direnv environment
         uses: cachix/install-nix-action@v31
 
-      - name: Install direnv
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes direnv
-          direnv allow "$GITHUB_WORKSPACE"
-          direnv exec . true
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Node
+        if: ${{ matrix.language == 'typescript' }}
         uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -65,65 +75,47 @@ jobs:
           cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Python and uv
+        if: ${{ matrix.language == 'python' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.language == 'python' }}
         with:
           enable-cache: true
 
       - name: Set up Julia
+        if: ${{ matrix.language == 'julia' }}
         uses: julia-actions/setup-julia@v2
         with:
           version: "1.12"
 
-      - name: Build, publish, and activate every registered corpus provider
+      - name: Publish the client and selected provider
         shell: bash
         run: |
           set -euo pipefail
-          ./.devenv/devenv-profile-exec just agent-tools-install-global
+          ./.devenv/devenv-profile-exec just agent-tools-install-client
+          case "${{ matrix.language }}" in
+            rust) ./.devenv/devenv-profile-exec just agent-tools-install-rs ;;
+            typescript) ./.devenv/devenv-profile-exec just agent-tools-install-ts ;;
+            python) ./.devenv/devenv-profile-exec just agent-tools-install-py ;;
+            julia) ./.devenv/devenv-profile-exec just agent-tools-install-julia ;;
+            gerbil-scheme) ./.devenv/devenv-profile-exec just agent-tools-install-gerbil ;;
+            md|org) ;;
+            *) echo "unsupported Live Corpus language: ${{ matrix.language }}" >&2; exit 2 ;;
+          esac
 
-      - name: Enforce V1 1193-owner Turso cold-write gate
+      - name: Run isolated V1 Live Corpus qualification
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . cargo test --release \
-            -p agent-semantic-client-db \
-            source_index_1193_owner_cold_write_stays_inside_v1_gate \
-            -- --test-threads=1
-
-      - name: Materialize pinned large-library corpora
-        shell: bash
-        run: |
-          set -euo pipefail
-          jq -r '.corpora[].resourceId' \
-            benchmarks/large-library-runtime-corpora.json | \
-            while IFS= read -r resource_id; do
-              sync_receipt="$(
-                "$ASP_STATE_HOME/runtime/bin/asp" live-corpus sync \
-                  --resource "$resource_id" \
-                  --lock benchmarks/large-library-runtime-corpora.json \
-                  --json
-              )"
-              checkout_path="$(jq -r '.checkoutPath' <<<"$sync_receipt")"
-              "$ASP_STATE_HOME/runtime/bin/asp" live-corpus materialize \
-                --resource "$resource_id" \
-                --source "$checkout_path" \
-                --lock benchmarks/large-library-runtime-corpora.json
-            done
-
-      - name: Run V1 registered-corpus search command matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          direnv exec . env UV_CACHE_DIR="$PWD/.cache/uv" \
-            just benchmark-large-library-search-runtime-baseline
+          ./.devenv/devenv-profile-exec just check-live-corpus-search-query-resource "${{ matrix.resource }}"
 
       - name: Upload benchmark receipt
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: large-library-runtime-search-v1-${{ github.run_id }}
-          path: .cache/large-library-runtime-search.v1.receipt.json
+          name: live-corpus-v1-${{ matrix.resource }}-${{ github.run_id }}
+          path: ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/search-query-qualification/by-resource/${{ matrix.resource }}.json
           if-no-files-found: warn

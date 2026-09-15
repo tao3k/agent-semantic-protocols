@@ -3,7 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[test]
-fn cli_live_corpus_forwards_only_typed_public_client_requests() {
+fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests() {
+    let manifest = include_str!("../../../Cargo.toml");
+    assert!(manifest.contains("name = \"live_corpus\""));
+    assert!(manifest.contains("required-features = [\"live-corpus-test\"]"));
+    assert!(!manifest.contains("name = \"asp-live-corpus"));
+
+    let product_dispatch = include_str!("../../../src/command/dispatch.rs");
+    let product_help = include_str!("../../../src/command/cli_help_model.rs");
+    assert!(!product_dispatch.contains("Some(\"live-corpus\")"));
+    assert!(!product_help.contains("\"live-corpus\""));
+
     let owner = concat!(
         include_str!("../../../src/command/live_corpus.rs"),
         include_str!("../../../src/command/live_corpus_qualification/client_protocol.rs"),
@@ -17,7 +27,7 @@ fn cli_live_corpus_forwards_only_typed_public_client_requests() {
     ] {
         assert!(
             owner.contains(required),
-            "Live Corpus public route is missing typed forwarding evidence: {required}"
+            "Live Corpus test is missing typed forwarding evidence: {required}"
         );
     }
     for forbidden in [
@@ -29,7 +39,7 @@ fn cli_live_corpus_forwards_only_typed_public_client_requests() {
     ] {
         assert!(
             !owner.contains(forbidden),
-            "Live Corpus CLI bypassed the typed public client through {forbidden}"
+            "Live Corpus test bypassed the typed public client through {forbidden}"
         );
     }
 

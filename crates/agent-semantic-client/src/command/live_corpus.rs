@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Qualify and atomically publish provider live-corpus artifacts.
+//! Feature-gated Live Corpus Search and Query qualification test support.
 
 use agent_semantic_provider_protocol::ProviderRegisterOperation;
 use agent_semantic_provider_protocol::ProviderRegisterRequest;
@@ -104,7 +104,7 @@ struct LiveCorpusInputs {
 #[derive(Debug)]
 struct MaterializeRequest {
     resource_id: String,
-    source: PathBuf,
+    source: Option<PathBuf>,
     lock_path: PathBuf,
     json: bool,
 }
@@ -172,7 +172,7 @@ struct LiveCorpusSyncReceipt {
     status: &'static str,
 }
 
-pub(crate) async fn run_live_corpus_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_live_corpus_test(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
         Some("qualify") => {
@@ -232,7 +232,7 @@ fn parse_resource_request(
             "--json" => json = true,
             argument => {
                 return Err(format!(
-                    "unknown live-corpus option `{argument}`\n{}",
+                    "unknown live_corpus test option `{argument}`\n{}",
                     command_usage()
                 ));
             }
@@ -272,7 +272,7 @@ fn parse_materialize_request(args: &[String]) -> Result<MaterializeRequest, Stri
             "--json" => json = true,
             argument => {
                 return Err(format!(
-                    "unknown live-corpus option `{argument}`\n{}",
+                    "unknown live_corpus test option `{argument}`\n{}",
                     materialize_usage()
                 ));
             }
@@ -281,7 +281,7 @@ fn parse_materialize_request(args: &[String]) -> Result<MaterializeRequest, Stri
     }
     Ok(MaterializeRequest {
         resource_id: resource_id.ok_or_else(materialize_usage)?,
-        source: source.ok_or_else(materialize_usage)?,
+        source,
         lock_path,
         json,
     })
@@ -293,18 +293,19 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     let lock = load_lock(&request.lock_path)?;
     let corpus = unique_resource(&lock.corpora, &request.resource_id)?;
     emit_live_corpus_timing("lock", &mut step_started);
-    let source = request
-        .source
-        .canonicalize()
-        .map_err(|error| format!("failed to resolve live-corpus source: {error}"))?;
     let state_home = resolve_state_home()?;
     let repository = live_corpus_git_repository_paths(&state_home, &corpus.git.remote)?;
-    let checkout =
-        qualify_live_corpus_git_checkout(&source, &corpus.git.remote, &corpus.git.revision)?;
     let expected_source_path = repository
         .repository_dir
         .join("checkouts")
         .join(&corpus.git.revision);
+    let source = request
+        .source
+        .unwrap_or_else(|| expected_source_path.clone())
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve live-corpus source: {error}"))?;
+    let checkout =
+        qualify_live_corpus_git_checkout(&source, &corpus.git.remote, &corpus.git.revision)?;
     let expected_source = expected_source_path
         .canonicalize()
         .unwrap_or_else(|_| expected_source_path.clone());
@@ -709,26 +710,26 @@ fn unique_temporary_path(parent: &Path, prefix: &str) -> PathBuf {
 }
 
 fn root_usage() -> String {
-    super::cli_help::live_corpus_command()
-        .render_long_help()
-        .to_string()
+    format!(
+        "Usage: live_corpus <path|sync|materialize|qualify> ...\n\nCargo test target for Live Corpus qualification; this is not an asp subcommand.\n\ndefaultLock={DEFAULT_LOCK_PATH}"
+    )
 }
 
 fn path_usage() -> String {
     format!(
-        "usage: asp live-corpus path --resource <resource-id> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
+        "usage: live_corpus path --resource <resource-id> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
     )
 }
 
 fn sync_usage() -> String {
     format!(
-        "usage: asp live-corpus sync --resource <resource-id> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
+        "usage: live_corpus sync --resource <resource-id> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
     )
 }
 
 fn materialize_usage() -> String {
     format!(
-        "usage: asp live-corpus materialize --resource <resource-id> --source <canonical-state-home-checkout> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
+        "usage: live_corpus materialize --resource <resource-id> [--source <canonical-state-home-checkout>] [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
     )
 }
 

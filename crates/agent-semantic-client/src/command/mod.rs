@@ -23,7 +23,8 @@ mod install_binary_config_admission;
 mod install_provider;
 mod provider_install_receipt;
 
-mod live_corpus;
+#[cfg(feature = "live-corpus-test")]
+pub(crate) mod live_corpus;
 mod managed_hook_config;
 mod org_archive;
 mod org_capture;

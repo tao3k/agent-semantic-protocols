@@ -454,25 +454,3 @@ fn registered_source_root_without_read_behavior_does_not_trigger_source_search()
             .all(|capability| capability["action"] != "read")
     );
 }
-
-#[test]
-fn registered_testing_profile_admits_wrapped_live_corpus_qualification() {
-    let payload = registered_read_only_action(
-        "asp_testing",
-        "Bash",
-        json!({"command": "rtk --ultra-compact err asp live-corpus qualify"}),
-    );
-    let decision = classify_codex_plugin_scenario(
-        &runtime("."),
-        &ClientHookConfig::default(),
-        "pre-tool",
-        &payload,
-        "Bash",
-    )
-    .expect("classify wrapped Live Corpus qualification");
-
-    assert_eq!(decision["decision"], "allow");
-    assert_eq!(decision["fields"]["intent"], "live-corpus-qualification");
-    assert_eq!(decision["fields"]["dispatchSatisfied"], true);
-    assert_eq!(decision["fields"]["dispatchAdmission"], "config-agent-role");
-}

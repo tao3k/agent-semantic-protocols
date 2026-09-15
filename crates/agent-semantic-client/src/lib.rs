@@ -62,6 +62,11 @@ pub use agent_semantic_client_server::project_resolution_from_stdout;
 pub use agent_semantic_client_server::provider_project_resolution_candidates;
 pub use cli::run_cli_args;
 pub use cli::run_cli_from_env;
+#[cfg(feature = "live-corpus-test")]
+#[doc(hidden)]
+pub async fn run_live_corpus_test(args: Vec<String>) -> Result<(), String> {
+    command::live_corpus::run_live_corpus_test(&args).await
+}
 pub use client_cli::run_cli_args as run_client_cli_args;
 pub use client_cli::run_cli_from_env as run_client_cli_from_env;
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;

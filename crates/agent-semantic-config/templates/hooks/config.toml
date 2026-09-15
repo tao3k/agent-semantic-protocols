@@ -395,30 +395,6 @@ executionLane = "testing"
 blockedCommandClass = "git-history-inspection"
 
 [[rules]]
-id = "live-corpus-qualification-dispatch"
-matcherPolicies = ["wrapped_command"]
-priority = 90000
-intent = "live-corpus-qualification"
-decision = "deny"
-reasonKind = "agent-choice-required"
-message = "Live Corpus qualification is denied only in the current Agent; run the formal qualification in the ASP Testing execution lane. {{agentDispatchMessage}}"
-event = "pre-tool"
-
-[rules.match]
-argvPatternAny = [
-  ["asp", "live-corpus", "qualify"],
-]
-
-[rules.dispatch]
-transport = "host-agent"
-agent = "asp_testing"
-receiptKind = "asp-testing-execution-v1"
-
-[rules.fields]
-executionLane = "testing"
-blockedCommandClass = "live-corpus-qualification"
-
-[[rules]]
 id = "gerbil-build-role-dispatch"
 matcherPolicies = ["wrapped_command"]
 priority = 90000

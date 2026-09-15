@@ -159,7 +159,6 @@ fn default_template_round_trips_through_config_parser() {
             "rust-format-check-role-dispatch",
             "review-role-dispatch",
             "git-history-inspection-dispatch",
-            "live-corpus-qualification-dispatch",
             "gerbil-build-role-dispatch",
             "deny-agent-search-json",
             "route-read-to-asp-languages",

@@ -281,7 +281,6 @@ fn canonical_registry_compiles_host_routes() {
         vec![
             "test-build-command",
             "review-command",
-            "live-corpus-qualification",
             "git-history-inspection"
         ]
     );

@@ -192,39 +192,41 @@ pub(super) fn parse_args(args: &[String]) -> Result<QualifyArgs, String> {
             "--plan" => {
                 index += 1;
                 plan_path = PathBuf::from(args.get(index).ok_or_else(|| {
-                    "live-corpus qualify requires a path after --plan".to_owned()
+                    "live_corpus qualify requires a path after --plan".to_owned()
                 })?);
             }
             "--json" => json = true,
             "--resource" => {
                 index += 1;
                 let value = args.get(index).ok_or_else(|| {
-                    "live-corpus qualify requires a resource id after --resource".to_owned()
+                    "live_corpus qualify requires a resource id after --resource".to_owned()
                 })?;
                 if value.trim().is_empty() {
-                    return Err("live-corpus qualify resource id must be non-empty text".to_owned());
+                    return Err("live_corpus qualify resource id must be non-empty text".to_owned());
                 }
                 if resource_id.replace(value.clone()).is_some() {
                     return Err(
-                        "live-corpus qualify accepts exactly one --resource option".to_owned()
+                        "live_corpus qualify accepts exactly one --resource option".to_owned()
                     );
                 }
             }
             "--language" => {
                 index += 1;
                 let value = args.get(index).ok_or_else(|| {
-                    "live-corpus qualify requires a language id after --language".to_owned()
+                    "live_corpus qualify requires a language id after --language".to_owned()
                 })?;
                 if value.trim().is_empty() {
-                    return Err("live-corpus qualify language id must be non-empty text".to_owned());
+                    return Err("live_corpus qualify language id must be non-empty text".to_owned());
                 }
                 if language_id.replace(value.clone()).is_some() {
                     return Err(
-                        "live-corpus qualify accepts exactly one --language option".to_owned()
+                        "live_corpus qualify accepts exactly one --language option".to_owned()
                     );
                 }
             }
-            option => return Err(format!("unknown live-corpus qualify option: {option}")),
+            option => {
+                return Err(format!("unknown live_corpus qualify option: {option}"));
+            }
         }
         index += 1;
     }

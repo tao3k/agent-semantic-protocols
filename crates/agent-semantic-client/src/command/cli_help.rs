@@ -55,72 +55,6 @@ fn healthcheck_command() -> Command {
         .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
 }
 
-pub(crate) fn live_corpus_command() -> Command {
-    Command::new("live-corpus")
-        .bin_name("asp live-corpus")
-        .about("Qualify and publish provider live-corpus artifacts")
-        .subcommand(
-            Command::new("path")
-                .about("Resolve the gix-derived canonical State Home checkout path")
-                .arg(
-                    Arg::new("resource")
-                        .long("resource")
-                        .value_name("RESOURCE_ID")
-                        .required(true),
-                )
-                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
-        )
-        .subcommand(
-            Command::new("sync")
-                .about("Explicitly acquire and publish a pinned checkout through gix")
-                .arg(
-                    Arg::new("resource")
-                        .long("resource")
-                        .value_name("RESOURCE_ID")
-                        .required(true),
-                )
-                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
-        )
-        .subcommand(
-            Command::new("materialize")
-                .about("Qualify a canonical State Home checkout and publish its artifact")
-                .arg(
-                    Arg::new("resource")
-                        .long("resource")
-                        .value_name("RESOURCE_ID")
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("source")
-                        .long("source")
-                        .value_name("CHECKOUT")
-                        .required(true),
-                )
-                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
-        )
-        .subcommand(
-            Command::new("qualify")
-                .about(
-                    "Measure resident search and exact-query projections for every locked corpus",
-                )
-                .arg(Arg::new("plan").long("plan").value_name("PLAN_JSON"))
-                .arg(
-                    Arg::new("language")
-                        .long("language")
-                        .value_name("LANGUAGE_ID"),
-                )
-                .arg(
-                    Arg::new("resource")
-                        .long("resource")
-                        .value_name("RESOURCE_ID"),
-                )
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
-        )
-}
-
 fn ast_patch_command() -> Command {
     command_with_subcommands(
         "ast-patch",
@@ -417,7 +351,6 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("healthcheck"), _) => healthcheck_command(),
         (Some("server"), _) => crate::server::runtime_server::runtime_server_command(),
         (Some("schema"), _) => schema_command(),
-        (Some("live-corpus"), _) => live_corpus_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
         (Some("search"), Some("playbook")) => workspace_search_playbook_command(),
         (Some("search"), _) => Command::new("search")

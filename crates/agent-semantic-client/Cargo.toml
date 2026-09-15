@@ -10,6 +10,10 @@ edition.workspace = true
 description = "Thin agent semantic client over native semantic language providers."
 license.workspace = true
 
+[features]
+default = []
+live-corpus-test = []
+
 [lib]
 doctest = false
 
@@ -83,6 +87,12 @@ path = "tests/unit/query_playbook_harness.rs"
 [[test]]
 name = "scenario_performance_gate"
 path = "tests/unit/scenario_performance_gate.rs"
+
+[[test]]
+name = "live_corpus"
+path = "tests/live_corpus.rs"
+harness = false
+required-features = ["live-corpus-test"]
 
 [[bench]]
 name = "client_microbench"

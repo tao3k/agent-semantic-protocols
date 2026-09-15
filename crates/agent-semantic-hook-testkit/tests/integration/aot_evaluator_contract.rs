@@ -547,7 +547,6 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
         decide("Bash", "Bash", serde_json::json!({"command":"cargo fmt --all -- --check"})),
         decide("Bash", "Bash", serde_json::json!({"command":"cargo clippy -p agent-semantic-hook"})),
         decide("Bash", "Bash", serde_json::json!({"command":"git show HEAD:README.md"})),
-        decide("Bash", "Bash", serde_json::json!({"command":"asp live-corpus qualify"})),
         decide("Bash", "Bash", serde_json::json!({"command":"gxc -O src/runtime.ss"})),
         decide("Bash", "Bash", serde_json::json!({"command":"asp search playbook --language rust --rg owner --json"})),
         decide("Bash", "Bash", serde_json::json!({"command":"rg Hook crates/agent-semantic-hook/src/lib.rs"})),

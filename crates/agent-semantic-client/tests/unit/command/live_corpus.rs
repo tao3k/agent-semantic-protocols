@@ -100,21 +100,22 @@ fn extension_admission_rejects_processor_shaped_corpus() {
 }
 
 #[test]
-fn materialize_args_require_resource_and_source() {
-    let error = parse_materialize_request(&["--resource".to_string(), "org.worg".to_string()])
-        .expect_err("source is required");
-    assert!(error.contains("usage: asp live-corpus materialize"));
+fn materialize_args_derive_the_canonical_checkout_when_source_is_omitted() {
+    let request = parse_materialize_request(&["--resource".to_string(), "org.worg".to_string()])
+        .expect("canonical checkout is derived from the resource lock");
+    assert_eq!(request.resource_id, "org.worg");
+    assert_eq!(request.source, None);
 }
 
 #[test]
 fn sync_args_require_a_locked_resource() {
     let error = parse_resource_request(&[], sync_usage).expect_err("sync resource is required");
-    assert!(error.contains("usage: asp live-corpus sync"));
+    assert!(error.contains("usage: live_corpus sync"));
 }
 
 #[tokio::test]
 async fn qualify_args_require_a_plan_path_after_the_flag() {
-    let error = crate::command::live_corpus::run_live_corpus_command(&[
+    let error = crate::command::live_corpus::run_live_corpus_test(&[
         "qualify".to_owned(),
         "--plan".to_owned(),
     ])
@@ -124,36 +125,24 @@ async fn qualify_args_require_a_plan_path_after_the_flag() {
 }
 
 #[tokio::test]
-async fn removed_prepare_command_is_not_a_public_surface() {
-    let error = crate::command::live_corpus::run_live_corpus_command(&["prepare".to_owned()])
+async fn removed_prepare_command_is_not_a_test_surface() {
+    let error = crate::command::live_corpus::run_live_corpus_test(&["prepare".to_owned()])
         .await
         .expect_err("removed preparation command must fail closed");
-    assert!(error.contains("Usage: asp live-corpus"), "{error}");
+    assert!(error.contains("Usage: live_corpus"), "{error}");
     assert!(!error.contains("live-corpus prepare"), "{error}");
     assert!(!error.contains("live-corpus prepare"));
 }
 
-#[test]
-fn live_corpus_help_exposes_only_current_typed_subcommands() {
-    let command = crate::command::cli_help::selected_command(&["live-corpus".to_owned()]);
-    let subcommands = command
-        .get_subcommands()
-        .map(clap::Command::get_name)
-        .collect::<Vec<_>>();
-
-    assert!(subcommands.contains(&"qualify"), "{subcommands:?}");
-    assert!(!subcommands.contains(&"prepare"), "{subcommands:?}");
-}
-
 #[tokio::test]
 async fn qualify_args_reject_unknown_options_before_runtime_access() {
-    let error = crate::command::live_corpus::run_live_corpus_command(&[
+    let error = crate::command::live_corpus::run_live_corpus_test(&[
         "qualify".to_owned(),
         "--unknown".to_owned(),
     ])
     .await
     .expect_err("unknown qualification options must be rejected");
-    assert_eq!(error, "unknown live-corpus qualify option: --unknown");
+    assert_eq!(error, "unknown live_corpus qualify option: --unknown");
 }
 
 #[test]

@@ -88,11 +88,7 @@ fn deferred_receipt(argv: &[String]) -> Value {
 }
 
 fn post_tool_payload(workspace: &str, root: &str, command: &str) -> Value {
-    let argv = vec![
-        "asp".to_owned(),
-        "live-corpus".to_owned(),
-        "qualify".to_owned(),
-    ];
+    let argv = vec!["asp".to_owned(), "healthcheck".to_owned()];
     json!({
         "hook_event_name": "PostToolUse",
         "cwd": workspace,
@@ -129,11 +125,11 @@ fn verified_testing_deferred_receipt_is_same_root_one_shot_authority() {
     let _environment = environment_lock().lock().expect("environment lock");
     let scenario = ScenarioRoot::new("one-shot");
     let workspace = scenario.workspace();
-    let command = "asp live-corpus qualify";
+    let command = "asp healthcheck";
     let capability = publish_from_post_tool_payload(&post_tool_payload(
         &workspace,
         "root-thread",
-        "rtk --ultra-compact err asp live-corpus qualify",
+        "rtk --ultra-compact err asp healthcheck",
     ))
     .expect("publish")
     .expect("deferred receipt");
@@ -185,7 +181,7 @@ fn different_root_cannot_consume_testing_handoff() {
     let _environment = environment_lock().lock().expect("environment lock");
     let scenario = ScenarioRoot::new("wrong-root");
     let workspace = scenario.workspace();
-    let command = "asp live-corpus qualify";
+    let command = "asp healthcheck";
     publish_from_post_tool_payload(&post_tool_payload(&workspace, "root-thread", command))
         .expect("publish")
         .expect("deferred receipt");
@@ -203,7 +199,11 @@ fn forged_deferred_command_digest_is_rejected_before_publication() {
     let _environment = environment_lock().lock().expect("environment lock");
     let scenario = ScenarioRoot::new("forged-digest");
     let workspace = scenario.workspace();
-    let mut payload = post_tool_payload(&workspace, "root-thread", "asp live-corpus qualify");
+    let mut payload = post_tool_payload(
+        &workspace,
+        "root-thread",
+        "asp healthcheck",
+    );
     let forged = payload
         .pointer_mut("/tool_response/output")
         .and_then(|value| value.as_str())

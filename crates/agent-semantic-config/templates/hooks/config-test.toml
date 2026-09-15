@@ -223,23 +223,6 @@ negativeCommands = [
 ]
 
 [[rules]]
-id = "live-corpus-qualification-dispatch"
-ruleComposition = [
-  { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/intent", equals = "live-corpus-qualification" },
-  { pointer = "/match/argvPatternAny", contains = ["asp", "live-corpus", "qualify"] },
-  { pointer = "/dispatch/agent", equals = "asp_testing" },
-]
-positiveCommands = [
-  "asp live-corpus qualify",
-  "rtk --ultra-compact err asp live-corpus qualify",
-]
-negativeCommands = [
-  "asp live-corpus status",
-  "rtk --ultra-compact err asp server status",
-]
-
-[[rules]]
 id = "gerbil-build-role-dispatch"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
