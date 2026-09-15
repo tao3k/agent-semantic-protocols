@@ -67,7 +67,7 @@ agent-tools-ensure-local-bin-path:
 agent-hooks-install bin_dir="":
 	@bin_dir="{{bin_dir}}"; \
 	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
-	just agent-tools-install-global "${bin_dir}"; \
+	just agent-tools-install-global; \
 	just _agent-hooks-install-codex "${bin_dir}"; \
 	just agent-hooks-doctor "${bin_dir}"
 
@@ -109,13 +109,8 @@ agent-hooks-smoke-codex:
       rm -f "${out}"
 
 # Develop mode: build and install asp plus all providers from this checkout.
-agent-tools-install-global bin_dir="":
-    @requested_bin_dir="{{bin_dir}}"; \
-      if [ -n "${requested_bin_dir}" ]; then \
-        echo "agent-tools-install-global does not accept a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
-        exit 2; \
-      fi; \
-      just agent-tools-install-client; \
+agent-tools-install-global:
+    @just agent-tools-install-client; \
       just agent-tools-install-languages; \
       echo "[agent-tools-install-global] installed asp and all ASP language providers; asp-python-graphs remains an ASP Server-owned runtime service"
 
@@ -132,13 +127,8 @@ agent-tools-install-languages:
 build-asp-release:
     cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
 
-agent-tools-install-client bin_dir="": check-rust-workspace-policy
-    @requested_bin_dir="{{bin_dir}}"; \
-      if [ -n "${requested_bin_dir}" ]; then \
-        echo "agent-tools-install-client does not accept a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
-        exit 2; \
-      fi; \
-      cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
+agent-tools-install-client: check-rust-workspace-policy
+    @cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/release/asp"; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
@@ -160,8 +150,8 @@ agent-tools-install-client-debug: check-rust-workspace-policy
       test -x "${destination}"
 
 # Install the shared client binary used by hook runtime commands.
-agent-tools-install-hook bin_dir="":
-	@just agent-tools-install-client "{{bin_dir}}"
+agent-tools-install-hook:
+	@just agent-tools-install-client
 
 # Install a language provider through ASP's registered workspace-install contract.
 # The root Justfile is only an adapter; provider-owned descriptors own builds and artifacts.

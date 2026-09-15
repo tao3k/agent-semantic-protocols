@@ -82,8 +82,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . just agent-tools-install-global \
-            "$ASP_STATE_HOME/runtime/bin"
+          ./.devenv/devenv-profile-exec just agent-tools-install-global
 
       - name: Enforce V1 1193-owner Turso cold-write gate
         shell: bash

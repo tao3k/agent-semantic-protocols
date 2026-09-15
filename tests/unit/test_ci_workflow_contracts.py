@@ -159,6 +159,9 @@ def test_live_corpus_setup_owns_provider_installation() -> None:
     for provider in ("client", "rs", "ts", "py", "julia", "gerbil"):
         assert f"just agent-tools-install-{provider}" in setup
     assert "agent-tools-install-protocol" not in setup
+    assert 'agent-tools-install-client bin_dir=""' not in justfile
+    assert 'agent-tools-install-global bin_dir=""' not in justfile
+    assert 'agent-tools-install-hook bin_dir=""' not in justfile
 
 
 def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:

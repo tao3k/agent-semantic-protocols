@@ -62,11 +62,11 @@ fn release_install_checks_release_profile_before_and_after_copy() {
     assert!(!justfile.contains("agent-tools-install-asp bin_dir="));
     assert!(!justfile.contains("agent-tools-install-asp-dev:"));
     assert!(
-        justfile.contains("agent-tools-install-client bin_dir=\"\": check-rust-workspace-policy"),
+        justfile.contains("agent-tools-install-client: check-rust-workspace-policy"),
         "release publication must admit the Cargo-derived workspace policy exactly once before building"
     );
     let recipe = justfile
-        .split("agent-tools-install-client bin_dir=\"\":")
+        .split("agent-tools-install-client:")
         .nth(1)
         .and_then(|tail| tail.split("agent-tools-install-client-debug").next())
         .expect("client install recipe");
@@ -112,7 +112,7 @@ fn debug_install_never_publishes_a_stale_target_after_build_failure() {
 fn asp_recipe_delegates_freshness_to_the_content_addressed_installer() {
     let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     let recipe = justfile
-        .split("agent-tools-install-client bin_dir=\"\"")
+        .split("agent-tools-install-client:")
         .nth(1)
         .and_then(|tail| tail.split("# Install the debug client binary").next())
         .expect("release client install recipe");
