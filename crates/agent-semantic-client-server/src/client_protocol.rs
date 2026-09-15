@@ -12,13 +12,14 @@ use agent_semantic_client_protocol::ClientOutcome;
 use agent_semantic_client_protocol::ClientProjectId;
 use agent_semantic_client_protocol::ClientProtocolCatalog;
 use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientResponsePayload;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 use serde_json::Value;
 use serde_json::json;
 
 pub type AspClientDispatchFuture =
-    Pin<Box<dyn Future<Output = Result<Value, AspClientDispatchError>> + Send>>;
+    Pin<Box<dyn Future<Output = Result<ClientResponsePayload, AspClientDispatchError>> + Send>>;
 pub type AspClientCancelFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -268,7 +269,7 @@ fn response(
     base: ClientFrameBase,
     request_id: ClientRequestId,
     outcome: ClientOutcome,
-    result: Option<Value>,
+    result: Option<ClientResponsePayload>,
     error: Option<Value>,
     catalog: Option<ClientProtocolCatalog>,
 ) -> ClientFrame {

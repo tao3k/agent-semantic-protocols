@@ -889,10 +889,24 @@ ordered selector set, and projection while excluding envelope =requestId=.
 Detached materialization performs all selector reads, content hashing, Runtime
 binding validation, and receipt admission.  The admitted resident template
 uses the materialization key as its internal decision identity.  A warm frame
-may clone that bounded template and replace only its top-level =requestId= with
-the current frame identity; selectors, projection, bytes, digests, binding, and
-terminal are immutable.  A miss or coalesced =Building= state returns typed
+may clone that bounded template and replace its top-level =requestId= plus the
+request-local =requestProfile= and =requestPlaneElapsedMicros= witness.  The
+latter fields are excluded from the materialization key; selectors, projection,
+bytes, content digests, binding, and terminal are immutable.  A miss or
+coalesced =Building= state returns typed
 =query-not-ready= under the same request-plane gate.
+
+The V1 Query Playbook receipt also carries =sourceGenerationDigest= and
+=sourceRootDigest= from the immutable exact segment that supplied every
+materialization.  These are content-identity witnesses, not timing fields.  A
+ready multi-selector receipt is valid only when every selector read reports the
+same pair; disagreement fails the whole materialization.  The request-local
+profile distinguishes =materialized= from =resident-hit=, so qualification
+applies the strict sub-millisecond gate only to the latter Runtime request-plane
+witness.  Client round-trip latency and Runtime phase telemetry remain separate
+observations.  Qualification MUST NOT issue a second provider =ExactQuery= merely
+to recover identity, timing, or zero-work evidence, and it MUST NOT synthesize
+legacy ExactQuery counters for a Query Playbook request.
 
 This is the semantic request-plane gate, ending when the dispatcher returns the
 fully constructed typed result or terminal.  ClientFrame envelope encoding,
@@ -903,6 +917,10 @@ relabel an already terminal semantic result.  Runtime records response
 serialization and terminal egress independently.  Those observations may fail
 a transport SLO, but they are not permitted to hide inside
 =runtime-resident-request-plane-receipt= or weaken its strict dispatch gate.
+The lifecycle cancellation probe likewise measures a two-frame client
+round-trip (=Request= followed by =Cancel= and the correlated terminal).  Live
+Corpus records that latency and requires zero residual pending calls, but MUST
+NOT compare it with the sub-millisecond Search/Query request-plane gate.
 
 Replay is identity-bound: replaying the same semantic request against the same
 workspace, provider, generation, source snapshot, selector, and schema
@@ -925,6 +943,14 @@ and lifecycle receipts.  A request client owns none of this mutable state.
 Query handling never starts, repairs, restarts, or locally executes a provider.
 Runtime absence and provider unavailability are typed terminal evidence, not
 permission to construct an alternate route.
+
+Content-addressed parser artifacts bind both the declarative registration
+digest and the exact provider executable artifact digest.  Owner bytes alone
+cannot prove reusable parser output: changing provider code while retaining a
+V1 descriptor MUST invalidate the old parser product.  Unchanged executable,
+parser/query-pack identity, auxiliary inputs, owner path, and owner content may
+still be reused across workspace generations; generation proof is rebound
+separately.
 
 Every Search/Query request and terminal binds the same =ProjectId= and
 =WorkspaceId=.  The binding is present in both the ClientFrame envelope and
@@ -949,6 +975,36 @@ Once measurement begins, the benchmark uses the identical resident gRPC
 service, catalog, generation lease, cancellation registry, and terminal rules
 as =asp <language> search/query=.  A benchmark-only daemon, socket, or recovery
 path is a second lifecycle authority and is forbidden.
+
+Live Corpus Search/Query coverage is a V1 TOML Scheme scenario suite, not an
+argv playbook generator.  Every locked large-library resource names its
+language/provider identity and stores the complete public =(search ...)=,
+zero-match =(search ...)=, source =(query ...)=, and callable-skeleton
+=(query ...)= forms.  Query forms contain exactly one typed ={{selector}}=
+slot because the parser-owned selector is discovered by the preceding Search;
+the runner JSON-encodes that value, lowers the resulting complete Scheme form,
+and rejects producer, selector, or projection drift before dispatch.  Test
+budgets and cache-state schedules remain suite metadata.  They MUST NOT be
+translated into public Search flags or used to synthesize the semantic form.
+The suite digest binds the exact TOML bytes into the qualification receipt, so
+scenario edits are executable benchmark history rather than prose examples.
+
+When qualification declares =first-ranked-parser-owned=, it preserves the
+server settlement order while removing later duplicate selectors.  It MUST NOT
+sort selector text before choosing the Query target: lexical sorting destroys
+rank evidence and can replace a callable result with an unrelated structural
+owner.  Derived owner-path lists preserve the same first-observed order.
+
+Live Corpus Merkle qualification is a test-only resident read on that same
+ClientFrame session.  Its V1 qualification request binds the request root to
+the session's admitted workspace; Runtime reads the already-published resident
+projection and returns the existing V1 proof-qualification receipt.  The
+sub-millisecond mmap/kernel budget measures inside Runtime, while ClientFrame
+transport wall time remains a separate observation.  It MUST NOT open a WorkspaceDb IPC
+session, write the legacy length-framed protocol to the gRPC data endpoint,
+scan source files, or expose a CLI/Search/Query flag surface.  The proof read
+does not admit, build, or repair a generation; absence or identity drift is a
+typed failure of the qualification run.
 
 =Healthy endpoint= and =committed resident transaction= are not synonyms.  A
 new owner can publish a reachable endpoint before its applied activation
@@ -1018,6 +1074,79 @@ deadline, for that same attempt to become =Ready= or terminal.  It does not
 poll, retry, submit a second attempt, or report =materializing= as a usable
 result.  A ready resident read remains governed by the independent 1ms server
 budget.
+
+The Runtime resident generation, parser-owned source/materialization generation,
+workspace source-snapshot root, and projected owner-Merkle root are distinct
+identity domains.  Cache-state admission binds the Runtime generation and
+source-snapshot root; Query receipts bind the parser generation and source root;
+Merkle inclusion binds the owner-Merkle root.  Qualification MUST retain these
+identities and MUST NOT compare, substitute, or normalize one into another.
+
+A multi-request client session performs lifecycle admission exactly once and
+pins the returned content-bound Runtime handoff.  Repeated or concurrent Search
+and Query dispatches reuse the same multiplexed ClientFrame session; they MUST
+NOT re-enter activation, endpoint discovery, or workspace admission per request.
+
+A generation reopened from its durable mmap owns immutable exact and Search
+projection reads, but it does not own the process-resident parser-overlay
+membership state.  Runtime MUST represent that capability boundary explicitly.
+When Search cannot prove a candidate scope materialized from the reopened mmap,
+it falls through to the workspace registry's exact content-bound resident lease
+and its single-flight candidate materializer.  Capability absence is neither
+generation corruption nor permission to rebuild the full workspace.
+The same reopen transaction MUST load and admit the durable workspace execution
+publication named beside the generation pointer.  A missing, corrupt, or
+generation/source-mismatched execution sidecar rejects cold reuse; reopening a
+QueryGeneration with =executionPublication=None= is not a valid cold-load.
+When the publication observer upgrades an already admitted object to the exact
+execution-bound product without changing its content generation digest, the
+old and upgraded objects MUST share the same Search and Query single-flight and
+terminal maps.  An in-flight parser-overlay task may finish through the old
+object reference; replacing those maps would lose its terminal and force the
+same normalized Scheme plan to recompute against a later overlay state.
+
+Resident-hit observability is emitted once by the outer request-plane boundary
+after the strict request clock is captured.  A Query cache hit MUST NOT perform
+a second synchronous per-route telemetry publication inside that clock; doing
+so makes queue contention part of the read kernel and duplicates the terminal.
+
+A completed Search materialization is also the response payload authority.
+The generation, dispatcher, ClientFrame service, and gRPC encoder MUST retain a
+shared immutable payload handle through serialization; a resident hit MUST NOT
+deep-clone the complete JSON projection merely to cross an in-process layer.
+The shared representation is wire-transparent and does not change the V1 frame
+schema.
+Query materializations use the same ownership rule.  Request identity, request
+profile, and request-plane elapsed time are a three-field serialization overlay
+over the generation-owned immutable template.  A resident Query MUST NOT clone
+or rebuild the nested materialization tree merely to rebind those request-local
+fields.  The client receives an ordinary V1 JSON object; only the Runtime-side
+ownership and serialization strategy changes.
+The Search topology attachment is derived only from the immutable Search-core
+projection.  Candidate-scoped parser overlays may enrich exact Query and
+native graph reasoning, but MUST NOT change =topologyGenerationDigest= for a
+lexical Search over the same source generation.  Overlay topology has its own
+bounded attachment/proof identity; folding it back into the global Search
+attachment would make Search identity depend on which Query happened first.
+
+Agent-produced summaries and their Org rendering obey the same separation.
+Search returns a content-bound candidate owner/selector frontier; exact Query
+materializes the parser-owned scope; only then may an Agent summarize that
+bounded evidence.  The admitted summary artifact binds the source generation,
+selector, Agent/model identity, prompt identity, summary digest, and Org AST
+digest.  The Org document is a durable evidence projection of that artifact,
+not unbound prose and not an implicit Search side effect.  Its topology edges
+form a separately identified semantic overlay that may be requested by a
+later projection, but neither summary publication nor Org rendering may
+rewrite Search Core or change the base Search topology digest.
+
+The executable model
+=ASPProof.SearchTopologySemanticOverlayIndependence= proves three V1
+properties: exact Query publication preserves Search topology identity,
+Agent/Org summary publication preserves it, and the two independent overlay
+publications commute.  A summary with a stale content generation or a missing
+Org AST digest is rejected.  These are admission properties, not claims that
+the currently available Agent/Org production path is complete.
 
 Memory ownership and capability-lazy indexes are owned by
 [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09 Runtime Generation Memory Authority]].
@@ -1465,6 +1594,14 @@ its internal segment workers.  ASP MUST NOT wrap the lexical terminal in another
 wrap each segment in another Tokio task, start a per-query Runtime, or use async
 syntax to hide synchronous cold admission.
 
+The ClientFrame session capacity counts admitted data calls.  The transport
+owns one additional control slot outside that count so cancellation remains
+deliverable when all data-call permits are occupied.  A backpressure proof MUST
+therefore retain exactly =CLIENT_FRAME_SESSION_CAPACITY= data calls, observe a
+typed rejection for the next data call, and cancel the retained calls through
+the reserved control lane.  Subtracting the control reserve from the data-call
+capacity tests a non-full session and is not valid qualification evidence.
+
 Resource selection is feedback-controlled and workload-bound.  Its history key
 includes build strategy, logarithmic lexical-byte and owner-count buckets, and
 changed-owner ratio; observations from unlike workloads cannot be averaged.
@@ -1884,6 +2021,13 @@ work is not serialized.  This one-slot policy bounds retained topology memory
 while removing repeated proof construction from the common refine-in-place
 SearchLoop.
 
+A complete =no-match= acquisition has an explicitly empty request-local owner
+scope.  Runtime admits a deterministic empty topology /cut/ bound to the exact
+non-empty active content generation and provider identity; it MUST NOT mistake
+that cut for an empty workspace generation, expand it into a full-workspace
+topology build, or publish =no-match= from incomplete coverage.  The full
+Project Topology generation continues to require at least one source segment.
+
 The admitted topology library also owns immutable request-projection indexes:
 exact selector to node, node id to canonical node position, and node id to
 canonical incident-edge positions.  Settlement MUST use those indexes to
@@ -1985,8 +2129,16 @@ candidates but cannot mint an owner absent from the structurally grounded fronti
 only after graph/base relation facts exist and never becomes a retrieval axis.
 
 The fused Ready cache is owned by the immutable resident generation.  Search
-and Query each retain exactly one most-recent immutable terminal =Arc=; a new
-terminal atomically replaces the preceding slot.  In-flight keys remain in a
+retains a bounded working set of immutable terminals keyed by the complete
+normalized Scheme plan.  Its terminal count is derived from the daemon's
+effective CPU authority (with two slots retained even on a single-worker
+daemon), while each result is already bounded by the Search execution budget;
+retained memory is therefore =O(effectiveCpu * boundedResultBytes)= rather than
+growing with expression count.  Publishing a zero-match plan MUST NOT evict an
+unrelated positive plan while capacity remains.  Query retains one terminal
+per closed V1 projection kind (=source= and =callable-skeleton=), so alternating
+projections cannot evict each other; a new terminal atomically replaces only
+its own projection slot.  In-flight keys remain in a
 separate single-flight claim table only until completion.  Each claim's watch
 channel carries its terminal value, so an already subscribed waiter completes
 even if a later request replaces the retained slot.  The key binds ProjectId,
@@ -1996,6 +2148,12 @@ never retains a writer or becomes a publication authority.  The atomic
 generation pointer is the outer invalidation boundary.  Cross-generation or
 content drift cannot hit the cache, and completed memory cannot grow with the
 number of distinct expressions.
+
+Tantivy segment ordinals and document addresses are physical build layout,
+not Search rank or identity.  Native expression acquisition MUST map every
+matching address to the generation-stable =ownerId=, sort and deduplicate those
+identities, and only then apply Top-K.  Single-segment, parallel-segment, and
+durably reopened indexes therefore return the same bounded owner order.
 
 The dispatcher MUST NOT hard-code, probe, or infer these lane capabilities.
 Generation admission validates the fused receipt once and stores the resulting

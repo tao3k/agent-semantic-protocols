@@ -7,6 +7,7 @@ use super::{
     WorkspaceOwnerSnapshot, WorkspaceRecoverySource, fixture_root, generation,
     generation_with_selectors,
 };
+use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_identity() {
@@ -93,6 +94,10 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
         .lease(workspace_identity, &root)
         .expect("lease canonical base generation");
     let base_generation_digest = base.generation().generation_digest.clone();
+    let search_topology_before = RuntimeResidentReadClient::from_resident_lease(base)
+        .expect("resident Search topology before parser overlay")
+        .search_topology_source_segments()
+        .expect("Search topology before parser overlay");
     let pointer_path =
         agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
             &root,
@@ -168,6 +173,17 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
         "request-serving overlay identity must not replace the immutable base generation binding"
     );
     assert_eq!(owner.selectors[0].selector, selector);
+    let search_topology_after = RuntimeResidentReadClient::from_resident_lease(
+        registry
+            .lease(workspace_identity, &root)
+            .expect("lease Search topology after parser overlay"),
+    )
+    .expect("resident Search topology after parser overlay")
+    .search_topology_source_segments()
+    .expect("Search topology after parser overlay");
+    let exact_topology_after = current.topology_source_segments();
+    assert_eq!(search_topology_after, search_topology_before);
+    assert_eq!(exact_topology_after[0].selectors, [selector]);
     assert_eq!(current.epoch(), 1);
     assert_eq!(
         current.generation().generation_digest,

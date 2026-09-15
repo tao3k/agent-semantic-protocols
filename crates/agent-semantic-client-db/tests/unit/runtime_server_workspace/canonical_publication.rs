@@ -473,6 +473,11 @@ async fn resident_read_publishes_before_durable_commit_then_restart_restore_succ
         crate::runtime_resident_read::RuntimeResidentReadClient::open(&pointer_path, &project_root)
             .await
             .expect("durable read client");
+    assert!(resident.has_semantic_owner_materialization_authority());
+    assert!(
+        !restored.has_semantic_owner_materialization_authority(),
+        "mmap restore must not claim process-resident parser-overlay authority"
+    );
     assert_eq!(resident.generation_digest(), restored.generation_digest());
     assert_eq!(
         resident.owner_merkle_root_digest(),

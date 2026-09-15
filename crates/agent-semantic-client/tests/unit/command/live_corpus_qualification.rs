@@ -5,17 +5,17 @@
 use std::path::Path;
 
 use super::IsolatedBenchmarkWorkspace;
+use super::artifact_current_pointer;
 use super::parse_args;
 use super::qualification_receipt_path;
 use super::select_qualification_cases;
 use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerminal;
+use crate::command::live_corpus::qualification::client_protocol::render_workspace_query_scheme_source;
 use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
+use crate::command::live_corpus::qualification::client_protocol::workspace_query_qualification_request;
 use crate::command::live_corpus::qualification::client_protocol::workspace_search_qualification_request;
-use crate::command::live_corpus::qualification::client_protocol::workspace_search_scheme_source;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
 use crate::command::live_corpus::qualification::contract::QualificationCase;
-use crate::command::live_corpus::qualification::contract::QualificationQuery;
-use crate::command::live_corpus::qualification::contract::QualificationSearch;
 
 fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCase {
     QualificationCase {
@@ -24,57 +24,62 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
         scenario_id: format!("{resource_id}.scenario"),
         language_id: language_id.to_owned(),
         provider_id: format!("asp-{language_id}"),
-        search: QualificationSearch {
-            rg: vec!["-n".to_owned(), "owner".to_owned(), ".".to_owned()],
-            tantivy: vec!["title:\"owner authority\"^2 OR body:owner".to_owned()],
-            minimum_candidates: 1,
-            maximum_search_micros: 500_000,
-        },
-        query: QualificationQuery {
-            selector_strategy: "first-ranked-parser-owned".to_owned(),
-            owner_view: "items".to_owned(),
-            projection_scope: "live-corpus".to_owned(),
-            maximum_resident_micros: 1_000,
-        },
-        zero_match_search: QualificationSearch {
-            rg: vec![
-                "-n".to_owned(),
-                "definitely-absent".to_owned(),
-                ".".to_owned(),
-            ],
-            tantivy: vec!["title:\"definitely absent\"^2 OR body:definitely-absent".to_owned()],
-            minimum_candidates: 0,
-            maximum_search_micros: 500_000,
-        },
+        scenario_classes: vec![
+            "lexical-intersection".to_owned(),
+            "exact-parser-owner".to_owned(),
+            "zero-match".to_owned(),
+        ],
+        search: format!(
+            "(search (producers (language {language_id})) (intersect (rg \"-n\" \"owner\" \".\") (tantivy \"title:owner OR body:owner\")))"
+        ),
+        zero_match_search: format!(
+            "(search (producers (language {language_id})) (intersect (rg \"-n\" \"definitely-absent\" \".\") (tantivy \"body:definitely-absent\")))"
+        ),
+        source_query: format!(
+            "(query (producers (language {language_id})) (select (selectors {{{{selector}}}}) (projection source) (output json)))"
+        ),
+        callable_skeleton_query: format!(
+            "(query (producers (language {language_id})) (select (selectors {{{{selector}}}}) (projection callable-skeleton) (output json)))"
+        ),
+        minimum_candidates: 1,
+        maximum_search_micros: 500_000,
+        maximum_resident_query_micros: 1_000,
         required_telemetry_events: Vec::new(),
     }
 }
 
 #[test]
 fn qualification_search_is_lowered_through_one_scheme_expression() {
-    let search = QualificationSearch {
-        rg: vec![
-            "-n".to_owned(),
-            "-F".to_owned(),
-            "owner \"identity\"".to_owned(),
-            ".".to_owned(),
-        ],
-        tantivy: vec!["title:\"owner identity\"^2 OR body:owner".to_owned()],
-        minimum_candidates: 1,
-        maximum_search_micros: 500_000,
-    };
-    let source = workspace_search_scheme_source("rust", true, false, &search)
-        .expect("canonical Search Scheme source");
+    let source = "(search (producers (language rust)) (intersect (rg \"-n\" \"-F\" \"owner \\\"identity\\\"\" \".\") (tantivy \"title:\\\"owner identity\\\"^2 OR body:owner\")))";
     assert!(source.starts_with("(search (producers (language rust)) (intersect (rg "));
     assert!(source.contains("owner \\\"identity\\\""));
 
-    let request = workspace_search_qualification_request("rust", &search)
+    let request = workspace_search_qualification_request("rust", source)
         .expect("Scheme-lowered Search request");
     assert_eq!(request.language.as_deref(), Some("rust"));
     assert_eq!(request.documents, None);
-    assert_eq!(request.rg, Some(vec![search.rg]));
-    assert_eq!(request.tantivy, Some(vec![search.tantivy]));
+    assert!(request.rg.is_some());
+    assert!(request.tantivy.is_some());
     assert_eq!(request.clause_order.len(), 2);
+}
+
+#[test]
+fn qualification_query_is_lowered_through_one_scheme_expression() {
+    let selector = "rust://src/lib.rs#item/function/run";
+    let template = "(query (producers (language rust)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))";
+    let source = render_workspace_query_scheme_source(template, selector)
+        .expect("canonical Query Scheme source");
+    assert_eq!(
+        source,
+        "(query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/run\") (projection callable-skeleton) (output json)))"
+    );
+    let request =
+        workspace_query_qualification_request("rust", selector, "callable-skeleton", template)
+            .expect("Scheme-lowered Query request");
+    assert_eq!(request.language.as_deref(), Some("rust"));
+    assert_eq!(request.documents, None);
+    assert_eq!(request.selectors, [selector]);
+    assert_eq!(request.projection, "callable-skeleton");
 }
 
 fn error_frame(
@@ -235,6 +240,15 @@ fn qualification_receipts_are_partitioned_by_language_and_resource() {
 }
 
 #[test]
+fn immutable_artifact_pointer_uses_the_state_home_resource_authority() {
+    assert_eq!(
+        artifact_current_pointer(Path::new("/state-home"), "rust.bytes"),
+        Path::new("/state-home")
+            .join("resources/live-corpus/artifacts/by-resource/rust.bytes/current")
+    );
+}
+
+#[test]
 fn latency_distribution_reports_executed_sample_count_and_nearest_ranks() {
     let distribution = LatencyDistribution::from_samples((1..=100).rev().collect())
         .expect("non-empty latency distribution");
@@ -260,6 +274,7 @@ fn isolated_workspace_preserves_bytes_and_has_a_distinct_runtime_identity() {
         &source,
         "rust.real-library",
         &"a".repeat(64),
+        "https://github.com/tokio-rs/bytes.git",
     )
     .expect("isolated benchmark workspace");
     assert_ne!(isolated.workspace_identity, source_identity);
@@ -267,6 +282,13 @@ fn isolated_workspace_preserves_bytes_and_has_a_distinct_runtime_identity() {
         std::fs::read(isolated.path.join("lib.rs")).expect("isolated bytes"),
         b"pub fn live_corpus() {}\n"
     );
+    assert!(
+        isolated
+            .path
+            .join(agent_semantic_topology::PROJECT_TOPOLOGY_MANIFEST_PATH)
+            .is_file()
+    );
+    assert!(!source.join(".agents/asp/topology/manifest.org").exists());
     let isolated_path = isolated.path.clone();
     isolated.cleanup().expect("scoped workspace cleanup");
     assert!(!isolated_path.exists());

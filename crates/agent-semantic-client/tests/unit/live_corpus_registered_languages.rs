@@ -15,21 +15,17 @@ fn live_corpus_plan_covers_every_registered_language_profile() {
         .into_iter()
         .map(|profile| profile.language_id)
         .collect::<BTreeSet<_>>();
-    let plan: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../benchmarks/live-corpus-search-query-qualification.json"
+    let plan: toml::Value = toml::from_str(include_str!(
+        "../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
     ))
     .expect("live corpus qualification plan");
     let cases = plan
         .get("cases")
-        .and_then(serde_json::Value::as_array)
+        .and_then(toml::Value::as_array)
         .expect("qualification cases");
     let covered = cases
         .iter()
-        .filter_map(|case| {
-            case.get("languageId")
-                .or_else(|| case.get("language_id"))
-                .and_then(serde_json::Value::as_str)
-        })
+        .filter_map(|case| case.get("language_id").and_then(toml::Value::as_str))
         .map(str::to_owned)
         .collect::<BTreeSet<_>>();
 
@@ -41,8 +37,8 @@ fn live_corpus_plan_covers_every_registered_language_profile() {
 
 #[test]
 fn live_corpus_v1_protocol_count_is_plan_wide_not_shard_local() {
-    let plan: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../benchmarks/live-corpus-search-query-qualification.json"
+    let plan: toml::Value = toml::from_str(include_str!(
+        "../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
     ))
     .expect("live corpus qualification plan");
     let schema: serde_json::Value = serde_json::from_str(include_str!(
@@ -50,12 +46,14 @@ fn live_corpus_v1_protocol_count_is_plan_wide_not_shard_local() {
     ))
     .expect("live corpus qualification receipt schema");
     let plan_count = plan
-        .pointer("/clientProtocol/appliesToCaseCount")
-        .and_then(serde_json::Value::as_u64)
+        .get("client_protocol")
+        .and_then(|value| value.get("applies_to_case_count"))
+        .and_then(toml::Value::as_integer)
+        .and_then(|value| u64::try_from(value).ok())
         .expect("V1 plan-wide protocol count");
     let case_count = plan
         .get("cases")
-        .and_then(serde_json::Value::as_array)
+        .and_then(toml::Value::as_array)
         .map(|cases| cases.len() as u64)
         .expect("V1 plan cases");
     let receipt_count = schema

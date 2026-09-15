@@ -244,6 +244,53 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
 }
 
 #[test]
+fn native_tantivy_top_k_is_independent_of_physical_segment_layout() {
+    let rust = authority("rust", "asp-rust");
+    let documents = (0..8)
+        .map(|index| {
+            let owner_path = format!("src/owner-{index}.rs");
+            (
+                owner_path.clone(),
+                ResidentSourceDocument {
+                    owner_path,
+                    owner_content_digest: hash_blob(format!("owner-{index}").as_bytes()).value,
+                    line_count: 1,
+                    query_keys: vec!["shared".to_owned()],
+                    lexical_body: Some("shared body".to_owned()),
+                    authority: Some(rust.clone()),
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let build = |strategy, workers| {
+        ResidentSourceIndex::new(
+            documents.clone(),
+            source_snapshot(),
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
+                .to_owned(),
+            ResidentIndexBuildResources::new(workers, 64 * 1024 * 1024, strategy).unwrap(),
+        )
+        .unwrap()
+    };
+    let single = build(ResidentIndexBuildStrategy::SingleSegmentBulk, 1);
+    let parallel = build(ResidentIndexBuildStrategy::ParallelSegments, 2);
+    let query = |index: &ResidentSourceIndex| {
+        index
+            .query_tantivy_language(
+                "body:shared",
+                &agent_semantic_config::LanguageId::new("rust"),
+                3,
+            )
+            .unwrap()
+            .hits
+            .iter()
+            .map(|hit| hit.owner_path.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(query(&single), query(&parallel));
+}
+
+#[test]
 fn provider_authority_filters_before_limit_and_never_relabels_hits() {
     let rust = authority("rust", "asp-rust");
     let gerbil = authority("gerbil-scheme", "asp-gerbil-scheme");

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_active_search_and_qualification_keep_one_schema_version() -> None:
     required = (
         "schemas/active-search-generation.schema.json",
-        "schemas/asp.live-corpus-search-query-qualification-plan.schema.json",
+        "schemas/asp.live-corpus-scheme-scenario-suite.v1.schema.json",
         "schemas/asp.live-corpus-search-query-qualification-receipt.schema.json",
         "schemas/workspace-generation-required.schema.json",
         "schemas/runtime-server-workspace-generation-admission.schema.json",

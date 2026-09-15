@@ -41,6 +41,10 @@
   },
   "runtimeWorkspaceExecutionPublicationDigest": "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   "runtimeBundleDigest": "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "sourceGenerationDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+  "sourceRootDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "requestProfile": "resident-hit",
+  "requestPlaneElapsedMicros": 73,
   "projection": "source",
   "requestedSelectors": [
     "org://docs/publication.org#item/heading/Publication",

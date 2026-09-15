@@ -48,12 +48,12 @@ pub struct RuntimeQueryGeneration {
     pub(super) lexical_attachment_completion: tokio::sync::watch::Sender<bool>,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
-    pub(super) search_materializations: Mutex<
+    pub(super) search_materializations: Arc<Mutex<
         std::collections::HashMap<String, RuntimeSearchMaterializationState>,
-    >,
-    pub(super) query_materializations: Mutex<
+    >>,
+    pub(super) query_materializations: Arc<Mutex<
         std::collections::HashMap<String, RuntimeQueryMaterializationState>,
-    >,
+    >>,
 }
 
 #[derive(Clone)]
@@ -107,6 +107,13 @@ pub(super) struct RuntimeSyntaxScopeEvidence {
 }
 
 impl RuntimeQueryGeneration {
+    pub(super) fn inherit_materialization_authorities(&mut self, previous: &Self) {
+        if previous.generation_digest == self.generation_digest {
+            self.search_materializations = Arc::clone(&previous.search_materializations);
+            self.query_materializations = Arc::clone(&previous.query_materializations);
+        }
+    }
+
     pub(crate) fn contains_provider_targets(
         &self,
         targets: &[agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget],
@@ -148,9 +155,27 @@ impl RuntimeQueryGeneration {
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
-            search_materializations: Mutex::new(std::collections::HashMap::new()),
-            query_materializations: Mutex::new(std::collections::HashMap::new()),
+            search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            query_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
         })
+    }
+
+    /// Reopens one durable generation together with its exact content-bound
+    /// Runtime execution publication.
+    pub async fn open_with_execution_publication(
+        pointer_path: &std::path::Path,
+        project_root: &std::path::Path,
+        execution_publication: agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+        resource_supervisor: agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+        task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+    ) -> Result<Self, String> {
+        let resident = RuntimeResidentReadClient::open(pointer_path, project_root).await?;
+        Self::from_resident_with_execution_publication(
+            resident,
+            execution_publication,
+            resource_supervisor,
+            task_scope,
+        )
     }
 
     pub fn from_resident(
@@ -176,8 +201,8 @@ impl RuntimeQueryGeneration {
             project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
-            search_materializations: Mutex::new(std::collections::HashMap::new()),
-            query_materializations: Mutex::new(std::collections::HashMap::new()),
+            search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            query_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
         })
     }
 
@@ -231,8 +256,24 @@ impl RuntimeQueryGeneration {
             Err(error) => RuntimeSearchTerminalState::Failed(Arc::new(error)),
         };
         materializations.remove(&key);
-        materializations
-            .retain(|_, state| matches!(state, RuntimeSearchMaterializationState::Building(_)));
+        let terminal_capacity = self.resource_supervisor.effective_cpu().max(2);
+        while materializations
+            .values()
+            .filter(|state| !matches!(state, RuntimeSearchMaterializationState::Building(_)))
+            .count()
+            >= terminal_capacity
+        {
+            let evicted = materializations
+                .iter()
+                .filter(|(_, state)| {
+                    !matches!(state, RuntimeSearchMaterializationState::Building(_))
+                })
+                .map(|(key, _)| key)
+                .min()
+                .cloned();
+            let Some(evicted) = evicted else { break };
+            materializations.remove(&evicted);
+        }
         materializations.insert(key, terminal.clone().materialization_state());
         completion.send_replace(Some(terminal));
         Ok(())
@@ -297,6 +338,7 @@ impl RuntimeQueryGeneration {
         key: String,
         result: Result<serde_json::Value, agent_semantic_client_server::AspClientDispatchError>,
     ) -> Result<(), String> {
+        let terminal_slot = query_materialization_slot(&key)?;
         let mut materializations = self
             .query_materializations
             .lock()
@@ -312,8 +354,10 @@ impl RuntimeQueryGeneration {
             Err(error) => RuntimeQueryTerminalState::Failed(Arc::new(error)),
         };
         materializations.remove(&key);
-        materializations
-            .retain(|_, state| matches!(state, RuntimeQueryMaterializationState::Building(_)));
+        materializations.retain(|existing_key, state| {
+            matches!(state, RuntimeQueryMaterializationState::Building(_))
+                || query_materialization_slot(existing_key).ok() != Some(terminal_slot)
+        });
         materializations.insert(key, terminal.clone().materialization_state());
         completion.send_replace(Some(terminal));
         Ok(())
@@ -521,12 +565,15 @@ impl RuntimeQueryGeneration {
             return Err("reasonKind=runtime-project-topology-manifest-binding-mismatch".to_owned());
         }
 
-        let source = resident
-            .topology_source_segments()?
-            .into_iter()
-            .filter(|segment| owner_scope.is_none_or(|owners| owners.contains(&segment.owner_path)))
-            .collect::<Vec<_>>();
-        if source.is_empty() {
+        let source = if owner_scope.is_some() {
+            resident.topology_source_segments()?
+        } else {
+            resident.search_topology_source_segments()?
+        }
+        .into_iter()
+        .filter(|segment| owner_scope.is_none_or(|owners| owners.contains(&segment.owner_path)))
+        .collect::<Vec<_>>();
+        if source.is_empty() && owner_scope.is_none() {
             return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
         }
         let mut admitted_nodes = BTreeSet::<(
@@ -718,11 +765,14 @@ impl RuntimeQueryGeneration {
             closure_limit,
         )
         .map_err(|error| error.to_string())?;
-        let candidate =
-            agent_semantic_topology::ProjectTopologyGenerationBuilder::new(identity, limits)
-                .build_from_scratch(topology_segments)
-                .await
-                .map_err(|error| error.to_string())?;
+        let builder =
+            agent_semantic_topology::ProjectTopologyGenerationBuilder::new(identity, limits);
+        let candidate = if topology_segments.is_empty() {
+            builder.build_empty_request_scope().await
+        } else {
+            builder.build_from_scratch(topology_segments).await
+        }
+        .map_err(|error| error.to_string())?;
         let topology_receipts = BTreeMap::from([(
             candidate.rebuild_receipt_id().to_owned(),
             candidate.rebuild_receipt().clone(),
@@ -880,6 +930,17 @@ impl RuntimeQueryGeneration {
     > {
         self.resident()
             .native_syntax_playbook_projection(owner_paths)
+    }
+}
+
+fn query_materialization_slot(key: &str) -> Result<&str, String> {
+    let slot = key
+        .split_once('\0')
+        .map(|(slot, _)| slot)
+        .ok_or_else(|| "Runtime Query materialization key has no projection slot".to_owned())?;
+    match slot {
+        "source" | "callable-skeleton" => Ok(slot),
+        _ => Err("Runtime Query materialization key has no V1 projection slot".to_owned()),
     }
 }
 

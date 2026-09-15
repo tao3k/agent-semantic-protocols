@@ -7,6 +7,7 @@
 pub mod blake3_content_digest;
 mod edge;
 mod identity;
+pub mod provider_workspace_artifact;
 mod repair_chain;
 pub mod runtime_active_provider_set;
 pub mod runtime_artifact_activation;

@@ -6,7 +6,10 @@
 
 pub(super) mod client_protocol;
 mod contract;
+mod query_protocol;
 mod runner;
 
+pub(in crate::command::live_corpus) use query_protocol::source_query_scheme_template;
+pub(super) use runner::IsolatedBenchmarkWorkspace;
 pub(super) use runner::run;
 pub(super) use runner::validate_args;

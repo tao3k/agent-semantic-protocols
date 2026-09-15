@@ -63,7 +63,7 @@ pub fn render_workspace_search_playbook_gql(frame: &ClientFrame) -> Result<Strin
     let result = result
         .as_ref()
         .ok_or_else(|| "Workspace Search Playbook response is empty".to_owned())?;
-    agent_semantic_search_projection::SearchTopologySettlement::admit(result.clone())
+    agent_semantic_search_projection::SearchTopologySettlement::admit(result.clone().into_value())
         .and_then(|settlement| settlement.render_org_gql())
         .map_err(|error| format!("render admitted Search topology settlement: {error}"))
 }

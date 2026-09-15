@@ -768,7 +768,8 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
     else {
         panic!("schema bundle UDS route must return Ready")
     };
-    let response: SchemaBundleResponse = serde_json::from_value(result).expect("typed response");
+    let response: SchemaBundleResponse =
+        serde_json::from_value(result.into_value()).expect("typed response");
     response.validate().expect("valid response");
     assert!(matches!(response, SchemaBundleResponse::Ready { .. }));
     drop(client);

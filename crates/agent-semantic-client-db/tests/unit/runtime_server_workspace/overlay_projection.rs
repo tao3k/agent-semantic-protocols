@@ -525,7 +525,6 @@ async fn same_owner_selector_overlays_accumulate_without_advancing_source_epoch(
         )
         .await
         .expect("publish second selector");
-
     let lease = registry
         .lease("workspace-a", &project_root("workspace-a"))
         .expect("generation lease");

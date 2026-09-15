@@ -94,6 +94,10 @@ fn receipt(binding: &RuntimeExecutionBinding) -> serde_json::Value {
         "runtimeExecutionBinding": binding,
         "runtimeWorkspaceExecutionPublicationDigest": EXECUTION_PUBLICATION_DIGEST,
         "runtimeBundleDigest": RUNTIME_BUNDLE_DIGEST,
+        "sourceGenerationDigest": digest('6'),
+        "sourceRootDigest": "d".repeat(64),
+        "requestProfile": "resident-hit",
+        "requestPlaneElapsedMicros": 73,
         "projection": "source",
         "requestedSelectors": [RUST_SELECTOR, ORG_SELECTOR],
         "materializations": [
@@ -242,6 +246,32 @@ fn query_receipt_rejects_search_relationship_residue() {
     )
     .expect_err("Query receipt cannot carry Search GQL");
     assert_eq!(error.reason_kind(), "schema-invalid");
+}
+
+#[test]
+fn query_receipt_rejects_missing_or_malformed_source_identity_witnesses() {
+    let binding = runtime_binding();
+    let admitted = admit_request(&binding).expect("request");
+    for (field, invalid) in [
+        (
+            "sourceGenerationDigest",
+            serde_json::json!("generation-unknown"),
+        ),
+        ("sourceRootDigest", serde_json::json!("root-unknown")),
+    ] {
+        let mut packet = receipt(&binding);
+        packet[field] = invalid;
+        let error = QueryPlaybookMaterializationReceipt::admit_for_runtime(
+            packet,
+            &admitted,
+            &binding,
+            EXECUTION_PUBLICATION_DIGEST,
+            RUNTIME_BUNDLE_DIGEST,
+            &binding.project_workspace,
+        )
+        .expect_err("source identity must fail closed");
+        assert_eq!(error.reason_kind(), "schema-invalid");
+    }
 }
 
 #[test]

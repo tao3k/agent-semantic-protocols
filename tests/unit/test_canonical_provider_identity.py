@@ -5,6 +5,7 @@
 from pathlib import Path
 
 import json
+import tomllib
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
@@ -87,13 +88,14 @@ def test_provider_register_uses_canonical_language_identity() -> None:
 
 def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
     lock = load("benchmarks/large-library-runtime-corpora.json")
-    plan = load("benchmarks/live-corpus-search-query-qualification.json")
+    with (ROOT / "benchmarks/live-corpus-scheme-scenarios.v1.toml").open("rb") as stream:
+        plan = tomllib.load(stream)
 
     locked = {
         entry["resourceId"]: entry["providerId"] for entry in lock["corpora"]
     }
     planned = {
-        case["resourceId"]: case["providerId"]
+        case["resource_id"]: case["provider_id"]
         for case in plan["cases"]
     }
 

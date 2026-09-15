@@ -44,6 +44,7 @@ pub use language_command::LanguageCommandRequest;
 pub use language_command::LanguageCommandResponse;
 pub use language_command::RuntimeLanguageCommandApplication;
 pub use language_command::RuntimeLanguageCommandClient;
+pub use language_command::RuntimeLanguageSessionClient;
 pub use language_command::execute_language_command;
 pub use runtime_language_client::ClientBackpressureProbeReceipt;
 pub use runtime_language_client::{AspClient, AspClientRuntimeHandoff};
@@ -64,9 +65,7 @@ pub use cli::run_cli_args;
 pub use cli::run_cli_from_env;
 #[cfg(feature = "live-corpus-test")]
 #[doc(hidden)]
-pub async fn run_live_corpus_test(args: Vec<String>) -> Result<(), String> {
-    command::live_corpus::run_live_corpus_test(&args).await
-}
+pub mod live_corpus_test;
 pub use client_cli::run_cli_args as run_client_cli_args;
 pub use client_cli::run_cli_from_env as run_client_cli_from_env;
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;

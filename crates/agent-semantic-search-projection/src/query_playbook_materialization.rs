@@ -232,6 +232,31 @@ impl QueryPlaybookMaterializationReceipt {
                 "receipt selector set differs from the admitted request",
             );
         }
+        if !is_blake3_digest(text(receipt, "sourceGenerationDigest")?) {
+            return invalid(
+                "schema-invalid",
+                "receipt sourceGenerationDigest must be one BLAKE3-256 content digest",
+            );
+        }
+        if !is_hex_digest(text(receipt, "sourceRootDigest")?) {
+            return invalid(
+                "schema-invalid",
+                "receipt sourceRootDigest must be one lowercase BLAKE3 digest",
+            );
+        }
+        match text(receipt, "requestProfile")? {
+            "materialized" | "resident-hit" => {}
+            _ => return invalid("schema-invalid", "unsupported Query request profile"),
+        }
+        receipt
+            .get("requestPlaneElapsedMicros")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                error(
+                    "schema-invalid",
+                    "requestPlaneElapsedMicros must be a non-negative integer",
+                )
+            })?;
 
         let terminal = receipt
             .get("terminal")
@@ -344,6 +369,21 @@ fn validate_complete_materializations(
         }
     }
     Ok(())
+}
+
+fn is_blake3_digest(value: &str) -> bool {
+    value.len() == 75
+        && value.starts_with("blake3-256:")
+        && value[11..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

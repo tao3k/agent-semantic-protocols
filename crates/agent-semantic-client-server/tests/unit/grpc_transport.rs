@@ -51,9 +51,12 @@ fn large_response() -> ClientFrame {
         },
         request_id: ClientRequestId::new("partitioned-response").expect("request id"),
         outcome: ClientOutcome::Ready,
-        result: Some(serde_json::json!({
-            "source": "x".repeat(CLIENT_FRAME_PARTITION_BYTES + 4096)
-        })),
+        result: Some(
+            serde_json::json!({
+                "source": "x".repeat(CLIENT_FRAME_PARTITION_BYTES + 4096)
+            })
+            .into(),
+        ),
         error: None,
         catalog: None,
     }

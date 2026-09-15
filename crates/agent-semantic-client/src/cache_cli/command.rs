@@ -126,7 +126,7 @@ async fn run_source_index_lookup(
         }
     };
     let result: agent_semantic_search_projection::ResidentSearchReadyResult =
-        serde_json::from_value(payload)
+        serde_json::from_value(payload.into_value())
             .map_err(|error| format!("decode source-index lookup response: {error}"))?;
     result.validate()?;
     if result.hits.is_empty() {

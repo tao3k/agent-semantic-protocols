@@ -6,9 +6,9 @@ use super::{
     AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, emit_runtime_search_trace_observation,
     materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
-    read_query_projection_handoff, record_resident_query_materialization_hit,
-    record_settled_client_timing_observations, resident_exact_query_projections,
-    runtime_search_trace_budget_micros, workspace_query_materialization_key,
+    read_query_projection_handoff, record_settled_client_timing_observations,
+    resident_exact_query_projections, runtime_search_trace_budget_micros,
+    workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -97,76 +97,6 @@ fn execution_publication() -> RuntimeWorkspaceExecutionPublication {
     .expect("workspace execution publication")
 }
 
-#[test]
-fn resident_query_materialization_hit_records_the_runtime_boundary() {
-    let mut bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
-    let mut selector_params = params();
-    selector_params.selectors = vec![
-        "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry"
-            .into(),
-    ];
-
-    assert!(
-        record_resident_query_materialization_hit(
-            &bus.sender,
-            "workspace-23cc5ba784c605ae",
-            &digest('1'),
-            "request-resident-hit",
-            &selector_params,
-            17,
-        )
-        .expect("resident Query telemetry")
-    );
-
-    let observation = bus
-        .receiver
-        .try_recv()
-        .expect("resident Query performance observation")
-        .into_observation();
-    assert_eq!(observation.surface, "query");
-    assert_eq!(observation.stage, "runtime-query-materialization-read");
-    assert_eq!(observation.elapsed_micros, 17);
-    assert_eq!(observation.budget_micros, 1_000);
-    assert_eq!(observation.budget_status, "within-budget");
-    assert_eq!(
-        observation.workspace_identity.as_deref(),
-        Some("workspace-23cc5ba784c605ae")
-    );
-    assert_eq!(observation.language_id.as_deref(), Some("rust"));
-    assert_eq!(
-        observation.generation_digest.as_deref(),
-        Some(digest('1').as_str())
-    );
-    assert_eq!(
-        observation.operation_id.as_deref(),
-        Some("request-resident-hit")
-    );
-    assert_eq!(observation.requested_projection.as_deref(), Some("source"));
-    assert_eq!(observation.memory_search_turso_opens, Some(0));
-    assert_eq!(observation.memory_search_source_bytes_read, Some(0));
-    assert_eq!(observation.memory_search_provider_spawns, Some(0));
-    assert_eq!(observation.memory_search_socket_connects, Some(0));
-    assert!(bus.receiver.try_recv().is_err());
-}
-
-#[test]
-fn mixed_language_query_does_not_forge_a_single_language_runtime_metric() {
-    let mut bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
-
-    assert!(
-        !record_resident_query_materialization_hit(
-            &bus.sender,
-            "workspace-23cc5ba784c605ae",
-            &digest('1'),
-            "request-mixed-language",
-            &params(),
-            17,
-        )
-        .expect("mixed-language telemetry admission")
-    );
-    assert!(bus.receiver.try_recv().is_err());
-}
-
 #[tokio::test]
 async fn cold_query_rejects_an_impossible_owner_before_generation_admission() {
     let root = tempfile::tempdir().expect("cold Query workspace");
@@ -196,7 +126,7 @@ fn query_provider_targets_fail_closed_before_generation_admission() {
 }
 
 #[test]
-fn query_materialization_identity_binds_semantics_and_rebinds_only_envelope_request_id() {
+fn query_materialization_identity_binds_semantics_and_rebinds_request_local_witnesses() {
     let request = params();
     let first = workspace_query_materialization_key(&request, "blake3-256:generation-a")
         .unwrap_or_else(|_| panic!("first Query materialization key"));
@@ -217,9 +147,17 @@ fn query_materialization_identity_binds_semantics_and_rebinds_only_envelope_requ
         "requestedSelectors": request.selectors,
         "terminal": {"state": "ready"}
     });
-    let rebound = bind_query_materialization_to_request(&template, "request-current")
-        .unwrap_or_else(|_| panic!("bind current request identity"));
+    let rebound = bind_query_materialization_to_request(
+        std::sync::Arc::new(template.clone()),
+        "request-current",
+        "resident-hit",
+        tokio::time::Instant::now(),
+    )
+    .unwrap_or_else(|_| panic!("bind current request identity"));
+    let rebound = serde_json::to_value(rebound).expect("serialize rebound response");
     assert_eq!(rebound["requestId"], "request-current");
+    assert_eq!(rebound["requestProfile"], "resident-hit");
+    assert!(rebound["requestPlaneElapsedMicros"].is_u64());
     assert_eq!(
         rebound["requestedSelectors"],
         template["requestedSelectors"]
@@ -391,6 +329,8 @@ fn client_timing_is_settled_once_against_the_multilanguage_execution_publication
         binding,
         publication.publication_digest.as_str(),
         publication.runtime_bundle_digest.as_str(),
+        &digest('1'),
+        &"2".repeat(64),
         &binding.project_workspace,
         &[
             ("org".into(), "asp-org".into()),
@@ -400,7 +340,7 @@ fn client_timing_is_settled_once_against_the_multilanguage_execution_publication
         |_projection, selector| {
             Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: digest('1'),
-                root_digest: digest('2'),
+                root_digest: "2".repeat(64),
                 resolved_selector: selector.to_owned(),
                 bytes: format!("materialized:{selector}").into_bytes(),
             })
@@ -437,6 +377,8 @@ fn query_playbook_materializes_one_runtime_bound_terminal_in_selector_order() {
         &binding,
         &digest('e'),
         &digest('f'),
+        &digest('1'),
+        &"2".repeat(64),
         &binding.project_workspace,
         &[
             ("org".into(), "asp-org".into()),
@@ -446,7 +388,7 @@ fn query_playbook_materializes_one_runtime_bound_terminal_in_selector_order() {
         |_projection, selector| {
             Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: digest('1'),
-                root_digest: digest('2'),
+                root_digest: "2".repeat(64),
                 resolved_selector: selector.to_owned(),
                 bytes: format!("materialized:{selector}").into_bytes(),
             })
@@ -464,6 +406,79 @@ fn query_playbook_materializes_one_runtime_bound_terminal_in_selector_order() {
         receipt["runtimeExecutionBinding"],
         serde_json::to_value(binding).unwrap()
     );
+    assert_eq!(receipt["sourceGenerationDigest"], digest('1'));
+    assert_eq!(receipt["sourceRootDigest"], "2".repeat(64));
+}
+
+#[test]
+fn query_playbook_uses_the_exact_read_generation_after_parser_materialization() {
+    let binding = runtime_binding();
+    let receipt = materialize_query_playbook_receipt(
+        "request-query-playbook-parser-generation",
+        &params(),
+        &binding,
+        &digest('e'),
+        &digest('f'),
+        &digest('1'),
+        &"2".repeat(64),
+        &binding.project_workspace,
+        &[
+            ("org".into(), "asp-org".into()),
+            ("rust".into(), "asp-rust".into()),
+        ],
+        None,
+        |_projection, selector| {
+            Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
+                generation_digest: digest('7'),
+                root_digest: "2".repeat(64),
+                resolved_selector: selector.to_owned(),
+                bytes: format!("materialized:{selector}").into_bytes(),
+            })
+        },
+    )
+    .unwrap_or_else(|_| panic!("parser-materialized exact generation"));
+    assert_eq!(receipt["terminal"]["state"], "ready");
+    assert_eq!(receipt["sourceGenerationDigest"], digest('7'));
+    assert_eq!(receipt["sourceRootDigest"], "2".repeat(64));
+}
+
+#[test]
+fn query_playbook_rejects_a_selector_read_from_another_content_generation() {
+    let binding = runtime_binding();
+    let receipt = materialize_query_playbook_receipt(
+        "request-query-playbook-drift",
+        &params(),
+        &binding,
+        &digest('e'),
+        &digest('f'),
+        &digest('1'),
+        &"2".repeat(64),
+        &binding.project_workspace,
+        &[
+            ("org".into(), "asp-org".into()),
+            ("rust".into(), "asp-rust".into()),
+        ],
+        None,
+        |_projection, selector| {
+            Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
+                generation_digest: if selector.starts_with("org://") {
+                    digest('1')
+                } else {
+                    digest('9')
+                },
+                root_digest: "2".repeat(64),
+                resolved_selector: selector.to_owned(),
+                bytes: b"content-bound".to_vec(),
+            })
+        },
+    )
+    .unwrap_or_else(|_| panic!("typed generation-drift terminal"));
+    assert_eq!(receipt["terminal"]["state"], "failed");
+    assert_eq!(
+        receipt["terminal"]["reasonKind"],
+        "query-playbook-content-identity-mismatch"
+    );
+    assert_eq!(receipt["materializations"], serde_json::json!([]));
 }
 
 #[test]
@@ -475,6 +490,8 @@ fn query_playbook_selector_failure_exposes_no_partial_materialization() {
         &binding,
         &digest('e'),
         &digest('f'),
+        &digest('1'),
+        &"2".repeat(64),
         &binding.project_workspace,
         &[
             ("org".into(), "asp-org".into()),
@@ -485,14 +502,14 @@ fn query_playbook_selector_failure_exposes_no_partial_materialization() {
             if selector.starts_with("org://") {
                 Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
                     generation_digest: digest('1'),
-                    root_digest: digest('2'),
+                    root_digest: "2".repeat(64),
                     resolved_selector: selector.to_owned(),
                     bytes: b"publication".to_vec(),
                 })
             } else {
                 Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::OwnerMissing {
                     generation_digest: digest('1'),
-                    root_digest: digest('2'),
+                    root_digest: "2".repeat(64),
                 })
             }
         },
@@ -516,6 +533,8 @@ fn query_playbook_selector_read_error_emits_one_failed_terminal_without_partial_
         &binding,
         &digest('e'),
         &digest('f'),
+        &digest('1'),
+        &"2".repeat(64),
         &binding.project_workspace,
         &[
             ("org".into(), "asp-org".into()),
@@ -526,7 +545,7 @@ fn query_playbook_selector_read_error_emits_one_failed_terminal_without_partial_
             if selector.starts_with("org://") {
                 Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
                     generation_digest: digest('1'),
-                    root_digest: digest('2'),
+                    root_digest: "2".repeat(64),
                     resolved_selector: selector.to_owned(),
                     bytes: b"must-not-escape".to_vec(),
                 })

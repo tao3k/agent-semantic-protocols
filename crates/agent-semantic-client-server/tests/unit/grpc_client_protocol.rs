@@ -50,7 +50,8 @@ impl AspClientDispatcher for ExactQueryDispatcher {
                     "schemaId": "agent.semantic-protocols.test-large-response",
                     "schemaVersion": "1",
                     "source": "x".repeat(4 * 1024 * 1024 + 64 * 1024),
-                }))
+                })
+                .into())
             });
         }
         if request.method == "test.cancellation-probe" {

@@ -148,7 +148,7 @@ async fn compile_resident_syntax_blocks(
             ));
         };
         let response: agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextResponse =
-            serde_json::from_value(result)
+            serde_json::from_value(result.into_value())
                 .map_err(|error| format!("decode syntax plan context response: {error}"))?;
         response.validate()?;
         if response.schema_id

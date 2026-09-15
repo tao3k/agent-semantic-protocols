@@ -24,6 +24,7 @@ fn server_catalog_exposes_workspace_search_exact_query_and_schema_bundle_methods
             "asp.graphs.timeline",
             "asp.lifecycle.cancellation",
             "asp.live-corpus.cache-state",
+            "asp.live-corpus.merkle-owner.qualify",
             "asp.schema.bundle",
             "asp.session.children",
             "asp.session.host-event",

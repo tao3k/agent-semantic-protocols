@@ -264,7 +264,8 @@ fn query_failure_and_order_drift_cannot_be_rendered_as_successful_concat() {
         ..
     } = &mut drifted
     {
-        receipt["materializations"] = json!([{
+        let mut owned = receipt.clone().into_value();
+        owned["materializations"] = json!([{
             "selector": "rust://src/b.rs#item/function/b",
             "languageId": "rust",
             "providerId": "asp-rust",
@@ -281,6 +282,7 @@ fn query_failure_and_order_drift_cannot_be_rendered_as_successful_concat() {
             "sourceContentDigest": "a".repeat(64),
             "bytes": [97]
         }]);
+        *receipt = owned.into();
     }
     assert!(
         render_workspace_query_playbook_response(&drifted, ProjectionPresentation::Text)

@@ -8,10 +8,9 @@ from jsonschema import Draft202012Validator
 
 from tests.unit.live_corpus_search_query_qualification_support import (
     LOCK_PATH,
-    PLAN_PATH,
     PLAN_SCHEMA_PATH,
     RECEIPT_SCHEMA_PATH,
-    load_json,
+    load_json, load_plan,
 )
 
 
@@ -21,11 +20,11 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     Draft202012Validator.check_schema(plan_schema)
     Draft202012Validator.check_schema(receipt_schema)
 
-    plan = load_json(PLAN_PATH)
+    plan = load_plan()
     lock = load_json(LOCK_PATH)
     Draft202012Validator(plan_schema).validate(plan)
     under_sampled = dict(plan)
-    under_sampled["residentSampleCount"] = 127
+    under_sampled["resident_sample_count"] = 127
     assert list(Draft202012Validator(plan_schema).iter_errors(under_sampled))
 
     locked = {
@@ -37,17 +36,17 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         for entry in lock["corpora"]
     }
     planned = {
-        entry["resourceId"]: (
-            entry["scenarioId"],
-            entry["languageId"],
-            entry["providerId"],
+        entry["resource_id"]: (
+            entry["scenario_id"],
+            entry["language_id"],
+            entry["provider_id"],
         )
         for entry in plan["cases"]
     }
 
     assert planned == locked
     assert len(planned) == 17
-    assert set(plan["requiredLanguages"]) == {
+    assert set(plan["required_languages"]) == {
         "gerbil-scheme",
         "julia",
         "md",
@@ -56,12 +55,12 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "rust",
         "typescript",
     }
-    assert plan["clientProtocol"]["appliesToCaseCount"] == len(plan["cases"]) == 17
-    assert plan["clientProtocol"]["maximumResidentMicros"] <= 1000
-    assert plan["clientProtocol"]["workspaceScheduling"] == "tokio-join-set"
-    assert plan["clientProtocol"]["sessionPolicy"] == "one-initialize-per-session"
-    assert plan["clientProtocol"]["readyEffects"] == ["mpsc", "oneshot", "cancel", "response"]
-    assert plan["clientProtocol"]["forbiddenReadyEffects"] == [
+    assert plan["client_protocol"]["applies_to_case_count"] == len(plan["cases"]) == 17
+    assert plan["client_protocol"]["maximum_resident_micros"] <= 1000
+    assert plan["client_protocol"]["workspace_scheduling"] == "tokio-join-set"
+    assert plan["client_protocol"]["session_policy"] == "one-initialize-per-session"
+    assert plan["client_protocol"]["ready_effects"] == ["mpsc", "oneshot", "cancel", "response"]
+    assert plan["client_protocol"]["forbidden_ready_effects"] == [
         "process",
         "filesystem",
         "dbWrite",
@@ -69,11 +68,11 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "providerActivation",
         "controlPoll",
     ]
-    assert plan["clientProtocol"]["nonReadyDispatchCount"] == 0
-    assert plan["clientProtocol"]["residualTaskCount"] == 0
-    assert plan["clientProtocol"]["p50MaximumMicros"] == 250
-    assert plan["clientProtocol"]["p99MaximumMicros"] == 700
-    assert plan["clientProtocol"]["maxMaximumMicros"] == 1000
+    assert plan["client_protocol"]["non_ready_dispatch_count"] == 0
+    assert plan["client_protocol"]["residual_task_count"] == 0
+    assert plan["client_protocol"]["p50_maximum_micros"] == 250
+    assert plan["client_protocol"]["p99_maximum_micros"] == 700
+    assert plan["client_protocol"]["max_maximum_micros"] == 1000
     assert {provider_id for _, _, provider_id in planned.values()} == {
         "asp-gerbil-scheme",
         "asp-julia",
@@ -84,11 +83,11 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "asp-typescript",
     }
 
-    by_language = {language: [] for language in plan["requiredLanguages"]}
+    by_language = {language: [] for language in plan["required_languages"]}
     for entry in plan["cases"]:
-        by_language[entry["languageId"]].append(entry)
+        by_language[entry["language_id"]].append(entry)
     assert all(by_language.values())
     for entries in by_language.values():
-        assert all(entry["search"]["minimumCandidates"] >= 1 for entry in entries)
-        assert all(entry["zeroMatchSearch"]["rg"] for entry in entries)
-        assert all(entry["zeroMatchSearch"]["tantivy"] for entry in entries)
+        assert all(entry["minimum_candidates"] >= 1 for entry in entries)
+        assert all(entry["search"].startswith("(search ") for entry in entries)
+        assert all(entry["zero_match_search"].startswith("(search ") for entry in entries)

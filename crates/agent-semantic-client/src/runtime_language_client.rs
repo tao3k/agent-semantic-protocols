@@ -21,9 +21,6 @@ use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 use agent_semantic_client_protocol::GRAPH_EVALUATE_METHOD;
 use agent_semantic_client_protocol::GRAPH_TIMELINE_METHOD;
-use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_METHOD;
-use agent_semantic_client_protocol::LiveCorpusCacheStateReceipt;
-use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
 use agent_semantic_client_protocol::SCHEMA_BUNDLE_METHOD;
 use agent_semantic_client_protocol::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID;
 use agent_semantic_client_protocol::SchemaBundleRequest;
@@ -34,12 +31,14 @@ use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
 use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 use agent_semantic_client_server::AspClientGrpcTransport;
 use agent_semantic_client_server::CLIENT_FRAME_SESSION_CAPACITY;
-use agent_semantic_client_server::CLIENT_FRAME_SESSION_CONTROL_RESERVE;
 
 pub(crate) use crate::runtime_language_response_decoders::{
     decode_graph_evaluation_response, decode_schema_bundle_response,
 };
 pub(crate) use crate::runtime_language_session_registry::SessionRegistry;
+
+#[path = "runtime_language_live_corpus.rs"]
+mod live_corpus;
 
 /// Monotonic request identity shared by all warm client sessions in a process.
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -531,60 +530,6 @@ impl AspClient {
         session_registry().lock().await.drain_idle()
     }
 
-    /// Prepare one explicit Live Corpus cache state through the Runtime-owned
-    /// cache authority.  Cold-load additionally evicts only this workspace's
-    /// client session after the server confirms the exact generation/root.
-    pub async fn prepare_live_corpus_cache_state(
-        &self,
-        request: LiveCorpusCacheStateRequest,
-    ) -> Result<LiveCorpusCacheStateReceipt, String> {
-        request.validate()?;
-        let publication = self.runtime_handoff().await?;
-        let (project_id, workspace_id) = project_workspace_ids(&self.project_root)?;
-        let session_key = SessionKey::from_publication(&publication, project_id, workspace_id);
-        let cache_state = request.cache_state.clone();
-        let frame = self
-            .dispatch_method(
-                LIVE_CORPUS_CACHE_STATE_METHOD.to_owned(),
-                serde_json::to_value(request)
-                    .map_err(|error| format!("encode Live Corpus cache-state request: {error}"))?,
-            )
-            .await?;
-        let ClientFrame::Response {
-            outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
-            result: Some(payload),
-            error: None,
-            ..
-        } = frame
-        else {
-            return Err(format!(
-                "Live Corpus cache-state request did not return Ready: {frame:?}"
-            ));
-        };
-        let mut receipt = serde_json::from_value::<LiveCorpusCacheStateReceipt>(payload)
-            .map_err(|error| format!("decode Live Corpus cache-state receipt: {error}"))?;
-        receipt.validate()?;
-        if receipt.project_id != session_key.project_id
-            || receipt.workspace_id != session_key.workspace_id
-        {
-            return Err(
-                "Live Corpus cache-state receipt crossed its ProjectId/WorkspaceId binding"
-                    .to_owned(),
-            );
-        }
-        if matches!(cache_state.as_str(), "cold-load" | "released") {
-            receipt.client_session_evicted =
-                session_registry().lock().await.remove_key(&session_key);
-            if !receipt.client_session_evicted {
-                return Err(format!(
-                    "Live Corpus {cache_state} did not evict its exact client session"
-                ));
-            }
-        }
-        receipt.validate()?;
-        Ok(receipt)
-    }
-
     /// Dispatch one typed method to the resident ASP Server.
     pub async fn dispatch(
         &self,
@@ -826,7 +771,7 @@ impl AspClient {
         }
 
         let started = tokio::time::Instant::now();
-        let held_call_count = CLIENT_FRAME_SESSION_CAPACITY - CLIENT_FRAME_SESSION_CONTROL_RESERVE;
+        let held_call_count = CLIENT_FRAME_SESSION_CAPACITY;
         let mut pending = Vec::with_capacity(held_call_count);
         for index in 0..held_call_count {
             let request_id = request_id(&format!("backpressure-held-{index}"))?;
@@ -960,7 +905,7 @@ impl AspClient {
                 result: Some(result),
                 error: None,
                 ..
-            } => Ok(result),
+            } => Ok(result.into_value()),
             ClientFrame::Response { outcome, error, .. } => Err(format!(
                 "graph timeline dispatch failed: outcome={outcome:?} error={}",
                 error.unwrap_or(serde_json::Value::Null)

@@ -166,7 +166,9 @@ async fn project_provider(
     }
     let parser_identity_digest = derive_parser_identity_digest_v1(
         &ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
-        &ProjectionPacketExecutionCommandDigestV1::from(provider.registration_digest.as_str()),
+        &ProjectionPacketExecutionCommandDigestV1::from(
+            provider.execution_artifact_digest.as_str(),
+        ),
         &ProjectionPacketSemanticRegistryDigestV1::from(provider.registration_digest.as_str()),
     );
     let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)

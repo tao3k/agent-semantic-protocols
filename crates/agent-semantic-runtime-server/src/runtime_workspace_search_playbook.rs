@@ -453,8 +453,11 @@ fn resident_semantic_scope(
     Option<Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>>,
     AspClientOperationError,
 > {
-    if !generation
-        .resident()
+    let resident = generation.resident();
+    if !resident.has_semantic_owner_materialization_authority() {
+        return Ok(None);
+    }
+    if !resident
         .semantic_owners_materialized(owners)
         .map_err(AspClientOperationError::Message)?
     {

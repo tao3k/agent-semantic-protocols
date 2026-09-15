@@ -11,8 +11,6 @@ use agent_semantic_client::LanguageCommandClient;
 use agent_semantic_client::LanguageCommandOperation;
 use agent_semantic_client::LanguageCommandRequest;
 use agent_semantic_client_protocol::AspClientExactQueryFailure;
-use agent_semantic_client_protocol::AspClientExactQueryRequest;
-use agent_semantic_client_protocol::AspClientExactQueryResponse;
 use agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis;
 use agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
@@ -23,6 +21,11 @@ use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
 
 use super::contract::LatencyDistribution;
 use super::contract::QualificationCase;
+pub(crate) use super::query_protocol::{WorkspaceQueryQualificationReceipt, public_query};
+#[cfg(test)]
+pub(crate) use super::query_protocol::{
+    render_workspace_query_scheme_source, workspace_query_qualification_request,
+};
 
 #[derive(Debug, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -31,6 +34,8 @@ pub(super) struct PublicRouteFailure {
     message: String,
     #[serde(default)]
     details: Option<serde_json::Value>,
+    #[serde(default)]
+    terminal: Option<serde_json::Value>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,7 +48,7 @@ pub(super) enum PublicRouteTerminal {
 }
 
 impl PublicRouteTerminal {
-    fn require_ready(self, route: &str) -> Result<serde_json::Value, String> {
+    pub(super) fn require_ready(self, route: &str) -> Result<serde_json::Value, String> {
         match self {
             Self::Ready(payload) => Ok(payload),
             Self::Queued(failure) => Err(format!(
@@ -55,8 +60,8 @@ impl PublicRouteTerminal {
                 failure.reason_kind, failure.phase
             )),
             Self::Failed(failure) => Err(format!(
-                "Live Corpus public route failed: route={route} reasonKind={} message={}",
-                failure.reason_kind, failure.message
+                "Live Corpus public route failed: route={route} reasonKind={} message={} terminal={:?}",
+                failure.reason_kind, failure.message, failure.terminal
             )),
             Self::Cancelled => Err(format!(
                 "Live Corpus public route was cancelled: route={route}"
@@ -72,7 +77,7 @@ pub(super) fn typed_terminal(frame: ClientFrame) -> Result<PublicRouteTerminal, 
             result: Some(payload),
             error: None,
             ..
-        } => Ok(PublicRouteTerminal::Ready(payload)),
+        } => Ok(PublicRouteTerminal::Ready(payload.into_value())),
         ClientFrame::Response {
             outcome: ClientOutcome::Cancelled,
             ..
@@ -82,8 +87,13 @@ pub(super) fn typed_terminal(frame: ClientFrame) -> Result<PublicRouteTerminal, 
             error: Some(error),
             ..
         } => {
-            let failure = serde_json::from_value::<PublicRouteFailure>(error)
-                .map_err(|error| format!("decode Live Corpus typed route failure: {error}"))?;
+            let failure = serde_json::from_value::<PublicRouteFailure>(error.clone()).map_err(
+                |decode_error| {
+                    format!(
+                        "decode Live Corpus typed route failure: {decode_error}; payload={error}"
+                    )
+                },
+            )?;
             if let Some(details) = failure.details.as_ref()
                 && let Ok(generation_failure) =
                     serde_json::from_value::<AspClientExactQueryFailure>(details.clone())
@@ -104,31 +114,14 @@ pub(super) fn typed_terminal(frame: ClientFrame) -> Result<PublicRouteTerminal, 
     }
 }
 
-async fn dispatch_ready<C: LanguageCommandClient>(
-    client: &C,
-    project_root: &Path,
-    language_id: &str,
-    route: &str,
-    operation: LanguageCommandOperation,
-) -> Result<serde_json::Value, String> {
-    let response = client
-        .dispatch(LanguageCommandRequest {
-            language_id: agent_semantic_client::LanguageId::new(language_id),
-            operation,
-            project_root: project_root.to_path_buf(),
-            machine_readable: true,
-        })
-        .await?;
-    typed_terminal(response.frame)?.require_ready(route)
-}
-
 #[derive(Debug)]
 pub(super) struct PublicQualificationEvidence {
     pub(super) search: WorkspaceSearchQualificationReceipt,
-    pub(super) source: AspClientExactQueryResponse,
-    pub(super) callable_skeleton: AspClientExactQueryResponse,
+    pub(super) source: WorkspaceQueryQualificationReceipt,
+    pub(super) callable_skeleton: WorkspaceQueryQualificationReceipt,
     pub(super) zero_match: WorkspaceSearchQualificationReceipt,
     pub(super) merkle_proof: agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt,
+    pub(super) selected_selector: String,
     pub(super) search_total_latency_micros: LatencyDistribution,
     pub(super) exact_source_latency_micros: LatencyDistribution,
     pub(super) callable_skeleton_latency_micros: LatencyDistribution,
@@ -177,67 +170,51 @@ where
         &case.search,
     )
     .await?;
-    if search.owner_paths.len() < case.search.minimum_candidates {
+    if search.owner_paths.len() < case.minimum_candidates {
         return Err(format!(
             "Live Corpus public search returned too few candidates: case={} candidates={} minimum={}",
             case.case_id,
             search.owner_paths.len(),
-            case.search.minimum_candidates
+            case.minimum_candidates
         ));
     }
-    if search.elapsed_micros > case.search.maximum_search_micros {
-        return Err(format!(
-            "Live Corpus public Search exceeded composite budget: case={} elapsedMicros={} maximumMicros={}",
-            case.case_id, search.elapsed_micros, case.search.maximum_search_micros
-        ));
-    }
-    let selector = search.selectors.first().ok_or_else(|| {
+    let merkle_proof = cache_client
+        .read_live_corpus_merkle_owner(
+            &search.owner_paths,
+            &case.case_id,
+            &case.resource_id,
+            &case.language_id,
+            &case.provider_id,
+        )
+        .await?;
+    let selector = merkle_proof.structural_selector.clone().ok_or_else(|| {
         format!(
-            "Live Corpus public search returned no parser-owned selector: case={}",
+            "Live Corpus Merkle proof has no callable selector: case={}",
             case.case_id
         )
     })?;
-    let canonical_selector =
-        agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-            selector.clone(),
-        )?;
-    let owner_path = canonical_selector.owner_path()?;
-    let merkle_started = Instant::now();
-    let merkle_read =
-        agent_semantic_client_db::workspace_db_ipc::read_runtime_merkle_owner_via_runtime_server(
-            project_root,
-            owner_path,
+    let resident_generation_digest = merkle_proof.generation_digest.clone().ok_or_else(|| {
+        format!(
+            "Live Corpus Merkle proof has no Runtime generation: case={}",
+            case.case_id
         )
-        .await?;
-    let merkle_elapsed_micros = merkle_started
-        .elapsed()
-        .as_micros()
-        .min(u128::from(u64::MAX)) as u64;
-    let merkle_proof = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
-        agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofEvidenceLayer::LiveCorpus,
-        case.case_id.clone(),
-        Some(case.resource_id.clone()),
-        case.language_id.clone(),
-        case.provider_id.clone(),
-        selector.clone(),
-        merkle_elapsed_micros,
-        agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadWorkCounters::default(),
-        merkle_read,
-    )?;
+    })?;
     let source = public_query(
         client,
         project_root,
         case.language_id.as_str(),
-        selector,
+        &selector,
         "source",
+        &case.source_query,
     )
     .await?;
     let callable_skeleton = public_query(
         client,
         project_root,
         case.language_id.as_str(),
-        selector,
+        &selector,
         "callable-skeleton",
+        &case.callable_skeleton_query,
     )
     .await?;
     let cold_build_search_query_elapsed = cold_build_started
@@ -248,18 +225,18 @@ where
         ("source", &source),
         ("callable-skeleton", &callable_skeleton),
     ] {
-        if response.resident_read_elapsed_micros > case.query.maximum_resident_micros {
+        if response.request_profile == "resident-hit"
+            && response.elapsed_micros > case.maximum_resident_query_micros
+        {
             return Err(format!(
                 "Live Corpus public query exceeded resident budget: case={} projection={projection} elapsedMicros={} maximumMicros={}",
-                case.case_id,
-                response.resident_read_elapsed_micros,
-                case.query.maximum_resident_micros
+                case.case_id, response.elapsed_micros, case.maximum_resident_query_micros
             ));
         }
     }
     let observed_terminal_events = std::collections::BTreeSet::from([
         "runtime_resident_search_terminal",
-        "runtime_exact_projection_terminal",
+        "runtime_query_playbook_terminal",
     ]);
     if let Some(missing) = case
         .required_telemetry_events
@@ -292,14 +269,15 @@ where
             "warm-read",
             "reuse-exact-resident-generation",
             "none",
-            Some(source.generation_digest.clone()),
+            Some(resident_generation_digest.clone()),
             Some(source.root_digest.clone()),
             0,
         ))
         .await?;
     if warm_read_prepare.resident_generation_evicted
         || warm_read_prepare.client_session_evicted
-        || warm_read_prepare.generation_digest.as_deref() != Some(source.generation_digest.as_str())
+        || warm_read_prepare.generation_digest.as_deref()
+            != Some(resident_generation_digest.as_str())
         || warm_read_prepare.root_digest.as_deref() != Some(source.root_digest.as_str())
     {
         return Err(format!(
@@ -323,24 +301,34 @@ where
             client,
             project_root,
             case.language_id.as_str(),
-            selector,
+            &selector,
             "source",
+            &case.source_query,
         )
         .await?;
         let sampled_skeleton = public_query(
             client,
             project_root,
             case.language_id.as_str(),
-            selector,
+            &selector,
             "callable-skeleton",
+            &case.callable_skeleton_query,
         )
         .await?;
-        validate_sampled_query(case, &source, &sampled_source, "source", sample_index)?;
+        validate_sampled_query(
+            case,
+            &source,
+            &sampled_source,
+            "source",
+            "resident-hit",
+            sample_index,
+        )?;
         validate_sampled_query(
             case,
             &callable_skeleton,
             &sampled_skeleton,
             "callable-skeleton",
+            "resident-hit",
             sample_index,
         )?;
         search_total_samples.push(sampled_search.elapsed_micros);
@@ -357,7 +345,8 @@ where
                 &search,
                 &source,
                 &callable_skeleton,
-                selector,
+                &selector,
+                "resident-hit",
                 sample_index,
             )
             .await?,
@@ -381,6 +370,7 @@ where
                 &source,
                 &callable_skeleton,
                 &selector,
+                "resident-hit",
                 sample_index,
             )
             .await
@@ -409,14 +399,15 @@ where
                 "cold-load",
                 "evict-resident-generation-only",
                 "benchmark-workspace-generation",
-                Some(source.generation_digest.clone()),
+                Some(resident_generation_digest.clone()),
                 Some(source.root_digest.clone()),
                 sample_index,
             ))
             .await?;
         if !cache_receipt.resident_generation_evicted
             || !cache_receipt.client_session_evicted
-            || cache_receipt.generation_digest.as_deref() != Some(source.generation_digest.as_str())
+            || cache_receipt.generation_digest.as_deref()
+                != Some(resident_generation_digest.as_str())
             || cache_receipt.root_digest.as_deref() != Some(source.root_digest.as_str())
         {
             return Err(format!(
@@ -433,7 +424,8 @@ where
                 &search,
                 &source,
                 &callable_skeleton,
-                selector,
+                &selector,
+                "materialized",
                 sample_index,
             )
             .await?,
@@ -445,23 +437,24 @@ where
         callable_skeleton,
         zero_match,
         merkle_proof,
+        selected_selector: selector,
         search_total_latency_micros: distribution_with_budget(
             "search-total",
             case,
             search_total_samples,
-            case.search.maximum_search_micros,
+            case.maximum_search_micros,
         )?,
         exact_source_latency_micros: distribution_with_budget(
             "exact-source",
             case,
             exact_source_samples,
-            case.query.maximum_resident_micros,
+            case.maximum_resident_query_micros,
         )?,
         callable_skeleton_latency_micros: distribution_with_budget(
             "callable-skeleton",
             case,
             callable_skeleton_samples,
-            case.query.maximum_resident_micros,
+            case.maximum_resident_query_micros,
         )?,
         cold_build_search_query_latency_micros: LatencyDistribution::from_samples(vec![
             cold_build_search_query_elapsed,
@@ -515,9 +508,10 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
     project_root: &Path,
     case: &QualificationCase,
     baseline_search: &WorkspaceSearchQualificationReceipt,
-    baseline_source: &AspClientExactQueryResponse,
-    baseline_skeleton: &AspClientExactQueryResponse,
+    baseline_source: &WorkspaceQueryQualificationReceipt,
+    baseline_skeleton: &WorkspaceQueryQualificationReceipt,
     selector: &str,
+    expected_query_profile: &str,
     sample_index: usize,
 ) -> Result<u64, String> {
     let started = Instant::now();
@@ -534,6 +528,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
         case.language_id.as_str(),
         selector,
         "source",
+        &case.source_query,
     )
     .await?;
     let sampled_skeleton = public_query(
@@ -542,6 +537,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
         case.language_id.as_str(),
         selector,
         "callable-skeleton",
+        &case.callable_skeleton_query,
     )
     .await?;
     validate_sampled_search(case, baseline_search, &sampled_search, sample_index)?;
@@ -550,6 +546,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
         baseline_source,
         &sampled_source,
         "source",
+        expected_query_profile,
         sample_index,
     )?;
     validate_sampled_query(
@@ -557,6 +554,7 @@ async fn run_positive_search_query_sample<C: LanguageCommandClient>(
         baseline_skeleton,
         &sampled_skeleton,
         "callable-skeleton",
+        expected_query_profile,
         sample_index,
     )?;
     Ok(started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64)
@@ -574,9 +572,51 @@ fn validate_sampled_search(
         || sample.selectors != baseline.selectors
         || sample.owner_paths != baseline.owner_paths
     {
+        let drift = [
+            (
+                "sourceGenerationDigest",
+                sample.source_generation_digest != baseline.source_generation_digest,
+            ),
+            (
+                "providerCatalogDigest",
+                sample.provider_catalog_digest != baseline.provider_catalog_digest,
+            ),
+            (
+                "topologyGenerationDigest",
+                sample.topology_generation_digest != baseline.topology_generation_digest,
+            ),
+            ("selectors", sample.selectors != baseline.selectors),
+            ("ownerPaths", sample.owner_paths != baseline.owner_paths),
+        ]
+        .into_iter()
+        .filter_map(|(field, drifted)| drifted.then_some(field))
+        .collect::<Vec<_>>()
+        .join(",");
+        let baseline_selector_set = baseline
+            .selectors
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let sample_selector_set = sample
+            .selectors
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let missing_selectors = baseline_selector_set
+            .difference(&sample_selector_set)
+            .take(3)
+            .copied()
+            .collect::<Vec<_>>();
+        let added_selectors = sample_selector_set
+            .difference(&baseline_selector_set)
+            .take(3)
+            .copied()
+            .collect::<Vec<_>>();
         return Err(format!(
-            "Live Corpus resident search sample identity drift: case={} sample={sample_index}",
-            case.case_id
+            "Live Corpus resident search sample identity drift: case={} sample={sample_index} fields={drift} baselineSelectors={} sampleSelectors={} baselineOwners={} sampleOwners={} missingSelectors={missing_selectors:?} addedSelectors={added_selectors:?}",
+            case.case_id,
+            baseline.selectors.len(),
+            sample.selectors.len(),
+            baseline.owner_paths.len(),
+            sample.owner_paths.len(),
         ));
     }
     Ok(())
@@ -584,19 +624,24 @@ fn validate_sampled_search(
 
 fn validate_sampled_query(
     case: &QualificationCase,
-    baseline: &AspClientExactQueryResponse,
-    sample: &AspClientExactQueryResponse,
+    baseline: &WorkspaceQueryQualificationReceipt,
+    sample: &WorkspaceQueryQualificationReceipt,
     projection: &str,
+    expected_request_profile: &str,
     sample_index: usize,
 ) -> Result<(), String> {
-    if sample.language_id != baseline.language_id
+    if sample.request_profile != expected_request_profile
+        || sample.language_id != baseline.language_id
         || sample.provider_id != baseline.provider_id
         || sample.generation_digest != baseline.generation_digest
         || sample.root_digest != baseline.root_digest
+        || sample.selector != baseline.selector
+        || sample.projection != baseline.projection
+        || sample.bytes != baseline.bytes
         || sample.result != baseline.result
     {
         return Err(format!(
-            "Live Corpus exact-query sample identity drift: case={} projection={projection} sample={sample_index}",
+            "Live Corpus Query Playbook sample identity drift: case={} projection={projection} sample={sample_index}",
             case.case_id
         ));
     }
@@ -623,9 +668,9 @@ async fn search_receipt<C: LanguageCommandClient>(
     client: &C,
     project_root: &Path,
     language_id: &str,
-    search: &super::contract::QualificationSearch,
+    scheme_source: &str,
 ) -> Result<WorkspaceSearchQualificationReceipt, String> {
-    let request = workspace_search_qualification_request(language_id, search)?;
+    let request = workspace_search_qualification_request(language_id, scheme_source)?;
     let started = Instant::now();
     let response = client
         .dispatch(LanguageCommandRequest {
@@ -663,87 +708,46 @@ pub(crate) async fn search_receipt_for_literal<C: LanguageCommandClient>(
         return Err("Live Corpus Search literal must not be empty".to_owned());
     }
     let tantivy_literal = literal.replace('\\', "\\\\").replace('"', "\\\"");
-    let search = super::contract::QualificationSearch {
-        rg: vec![
-            "-n".to_owned(),
-            "-F".to_owned(),
-            literal.to_owned(),
-            ".".to_owned(),
-        ],
-        tantivy: vec![format!(
-            "title:\"{tantivy_literal}\"^2 OR body:\"{tantivy_literal}\""
-        )],
-        minimum_candidates: 1,
-        maximum_search_micros: 500_000,
-    };
-    search_receipt(client, project_root, language_id, &search).await
+    let axis = registered_producer_axis(language_id)?;
+    let literal = serde_json::to_string(literal)
+        .map_err(|error| format!("encode Search Scheme literal: {error}"))?;
+    let tantivy = serde_json::to_string(&format!(
+        "title:\"{tantivy_literal}\"^2 OR body:\"{tantivy_literal}\""
+    ))
+    .map_err(|error| format!("encode Search Scheme Tantivy query: {error}"))?;
+    let source = format!(
+        "(search (producers ({axis} {language_id})) (intersect (rg \"-n\" \"-F\" {literal} \".\") (tantivy {tantivy})))"
+    );
+    search_receipt(client, project_root, language_id, &source).await
 }
 
 pub(super) fn workspace_search_qualification_request(
     producer_id: &str,
-    search: &super::contract::QualificationSearch,
+    scheme_source: &str,
 ) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
-    if search.rg.is_empty()
-        || search.tantivy.is_empty()
-        || search
-            .rg
-            .iter()
-            .chain(search.tantivy.iter())
-            .any(|argument| argument.is_empty())
-    {
-        return Err("Live Corpus Search requires non-empty exact rg and Tantivy argv".to_owned());
+    if scheme_source.trim().is_empty() {
+        return Err("Live Corpus Search requires a complete Scheme expression".to_owned());
     }
-    let profile = include_str!("../../../../../schemas/language-schema-profiles.json");
-    let profile: serde_json::Value = serde_json::from_str(profile)
-        .map_err(|error| format!("decode embedded Search producer profile registry: {error}"))?;
-    let profiles = profile
-        .get("profiles")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "Search producer profile registry has no profiles".to_owned())?;
-    let producer = profiles
-        .iter()
-        .find(|profile| {
-            profile
-                .get("languageId")
-                .and_then(serde_json::Value::as_str)
-                == Some(producer_id)
-        })
-        .ok_or_else(|| format!("Search producer profile is not registered: {producer_id}"))?;
-    let axes = producer
-        .get("searchProducerAxes")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| format!("Search producer profile has no registered axis: {producer_id}"))?;
-    if axes.is_empty() {
-        return Err(format!(
-            "Live Corpus Search producer must expose a Search producer classification: {producer_id}"
-        ));
-    }
-    let language = axes
-        .iter()
-        .any(|axis| axis.as_str() == Some("language"))
-        .then(|| producer_id.to_owned());
-    let documents = axes
-        .iter()
-        .any(|axis| axis.as_str() == Some("document"))
-        .then(|| producer_id.to_owned());
-    if language.is_none() && documents.is_none() {
-        return Err(format!(
-            "Live Corpus Search producer has no language/document axis: {producer_id}"
-        ));
-    }
-
-    let scheme_source = workspace_search_scheme_source(
-        producer_id,
-        language.is_some(),
-        documents.is_some(),
-        search,
-    )?;
+    let expected_axis = registered_producer_axis(producer_id)?;
     let parsed = agent_semantic_search::parse_progressive_search_playbook_args(&[
         "search".to_owned(),
         "playbook".to_owned(),
-        scheme_source,
+        scheme_source.to_owned(),
     ])
     .map_err(|error| format!("lower Live Corpus Search Scheme: {error}"))?;
+    if parsed.language.as_deref() != (expected_axis == "language").then_some(producer_id)
+        || parsed.documents.as_deref() != (expected_axis == "documents").then_some(producer_id)
+    {
+        return Err(format!(
+            "Live Corpus Search Scheme producer drift: expectedAxis={expected_axis} expectedProducer={producer_id} language={:?} documents={:?}",
+            parsed.language, parsed.documents
+        ));
+    }
+    if parsed.rg.is_empty() || parsed.tantivy.is_empty() {
+        return Err(
+            "Live Corpus Search Scheme must exercise both rg and Tantivy acquisition".to_owned(),
+        );
+    }
     Ok(AspClientWorkspaceSearchPlaybookRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
@@ -751,8 +755,8 @@ pub(super) fn workspace_search_qualification_request(
         language: parsed.language,
         documents: parsed.documents,
         workspace: parsed.workspace,
-        rg: (!parsed.rg.is_empty()).then_some(parsed.rg),
-        tantivy: (!parsed.tantivy.is_empty()).then_some(parsed.tantivy),
+        rg: Some(parsed.rg),
+        tantivy: Some(parsed.tantivy),
         syntax: None,
         native_syntax: (!parsed.native_syntax.is_empty()).then_some(parsed.native_syntax),
         graph: (!parsed.graph.is_empty()).then(|| {
@@ -794,37 +798,41 @@ pub(super) fn workspace_search_qualification_request(
     })
 }
 
-pub(super) fn workspace_search_scheme_source(
-    producer_id: &str,
-    language_axis: bool,
-    document_axis: bool,
-    search: &super::contract::QualificationSearch,
-) -> Result<String, String> {
-    if language_axis == document_axis {
+fn registered_producer_axis(producer_id: &str) -> Result<&'static str, String> {
+    let profile = include_str!("../../../../../schemas/language-schema-profiles.json");
+    let profile: serde_json::Value = serde_json::from_str(profile)
+        .map_err(|error| format!("decode embedded Search producer profile registry: {error}"))?;
+    let profiles = profile
+        .get("profiles")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Search producer profile registry has no profiles".to_owned())?;
+    let producer = profiles
+        .iter()
+        .find(|profile| {
+            profile
+                .get("languageId")
+                .and_then(serde_json::Value::as_str)
+                == Some(producer_id)
+        })
+        .ok_or_else(|| format!("Search producer profile is not registered: {producer_id}"))?;
+    let axes = producer
+        .get("searchProducerAxes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("Search producer profile has no registered axis: {producer_id}"))?;
+    if axes.is_empty() {
         return Err(format!(
-            "Live Corpus Search producer must resolve to exactly one axis: {producer_id}"
+            "Live Corpus Search producer must expose a Search producer classification: {producer_id}"
         ));
     }
-    let axis = if language_axis {
-        "language"
-    } else {
-        "documents"
-    };
-    let encode_leaf = |name: &str, argv: &[String]| -> Result<String, String> {
-        let encoded = argv
-            .iter()
-            .map(|argument| {
-                serde_json::to_string(argument)
-                    .map_err(|error| format!("encode Search Scheme string: {error}"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(format!("({name} {})", encoded.join(" ")))
-    };
-    Ok(format!(
-        "(search (producers ({axis} {producer_id})) (intersect {} {}))",
-        encode_leaf("rg", &search.rg)?,
-        encode_leaf("tantivy", &search.tantivy)?,
-    ))
+    let language = axes.iter().any(|axis| axis.as_str() == Some("language"));
+    let documents = axes.iter().any(|axis| axis.as_str() == Some("document"));
+    match (language, documents) {
+        (true, false) => Ok("language"),
+        (false, true) => Ok("documents"),
+        _ => Err(format!(
+            "Live Corpus producer must resolve to exactly one language/document axis: {producer_id}"
+        )),
+    }
 }
 
 fn workspace_search_qualification_receipt(
@@ -843,17 +851,24 @@ fn workspace_search_qualification_receipt(
             .map(str::to_owned)
             .ok_or_else(|| format!("Search settlement binding has no {field}"))
     };
-    let mut selectors = settlement
+    let selectors = settlement
         .get("nodes")
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|node| node.get("selector").and_then(serde_json::Value::as_str))
         .map(str::to_owned)
-        .collect::<Vec<_>>();
-    selectors.sort();
-    selectors.dedup();
-    let mut owner_paths = selectors
+        .fold(
+            (std::collections::BTreeSet::new(), Vec::new()),
+            |(mut seen, mut ordered), selector| {
+                if seen.insert(selector.clone()) {
+                    ordered.push(selector);
+                }
+                (seen, ordered)
+            },
+        )
+        .1;
+    let owner_paths = selectors
         .iter()
         .map(|selector| {
             agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
@@ -861,9 +876,18 @@ fn workspace_search_qualification_receipt(
             )
             .and_then(|selector| selector.owner_path())
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    owner_paths.sort();
-    owner_paths.dedup();
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .fold(
+            (std::collections::BTreeSet::new(), Vec::new()),
+            |(mut seen, mut ordered), owner_path| {
+                if seen.insert(owner_path.clone()) {
+                    ordered.push(owner_path);
+                }
+                (seen, ordered)
+            },
+        )
+        .1;
     Ok(WorkspaceSearchQualificationReceipt {
         operation_id,
         source_generation_digest: binding_digest("sourceGenerationDigest")?,
@@ -873,36 +897,4 @@ fn workspace_search_qualification_receipt(
         owner_paths,
         elapsed_micros,
     })
-}
-
-async fn public_query<C: LanguageCommandClient>(
-    client: &C,
-    project_root: &Path,
-    language_id: &str,
-    selector: &str,
-    projection: &str,
-) -> Result<AspClientExactQueryResponse, String> {
-    let payload = dispatch_ready(
-        client,
-        project_root,
-        language_id,
-        "query",
-        LanguageCommandOperation::ExactQuery(AspClientExactQueryRequest {
-            schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
-            schema_version: "1".to_owned(),
-            selector: selector.to_owned(),
-            projection: projection.to_owned(),
-        }),
-    )
-    .await?;
-    let response = serde_json::from_value::<AspClientExactQueryResponse>(payload)
-        .map_err(|error| format!("decode Live Corpus public {projection} payload: {error}"))?;
-    response.validate()?;
-    if response.language_id != language_id {
-        return Err(format!(
-            "Live Corpus public query language drift: expected={language_id} actual={}",
-            response.language_id
-        ));
-    }
-    Ok(response)
 }

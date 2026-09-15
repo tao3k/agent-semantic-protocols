@@ -13,16 +13,31 @@ Query measurements.  Live Corpus is test infrastructure, not an end-user ASP
 capability.  It MUST NOT appear in the normal =asp= subcommand tree, public
 help, language facade, provider registry, or Hook routing contract.
 
-The dedicated =live_corpus= Cargo test target owns test orchestration.  It is
-compiled only through its explicit test feature and invokes the same ordinary
-public Search and Query client boundary that users exercise.  The test may
+The dedicated =live_corpus= Cargo test target is only the build identity of an
+independent test runner.  The runner is compiled only through its explicit test
+feature and invokes the same
+ordinary public Search and Query client boundary that users exercise.  It may
 prepare declared test inputs through explicit =sync= and =materialize= phases;
 those phases do not become Search/Query fallbacks and are never run implicitly
 by =qualify=.
 
+Compilation and artifact publication are not Live Corpus scenario phases.
+CI MUST build one content-addressed ASP Server artifact and the required
+provider artifacts before Matrix fan-out.  A shard maps those immutable
+artifacts, starts one test-owned Server in an isolated State Home, waits for
+its typed Ready terminal, executes one resource, and stops that Server.  A
+shard MUST NOT run =install client=, rebuild the ASP Server, reuse the user's
+resident Runtime, or count Cargo/linker time as a Search or Query sample.
+Fixture phases emit visible =starting= and terminal events so a build stall,
+server-readiness stall, and request-plane stall cannot be confused.
+The runner copies the selected provider artifact into its test-owned Runtime
+root, computes the complete file-tree Merkle digest, and binds that digest into
+the provider launcher member of the execution closure.  A mutable workspace
+path or an unbound launcher path is not an admissible provider artifact.
+
 The existing shared schemas remain the contract authority:
 
-- =asp.live-corpus-search-query-qualification-plan=
+- =agent.semantic-protocols.live-corpus-scheme-scenario-suite= V1
 - =asp.live-corpus-search-query-qualification-receipt=
 - =runtime-server-opentelemetry-performance-event=
 - =runtime-server-performance-observation=
@@ -38,8 +53,7 @@ nor advertises a =live-corpus= operation.  A production install therefore does
 not acquire a benchmark command, benchmark dependency, or Hook policy simply
 because the client can execute Search and Query.
 
-The feature-gated Cargo test target has four explicit operations:
-operations are:
+The feature-gated runner has four explicit operations:
 
 1. =path= resolves the declared immutable State Home checkout identity;
 2. =sync= acquires the exact lockfile revision for a test resource;
@@ -63,15 +77,50 @@ coverage declared by =appliesToCaseCount=.  An aggregation step may join shard
 receipts only after all declared resource identities and the common plan and
 lock digests agree.
 
-The V1 plan's =rg= and =tantivy= arrays are immutable workload tokens, not an
-alternate public argument grammar.  Before dispatch, the test target MUST
-encode those tokens into one canonical =(search ...)= Scheme expression and
-lower that expression through the same =parse_progressive_search_playbook_args=
-authority as =asp search playbook=.  Constructing
-=AspClientWorkspaceSearchPlaybookRequest= directly from the arrays is a test
-bypass and is forbidden.  Exact Query qualification must likewise converge on
-the public Query Playbook parser; direct =ExactQuery= dispatch remains an
-explicitly visible gap until that Scheme grammar is the public V1 authority.
+The V1 TOML suite stores complete Search and Query Scheme sources. It MUST NOT
+store rg/Tantivy argv arrays or synthesize a semantic form from benchmark
+flags. Before dispatch, the test target lowers the stored =(search ...)= form
+through the same =parse_progressive_search_playbook_args= authority as the
+public client. Exact Query scenarios store a single ={{selector}}= slot; the
+runner binds the parser-owned Search result with JSON string encoding and then
+lowers the complete =(query ...)= form through the public Query parser.
+Producer, selector, and projection drift is terminal test evidence.
+
+* Architectural counterexample closure
+
+Live Corpus is not only a latency benchmark.  Every declared scenario is an
+executable attempt to falsify the shared V1 architecture across a real,
+language-appropriate repository.  A run that proves only lexical Search and
+exact Query is a partial qualification; it MUST NOT claim semantic-topology
+closure.
+
+The closed scenario pipeline is:
+
+#+begin_src text
+Scheme Search -> content-bound candidate owner/selector frontier
+  -> exact parser Query for that bounded scope
+  -> Agent summary over only the admitted evidence
+  -> content-bound Org AST artifact
+  -> separately identified semantic Topology overlay
+  -> replay and order-independence checks against the base Search topology
+#+end_src
+
+Agent reasoning is deliberately outside the Search request clock and outside
+the immutable Search-core identity.  Its single-flight key binds content
+generation, selector scope, Agent/model identity, and prompt identity.  The
+result is admitted only when both summary bytes and the corresponding Org AST
+digest are present.  A later semantic projection may join that overlay by its
+receipt; the base lexical Search MUST remain byte- and digest-stable whether
+exact Query or Agent summarization ran before it.
+
+Each scenario therefore records separate terminal evidence for base topology,
+exact materialization, Agent summary, Org artifact admission, overlay topology,
+and replay.  Missing Agent dispatch or Org artifact support is a typed
+=semantic-topology-not-materialized= qualification failure.  The runner MUST
+NOT replace it with canned prose, infer a summary from filenames, mutate the
+scenario TOML, or mark the lexical-only prefix as a complete pass.  Root
+counterexamples feed back through this RFC, a Lean invariant or countermodel,
+and the owning Rust boundary before the scenario can become green.
 
 * First divergence
 
@@ -230,8 +279,8 @@ false-green qualification and MUST fail the contract gate.
 The ten-sample sequential run and the thirty-two-sample concurrent run are
 separate workloads.  Their terminals retain the same workspace, source-root,
 provider, generation, selector, and schema identities as the warm sample set.
-The concurrent run uses the public bounded client/session transport; a harness
-thread pool, subprocess fan-out, or direct provider call is not equivalent.
+The concurrent run uses the public bounded client/session transport; a runner-
+private thread pool, subprocess fan-out, or direct provider call is not equivalent.
 Every named failure-injection round emits exactly one typed terminal and is
 counted separately from successful latency samples.  No failed, cancelled, or
 non-Ready sample may be omitted from the machine-readable receipt.

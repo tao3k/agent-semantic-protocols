@@ -11,7 +11,8 @@ description = "Thin agent semantic client over native semantic language provider
 license.workspace = true
 
 [features]
-default = []
+default = ["asp-bin"]
+asp-bin = []
 live-corpus-test = []
 
 [lib]
@@ -65,6 +66,7 @@ tracing = "0.1.44"
 name = "asp"
 path = "src/main.rs"
 test = false
+required-features = ["asp-bin"]
 
 [dev-dependencies]
 jsonschema = { workspace = true }
@@ -90,7 +92,7 @@ path = "tests/unit/scenario_performance_gate.rs"
 
 [[test]]
 name = "live_corpus"
-path = "tests/live_corpus.rs"
+path = "tests/integration/live_corpus.rs"
 harness = false
 required-features = ["live-corpus-test"]
 

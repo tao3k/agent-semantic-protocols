@@ -34,8 +34,12 @@ fn generation_without_resident_authority(
         project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
-        search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
-        query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
+        search_materializations: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
+        query_materializations: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     })
 }
 
@@ -113,7 +117,7 @@ async fn first_computation_deadline_is_absolute_not_restarted_at_a_later_stage()
     );
     assert!(
         super::enforce_completed_dispatch_budget(
-            Ok(serde_json::json!({"state":"ready"})),
+            Ok(serde_json::json!({"state":"ready"}).into()),
             budget.limit(),
             started.elapsed(),
         )
@@ -334,7 +338,7 @@ fn detached_generation_has_no_request_deadline_but_resident_reads_do() {
 #[test]
 fn synchronous_overrun_cannot_escape_the_resident_dispatch_deadline() {
     let error = enforce_completed_dispatch_budget(
-        Ok(serde_json::json!({"state": "ready"})),
+        Ok(serde_json::json!({"state": "ready"}).into()),
         Some(std::time::Duration::from_micros(1_000)),
         std::time::Duration::from_micros(1_001),
     )
@@ -351,7 +355,7 @@ fn synchronous_overrun_cannot_escape_the_resident_dispatch_deadline() {
 fn strict_dispatch_deadline_accepts_only_elapsed_time_below_the_budget() {
     assert!(
         enforce_completed_dispatch_budget(
-            Ok(serde_json::json!({"state": "ready"})),
+            Ok(serde_json::json!({"state": "ready"}).into()),
             Some(std::time::Duration::from_micros(1_000)),
             std::time::Duration::from_micros(999),
         )
@@ -359,7 +363,7 @@ fn strict_dispatch_deadline_accepts_only_elapsed_time_below_the_budget() {
     );
     assert!(
         enforce_completed_dispatch_budget(
-            Ok(serde_json::json!({"state": "ready"})),
+            Ok(serde_json::json!({"state": "ready"}).into()),
             Some(std::time::Duration::from_micros(1_000)),
             std::time::Duration::from_micros(1_000),
         )

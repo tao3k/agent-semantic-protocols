@@ -9,8 +9,43 @@ use crate::runtime_query_generation::{
     RuntimeQueryMaterializationState, RuntimeSearchMaterializationState,
 };
 
+#[test]
+fn same_content_generation_upgrade_shares_in_flight_and_completed_authority() {
+    let first = test_generation("blake3-256:shared-materialization-generation");
+    assert!(first.begin_search_materialization("plan".into()).unwrap());
+    assert!(
+        first
+            .begin_query_materialization("source\0selector".into())
+            .unwrap()
+    );
+
+    let mut upgraded = std::sync::Arc::try_unwrap(test_generation(
+        "blake3-256:shared-materialization-generation",
+    ))
+    .unwrap_or_else(|_| panic!("fresh test generation must have one owner"));
+    upgraded.inherit_materialization_authorities(&first);
+    first
+        .publish_search_materialization("plan".into(), Ok(serde_json::json!({"ready": true})))
+        .unwrap();
+    first
+        .publish_query_materialization(
+            "source\0selector".into(),
+            Ok(serde_json::json!({"ready": true})),
+        )
+        .unwrap();
+
+    assert!(matches!(
+        upgraded.search_materialization("plan").unwrap(),
+        Some(RuntimeSearchMaterializationState::Ready(value)) if value["ready"] == true
+    ));
+    assert!(matches!(
+        upgraded.query_materialization("source\0selector").unwrap(),
+        Some(RuntimeQueryMaterializationState::Ready(value)) if value["ready"] == true
+    ));
+}
+
 #[tokio::test]
-async fn completed_search_slot_is_bounded_and_evicted_waiter_keeps_terminal() {
+async fn completed_search_materializations_are_isolated_by_normalized_plan_identity() {
     let generation = test_generation("blake3-256:bounded-search-generation");
     assert!(
         generation
@@ -36,12 +71,10 @@ async fn completed_search_slot_is_bounded_and_evicted_waiter_keeps_terminal() {
         .publish_search_materialization("second".into(), Ok(serde_json::json!({"slot": 2})))
         .unwrap();
 
-    assert!(
-        generation
-            .search_materialization("first")
-            .unwrap()
-            .is_none()
-    );
+    assert!(matches!(
+        generation.search_materialization("first").unwrap(),
+        Some(RuntimeSearchMaterializationState::Ready(value)) if value["slot"] == 1
+    ));
     assert!(matches!(
         generation.search_materialization("second").unwrap(),
         Some(RuntimeSearchMaterializationState::Ready(value)) if value["slot"] == 2
@@ -50,21 +83,66 @@ async fn completed_search_slot_is_bounded_and_evicted_waiter_keeps_terminal() {
         waiter.await.unwrap().unwrap(),
         RuntimeSearchMaterializationState::Ready(value) if value["slot"] == 1
     ));
+
+    for slot in 3..=5 {
+        let key = format!("plan-{slot}");
+        assert!(
+            generation
+                .begin_search_materialization(key.clone())
+                .unwrap()
+        );
+        generation
+            .publish_search_materialization(key, Ok(serde_json::json!({"slot": slot})))
+            .unwrap();
+    }
+    let retained = ["first", "second", "plan-3", "plan-4", "plan-5"]
+        .into_iter()
+        .filter(|key| generation.search_materialization(key).unwrap().is_some())
+        .count();
+    assert_eq!(
+        retained,
+        generation.resource_supervisor.effective_cpu().max(2),
+        "effective CPU bounds completed Search plans"
+    );
 }
 
 #[test]
-fn completed_query_slot_retains_only_the_latest_terminal() {
+fn completed_query_cache_retains_one_terminal_per_v1_projection() {
     let generation = test_generation("blake3-256:bounded-query-generation");
-    for (key, slot) in [("first", 1), ("second", 2)] {
+    for (key, slot) in [("source\0first", 1), ("callable-skeleton\0first", 2)] {
         assert!(generation.begin_query_materialization(key.into()).unwrap());
         generation
             .publish_query_materialization(key.into(), Ok(serde_json::json!({"slot": slot})))
             .unwrap();
     }
 
-    assert!(generation.query_materialization("first").unwrap().is_none());
     assert!(matches!(
-        generation.query_materialization("second").unwrap(),
+        generation.query_materialization("source\0first").unwrap(),
+        Some(RuntimeQueryMaterializationState::Ready(value)) if value["slot"] == 1
+    ));
+    assert!(matches!(
+        generation.query_materialization("callable-skeleton\0first").unwrap(),
         Some(RuntimeQueryMaterializationState::Ready(value)) if value["slot"] == 2
     ));
+
+    assert!(
+        generation
+            .begin_query_materialization("source\0second".into())
+            .unwrap()
+    );
+    generation
+        .publish_query_materialization("source\0second".into(), Ok(serde_json::json!({"slot": 3})))
+        .unwrap();
+    assert!(
+        generation
+            .query_materialization("source\0first")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        generation
+            .query_materialization("callable-skeleton\0first")
+            .unwrap()
+            .is_some()
+    );
 }

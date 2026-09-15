@@ -4,61 +4,60 @@
 
 """Explicit cold, load, warm, release, and concurrency budgets."""
 
-from tests.unit.live_corpus_search_query_qualification_support import PLAN_PATH, load_json
+from tests.unit.live_corpus_search_query_qualification_support import load_plan
 
 
 def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> None:
-    plan = load_json(PLAN_PATH)
-    assert plan["residentSampleCount"] >= 128
-    assert plan["sequentialSampleCount"] == 10
-    assert plan["concurrentSampleCount"] == 32
-    assert plan["cacheStates"] == [
+    plan = load_plan()
+    assert plan["resident_sample_count"] >= 128
+    assert plan["sequential_sample_count"] == 10
+    assert plan["concurrent_sample_count"] == 32
+    assert plan["cache_states"] == [
         {
             "state": "cold-build",
-            "prepareAction": "new-isolated-workspace-generation",
-            "mutationScope": "benchmark-workspace-generation",
-            "sampleCount": 1,
+            "prepare_action": "new-isolated-workspace-generation",
+            "mutation_scope": "benchmark-workspace-generation",
+            "sample_count": 1,
         },
         {
             "state": "cold-load",
-            "prepareAction": "evict-resident-generation-only",
-            "mutationScope": "benchmark-workspace-generation",
-            "sampleCount": 10,
+            "prepare_action": "evict-resident-generation-only",
+            "mutation_scope": "benchmark-workspace-generation",
+            "sample_count": 10,
         },
         {
             "state": "warm-read",
-            "prepareAction": "reuse-exact-resident-generation",
-            "mutationScope": "none",
-            "sampleCount": 128,
+            "prepare_action": "reuse-exact-resident-generation",
+            "mutation_scope": "none",
+            "sample_count": 128,
         },
         {
             "state": "released",
-            "prepareAction": "release-exact-benchmark-generation",
-            "mutationScope": "benchmark-workspace-generation",
-            "sampleCount": 1,
+            "prepare_action": "release-exact-benchmark-generation",
+            "mutation_scope": "benchmark-workspace-generation",
+            "sample_count": 1,
         },
     ]
-    assert set(plan["failureInjections"]) == {
+    assert set(plan["failure_injections"]) == {
         "cancel-before-terminal",
         "bounded-mailbox-saturation",
         "stale-content-binding",
     }
-    case_ids = [entry["caseId"] for entry in plan["cases"]]
+    case_ids = [entry["case_id"] for entry in plan["cases"]]
     assert len(case_ids) == len(set(case_ids))
 
     for entry in plan["cases"]:
-        assert entry["search"]["maximumSearchMicros"] == 500_000
-        assert entry["search"]["rg"]
-        assert entry["search"]["tantivy"]
-        assert entry["search"]["minimumCandidates"] >= 1
-        assert entry["query"]["maximumResidentMicros"] == 1_000
-        assert entry["query"]["selectorStrategy"] == "first-ranked-parser-owned"
-        assert entry["query"]["projectionScope"] == "live-corpus"
-        assert entry["zeroMatchSearch"]["rg"]
-        assert entry["zeroMatchSearch"]["tantivy"]
-        assert entry["zeroMatchSearch"]["minimumCandidates"] == 0
-        assert entry["zeroMatchSearch"]["maximumSearchMicros"] == 500_000
-        assert set(entry["requiredTelemetryEvents"]) == {
+        assert entry["maximum_search_micros"] == 500_000
+        assert entry["minimum_candidates"] >= 1
+        assert entry["maximum_resident_query_micros"] == 1_000
+        assert entry["search"].startswith("(search ")
+        assert entry["zero_match_search"].startswith("(search ")
+        assert entry["source_query"].count("{{selector}}") == 1
+        assert entry["callable_skeleton_query"].count("{{selector}}") == 1
+        assert set(entry["scenario_classes"]) == {
+            "lexical-intersection", "exact-parser-owner", "zero-match"
+        }
+        assert set(entry["required_telemetry_events"]) == {
             "runtime_resident_search_terminal",
-            "runtime_exact_projection_terminal",
+            "runtime_query_playbook_terminal",
         }

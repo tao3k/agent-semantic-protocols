@@ -9,10 +9,12 @@ use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::AspClient;
+use crate::AspClientRuntimeHandoff;
 use crate::projection_presentation::ProjectionPresentation;
 use crate::projection_presentation::render_exact_projection_response;
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
+use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::ClientFrame;
 use agent_semantic_client_protocol::ClientOutcome;
@@ -21,6 +23,7 @@ use agent_semantic_client_protocol::ClientOutcome;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LanguageCommandOperation {
     WorkspaceSearchPlaybook(AspClientWorkspaceSearchPlaybookRequest),
+    WorkspaceQueryPlaybook(AspClientWorkspaceQueryPlaybookRequest),
     ExactQuery(AspClientExactQueryRequest),
 }
 
@@ -30,6 +33,12 @@ impl LanguageCommandOperation {
             Self::WorkspaceSearchPlaybook(request) => encode_operation(
                 LanguageCommandRoute::Server(
                     agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+                ),
+                request,
+            ),
+            Self::WorkspaceQueryPlaybook(request) => encode_operation(
+                LanguageCommandRoute::Server(
+                    agent_semantic_client_protocol::WORKSPACE_QUERY_PLAYBOOK_METHOD,
                 ),
                 request,
             ),
@@ -78,7 +87,7 @@ impl LanguageCommandResponse {
                 result: Some(payload),
                 error: None,
                 ..
-            } => Ok(payload),
+            } => Ok(payload.into_value()),
             ClientFrame::Response { outcome, error, .. } => Err(format!(
                 "typed language command did not return Ready: route={} outcome={outcome:?} error={error:?}",
                 self.route
@@ -101,11 +110,76 @@ pub trait LanguageCommandClient: Send + Sync {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RuntimeLanguageCommandClient;
 
+/// Language command client pinned to one admitted Runtime transaction.
+/// Repeated and concurrent dispatches reuse its multiplexed ClientFrame session
+/// without re-entering lifecycle admission or endpoint discovery.
+#[derive(Clone)]
+pub struct RuntimeLanguageSessionClient {
+    state_home: PathBuf,
+    project_root: PathBuf,
+    runtime_handoff: AspClientRuntimeHandoff,
+}
+
+impl RuntimeLanguageSessionClient {
+    pub fn new(
+        state_home: impl Into<PathBuf>,
+        project_root: impl Into<PathBuf>,
+        runtime_handoff: AspClientRuntimeHandoff,
+    ) -> Self {
+        Self {
+            state_home: state_home.into(),
+            project_root: project_root.into(),
+            runtime_handoff,
+        }
+    }
+}
+
+async fn dispatch_with_client(
+    client: AspClient,
+    request: LanguageCommandRequest,
+) -> Result<LanguageCommandResponse, String> {
+    let (route, params) = request.operation.into_route_and_params()?;
+    let (route, frame) = match route {
+        LanguageCommandRoute::Server(route) => {
+            let frame = client
+                .dispatch_playbook_method(route.to_owned(), params, 0)
+                .await?;
+            (route, frame)
+        }
+        LanguageCommandRoute::Language(route) => {
+            let frame = client
+                .dispatch(request.language_id.as_str(), route, params)
+                .await?;
+            (route, frame)
+        }
+    };
+    Ok(LanguageCommandResponse { route, frame })
+}
+
+impl LanguageCommandClient for RuntimeLanguageSessionClient {
+    fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
+        let state_home = self.state_home.clone();
+        let project_root = self.project_root.clone();
+        let runtime_handoff = self.runtime_handoff.clone();
+        Box::pin(async move {
+            if request.project_root != project_root {
+                return Err(
+                    "Runtime language session request crossed its admitted project root".to_owned(),
+                );
+            }
+            dispatch_with_client(
+                AspClient::new_from_runtime_handoff(state_home, project_root, runtime_handoff),
+                request,
+            )
+            .await
+        })
+    }
+}
+
 impl LanguageCommandClient for RuntimeLanguageCommandClient {
     fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
         Box::pin(async move {
             let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-            let (route, params) = request.operation.into_route_and_params()?;
             #[cfg(unix)]
             let client = AspClient::new_from_host_capability(&state_home, &request.project_root)?;
             #[cfg(not(unix))]
@@ -118,21 +192,7 @@ impl LanguageCommandClient for RuntimeLanguageCommandClient {
             // inherited, the Runtime service performs the bounded activation
             // transaction; clients never observe or reconstruct an endpoint.
             let client = client.admit_runtime_workspace("Search/Query").await?;
-            let (route, frame) = match route {
-                LanguageCommandRoute::Server(route) => {
-                    let frame = client
-                        .dispatch_playbook_method(route.to_owned(), params, 0)
-                        .await?;
-                    (route, frame)
-                }
-                LanguageCommandRoute::Language(route) => {
-                    let frame = client
-                        .dispatch(request.language_id.as_str(), route, params)
-                        .await?;
-                    (route, frame)
-                }
-            };
-            Ok(LanguageCommandResponse { route, frame })
+            dispatch_with_client(client, request).await
         })
     }
 }

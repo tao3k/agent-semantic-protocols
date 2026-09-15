@@ -146,7 +146,7 @@ def test_language_facade_ci_gate_is_static() -> None:
         assert obsolete_setup not in step
 
 
-def test_live_corpus_setup_owns_provider_installation() -> None:
+def test_live_corpus_setup_builds_artifacts_without_installation() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     facade = justfile.split("check-language-facade-smoke:", 1)[1]
@@ -156,9 +156,9 @@ def test_live_corpus_setup_owns_provider_installation() -> None:
 
     setup = justfile.split("check-live-corpus-search-query-all-setup:", 1)[1]
     setup = setup.split("check-live-corpus-search-query-all:", 1)[0]
-    for provider in ("client", "rs", "ts", "py", "julia", "gerbil"):
-        assert f"just agent-tools-install-{provider}" in setup
-    assert "agent-tools-install-protocol" not in setup
+    assert "just build-live-corpus-test-runtime" in setup
+    assert "target/provider-runtime/asp-rust" not in setup
+    assert "agent-tools-install" not in setup
     assert 'agent-tools-install-client bin_dir=""' not in justfile
     assert 'agent-tools-install-global bin_dir=""' not in justfile
     assert 'agent-tools-install-hook bin_dir=""' not in justfile
@@ -230,7 +230,9 @@ def test_julia_full_provider_gate_uses_fresh_compiled_provider_perf_guard() -> N
     live_corpus_setup = live_corpus_setup.split(
         "check-live-corpus-search-query-all:", 1
     )[0]
-    assert "just agent-tools-install-julia" in live_corpus_setup
+    assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in live_corpus_setup
+    assert "./juliac/build_provider.sh" in live_corpus_setup
+    assert "agent-tools-install" not in live_corpus_setup
     assert ".bin/asp julia guide" not in live_corpus_setup
 
     provider_gate_julia = justfile.split("provider-gate-julia:", 1)[1]

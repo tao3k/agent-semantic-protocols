@@ -463,6 +463,7 @@ fn runtime_source_index_provider_projection_for_registrations(
             .collect();
             Ok(agent_semantic_client_core::RuntimeProvider {
                 registration_digest: registration_digest(&registration)?,
+                execution_artifact_digest: artifact.artifact_digest.clone(),
                 namespace: registration.namespace()?.to_owned(),
                 language_id: agent_semantic_client_core::LanguageId::from(
                     registration.language_id.as_str(),
@@ -578,6 +579,7 @@ fn embedded_document_runtime_provider(
     .map_err(|error| format!("construct embedded document Query pack: {error}"))?;
     Ok(agent_semantic_client_core::RuntimeProvider {
         registration_digest,
+        execution_artifact_digest: "asp:embedded-document".to_owned(),
         namespace: language.provider_namespace().to_owned(),
         language_id: agent_semantic_client_core::LanguageId::from(language.id()),
         provider_id: agent_semantic_client_core::ProviderId::from(language.provider_id()),

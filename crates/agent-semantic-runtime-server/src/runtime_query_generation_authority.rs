@@ -348,14 +348,25 @@ impl RuntimeQueryGenerationAuthority {
             Some(RuntimeQueryGenerationState::Ready(generation)) => Some(Arc::clone(generation)),
             _ => None,
         };
-        match RuntimeQueryGeneration::open(
-            pointer_path,
-            project_root,
-            self.builder.resource_supervisor(),
-            self.builder.task_scope(),
-        )
-        .await
-        {
+        let reopened = async {
+            let execution_root = pointer_path.parent().ok_or_else(|| {
+                "runtime workspace generation pointer has no execution publication directory"
+                    .to_owned()
+            })?;
+            let execution_publication = agent_semantic_client_db::runtime_server_workspace::
+                RuntimeWorkspaceExecutionPublicationStore::read_active(execution_root)
+                .await?;
+            RuntimeQueryGeneration::open_with_execution_publication(
+                pointer_path,
+                project_root,
+                execution_publication,
+                self.builder.resource_supervisor(),
+                self.builder.task_scope(),
+            )
+            .await
+        }
+        .await;
+        match reopened {
             Ok(generation) if generation.generation_digest() == expected_generation_digest => {
                 let generation = Arc::new(generation);
                 self.reserve_generation_token(&generation);
@@ -466,7 +477,7 @@ impl RuntimeQueryGenerationAuthority {
             Some(RuntimeQueryGenerationState::Ready(generation)) => Some(Arc::clone(generation)),
             _ => None,
         };
-        let generation = Arc::new(match execution_publication {
+        let mut generation = match execution_publication {
             Some(execution_publication) => {
                 RuntimeQueryGeneration::from_resident_with_execution_publication(
                     resident,
@@ -480,7 +491,11 @@ impl RuntimeQueryGenerationAuthority {
                 self.builder.resource_supervisor(),
                 self.builder.task_scope(),
             )?,
-        });
+        };
+        if let Some(previous) = previous_generation.as_ref() {
+            generation.inherit_materialization_authorities(previous);
+        }
+        let generation = Arc::new(generation);
         if generation.generation_digest() != expected_generation_digest {
             return Err(format!(
                 "resident generation digest mismatch: expected={} actual={}",

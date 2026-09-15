@@ -21,6 +21,8 @@ pub struct RuntimeProviderOperation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeProvider {
     pub registration_digest: String,
+    /// Exact installed provider executable identity used by parser-artifact reuse.
+    pub execution_artifact_digest: String,
     pub namespace: String,
     pub language_id: LanguageId,
     pub provider_id: ProviderId,

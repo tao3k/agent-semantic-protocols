@@ -17,8 +17,12 @@ use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest,
-    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros, record_runtime_route_performance,
+    RUNTIME_CLIENT_DISPATCH_BUDGET, elapsed_micros,
 };
+
+#[path = "runtime_asp_client_query_playbook_materialization.rs"]
+mod query_playbook_materialization;
+use query_playbook_materialization::materialize_query_playbook_receipt;
 
 fn query_playbook_terminal(
     reason_kind: impl Into<String>,
@@ -41,45 +45,6 @@ fn selector_owner_path(selector: &str) -> Option<&str> {
         .and_then(|(_, suffix)| suffix.split_once("#item/"))
         .map(|(owner_path, _)| owner_path)
         .filter(|owner_path| !owner_path.is_empty())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn record_resident_query_materialization_hit(
-    telemetry_sender: &RuntimeTelemetryBusSender,
-    workspace_identity: &str,
-    generation_digest: &str,
-    operation_id: &str,
-    params: &AspClientWorkspaceQueryPlaybookRequest,
-    elapsed_micros: u64,
-) -> Result<bool, String> {
-    let Some(language_id) = params
-        .selectors
-        .first()
-        .and_then(|selector| selector.split_once("://"))
-        .map(|(language_id, _)| language_id)
-        .filter(|language_id| {
-            params.selectors.iter().all(|selector| {
-                selector
-                    .split_once("://")
-                    .is_some_and(|(candidate, _)| candidate == *language_id)
-            })
-        })
-    else {
-        return Ok(false);
-    };
-
-    record_runtime_route_performance(
-        telemetry_sender,
-        workspace_identity,
-        language_id,
-        generation_digest,
-        operation_id,
-        "query",
-        "runtime-query-materialization-read",
-        params.projection.as_str(),
-        elapsed_micros,
-    )?;
-    Ok(true)
 }
 
 type ResidentQueryProjections = std::collections::VecDeque<
@@ -367,194 +332,6 @@ pub(super) fn runtime_search_trace_budget_micros() -> u64 {
         .min(u128::from(u64::MAX)) as u64
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the V1 Query receipt binds each identity and measured phase explicitly"
-)]
-fn materialize_query_playbook_receipt(
-    request_id: &str,
-    params: &AspClientWorkspaceQueryPlaybookRequest,
-    runtime_binding: &agent_semantic_content_identity::runtime_execution::RuntimeExecutionBinding,
-    execution_publication_digest: &str,
-    runtime_bundle_digest: &str,
-    manifest_project_workspace: &agent_semantic_content_identity::ProjectWorkspaceBinding,
-    active_provider_targets: &[(String, String)],
-    telemetry: Option<(
-        &agent_semantic_runtime_observability::RuntimeSearchTelemetryTrace,
-        &RuntimeTelemetryBusSender,
-    )>,
-    mut read_selector: impl FnMut(
-        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
-        &str,
-    ) -> Result<
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
-        String,
-    >,
-) -> Result<serde_json::Value, AspClientOperationError> {
-    let provider_dispatch_started = tokio::time::Instant::now();
-    let internal_request = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.query-playbook-materialization-request",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.query-playbook",
-        "protocolVersion": "1",
-        "requestId": request_id,
-        "projectWorkspaceIdentity": runtime_binding.project_workspace.project_workspace_identity(),
-        "worktreeInstanceId": runtime_binding.worktree_instance_id,
-        "runtimeExecutionBinding": runtime_binding,
-        "runtimeWorkspaceExecutionPublicationDigest": execution_publication_digest,
-        "runtimeBundleDigest": runtime_bundle_digest,
-        "selectors": params.selectors,
-        "projection": params.projection,
-    });
-    let admitted_request =
-        agent_semantic_search_projection::QueryPlaybookMaterializationRequest::admit_for_runtime(
-            internal_request,
-            runtime_binding,
-            execution_publication_digest,
-            runtime_bundle_digest,
-            manifest_project_workspace,
-        )
-        .map_err(|error| {
-            query_playbook_terminal(
-                error.reason_kind(),
-                error.to_string(),
-                params.selectors.len(),
-            )
-        })?;
-    let projection =
-        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
-            params.projection.as_str(),
-        )?;
-    if let Some((trace, sender)) = telemetry {
-        emit_runtime_search_trace_observation(
-            sender,
-            trace.record_provider_dispatch(
-                elapsed_micros(provider_dispatch_started),
-                runtime_search_trace_budget_micros(),
-            ),
-        );
-    }
-    let parse_index_query_started = tokio::time::Instant::now();
-    let mut materializations = Vec::with_capacity(params.selectors.len());
-    let mut failure_reason = None;
-    let mut admitted_selectors = Vec::with_capacity(params.selectors.len());
-    for selector in &params.selectors {
-        let language_id = selector.split_once("://").map(|(language, _)| language);
-        let provider_id = language_id.and_then(|language_id| {
-            active_provider_targets
-                .iter()
-                .find_map(|(language, provider)| {
-                    (language == language_id).then_some(provider.as_str())
-                })
-        });
-        let owner_path = selector_owner_path(selector);
-        match (language_id, provider_id, owner_path) {
-            (Some(language_id), Some(provider_id), Some(owner_path)) => {
-                admitted_selectors.push((selector, language_id, provider_id, owner_path));
-            }
-            _ => {
-                failure_reason = Some("query-playbook-selector-not-materialized");
-                break;
-            }
-        }
-    }
-    if failure_reason.is_none() {
-        for (selector, language_id, provider_id, owner_path) in admitted_selectors {
-            let read = match read_selector(projection, selector) {
-                Ok(read) => read,
-                Err(_) => {
-                    failure_reason = Some("query-playbook-selector-read-failed");
-                    break;
-                }
-            };
-            match read {
-                agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
-                    resolved_selector,
-                    bytes,
-                    ..
-                } if resolved_selector == *selector => {
-                    materializations.push(serde_json::json!({
-                        "selector": selector,
-                        "languageId": language_id,
-                        "providerId": provider_id,
-                        "ownerPath": owner_path,
-                        "projection": params.projection,
-                        "sourceContentDigest": blake3::hash(&bytes).to_hex().to_string(),
-                        "bytes": bytes,
-                    }));
-                }
-                _ => {
-                    failure_reason = Some("query-playbook-selector-not-materialized");
-                    break;
-                }
-            }
-        }
-    }
-    if failure_reason.is_some() {
-        materializations.clear();
-    }
-    if let Some((trace, sender)) = telemetry {
-        emit_runtime_search_trace_observation(
-            sender,
-            trace.record_search_execution(
-                elapsed_micros(parse_index_query_started),
-                runtime_search_trace_budget_micros(),
-            ),
-        );
-    }
-    let projection_rank_started = tokio::time::Instant::now();
-    let terminal = match failure_reason {
-        Some(reason_kind) => serde_json::json!({
-            "state": "failed",
-            "terminalCount": 1,
-            "reasonKind": reason_kind,
-        }),
-        None => serde_json::json!({"state": "ready", "terminalCount": 1}),
-    };
-    let receipt = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.query-playbook",
-        "protocolVersion": "1",
-        "requestId": request_id,
-        "projectWorkspaceIdentity": runtime_binding.project_workspace.project_workspace_identity(),
-        "worktreeInstanceId": runtime_binding.worktree_instance_id,
-        "runtimeExecutionBinding": runtime_binding,
-        "runtimeWorkspaceExecutionPublicationDigest": execution_publication_digest,
-        "runtimeBundleDigest": runtime_bundle_digest,
-        "projection": params.projection,
-        "requestedSelectors": params.selectors,
-        "materializations": materializations,
-        "terminal": terminal,
-    });
-    let receipt =
-        agent_semantic_search_projection::QueryPlaybookMaterializationReceipt::admit_for_runtime(
-            receipt,
-            &admitted_request,
-            runtime_binding,
-            execution_publication_digest,
-            runtime_bundle_digest,
-            manifest_project_workspace,
-        )
-        .map_err(|error| {
-            query_playbook_terminal(
-                error.reason_kind(),
-                error.to_string(),
-                params.selectors.len(),
-            )
-        })?;
-    if let Some((trace, sender)) = telemetry {
-        emit_runtime_search_trace_observation(
-            sender,
-            trace.record_search_projection(
-                elapsed_micros(projection_rank_started),
-                runtime_search_trace_budget_micros(),
-            ),
-        );
-    }
-    Ok(receipt.as_json().clone())
-}
-
 fn workspace_query_materialization_key(
     params: &AspClientWorkspaceQueryPlaybookRequest,
     generation_digest: &str,
@@ -575,7 +352,11 @@ fn workspace_query_materialization_key(
     hasher.update(generation_digest.as_bytes());
     hasher.update(b"\0");
     hasher.update(&canonical);
-    Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
+    Ok(format!(
+        "{}\0blake3-256:{}",
+        params.projection,
+        hasher.finalize().to_hex()
+    ))
 }
 
 fn query_materialization_dispatch_error(error: AspClientOperationError) -> AspClientDispatchError {
@@ -596,22 +377,34 @@ fn query_materialization_dispatch_error(error: AspClientOperationError) -> AspCl
 }
 
 fn bind_query_materialization_to_request(
-    template: &serde_json::Value,
+    template: Arc<serde_json::Value>,
     request_id: &str,
-) -> Result<serde_json::Value, AspClientOperationError> {
-    let mut result = template.clone();
-    result
-        .as_object_mut()
-        .ok_or_else(|| {
-            AspClientOperationError::Message(
-                "resident Query materialization is not an object".to_owned(),
-            )
-        })?
-        .insert(
-            "requestId".to_owned(),
-            serde_json::Value::String(request_id.to_owned()),
-        );
-    Ok(result)
+    request_profile: &str,
+    started: tokio::time::Instant,
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
+    if !template.is_object() {
+        return Err(AspClientOperationError::Message(
+            "resident Query materialization is not an object".to_owned(),
+        ));
+    }
+    agent_semantic_client_protocol::ClientResponsePayload::from_shared_object_overlay(
+        template,
+        std::collections::BTreeMap::from([
+            (
+                "requestId".to_owned(),
+                serde_json::Value::String(request_id.to_owned()),
+            ),
+            (
+                "requestProfile".to_owned(),
+                serde_json::Value::String(request_profile.to_owned()),
+            ),
+            (
+                "requestPlaneElapsedMicros".to_owned(),
+                serde_json::Value::from(elapsed_micros(started)),
+            ),
+        ]),
+    )
+    .map_err(|message| AspClientOperationError::Message(message.to_owned()))
 }
 
 struct ResidentQueryProjectionHandoff<'a> {
@@ -620,7 +413,7 @@ struct ResidentQueryProjectionHandoff<'a> {
 }
 
 fn materialize_generation_bound_query_playbook(
-    materialization_key: &str,
+    template_request_id: &str,
     workspace_id: &str,
     params: &AspClientWorkspaceQueryPlaybookRequest,
     initialized: &InitializedWorkspace,
@@ -683,11 +476,13 @@ fn materialize_generation_bound_query_playbook(
         ));
     }
     materialize_query_playbook_receipt(
-        materialization_key,
+        template_request_id,
         params,
         runtime_binding,
         execution_publication.publication_digest.as_str(),
         execution_publication.runtime_bundle_digest.as_str(),
+        projection_handoff.generation.generation_digest(),
+        resident.source_root_digest().as_str(),
         initialized.host_workspace.project_workspace(),
         active_provider_targets,
         None,
@@ -732,7 +527,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
     query_generation: &tokio::sync::watch::Receiver<
         Arc<HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
     >,
-) -> Result<serde_json::Value, AspClientOperationError> {
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     params.validate_schema_identity()?;
     let initialized = initialized_workspaces
         .lock()
@@ -805,17 +600,11 @@ pub(super) async fn dispatch_workspace_query_playbook(
         )) => {
             dispatch_budget.observe_resident_hit();
             let result = bind_query_materialization_to_request(
-                template.as_ref(),
+                Arc::clone(&template),
                 request.request_id.as_str(),
+                "resident-hit",
+                resident_lookup_started,
             )?;
-            let _ = record_resident_query_materialization_hit(
-                telemetry_sender,
-                request.workspace_id.as_str(),
-                generation.generation_digest(),
-                request.request_id.as_str(),
-                &params,
-                elapsed_micros(resident_lookup_started),
-            );
             Ok(result)
         }
         Some(crate::runtime_query_generation::RuntimeQueryMaterializationState::Failed(error)) => {
@@ -828,6 +617,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 &generation,
                 &materialization_key,
                 request.request_id.as_str(),
+                resident_lookup_started,
             )
             .await
         }
@@ -881,11 +671,9 @@ pub(super) async fn dispatch_workspace_query_playbook(
                             let materialization_generation =
                                 Arc::clone(&materialization_generation);
                             let materialization_registry = Arc::clone(&materialization_registry);
-                            let materialization_key_for_compute =
-                                materialization_key_for_task.clone();
                             move || {
                                 materialize_generation_bound_query_playbook(
-                                    &materialization_key_for_compute,
+                                    &materialization_request_id,
                                     &materialization_workspace_id,
                                     &materialization_params,
                                     &materialization_initialized,
@@ -928,6 +716,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 &generation,
                 &materialization_key,
                 request.request_id.as_str(),
+                resident_lookup_started,
             )
             .await
         }
@@ -948,11 +737,12 @@ async fn settled_query_materialization(
     generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
     key: &str,
     request_id: &str,
-) -> Result<serde_json::Value, AspClientOperationError> {
+    started: tokio::time::Instant,
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     use crate::runtime_query_generation::RuntimeQueryMaterializationState;
     match generation.await_query_materialization(key).await? {
         RuntimeQueryMaterializationState::Ready(template) => {
-            bind_query_materialization_to_request(template.as_ref(), request_id)
+            bind_query_materialization_to_request(template, request_id, "materialized", started)
         }
         RuntimeQueryMaterializationState::Failed(error) => {
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))

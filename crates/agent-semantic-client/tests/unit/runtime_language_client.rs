@@ -232,7 +232,11 @@ fn typed_schema_bundle_decoder_preserves_failed_terminal() {
         },
         request_id: ClientRequestId::new("schema-request").expect("request id"),
         outcome: ClientOutcome::Ready,
-        result: Some(serde_json::to_value(&response).expect("response JSON")),
+        result: Some(
+            serde_json::to_value(&response)
+                .expect("response JSON")
+                .into(),
+        ),
         error: None,
         catalog: None,
     };

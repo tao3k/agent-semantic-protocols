@@ -169,7 +169,7 @@ async fn register_session_binding(
             result: Some(result),
             error: None,
             ..
-        } => serde_json::from_value(result)
+        } => serde_json::from_value(result.into_value())
             .map_err(|error| format!("decode child registration receipt: {error}"))?,
         ClientFrame::Response { outcome, error, .. } => {
             return Err(format!(

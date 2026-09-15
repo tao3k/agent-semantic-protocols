@@ -15,6 +15,7 @@ use agent_semantic_client_protocol::ClientParameterType;
 use agent_semantic_client_protocol::ClientProjectId;
 use agent_semantic_client_protocol::ClientProtocolCatalog;
 use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientResponsePayload;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientTransport;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
@@ -26,6 +27,8 @@ use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_ID;
 use agent_semantic_client_protocol::protocol_identity::CLIENT_PROTOCOL_VERSION;
 use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
 use serde_json::json;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use super::decode_frame;
 use super::encode_frame;
@@ -158,7 +161,7 @@ fn canonical_protobuf_round_trips_every_client_frame_variant() {
             },
             request_id: request_id("response"),
             outcome: ClientOutcome::Ready,
-            result: Some(json!({"state": "ready"})),
+            result: Some(json!({"state": "ready"}).into()),
             error: None,
             catalog: Some(catalog()),
         },
@@ -175,6 +178,46 @@ fn canonical_protobuf_round_trips_every_client_frame_variant() {
             decode_frame(encode_frame(frame.clone()).expect("encode frame")).expect("decode frame");
         assert_eq!(decoded, frame);
     }
+}
+
+#[test]
+fn protobuf_response_serializes_request_overlay_instead_of_template_identity() {
+    let payload = ClientResponsePayload::from_shared_object_overlay(
+        Arc::new(json!({
+            "requestId": "template-request",
+            "requestProfile": "materialized",
+            "materializations": [{"selector": "rust://src/lib.rs#item/function/run"}]
+        })),
+        BTreeMap::from([
+            ("requestId".to_owned(), json!("current-request")),
+            ("requestProfile".to_owned(), json!("resident-hit")),
+            ("requestPlaneElapsedMicros".to_owned(), json!(41)),
+        ]),
+    )
+    .expect("response overlay");
+    let decoded = decode_frame(
+        encode_frame(ClientFrame::Response {
+            base: base(),
+            request_id: request_id("current-request"),
+            outcome: ClientOutcome::Ready,
+            result: Some(payload),
+            error: None,
+            catalog: None,
+        })
+        .expect("encode overlaid response"),
+    )
+    .expect("decode overlaid response");
+    let ClientFrame::Response {
+        result: Some(result),
+        ..
+    } = decoded
+    else {
+        panic!("expected response payload");
+    };
+    let result = result.into_value();
+    assert_eq!(result["requestId"], "current-request");
+    assert_eq!(result["requestProfile"], "resident-hit");
+    assert_eq!(result["requestPlaneElapsedMicros"], 41);
 }
 
 #[test]

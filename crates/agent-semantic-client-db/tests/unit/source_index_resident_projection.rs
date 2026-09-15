@@ -7,6 +7,7 @@ fn provider_projection() -> agent_semantic_client_core::RuntimeProviderProjectio
         authority_ref: "resident-projection-test".to_owned(),
         providers: vec![agent_semantic_client_core::RuntimeProvider {
             registration_digest: format!("blake3-256:{}", "1".repeat(64)),
+            execution_artifact_digest: format!("blake3-256:{}", "2".repeat(64)),
             namespace: "agent.semantic-protocols.languages.rust".to_owned(),
             language_id: agent_semantic_client_core::LanguageId::from("rust"),
             provider_id: agent_semantic_client_core::ProviderId::from("asp-rust"),

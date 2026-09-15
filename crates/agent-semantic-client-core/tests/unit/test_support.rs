@@ -79,6 +79,7 @@ pub(crate) fn init_durable_repo(root: &Path, label: &str) {
 pub(super) fn runtime_provider() -> crate::RuntimeProvider {
     crate::RuntimeProvider {
         registration_digest: "sha256:test".to_string(),
+        execution_artifact_digest: "blake3-256:test".to_string(),
         namespace: "agent.semantic-protocols.languages.rust".to_string(),
         language_id: crate::LanguageId::from("rust"),
         provider_id: crate::ProviderId::from("asp-rust"),

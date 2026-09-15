@@ -173,6 +173,13 @@ struct LiveCorpusSyncReceipt {
 }
 
 pub(crate) async fn run_live_corpus_test(args: &[String]) -> Result<(), String> {
+    run_live_corpus_test_at(args, None).await
+}
+
+pub(crate) async fn run_live_corpus_test_at(
+    args: &[String],
+    isolated_state_home: Option<&Path>,
+) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
         Some("qualify") => {
@@ -180,10 +187,14 @@ pub(crate) async fn run_live_corpus_test(args: &[String]) -> Result<(), String> 
             // keeps argument validation deterministic even when no Runtime
             // endpoint is available.
             qualification::validate_args(&args[1..])?;
-            let mut ready =
-                crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation(
-                )
-                .await?;
+            let state_home = isolated_state_home
+                .ok_or_else(|| {
+                    "reasonKind=live-corpus-isolated-runtime-required qualification must be launched by the test-owned Runtime fixture"
+                        .to_owned()
+                })?
+                .to_path_buf();
+            let mut ready = crate::server::runtime_server::
+                ensure_healthy_runtime_server_for_bounded_operation_at(&state_home).await?;
             let transaction = ready.resident_transaction.take().ok_or_else(|| {
                 "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
                     .to_owned()
@@ -191,6 +202,7 @@ pub(crate) async fn run_live_corpus_test(args: &[String]) -> Result<(), String> 
             qualification::run(
                 &args[1..],
                 crate::AspClientRuntimeHandoff::try_from(&transaction)?,
+                state_home,
             )
             .await
         }
@@ -349,44 +361,68 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     emit_live_corpus_timing("provider-registration", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
+    let isolated = tokio::task::spawn_blocking({
+        let state_home = state_home.clone();
+        let source = source.clone();
+        let resource_id = corpus.resource_id.clone();
+        let revision = corpus.git.revision.clone();
+        let remote = corpus.git.remote.clone();
+        move || {
+            qualification::IsolatedBenchmarkWorkspace::materialize(
+                &state_home,
+                &source,
+                &resource_id,
+                &revision,
+                &remote,
+            )
+        }
+    })
+    .await
+    .map_err(|error| format!("materialize isolated Live Corpus workspace task: {error}"))??;
+    let benchmark_workspace = isolated.path.clone();
+    emit_live_corpus_timing("benchmark-workspace", &mut step_started);
+
     let client = agent_semantic_client::RuntimeLanguageCommandClient;
-    let search = qualification::client_protocol::search_receipt_for_literal(
-        &client,
-        &source,
-        corpus.language.as_str(),
-        &corpus.inputs.query,
-    )
-    .await?;
-    let selector = search.selectors.first().ok_or_else(|| {
-        format!(
-            "Live Corpus Search Playbook returned no parser-owned selector: resourceId={}",
-            corpus.resource_id
+    let runtime_result = async {
+        let search = qualification::client_protocol::search_receipt_for_literal(
+            &client,
+            &benchmark_workspace,
+            corpus.language.as_str(),
+            &corpus.inputs.query,
         )
-    })?;
-    let response = agent_semantic_client::LanguageCommandClient::dispatch(
-        &client,
-        agent_semantic_client::LanguageCommandRequest {
-            language_id: agent_semantic_client::LanguageId::new(corpus.language.as_str()),
-            operation: agent_semantic_client::LanguageCommandOperation::ExactQuery(
-                agent_semantic_client_protocol::AspClientExactQueryRequest {
-                    schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
-                    schema_version: "1".to_owned(),
-                    selector: selector.clone(),
-                    projection: "source".to_owned(),
-                },
-            ),
-            project_root: source.clone(),
-            machine_readable: true,
-        },
-    )
-    .await?;
-    let query =
-        serde_json::from_value::<agent_semantic_client_protocol::AspClientExactQueryResponse>(
-            response.require_ready_payload()?,
+        .await?;
+        let selector = search.selectors.first().ok_or_else(|| {
+            format!(
+                "Live Corpus Search Playbook returned no parser-owned selector: resourceId={}",
+                corpus.resource_id
+            )
+        })?;
+        let query_template = qualification::source_query_scheme_template(corpus.language.as_str())?;
+        let query = qualification::client_protocol::public_query(
+            &client,
+            &benchmark_workspace,
+            corpus.language.as_str(),
+            selector,
+            "source",
+            &query_template,
         )
-        .map_err(|error| format!("decode Live Corpus exact Query payload: {error}"))?;
-    query.validate()?;
-    let materialized_source = materialized_source_identity(checkout, query.root_digest)?;
+        .await?;
+        materialized_source_identity(checkout, query.root_digest)
+    }
+    .await;
+    let cleanup_result = tokio::task::spawn_blocking(move || isolated.cleanup())
+        .await
+        .map_err(|error| format!("cleanup isolated Live Corpus workspace task: {error}"))?;
+    let materialized_source = match (runtime_result, cleanup_result) {
+        (Ok(materialized_source), Ok(_)) => materialized_source,
+        (Err(runtime_error), Ok(_)) => return Err(runtime_error),
+        (Ok(_), Err(cleanup_error)) => return Err(cleanup_error),
+        (Err(runtime_error), Err(cleanup_error)) => {
+            return Err(format!(
+                "{runtime_error}; cleanup isolated Live Corpus workspace: {cleanup_error}"
+            ));
+        }
+    };
     emit_live_corpus_timing("runtime-generation", &mut step_started);
 
     let resource_lock =

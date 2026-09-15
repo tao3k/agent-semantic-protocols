@@ -289,21 +289,55 @@ check-language-facade-smoke:
 check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
-# Qualify a locked corpus through the Cargo-owned Live Corpus test target.
+# Build the test-owned Runtime and Live Corpus runner once. Scenario execution
+# below is intentionally Cargo-free and cannot trigger compilation or install.
+build-live-corpus-test-runtime:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    artifact_dir="$PWD/.cache/live-corpus-test/bin"
+    mkdir -p "${artifact_dir}"
+    cargo build --release -p agent-semantic-client --bin asp
+    runner="$({ cargo test --release -p agent-semantic-client --no-default-features --features live-corpus-test --test live_corpus --no-run --message-format=json; } | jq -r 'select(.reason == "compiler-artifact" and .target.name == "live_corpus") | .executable // empty' | tail -n 1)"
+    test -n "${runner}"
+    cp "${runner}" "${artifact_dir}/live-corpus"
+    chmod 755 "${artifact_dir}/live-corpus"
+    echo "[live-corpus-build] server=$PWD/target/release/asp runner=${artifact_dir}/live-corpus state=ready"
+
+# Qualify a locked corpus through already-built artifacts. The runner starts and
+# stops its own isolated Server; no installed client or active Runtime is read.
 check-live-corpus-search-query-resource resource:
-    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- sync --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
-    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- materialize --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
-    cargo test --release --quiet -p agent-semantic-client --features live-corpus-test --test live_corpus -- qualify --resource "{{resource}}" --plan benchmarks/live-corpus-search-query-qualification.json
+    #!/usr/bin/env bash
+    set -euo pipefail
+    runner="$PWD/.cache/live-corpus-test/bin/live-corpus"
+    server="$PWD/target/release/asp"
+    test -x "${runner}"
+    test -x "${server}"
+    language="$(jq -er --arg resource "{{resource}}" '.corpora[] | select(.resourceId == $resource) | .language' benchmarks/large-library-runtime-corpora.json)"
+    descriptor=""
+    case "${language}" in
+      rust) descriptor="$PWD/languages/asp-rust/provider/asp-provider-workspace-install.json" ;;
+      typescript) descriptor="$PWD/languages/asp-typescript/provider/asp-provider-workspace-install.json" ;;
+      python) descriptor="$PWD/languages/asp-python/provider/asp-provider-workspace-install.json" ;;
+      julia) descriptor="$PWD/languages/AspJulia.jl/juliac/asp-provider-workspace-install.json" ;;
+      gerbil-scheme) descriptor="$PWD/languages/asp-gerbil-scheme/provider/asp-provider-workspace-install.json" ;;
+      md|org) ;;
+      *) echo "unsupported Live Corpus language: ${language}" >&2; exit 2 ;;
+    esac
+    export ASP_LIVE_CORPUS_SERVER_ARTIFACT="${server}"
+    if [[ -n "${descriptor}" ]]; then export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="${descriptor}"; else unset ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR || true; fi
+    "${runner}" sync --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
+    "${runner}" materialize --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
+    "${runner}" qualify --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
 
 # Local all-provider qualification remains an explicit aggregate convenience;
 # CI owns one isolated Matrix Job per corpus.
 check-live-corpus-search-query-all-setup:
-    just agent-tools-install-client
-    just agent-tools-install-rs
-    just agent-tools-install-ts
-    just agent-tools-install-py
-    just agent-tools-install-julia
-    just agent-tools-install-gerbil
+    just build-live-corpus-test-runtime
+    (cd languages/asp-rust && just install)
+    (cd languages/asp-typescript && npm run build)
+    (cd languages/asp-python && uv sync --frozen --no-editable --no-cache --reinstall-package asp-python)
+    (cd languages/AspJulia.jl && ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 ASP_JULIA_BUILD_DIR=build/juliac-asp-local ./juliac/build_provider.sh)
+    just agent-tools-build-gerbil
 
 check-live-corpus-search-query-all: check-live-corpus-search-query-all-setup
     jq -r '.corpora[].resourceId' benchmarks/large-library-runtime-corpora.json | while IFS= read -r resource_id; do just check-live-corpus-search-query-resource "$resource_id"; done

@@ -12,7 +12,7 @@ use super::QualificationPlan;
 use super::QualifyArgs;
 
 pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
-    if plan.schema_id != "agent.semantic-protocols.live-corpus-search-query-qualification-plan"
+    if plan.schema_id != "agent.semantic-protocols.live-corpus-scheme-scenario-suite"
         || plan.schema_version != "1"
     {
         return Err("unsupported Live Corpus qualification plan schema".to_owned());
@@ -164,16 +164,26 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
                 case.case_id, case.language_id
             ));
         }
-        if case.query.selector_strategy != "first-ranked-parser-owned"
-            || case.query.owner_view != "items"
-            || case.query.projection_scope != "live-corpus"
-            || case.search.rg.is_empty()
-            || case.search.tantivy.is_empty()
-            || case.zero_match_search.rg.is_empty()
-            || case.zero_match_search.tantivy.is_empty()
+        let required_classes =
+            BTreeSet::from(["lexical-intersection", "exact-parser-owner", "zero-match"]);
+        let observed_classes = case
+            .scenario_classes
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if observed_classes != required_classes
+            || case.search.trim().is_empty()
+            || case.zero_match_search.trim().is_empty()
+            || case.source_query.matches("{{selector}}").count() != 1
+            || case.callable_skeleton_query.matches("{{selector}}").count() != 1
+            || case.minimum_candidates == 0
+            || case.maximum_search_micros == 0
+            || case.maximum_search_micros > 500_000
+            || case.maximum_resident_query_micros == 0
+            || case.maximum_resident_query_micros > 1_000
         {
             return Err(format!(
-                "Live Corpus case is not an ordinary public search/query route: case={}",
+                "Live Corpus case is not a complete Scheme Search/Query scenario: case={}",
                 case.case_id
             ));
         }

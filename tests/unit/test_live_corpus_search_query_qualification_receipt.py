@@ -82,7 +82,7 @@ def test_receipt_separates_composite_search_from_sub_millisecond_exact_reads() -
     } & required
     assert case_schema["properties"]["route"]["const"] == "public-typed-asp-client"
     assert case_schema["properties"]["backpressureCapacity"]["const"] == 32
-    assert case_schema["properties"]["backpressureHeldCallCount"]["const"] == 31
+    assert case_schema["properties"]["backpressureHeldCallCount"]["const"] == 32
     assert case_schema["properties"]["backpressureRejectedCallCount"]["const"] == 1
     assert case_schema["properties"]["staleContentBindingRejected"]["const"] is True
 

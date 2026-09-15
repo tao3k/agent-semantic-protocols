@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub(super) struct QualificationPlan {
     pub(super) schema_id: String,
     pub(super) schema_version: String,
@@ -24,7 +24,7 @@ pub(super) struct QualificationPlan {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub(super) struct QualificationCacheState {
     pub(super) state: String,
     pub(super) prepare_action: String,
@@ -33,7 +33,7 @@ pub(super) struct QualificationCacheState {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub(super) struct ClientProtocolContract {
     pub(super) protocol_id: String,
     pub(super) protocol_version: String,
@@ -54,35 +54,22 @@ pub(super) struct ClientProtocolContract {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub(super) struct QualificationCase {
     pub(super) case_id: String,
     pub(super) resource_id: String,
     pub(super) scenario_id: String,
     pub(super) language_id: String,
     pub(super) provider_id: String,
-    pub(super) search: QualificationSearch,
-    pub(super) query: QualificationQuery,
-    pub(super) zero_match_search: QualificationSearch,
-    pub(super) required_telemetry_events: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationSearch {
-    pub(super) rg: Vec<String>,
-    pub(super) tantivy: Vec<String>,
+    pub(super) scenario_classes: Vec<String>,
+    pub(super) search: String,
+    pub(super) zero_match_search: String,
+    pub(super) source_query: String,
+    pub(super) callable_skeleton_query: String,
     pub(super) minimum_candidates: usize,
     pub(super) maximum_search_micros: u64,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationQuery {
-    pub(super) selector_strategy: String,
-    pub(super) owner_view: String,
-    pub(super) projection_scope: String,
-    pub(super) maximum_resident_micros: u64,
+    pub(super) maximum_resident_query_micros: u64,
+    pub(super) required_telemetry_events: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,8 +198,7 @@ pub(super) struct QualificationCaseReceipt {
     pub(super) runtime_ecosystem: &'static str,
     pub(super) search_execution_mode: &'static str,
     pub(super) search_binding: serde_json::Value,
-    pub(super) exact_read_mode: &'static str,
-    pub(super) exact_read_work_counters: serde_json::Value,
+    pub(super) query_materialization_mode: &'static str,
     pub(super) route: &'static str,
     pub(super) search_terminal: &'static str,
     pub(super) query_terminal: &'static str,

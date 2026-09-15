@@ -177,10 +177,10 @@ pub(super) async fn await_runtime_query_generation_for_provider_targets(
 }
 
 pub(super) fn enforce_completed_dispatch_budget(
-    result: Result<serde_json::Value, AspClientDispatchError>,
+    result: Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientDispatchError>,
     budget: Option<std::time::Duration>,
     elapsed: std::time::Duration,
-) -> Result<serde_json::Value, AspClientDispatchError> {
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientDispatchError> {
     let Some(budget) = budget else {
         return result;
     };

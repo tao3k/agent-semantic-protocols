@@ -85,7 +85,7 @@ pub(super) fn encode_frame(frame: ClientFrame) -> Result<wire::ClientFrameEnvelo
             Frame::Response(wire::ResponseFrame {
                 request_id: request_id.into_inner(),
                 outcome: encode_outcome(outcome),
-                result_json: encode_optional_json(result.as_ref())?,
+                result_json: encode_optional_serializable(result.as_ref())?,
                 error_json: encode_optional_json(error.as_ref())?,
                 catalog: catalog.map(encode_catalog),
             }),
@@ -146,7 +146,8 @@ pub(super) fn decode_frame(envelope: wire::ClientFrameEnvelope) -> Result<Client
             base,
             request_id: identifier(frame.request_id, "requestId")?,
             outcome: decode_outcome(frame.outcome)?,
-            result: decode_optional_json(&frame.result_json, "result")?,
+            result: decode_optional_json(&frame.result_json, "result")?
+                .map(agent_semantic_client_protocol::ClientResponsePayload::from),
             error: decode_optional_json(&frame.error_json, "error")?,
             catalog: frame.catalog.map(decode_catalog).transpose()?,
         }),

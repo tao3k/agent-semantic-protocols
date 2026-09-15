@@ -249,7 +249,7 @@ async fn child_registration_uses_the_grpc_client_frame_and_runtime_registry_owne
         panic!("registration must return a ready response: {response:?}");
     };
     let receipt: AgentSessionRegisterReceipt =
-        serde_json::from_value(result).expect("decode registration receipt");
+        serde_json::from_value(result.into_value()).expect("decode registration receipt");
     receipt.validate().expect("valid registration receipt");
     assert_eq!(receipt.project_id.as_str(), project_id);
     assert_eq!(receipt.root_session_id.as_str(), "root-1");

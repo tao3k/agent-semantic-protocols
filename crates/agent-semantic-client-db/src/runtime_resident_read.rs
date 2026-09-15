@@ -39,6 +39,17 @@ pub struct RuntimeResidentReadWorkCounters {
 }
 
 impl RuntimeResidentReadClient {
+    /// Whether this handle can observe the mutable, process-resident semantic
+    /// owner overlay. Durable mmap handles intentionally expose only immutable
+    /// generation projections.
+    #[must_use]
+    pub const fn has_semantic_owner_materialization_authority(&self) -> bool {
+        matches!(
+            (&self.exact_projection, &self.resident_lease),
+            (None, Some(_))
+        )
+    }
+
     /// Returns the owner-attributed parser topology inputs from this exact
     /// immutable generation without filesystem, DB, socket, or provider work.
     pub fn topology_source_segments(
@@ -49,6 +60,17 @@ impl RuntimeResidentReadClient {
             (None, Some(lease)) => Ok(lease.topology_source_segments()),
             _ => Err("Runtime resident read authority is inconsistent".to_owned()),
         }
+    }
+
+    /// Returns only the immutable Search-core topology projection.
+    ///
+    /// Parser materialization may enrich the process-resident exact-query
+    /// overlay, but that enrichment cannot change the topology identity of the
+    /// same content generation's lexical Search plane.
+    pub fn search_topology_source_segments(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        self.search_projection.topology_source_segments()
     }
 
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
@@ -315,8 +337,29 @@ impl RuntimeResidentReadClient {
         &self,
         owner_paths: &[String],
     ) -> Result<Vec<(String, String)>, String> {
-        self.search_projection
-            .parser_owned_callable_selector_pairs(owner_paths)
+        if self.resident_lease.is_none() {
+            return self
+                .search_projection
+                .parser_owned_callable_selector_pairs(owner_paths);
+        }
+        owner_paths
+            .iter()
+            .map(|owner_path| {
+                let owner = self.owner_snapshot(owner_path)?.ok_or_else(|| {
+                    "workspace search result references a missing owner".to_owned()
+                })?;
+                Ok(owner.selectors.into_iter().find_map(|selector| {
+                    selector
+                        .derived_projections
+                        .iter()
+                        .any(|projection| {
+                            projection.projection_kind == ExactProjectionKind::CallableSkeleton
+                        })
+                        .then(|| (selector.selector, owner_path.clone()))
+                }))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map(|pairs| pairs.into_iter().flatten().collect())
     }
 
     #[expect(

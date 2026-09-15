@@ -145,6 +145,23 @@ async fn qualify_args_reject_unknown_options_before_runtime_access() {
     assert_eq!(error, "unknown live_corpus qualify option: --unknown");
 }
 
+#[tokio::test]
+async fn qualification_cannot_bootstrap_the_product_runtime_without_its_fixture() {
+    let error = crate::command::live_corpus::run_live_corpus_test(&[
+        "qualify".to_owned(),
+        "--resource".to_owned(),
+        "rust.bytes".to_owned(),
+        "--plan".to_owned(),
+        "benchmarks/live-corpus-scheme-scenarios.v1.toml".to_owned(),
+    ])
+    .await
+    .expect_err("qualification must require its isolated Runtime fixture");
+    assert!(
+        error.contains("reasonKind=live-corpus-isolated-runtime-required"),
+        "{error}"
+    );
+}
+
 #[test]
 fn repository_corpus_lock_is_the_materializer_contract() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))

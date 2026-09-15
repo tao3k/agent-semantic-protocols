@@ -332,14 +332,20 @@ async fn print_receipt<T: serde::Serialize>(receipt: &T) -> Result<(), String> {
 pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation()
 -> Result<RuntimeServerControlReceipt, String> {
     let state_home = state_home()?;
-    let event = operator_start_activation_event(&state_home)
+    ensure_healthy_runtime_server_for_bounded_operation_at(&state_home).await
+}
+
+pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation_at(
+    state_home: &Path,
+) -> Result<RuntimeServerControlReceipt, String> {
+    let event = operator_start_activation_event(state_home)
         .await?
         .ok_or_else(|| {
             "state=runtime-server-client-bootstrap-failed reasonKind=activation-event-missing"
                 .to_owned()
         })?;
     if !agent_semantic_client_db::runtime_server_lifecycle::admit_activation_after_operator_stop(
-        &state_home,
+        state_home,
         &event.artifact_digest,
         &event.publication_nonce,
     )
@@ -352,8 +358,7 @@ pub(crate) async fn ensure_healthy_runtime_server_for_bounded_operation()
     }
     let receipt =
         super::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_client_recovery(
-            &state_home,
-            &event,
+            state_home, &event,
         )
         .await?;
     if receipt.resident_transaction.is_none() {

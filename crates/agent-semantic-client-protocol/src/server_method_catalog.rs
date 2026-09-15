@@ -116,6 +116,7 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
 pub const MULTI_AGENT_HOST_EVENT_METHOD: &str = "asp.session.host-event";
 pub const MULTI_AGENT_CHILDREN_METHOD: &str = "asp.session.children";
 pub const LIVE_CORPUS_CACHE_STATE_METHOD: &str = "asp.live-corpus.cache-state";
+pub const LIVE_CORPUS_MERKLE_OWNER_READ_METHOD: &str = "asp.live-corpus.merkle-owner.qualify";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServerClientRoute {
@@ -124,6 +125,7 @@ pub enum ServerClientRoute {
     MultiAgentChildren,
     CancellationProbe,
     LiveCorpusCacheState,
+    LiveCorpusMerkleOwnerRead,
     WorkspaceGenerationEnsureReady,
     WorkspaceSearchPlaybook,
     WorkspaceQueryPlaybook,
@@ -152,6 +154,7 @@ impl ServerClientRoute {
             Self::MultiAgentChildren => "session.children",
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::LiveCorpusCacheState => "live-corpus.cache-state",
+            Self::LiveCorpusMerkleOwnerRead => "live-corpus.merkle-owner.qualify",
             Self::WorkspaceGenerationEnsureReady => "workspace.generation.ensure-ready",
             Self::WorkspaceSearchPlaybook => "workspace.search.playbook",
             Self::WorkspaceQueryPlaybook => "workspace.query.playbook",
@@ -187,6 +190,7 @@ pub fn server_client_methods(
         multi_agent_children_method(),
         cancellation_probe_method(),
         live_corpus_cache_state_method(),
+        live_corpus_merkle_owner_read_method(),
         workspace_generation_ensure_ready_method(),
         workspace_search_playbook_method(),
         workspace_query_playbook_method(),
@@ -274,6 +278,32 @@ fn live_corpus_cache_state_method() -> ClientMethod {
             required_string("mutationScope"),
             optional("expectedGenerationDigest", ClientParameterType::Json),
             optional("expectedRootDigest", ClientParameterType::Json),
+        ],
+        cancellable: false,
+        streaming: false,
+    }
+}
+
+fn live_corpus_merkle_owner_read_method() -> ClientMethod {
+    ClientMethod {
+        method: LIVE_CORPUS_MERKLE_OWNER_READ_METHOD.to_owned(),
+        route_id: client_route_id(LIVE_CORPUS_MERKLE_OWNER_READ_METHOD),
+        request_schema_id: client_schema_id(
+            "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-request",
+        ),
+        response_schema_id: client_schema_id(
+            "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-receipt",
+        ),
+        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("projectRoot"),
+            required("ownerPaths", ClientParameterType::StringArray),
+            required_string("caseId"),
+            required_string("resourceId"),
+            required_string("languageId"),
+            required_string("providerId"),
         ],
         cancellable: false,
         streaming: false,
@@ -411,6 +441,11 @@ pub fn resolve_server_client_method_owner(
     if method == LIVE_CORPUS_CACHE_STATE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::LiveCorpusCacheState,
+        ));
+    }
+    if method == LIVE_CORPUS_MERKLE_OWNER_READ_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::LiveCorpusMerkleOwnerRead,
         ));
     }
     if method == WORKSPACE_GENERATION_ENSURE_READY_METHOD {

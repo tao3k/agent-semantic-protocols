@@ -266,6 +266,20 @@ impl ProjectTopologyGenerationBuilder {
         &self,
         segments: Vec<ProjectTopologySourceSegment>,
     ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
+        self.build_initial(segments, false).await
+    }
+
+    /// Builds an identity-bound empty request cut; full generations remain non-empty.
+    pub async fn build_empty_request_scope(
+        &self,
+    ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
+        self.build_initial(Vec::new(), true).await
+    }
+    async fn build_initial(
+        &self,
+        segments: Vec<ProjectTopologySourceSegment>,
+        allow_empty_request_scope: bool,
+    ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
         let rebuilt_owner_paths = segments
             .iter()
             .map(|segment| segment.owner_path.clone())
@@ -279,6 +293,7 @@ impl ProjectTopologyGenerationBuilder {
                 previous_edge_ids: BTreeSet::new(),
                 change_set_digest: None,
             },
+            allow_empty_request_scope,
         )
         .await
     }
@@ -338,6 +353,7 @@ impl ProjectTopologyGenerationBuilder {
                 previous_edge_ids,
                 change_set_digest: Some(change_set_digest),
             },
+            false,
         )
         .await
     }
@@ -346,6 +362,7 @@ impl ProjectTopologyGenerationBuilder {
         &self,
         segments: Vec<ProjectTopologySourceSegment>,
         transition: ProjectTopologyGenerationTransition,
+        allow_empty_request_scope: bool,
     ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
         let permit = self
             .blocking_permits
@@ -363,7 +380,14 @@ impl ProjectTopologyGenerationBuilder {
         let expected_relations = self.expected_relations.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            build_from_scratch_blocking(identity, limits, segments, expected_relations, transition)
+            build_from_scratch_blocking(
+                identity,
+                limits,
+                segments,
+                expected_relations,
+                transition,
+                allow_empty_request_scope,
+            )
         })
         .await
         .map_err(|cause| {
@@ -390,8 +414,9 @@ fn build_from_scratch_blocking(
     mut segments: Vec<ProjectTopologySourceSegment>,
     expected_relations: Vec<ProjectTopologyExpectedRelation>,
     transition: ProjectTopologyGenerationTransition,
+    allow_empty_request_scope: bool,
 ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
-    if segments.is_empty() {
+    if segments.is_empty() && !allow_empty_request_scope {
         return Err(error(
             "topology-generation-empty",
             "a Project Topology generation requires at least one source segment",

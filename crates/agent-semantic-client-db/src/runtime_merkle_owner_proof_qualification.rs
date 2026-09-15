@@ -9,6 +9,52 @@ use crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead;
 const SCHEMA_ID: &str = "agent-semantic-protocols.runtime-merkle-owner-proof-qualification-receipt";
 const SCHEMA_VERSION: &str = "1";
 const PROOF_DIGEST_DOMAIN: &[u8] = b"asp.runtime-merkle-owner-inclusion-proof";
+pub const RUNTIME_MERKLE_OWNER_PROOF_QUALIFICATION_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-request";
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeMerkleOwnerProofQualificationRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub project_root: String,
+    pub owner_paths: Vec<String>,
+    pub case_id: String,
+    pub resource_id: String,
+    pub language_id: String,
+    pub provider_id: String,
+}
+
+impl RuntimeMerkleOwnerProofQualificationRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != RUNTIME_MERKLE_OWNER_PROOF_QUALIFICATION_REQUEST_SCHEMA_ID
+            || self.schema_version != "1"
+        {
+            return Err("Runtime Merkle proof qualification request schema mismatch".to_owned());
+        }
+        if self.owner_paths.is_empty() {
+            return Err(
+                "Runtime Merkle proof qualification requires ranked owner paths".to_owned(),
+            );
+        }
+        for owner_path in &self.owner_paths {
+            crate::workspace_db_ipc::RuntimeMerkleOwnerReadRequest::new(
+                self.project_root.clone(),
+                owner_path.clone(),
+            )
+            .validate()?;
+        }
+        for (name, value) in [
+            ("caseId", &self.case_id),
+            ("resourceId", &self.resource_id),
+            ("languageId", &self.language_id),
+            ("providerId", &self.provider_id),
+        ] {
+            require_nonempty(name, value.clone())?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]

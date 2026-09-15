@@ -163,7 +163,7 @@ use super::query_playbook::dispatch_workspace_query_playbook;
 
 pub(super) async fn dispatch_resolved_route(
     context: ResolvedRouteContext,
-) -> Result<serde_json::Value, AspClientOperationError> {
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     let ResolvedRouteContext {
         dispatch_budget,
         request,
@@ -381,7 +381,7 @@ pub(super) async fn dispatch_resolved_route(
                 .expect("validated profile"),
             elapsed_micros(dispatch_started),
         )?;
-        return Ok(result);
+        return Ok(result.into());
     }
     if matches!(
         resolved,
@@ -410,7 +410,8 @@ pub(super) async fn dispatch_resolved_route(
             active_telemetry_trace_count.as_ref(),
             &query_generation,
         )
-        .await;
+        .await
+        .map(Into::into);
     }
     let (language_id, provider_id, route) = match resolved {
         agent_semantic_client_protocol::ResolvedServerClientMethod::Language {
@@ -448,6 +449,9 @@ pub(super) async fn dispatch_resolved_route(
             "workspace".to_owned(),
             ServerClientRoute::WorkspaceSyntaxPlanContext,
         ),
+        agent_semantic_client_protocol::ResolvedServerClientMethod::Server(
+            ServerClientRoute::LiveCorpusMerkleOwnerRead,
+        ) => unreachable!("Live Corpus Merkle owner read is dispatched before route resolution"),
         agent_semantic_client_protocol::ResolvedServerClientMethod::Server(_) => {
             return Err(AspClientOperationError::Message(
                 "unsupported server-owned client method".to_owned(),
@@ -584,7 +588,7 @@ pub(super) async fn dispatch_resolved_route(
         }
     };
     // Only the daemon publishes authority; the request owns a cancellable wait.
-    match route {
+    let result = match route {
         agent_semantic_client_protocol::ServerClientRoute::AgentSessionRegister => {
             unreachable!("server-owned AgentSession route is handled before language dispatch")
         }
@@ -606,6 +610,9 @@ pub(super) async fn dispatch_resolved_route(
         agent_semantic_client_protocol::ServerClientRoute::LiveCorpusCacheState => {
             unreachable!("Live Corpus cache state is handled before language dispatch")
         }
+        agent_semantic_client_protocol::ServerClientRoute::LiveCorpusMerkleOwnerRead => {
+            unreachable!("Live Corpus Merkle owner read is handled before language dispatch")
+        }
         agent_semantic_client_protocol::ServerClientRoute::WorkspaceGenerationEnsureReady => {
             unreachable!("workspace generation ensure-ready is handled before language dispatch")
         }
@@ -621,7 +628,9 @@ pub(super) async fn dispatch_resolved_route(
                     ),
                 ) => {
                     dispatch_budget.observe_resident_hit();
-                    Ok(result.as_ref().clone())
+                    return Ok(
+                        agent_semantic_client_protocol::ClientResponsePayload::from_shared(result),
+                    );
                 }
                 Some(
                     crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(
@@ -635,7 +644,7 @@ pub(super) async fn dispatch_resolved_route(
                     crate::runtime_query_generation::RuntimeSearchMaterializationState::Building(_),
                 ) => {
                     dispatch_budget.observe_miss();
-                    settled_search_materialization(&generation, &materialization_key).await
+                    return settled_search_materialization(&generation, &materialization_key).await;
                 }
                 None => {
                     dispatch_budget.observe_miss();
@@ -697,7 +706,7 @@ pub(super) async fn dispatch_resolved_route(
                             );
                         });
                     }
-                    settled_search_materialization(&generation, &materialization_key).await
+                    return settled_search_materialization(&generation, &materialization_key).await;
                 }
             }
         }
@@ -814,7 +823,8 @@ pub(super) async fn dispatch_resolved_route(
                 &telemetry_sender,
             )
         }
-    }
+    };
+    result.map(Into::into)
 }
 
 fn build_workspace_search_materialization_plan(
@@ -952,10 +962,12 @@ fn search_materialization_dispatch_error(error: AspClientOperationError) -> AspC
 async fn settled_search_materialization(
     generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
     key: &str,
-) -> Result<serde_json::Value, AspClientOperationError> {
+) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     use crate::runtime_query_generation::RuntimeSearchMaterializationState;
     match generation.await_search_materialization(key).await? {
-        RuntimeSearchMaterializationState::Ready(result) => Ok(result.as_ref().clone()),
+        RuntimeSearchMaterializationState::Ready(result) => {
+            Ok(agent_semantic_client_protocol::ClientResponsePayload::from_shared(result))
+        }
         RuntimeSearchMaterializationState::Failed(error) => {
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))
         }

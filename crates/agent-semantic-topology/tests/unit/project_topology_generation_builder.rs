@@ -168,6 +168,46 @@ async fn generation_builder_is_content_deterministic() {
 }
 
 #[tokio::test]
+async fn only_explicit_request_scope_may_build_an_identity_bound_empty_cut() {
+    let builder = ProjectTopologyGenerationBuilder::new(
+        ProjectTopologyGenerationIdentity::new(
+            manifest().project_workspace().clone(),
+            digest('3'),
+            digest('4'),
+            Arc::new(ProjectTopologyInferenceProgram::standard().expect("standard MRR program")),
+            digest('6'),
+            digest('7'),
+            digest('8'),
+        )
+        .expect("generation identity"),
+        ProjectTopologyClosureLimits::new(1, 1, 1).expect("closure limits"),
+    );
+    let error = builder
+        .build_from_scratch(Vec::new())
+        .await
+        .expect_err("full generation rejects empty source");
+    assert_eq!(error.reason_kind(), "topology-generation-empty");
+
+    let candidate = builder
+        .build_empty_request_scope()
+        .await
+        .expect("explicit empty request scope");
+    assert_eq!(candidate.packet()["segments"], serde_json::json!([]));
+    assert_eq!(candidate.packet()["nodes"], serde_json::json!([]));
+    assert_eq!(candidate.packet()["edges"], serde_json::json!([]));
+    let mut admitted = BTreeMap::new();
+    admitted.insert(
+        candidate.rebuild_receipt_id().to_owned(),
+        candidate.rebuild_receipt().clone(),
+    );
+    let library = candidate
+        .admit(&admitted)
+        .expect("empty request cut remains independently admitted");
+    assert_eq!(library.segment_count(), 0);
+    assert_eq!(library.node_count(), 0);
+}
+
+#[tokio::test]
 async fn generation_identity_is_derived_from_the_executed_mrr_bundle() {
     let candidate = candidate().await;
     let executed = ProjectTopologyInferenceProgram::standard()

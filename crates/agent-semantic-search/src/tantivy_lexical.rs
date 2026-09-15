@@ -230,13 +230,11 @@ impl TantivyLexicalIndex {
             .search(&query, &DocSetCollector)
             .map_err(|error| format!("query resident Tantivy expression: {error}"))?;
         // Search consumes this route as a complete candidate set before GREP
-        // intersection. Scores are not protocol data, so avoid TopDocs'
-        // scoring/top-k work and restore deterministic generation order here.
-        let mut matches = matches.into_iter().collect::<Vec<_>>();
-        matches.sort_unstable_by_key(|address| (address.segment_ord, address.doc_id));
-        matches
+        // intersection. Segment/doc addresses are physical build layout and
+        // may change across a parallel build or durable reopen, so map every
+        // match to its generation-stable ownerId before ordering and Top-K.
+        let mut owner_ids = matches
             .into_iter()
-            .take(limit.min(self.owner_count).max(1))
             .map(|address| {
                 searcher
                     .segment_reader(address.segment_ord)
@@ -247,7 +245,11 @@ impl TantivyLexicalIndex {
                     .and_then(|owner_id| usize::try_from(owner_id).ok())
                     .ok_or_else(|| "resident Tantivy ownerId is missing".to_owned())
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        owner_ids.sort_unstable();
+        owner_ids.dedup();
+        owner_ids.truncate(limit.min(self.owner_count).max(1));
+        Ok(owner_ids)
     }
 }
 

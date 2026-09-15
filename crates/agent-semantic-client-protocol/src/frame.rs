@@ -6,7 +6,10 @@
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde::ser::SerializeMap;
 use serde_json::Value;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::ClientProjectId;
 use crate::ClientProtocolCatalog;
@@ -68,7 +71,7 @@ pub enum ClientFrame {
         request_id: ClientRequestId,
         outcome: ClientOutcome,
         #[serde(default)]
-        result: Option<Value>,
+        result: Option<ClientResponsePayload>,
         #[serde(default)]
         error: Option<Value>,
         #[serde(default)]
@@ -83,6 +86,133 @@ pub enum ClientFrame {
         payload: Value,
     },
 }
+
+/// Wire-transparent shared ownership for an immutable response JSON payload.
+///
+/// Runtime can retain a generation-owned materialization through gRPC
+/// serialization without cloning its full JSON tree. Deserialization creates a
+/// new shared payload from the received wire value.
+#[derive(Clone, Debug)]
+pub struct ClientResponsePayload(ClientResponsePayloadInner);
+
+#[derive(Clone, Debug)]
+enum ClientResponsePayloadInner {
+    Shared(Arc<Value>),
+    ObjectOverlay {
+        template: Arc<Value>,
+        fields: Arc<BTreeMap<String, Value>>,
+    },
+}
+
+impl ClientResponsePayload {
+    #[must_use]
+    pub fn from_shared(value: Arc<Value>) -> Self {
+        Self(ClientResponsePayloadInner::Shared(value))
+    }
+
+    /// Binds request-local fields to a shared immutable object without cloning
+    /// the generation-owned JSON tree. The overlay is applied while the frame
+    /// is serialized and materialized only after a client receives the wire
+    /// value.
+    pub fn from_shared_object_overlay(
+        template: Arc<Value>,
+        fields: BTreeMap<String, Value>,
+    ) -> Result<Self, &'static str> {
+        if !template.is_object() {
+            return Err("response overlay template is not an object");
+        }
+        Ok(Self(ClientResponsePayloadInner::ObjectOverlay {
+            template,
+            fields: Arc::new(fields),
+        }))
+    }
+
+    #[must_use]
+    pub fn as_value(&self) -> &Value {
+        match &self.0 {
+            ClientResponsePayloadInner::Shared(value) => value.as_ref(),
+            ClientResponsePayloadInner::ObjectOverlay { template, .. } => template.as_ref(),
+        }
+    }
+
+    #[must_use]
+    pub fn into_value(self) -> Value {
+        match self.0 {
+            ClientResponsePayloadInner::Shared(value) => Arc::unwrap_or_clone(value),
+            ClientResponsePayloadInner::ObjectOverlay { template, fields } => {
+                let mut value = Arc::unwrap_or_clone(template);
+                let object = value
+                    .as_object_mut()
+                    .expect("object response overlay validated at construction");
+                for (key, value) in fields.iter() {
+                    object.insert(key.clone(), value.clone());
+                }
+                value
+            }
+        }
+    }
+}
+
+impl From<Value> for ClientResponsePayload {
+    fn from(value: Value) -> Self {
+        Self(ClientResponsePayloadInner::Shared(Arc::new(value)))
+    }
+}
+
+impl PartialEq for ClientResponsePayload {
+    fn eq(&self, other: &Self) -> bool {
+        serde_json::to_value(self).ok() == serde_json::to_value(other).ok()
+    }
+}
+
+impl std::ops::Deref for ClientResponsePayload {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_value()
+    }
+}
+
+impl Serialize for ClientResponsePayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match &self.0 {
+            ClientResponsePayloadInner::Shared(value) => value.serialize(serializer),
+            ClientResponsePayloadInner::ObjectOverlay { template, fields } => {
+                let object = template
+                    .as_object()
+                    .expect("object response overlay validated at construction");
+                let appended = fields
+                    .keys()
+                    .filter(|key| !object.contains_key(key.as_str()))
+                    .count();
+                let mut map = serializer.serialize_map(Some(object.len() + appended))?;
+                for (key, value) in object {
+                    map.serialize_entry(key, fields.get(key).unwrap_or(value))?;
+                }
+                for (key, value) in fields.iter().filter(|(key, _)| !object.contains_key(*key)) {
+                    map.serialize_entry(key, value)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ClientResponsePayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Value::deserialize(deserializer).map(Self::from)
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/frame.rs"]
+mod tests;
 
 /// Identity and tracing fields shared by every client frame.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

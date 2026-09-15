@@ -7,7 +7,37 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
     let manifest = include_str!("../../../Cargo.toml");
     assert!(manifest.contains("name = \"live_corpus\""));
     assert!(manifest.contains("required-features = [\"live-corpus-test\"]"));
+    assert!(manifest.contains("required-features = [\"asp-bin\"]"));
+    assert!(manifest.contains("live-corpus-test = []"));
+    assert!(!manifest.contains("live-corpus-test = [\"asp-bin\"]"));
     assert!(!manifest.contains("name = \"asp-live-corpus"));
+
+    let library = include_str!("../../../src/lib.rs");
+    assert!(library.contains("pub mod live_corpus_test;"));
+    assert!(!library.contains("pub use live_corpus_test::run_live_corpus_test"));
+
+    let runner = include_str!("../../integration/live_corpus/runner.rs");
+    assert!(runner.contains("ASP_LIVE_CORPUS_SERVER_ARTIFACT"));
+    assert!(runner.contains("ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR"));
+    assert!(runner.contains("materialize_provider_workspace_artifact"));
+    assert!(!runner.contains("command::install_provider"));
+    assert!(runner.contains("provider-artifact-digest="));
+    for forbidden in [
+        "CARGO_BIN_EXE_asp",
+        "RuntimeArtifactStateLayout",
+        "verify_runtime_artifact_bound_bundle",
+        "mod harness",
+    ] {
+        assert!(
+            !runner.contains(forbidden),
+            "Live Corpus runner retained forbidden installation/harness coupling: {forbidden}"
+        );
+    }
+
+    let justfile = include_str!("../../../../../justfile");
+    assert!(
+        justfile.contains("--no-default-features --features live-corpus-test --test live_corpus")
+    );
 
     let product_dispatch = include_str!("../../../src/command/dispatch.rs");
     let product_help = include_str!("../../../src/command/cli_help_model.rs");
@@ -17,6 +47,7 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
     let owner = concat!(
         include_str!("../../../src/command/live_corpus.rs"),
         include_str!("../../../src/command/live_corpus_qualification/client_protocol.rs"),
+        include_str!("../../../src/command/live_corpus_qualification/query_protocol.rs"),
         include_str!("../../../src/command/live_corpus_qualification/runner.rs"),
     );
     for required in [
@@ -25,7 +56,10 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "LanguageCommandClient",
         "LanguageCommandRequest",
         "parse_progressive_search_playbook_args",
-        "workspace_search_scheme_source",
+        "parse_progressive_query_args",
+        "live-corpus-scheme-scenarios.v1.toml",
+        "render_workspace_query_scheme_source",
+        "WorkspaceQueryPlaybook",
     ] {
         assert!(
             owner.contains(required),
@@ -40,6 +74,8 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         concat!("AspClientProtocol", "HttpClient"),
         "rg: Some(vec![search.rg.clone()])",
         "tantivy: Some(vec![search.tantivy.clone()])",
+        "LanguageCommandOperation::ExactQuery",
+        "AspClientExactQueryRequest",
     ] {
         assert!(
             !owner.contains(forbidden),

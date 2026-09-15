@@ -24,11 +24,13 @@ use agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryRequest;
 use agent_semantic_client_protocol::ClientProjectId;
 use agent_semantic_client_protocol::ClientRequestId;
+use agent_semantic_client_protocol::ClientResponsePayload;
 use agent_semantic_client_protocol::ClientSchemaId;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 use agent_semantic_client_protocol::GRAPH_TIMELINE_METHOD;
 use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_METHOD;
+use agent_semantic_client_protocol::LIVE_CORPUS_MERKLE_OWNER_READ_METHOD;
 use agent_semantic_client_protocol::LiveCorpusCacheStateReceipt;
 use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
 use agent_semantic_client_protocol::SCHEMA_BUNDLE_METHOD;
@@ -285,7 +287,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
             let operation = async {
                 if request.method == agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD {
                     return std::future::pending::<
-                        Result<serde_json::Value, AspClientOperationError>,
+                        Result<ClientResponsePayload, AspClientOperationError>,
                     >()
                     .await;
                 }
@@ -377,6 +379,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     };
                     receipt.validate()?;
                     return serde_json::to_value(receipt)
+                        .map(ClientResponsePayload::from)
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
@@ -387,6 +390,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     let response = schema_bundles.project(&params);
                     response.validate()?;
                     return serde_json::to_value(response.as_ref())
+                        .map(ClientResponsePayload::from)
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
@@ -516,6 +520,88 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     };
                     receipt.validate()?;
                     return serde_json::to_value(receipt)
+                        .map(ClientResponsePayload::from)
+                        .map_err(|error| error.to_string())
+                        .map_err(AspClientOperationError::Message);
+                }
+                if request.method == LIVE_CORPUS_MERKLE_OWNER_READ_METHOD {
+                    let params: agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationRequest =
+                        serde_json::from_value(request.params).map_err(|error| {
+                            AspClientOperationError::Message(format!(
+                                "decode Live Corpus Merkle owner request: {error}"
+                            ))
+                        })?;
+                    params.validate()?;
+                    let initialized = initialized_workspaces
+                        .lock()
+                        .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
+                        .get(&(
+                            request.project_id.as_str().to_owned(),
+                            request.workspace_id.as_str().to_owned(),
+                            request.session_id.as_str().to_owned(),
+                        ))
+                        .cloned()
+                        .ok_or_else(|| {
+                            "Live Corpus Merkle owner read requires an initialized workspace root"
+                                .to_owned()
+                        })?;
+                    if params.project_root != initialized.project_root.display().to_string() {
+                        return Err(AspClientOperationError::Message(
+                            "Live Corpus Merkle owner request crossed its admitted workspace root"
+                                .to_owned(),
+                        ));
+                    }
+                    let generation = query_generation
+                        .borrow()
+                        .get(&project_workspace_key)
+                        .and_then(|state| match state {
+                            RuntimeQueryGenerationState::Ready(generation) => {
+                                Some(Arc::clone(generation))
+                            }
+                            RuntimeQueryGenerationState::Failed { .. } => None,
+                        })
+                        .ok_or_else(|| {
+                            "Live Corpus Merkle qualification requires the ready Search generation"
+                                .to_owned()
+                        })?;
+                    let resident = workspace_registry.resident_read_client(
+                        request.workspace_id.as_str(),
+                        &initialized.project_root,
+                    )?;
+                    if resident.generation_digest() != generation.generation_digest() {
+                        return Err(AspClientOperationError::Message(
+                            "Live Corpus Merkle qualification resident generation drifted"
+                                .to_owned(),
+                        ));
+                    }
+                    let (structural_selector, owner_path) = resident
+                        .parser_owned_callable_selector_pairs(&params.owner_paths)?
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| {
+                            "Live Corpus ranked Search owners expose no callable projection"
+                                .to_owned()
+                        })?;
+                    let kernel_started = std::time::Instant::now();
+                    let read = resident.read_merkle_owner(&owner_path)?;
+                    let kernel_elapsed_micros = kernel_started
+                        .elapsed()
+                        .as_micros()
+                        .min(u128::from(u64::MAX))
+                        as u64;
+                    let receipt = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
+                        agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofEvidenceLayer::LiveCorpus,
+                        params.case_id,
+                        Some(params.resource_id),
+                        params.language_id,
+                        params.provider_id,
+                        structural_selector,
+                        kernel_elapsed_micros,
+                        agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadWorkCounters::default(),
+                        read,
+                    )?;
+                    return serde_json::to_value(receipt)
+                        .map(ClientResponsePayload::from)
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
@@ -555,6 +641,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             cancellation,
                         )
                         .await
+                        .map(ClientResponsePayload::from)
                         .map_err(AspClientOperationError::Message);
                 }
                 if request.method
@@ -612,6 +699,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         )
                         .await?;
                     return serde_json::to_value(terminal)
+                        .map(ClientResponsePayload::from)
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
@@ -693,7 +781,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                 let elapsed_micros = u64::try_from(request_elapsed.as_micros()).unwrap_or(u64::MAX);
                 let receipt_state = match &result {
                     Ok(value) => resident_generation_digest(
-                        value,
+                        value.as_value(),
                         &query_generation_for_receipt,
                         &request_plane_generation_key,
                     )

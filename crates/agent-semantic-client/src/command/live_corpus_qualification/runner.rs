@@ -14,10 +14,9 @@ use crate::command::live_corpus::LiveCorpusQualification;
 use crate::command::live_corpus::live_corpus_git_repository_paths;
 use crate::command::live_corpus::live_corpus_lock_digest;
 use crate::command::live_corpus::load_lock;
-use crate::command::live_corpus::resolve_state_home;
 use crate::command::live_corpus::unique_resource;
 
-const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-search-query-qualification.json";
+const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-scheme-scenarios.v1.toml";
 
 #[derive(Debug)]
 pub(super) struct QualifyArgs {
@@ -30,6 +29,7 @@ pub(super) struct QualifyArgs {
 struct PreparedCase {
     case: QualificationCase,
     checkout_path: PathBuf,
+    remote: String,
     qualification: LiveCorpusQualification,
     artifact_digest: String,
 }
@@ -47,19 +47,20 @@ struct PreparedRun {
     cases: Vec<PreparedCase>,
 }
 
-struct IsolatedBenchmarkWorkspace {
-    path: PathBuf,
+pub(in crate::command::live_corpus) struct IsolatedBenchmarkWorkspace {
+    pub(in crate::command::live_corpus) path: PathBuf,
     workspace_identity: String,
     materialization: &'static str,
     materialization_elapsed_micros: u64,
 }
 
 impl IsolatedBenchmarkWorkspace {
-    fn materialize(
+    pub(in crate::command::live_corpus) fn materialize(
         state_home: &Path,
         source: &Path,
         resource_id: &str,
         artifact_digest: &str,
+        remote: &str,
     ) -> Result<Self, String> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -83,6 +84,7 @@ impl IsolatedBenchmarkWorkspace {
         })?;
         let started = std::time::Instant::now();
         let materialization = clone_immutable_tree(source, &path)?;
+        write_benchmark_topology_manifest(&path, resource_id, remote)?;
         let materialization_elapsed_micros =
             started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
         let workspace_identity =
@@ -95,7 +97,7 @@ impl IsolatedBenchmarkWorkspace {
         })
     }
 
-    fn cleanup(self) -> Result<u64, String> {
+    pub(in crate::command::live_corpus) fn cleanup(self) -> Result<u64, String> {
         let started = std::time::Instant::now();
         std::fs::remove_dir_all(&self.path).map_err(|error| {
             format!(
@@ -105,6 +107,27 @@ impl IsolatedBenchmarkWorkspace {
         })?;
         Ok(started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64)
     }
+}
+
+fn write_benchmark_topology_manifest(
+    workspace: &Path,
+    resource_id: &str,
+    remote: &str,
+) -> Result<(), String> {
+    let path = workspace.join(agent_semantic_topology::PROJECT_TOPOLOGY_MANIFEST_PATH);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Live Corpus topology manifest has no parent".to_owned())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Live Corpus topology manifest directory: {error}"))?;
+    let source = format!(
+        "#+TITLE: Live Corpus Project Workspace\n:PROPERTIES:\n:CONTRACT_ORG: [[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]\n:END:\n\n* Project Workspace\n:PROPERTIES:\n:PROJECT_WORKSPACE_ID: {resource_id}\n:PROJECT_WORKSPACE_IDENTITY: git+{remote}#workspace/root\n:WORKSPACE_ROOT_PATH: .\n:PORTABILITY: cross-machine\n:REPOSITORY_ALIASES: []\n:END:\n"
+    );
+    std::fs::write(&path, source)
+        .map_err(|error| format!("write Live Corpus topology manifest: {error}"))?;
+    agent_semantic_topology::ProjectTopologyManifest::load_from_project_root(workspace)
+        .map_err(|error| format!("admit Live Corpus topology manifest: {error}"))?;
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -244,12 +267,23 @@ fn qualification_receipt_path(
     }
 }
 
+fn artifact_current_pointer(state_home: &Path, resource_id: &str) -> PathBuf {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .resources()
+        .live_corpus()
+        .join("artifacts")
+        .join("by-resource")
+        .join(resource_id)
+        .join("current")
+}
+
 pub(crate) async fn run(
     args: &[String],
     runtime_handoff: agent_semantic_client::AspClientRuntimeHandoff,
+    state_home: PathBuf,
 ) -> Result<(), String> {
     let args = args.to_vec();
-    let prepared = tokio::task::spawn_blocking(move || prepare_run(&args))
+    let prepared = tokio::task::spawn_blocking(move || prepare_run(&args, state_home))
         .await
         .map_err(|error| format!("prepare Live Corpus qualification task: {error}"))??;
     let PreparedRun {
@@ -274,12 +308,14 @@ pub(crate) async fn run(
         let state_home_for_materialization = state_home.clone();
         let resource_id = prepared_case.case.resource_id.clone();
         let artifact_digest = prepared_case.artifact_digest.clone();
+        let remote = prepared_case.remote.clone();
         let isolated = tokio::task::spawn_blocking(move || {
             IsolatedBenchmarkWorkspace::materialize(
                 &state_home_for_materialization,
                 &source_path,
                 &resource_id,
                 &artifact_digest,
+                &remote,
             )
         })
         .await
@@ -290,8 +326,14 @@ pub(crate) async fn run(
         let materialization_elapsed_micros = isolated.materialization_elapsed_micros;
         let retained_path = checkout_path.clone();
         let case_result: Result<(QualificationCaseReceipt, u64), String> = async {
-            let client = agent_semantic_client::RuntimeLanguageCommandClient;
             let cache_client = agent_semantic_client::AspClient::new_from_runtime_handoff(
+                state_home.clone(),
+                checkout_path.clone(),
+                runtime_handoff.clone(),
+            )
+            .admit_runtime_workspace("Live Corpus qualification")
+            .await?;
+            let client = agent_semantic_client::RuntimeLanguageSessionClient::new(
                 state_home.clone(),
                 checkout_path.clone(),
                 runtime_handoff.clone(),
@@ -336,12 +378,6 @@ pub(crate) async fn run(
                 )
                 .cancellation_probe()
                 .await?;
-            if cancellation_elapsed > 1_000 {
-                return Err(format!(
-                    "Live Corpus cancellation probe exceeded resident budget: case={} elapsedMicros={} maximumMicros=1000",
-                    prepared_case.case.case_id, cancellation_elapsed
-                ));
-            }
             let backpressure =
                 agent_semantic_client::AspClient::new_from_runtime_handoff(
                     state_home.clone(),
@@ -595,26 +631,28 @@ pub(crate) fn validate_args(args: &[String]) -> Result<(), String> {
     parse_args(args).map(|_| ())
 }
 
-fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
-    let args = parse_args(args)?;
+fn prepare_run(args: &[String], state_home: PathBuf) -> Result<PreparedRun, String> {
+    let mut args = parse_args(args)?;
+    args.plan_path = qualification_input_path(&args.plan_path);
     let plan_bytes = std::fs::read(&args.plan_path).map_err(|error| {
         format!(
             "failed to read Live Corpus qualification plan {}: {error}",
             args.plan_path.display()
         )
     })?;
-    let plan = serde_json::from_slice::<QualificationPlan>(&plan_bytes)
-        .map_err(|error| format!("failed to decode Live Corpus qualification plan: {error}"))?;
+    let plan_source = std::str::from_utf8(&plan_bytes)
+        .map_err(|error| format!("Live Corpus Scheme scenario suite is not UTF-8: {error}"))?;
+    let plan = toml::from_str::<QualificationPlan>(plan_source)
+        .map_err(|error| format!("failed to decode Live Corpus Scheme scenario suite: {error}"))?;
     validate_plan(&plan)?;
-    let lock_bytes = std::fs::read(&plan.lock_path).map_err(|error| {
+    let lock_path = qualification_input_path(&plan.lock_path);
+    let lock_bytes = std::fs::read(&lock_path).map_err(|error| {
         format!(
             "failed to read Live Corpus lock {}: {error}",
-            plan.lock_path.display()
+            lock_path.display()
         )
     })?;
-    let lock = load_lock(&plan.lock_path)?;
-    let state_home = resolve_state_home()?;
-
+    let lock = load_lock(&lock_path)?;
     let resident_sample_count = plan.resident_sample_count;
     let sequential_sample_count = plan.sequential_sample_count;
     let concurrent_sample_count = plan.concurrent_sample_count;
@@ -652,13 +690,15 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
         let checkout_path = repository
             .repository_dir
             .join("checkouts")
-            .join(&corpus.git.revision);
-        let current_pointer = state_home
-            .join("artifacts")
-            .join("live-corpus")
-            .join("by-resource")
-            .join(&case.resource_id)
-            .join("current");
+            .join(&corpus.git.revision)
+            .canonicalize()
+            .map_err(|error| {
+                format!(
+                    "Live Corpus checkout is unavailable: resource={} error={error}",
+                    case.resource_id
+                )
+            })?;
+        let current_pointer = artifact_current_pointer(&state_home, &case.resource_id);
         let artifact_dir = current_pointer.canonicalize().map_err(|error| {
             format!(
                 "Live Corpus qualification requires a prepublished immutable artifact: resource={} pointer={} error={error}",
@@ -696,7 +736,15 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
             || !qualification.clean
             || qualification.artifact_digest != artifact_digest
             || qualification.head_revision != corpus.git.revision
-            || Path::new(&qualification.source_path) != checkout_path
+            || Path::new(&qualification.source_path)
+                .canonicalize()
+                .map_err(|error| {
+                    format!(
+                        "Live Corpus qualified source path is unavailable: case={} error={error}",
+                        case.case_id
+                    )
+                })?
+                != checkout_path
         {
             return Err(format!(
                 "Live Corpus immutable artifact identity drift: case={} artifact={}",
@@ -707,6 +755,7 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
         prepared_cases.push(PreparedCase {
             case,
             checkout_path,
+            remote: corpus.git.remote.clone(),
             qualification,
             artifact_digest: artifact_digest.to_owned(),
         });
@@ -723,6 +772,16 @@ fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
         protocol_qualified_case_count,
         cases: prepared_cases,
     })
+}
+
+fn qualification_input_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_owned()
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path)
+    }
 }
 
 #[expect(
@@ -762,12 +821,7 @@ where
         artifact_digest,
     )
     .await?;
-    let selector = evidence.search.selectors.first().cloned().ok_or_else(|| {
-        format!(
-            "Live Corpus public search selector missing: case={}",
-            case.case_id
-        )
-    })?;
+    let selector = evidence.selected_selector.clone();
     for query in [&evidence.source, &evidence.callable_skeleton] {
         if query.generation_digest != evidence.source.generation_digest
             || query.root_digest != evidence.source.root_digest
@@ -789,8 +843,14 @@ where
             != evidence.search.topology_generation_digest
     {
         return Err(format!(
-            "Live Corpus public zero-match route crossed generation authority: case={}",
-            case.case_id
+            "Live Corpus public zero-match route crossed generation authority: case={} baselineGeneration={} zeroGeneration={} baselineProviderCatalog={} zeroProviderCatalog={} baselineTopology={} zeroTopology={}",
+            case.case_id,
+            evidence.search.source_generation_digest,
+            evidence.zero_match.source_generation_digest,
+            evidence.search.provider_catalog_digest,
+            evidence.zero_match.provider_catalog_digest,
+            evidence.search.topology_generation_digest,
+            evidence.zero_match.topology_generation_digest,
         ));
     }
     let merkle_owner_path = evidence
@@ -826,8 +886,6 @@ where
         "providerCatalogDigest": evidence.search.provider_catalog_digest,
         "topologyGenerationDigest": evidence.search.topology_generation_digest,
     });
-    let exact_read_work_counters = serde_json::to_value(&evidence.source.work_counters)
-        .map_err(|error| format!("encode Live Corpus exact work counters: {error}"))?;
     Ok(QualificationCaseReceipt {
         case_id: case.case_id,
         resource_id: case.resource_id,
@@ -850,7 +908,11 @@ where
         backpressure_probe_elapsed_micros: backpressure.elapsed_micros,
         stale_content_binding_rejected: false,
         stale_content_binding_probe_elapsed_micros: 0,
-        generation_digest: evidence.source.generation_digest.clone(),
+        generation_digest: evidence
+            .merkle_proof
+            .generation_digest
+            .clone()
+            .ok_or_else(|| "Live Corpus Merkle proof omitted generationDigest".to_owned())?,
         root_digest: evidence.source.root_digest.clone(),
         search_operation_id: evidence.search.operation_id,
         search_elapsed_micros: evidence.search.elapsed_micros,
@@ -883,8 +945,7 @@ where
         runtime_ecosystem: "tokio",
         search_execution_mode: "workspace-search-playbook",
         search_binding,
-        exact_read_mode: "synchronous-mmap",
-        exact_read_work_counters,
+        query_materialization_mode: "workspace-query-playbook",
         route: "public-typed-asp-client",
         search_terminal: "ready",
         query_terminal: "ready",

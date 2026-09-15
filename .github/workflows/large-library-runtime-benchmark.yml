@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       corpora: ${{ steps.corpora.outputs.corpora }}
+      providers: ${{ steps.corpora.outputs.providers }}
     steps:
       - uses: actions/checkout@v4
       - id: corpora
@@ -29,11 +30,121 @@ jobs:
         run: |
           set -euo pipefail
           matrix="$(jq -c '{include: [.corpora[] | {resource: .resourceId, language: .language}]}' benchmarks/large-library-runtime-corpora.json)"
+          providers="$(jq -c '{include: ([.corpora[] | select(.language != "md" and .language != "org") | .language] | unique | map({language: .}))}' benchmarks/large-library-runtime-corpora.json)"
           echo "corpora=$matrix" >> "$GITHUB_OUTPUT"
+          echo "providers=$providers" >> "$GITHUB_OUTPUT"
+
+  runtime-artifacts:
+    name: Build V1 Runtime artifacts once
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Runtime build dependencies
+        shell: bash
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
+      - name: Install Nix for the project environment
+        uses: cachix/install-nix-action@v31
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Server and test-owned runner
+        shell: bash
+        run: ./.devenv/devenv-profile-exec just build-live-corpus-test-runtime
+      - name: Upload Runtime artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-corpus-runtime-v1
+          path: |
+            target/release/asp
+            .cache/live-corpus-test/bin/live-corpus
+          if-no-files-found: error
+
+  provider-artifacts:
+    name: Build V1 provider artifact ${{ matrix.language }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.providers) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout provider build dependencies
+        shell: bash
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
+      - name: Install Nix for the project environment
+        uses: cachix/install-nix-action@v31
+      - name: Set up Rust
+        if: ${{ matrix.language == 'rust' }}
+        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Node
+        if: ${{ matrix.language == 'typescript' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/asp-typescript/package-lock.json
+      - name: Set up Python and uv
+        if: ${{ matrix.language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.language == 'python' }}
+        with:
+          enable-cache: true
+      - name: Set up Julia
+        if: ${{ matrix.language == 'julia' }}
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.12"
+      - name: Build provider workspace artifact without publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.language }}" in
+            rust) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-rust && just install' ;;
+            typescript) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-typescript && npm ci && npm run build' ;;
+            python) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-python && uv sync --frozen --no-editable --no-cache --reinstall-package asp-python' ;;
+            julia) ./.devenv/devenv-profile-exec bash -c 'cd languages/AspJulia.jl && ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 ASP_JULIA_BUILD_DIR=build/juliac-asp-local ./juliac/build_provider.sh' ;;
+            gerbil-scheme) ./.devenv/devenv-profile-exec just agent-tools-build-gerbil ;;
+          esac
+      - name: Pack relocatable provider artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.language }}" in
+            rust) paths=(languages/asp-rust/target/provider-runtime/asp-rust languages/asp-rust/provider/asp-provider-workspace-install.json) ;;
+            typescript) paths=(languages/asp-typescript/dist languages/asp-typescript/provider/asp-provider-workspace-install.json) ;;
+            python) paths=(languages/asp-python/.venv languages/asp-python/provider/asp-provider-workspace-install.json) ;;
+            julia) paths=(languages/AspJulia.jl/build/juliac-asp-local/asp-julia languages/AspJulia.jl/juliac/asp-provider-workspace-install.json) ;;
+            gerbil-scheme) paths=(languages/asp-gerbil-scheme/.gerbil/bin/asp-gerbil-scheme languages/asp-gerbil-scheme/provider/asp-provider-workspace-install.json) ;;
+          esac
+          tar -czf "$RUNNER_TEMP/live-corpus-provider-${{ matrix.language }}.tar.gz" "${paths[@]}"
+      - name: Upload provider artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-corpus-provider-v1-${{ matrix.language }}
+          path: ${{ runner.temp }}/live-corpus-provider-${{ matrix.language }}.tar.gz
+          if-no-files-found: error
 
   benchmark:
     name: V1 ${{ matrix.resource }}
-    needs: matrix
+    needs: [matrix, runtime-artifacts, provider-artifacts]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -47,7 +158,7 @@ jobs:
         shell: bash
         run: echo "ASP_STATE_HOME=$RUNNER_TEMP/asp-state-home" >> "$GITHUB_ENV"
 
-      - name: Checkout provider catalog submodules
+      - name: Checkout provider descriptors and embedded providers
         shell: bash
         run: |
           set -euo pipefail
@@ -62,9 +173,6 @@ jobs:
 
       - name: Install Nix for the project direnv environment
         uses: cachix/install-nix-action@v31
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Set up Node
         if: ${{ matrix.language == 'typescript' }}
@@ -91,26 +199,46 @@ jobs:
         with:
           version: "1.12"
 
-      - name: Publish the client and selected provider
+      - name: Download prebuilt Runtime artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: live-corpus-runtime-v1
+          path: ${{ runner.temp }}/live-corpus-runtime
+
+      - name: Download selected prebuilt provider artifact
+        if: ${{ matrix.language != 'md' && matrix.language != 'org' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: live-corpus-provider-v1-${{ matrix.language }}
+          path: ${{ runner.temp }}/live-corpus-provider
+
+      - name: Map immutable build artifacts into the test workspace
         shell: bash
         run: |
           set -euo pipefail
-          ./.devenv/devenv-profile-exec just agent-tools-install-client
-          case "${{ matrix.language }}" in
-            rust) ./.devenv/devenv-profile-exec just agent-tools-install-rs ;;
-            typescript) ./.devenv/devenv-profile-exec just agent-tools-install-ts ;;
-            python) ./.devenv/devenv-profile-exec just agent-tools-install-py ;;
-            julia) ./.devenv/devenv-profile-exec just agent-tools-install-julia ;;
-            gerbil-scheme) ./.devenv/devenv-profile-exec just agent-tools-install-gerbil ;;
-            md|org) ;;
-            *) echo "unsupported Live Corpus language: ${{ matrix.language }}" >&2; exit 2 ;;
-          esac
+          chmod 755 "$RUNNER_TEMP/live-corpus-runtime/target/release/asp"
+          chmod 755 "$RUNNER_TEMP/live-corpus-runtime/.cache/live-corpus-test/bin/live-corpus"
+          if [[ "${{ matrix.language }}" != md && "${{ matrix.language }}" != org ]]; then
+            tar -xzf "$RUNNER_TEMP/live-corpus-provider/live-corpus-provider-${{ matrix.language }}.tar.gz" -C "$GITHUB_WORKSPACE"
+          fi
 
       - name: Run isolated V1 Live Corpus qualification
         shell: bash
         run: |
           set -euo pipefail
-          ./.devenv/devenv-profile-exec just check-live-corpus-search-query-resource "${{ matrix.resource }}"
+          runner="$RUNNER_TEMP/live-corpus-runtime/.cache/live-corpus-test/bin/live-corpus"
+          export ASP_LIVE_CORPUS_SERVER_ARTIFACT="$RUNNER_TEMP/live-corpus-runtime/target/release/asp"
+          case "${{ matrix.language }}" in
+            rust) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-rust/provider/asp-provider-workspace-install.json" ;;
+            typescript) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-typescript/provider/asp-provider-workspace-install.json" ;;
+            python) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-python/provider/asp-provider-workspace-install.json" ;;
+            julia) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/AspJulia.jl/juliac/asp-provider-workspace-install.json" ;;
+            gerbil-scheme) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-gerbil-scheme/provider/asp-provider-workspace-install.json" ;;
+            md|org) unset ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR || true ;;
+          esac
+          ./.devenv/devenv-profile-exec "$runner" sync --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json
+          ./.devenv/devenv-profile-exec "$runner" materialize --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json
+          ./.devenv/devenv-profile-exec "$runner" qualify --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
 
       - name: Upload benchmark receipt
         if: ${{ always() }}

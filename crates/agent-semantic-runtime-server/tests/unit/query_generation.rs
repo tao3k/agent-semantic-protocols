@@ -345,8 +345,12 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
-        search_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
-        query_materializations: std::sync::Mutex::new(std::collections::HashMap::new()),
+        search_materializations: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
+        query_materializations: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     })
 }
 
@@ -450,20 +454,26 @@ async fn cancelled_query_waiter_does_not_cancel_shared_completion() {
     let generation = test_generation("generation-cancel");
     assert!(
         generation
-            .begin_query_materialization("key".into())
+            .begin_query_materialization("source\0key".into())
             .unwrap()
     );
     let waiting_generation = std::sync::Arc::clone(&generation);
-    let waiter =
-        tokio::spawn(async move { waiting_generation.await_query_materialization("key").await });
+    let waiter = tokio::spawn(async move {
+        waiting_generation
+            .await_query_materialization("source\0key")
+            .await
+    });
     tokio::task::yield_now().await;
     waiter.abort();
     assert!(matches!(waiter.await, Err(error) if error.is_cancelled()));
     generation
-        .publish_query_materialization("key".into(), Ok(serde_json::json!({"source": "exact"})))
+        .publish_query_materialization(
+            "source\0key".into(),
+            Ok(serde_json::json!({"source": "exact"})),
+        )
         .unwrap();
     assert!(
-        matches!(generation.await_query_materialization("key").await.unwrap(), RuntimeQueryMaterializationState::Ready(value) if value["source"] == "exact")
+        matches!(generation.await_query_materialization("source\0key").await.unwrap(), RuntimeQueryMaterializationState::Ready(value) if value["source"] == "exact")
     );
 }
 
@@ -600,7 +610,7 @@ fn search_materialization_failure_is_terminal_and_generation_local() {
 fn query_materialization_claims_once_and_preserves_a_generation_local_terminal() {
     let generation = test_generation("blake3-256:query-generation");
     let other_generation = test_generation("blake3-256:other-query-generation");
-    let key = "blake3-256:query-materialization".to_owned();
+    let key = "source\0blake3-256:query-materialization".to_owned();
 
     assert!(generation.begin_query_materialization(key.clone()).unwrap());
     assert!(!generation.begin_query_materialization(key.clone()).unwrap());

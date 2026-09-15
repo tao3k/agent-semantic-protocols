@@ -45,6 +45,7 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
         authority_ref: "async-snapshot-test".to_owned(),
         providers: vec![agent_semantic_client_core::RuntimeProvider {
             registration_digest: "blake3-256:provider".to_owned(),
+            execution_artifact_digest: "blake3-256:provider-binary".to_owned(),
             namespace: "agent.semantic-protocols.languages.rust".to_owned(),
             language_id: agent_semantic_client_core::LanguageId::from("rust"),
             provider_id: agent_semantic_client_core::ProviderId::from("asp-rust"),
@@ -143,6 +144,7 @@ async fn four_thousand_mixed_owner_snapshot_has_subsecond_cold_p95_and_stable_di
         authority_ref: "snapshot-performance-test".to_owned(),
         providers: vec![agent_semantic_client_core::RuntimeProvider {
             registration_digest: "blake3-256:provider".to_owned(),
+            execution_artifact_digest: "blake3-256:provider-binary".to_owned(),
             namespace: "agent.semantic-protocols.languages.rust".to_owned(),
             language_id: agent_semantic_client_core::LanguageId::from("rust"),
             provider_id: agent_semantic_client_core::ProviderId::from("asp-rust"),

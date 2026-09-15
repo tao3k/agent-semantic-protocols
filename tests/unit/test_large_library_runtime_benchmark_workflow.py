@@ -15,11 +15,17 @@ def test_v1_large_library_runtime_workflow_is_pinned_and_receipted() -> None:
     assert "name: Large Library Runtime Benchmark" in workflow
     assert "workflow_dispatch:" in workflow
     assert "schedule:" in workflow
-    assert "direnv exec ." in workflow
-    assert "source_index_1193_owner_cold_write_stays_inside_v1_gate" in workflow
-    assert "cargo test --release" in workflow
-    assert "benchmark-large-library-search-runtime-baseline" in workflow
-    assert "large-library-runtime-search.v1.baseline.json" in workflow
-    assert "git clone --filter=blob:none" in workflow
+    assert "runtime-artifacts:" in workflow
+    assert "provider-artifacts:" in workflow
+    assert "Build V1 Runtime artifacts once" in workflow
+    assert "Build provider workspace artifact without publication" in workflow
+    benchmark = workflow.split("  benchmark:", 1)[1]
+    assert "cargo " not in benchmark
+    assert "agent-tools-install" not in benchmark
+    assert "actions/download-artifact@v4" in benchmark
+    assert '"$runner" sync' in benchmark
+    assert '"$runner" materialize' in benchmark
+    assert '"$runner" qualify' in benchmark
+    assert "ASP_LIVE_CORPUS_SERVER_ARTIFACT" in benchmark
     assert "actions/upload-artifact@v4" in workflow
-    assert "large-library-runtime-search.v1.receipt.json" in workflow
+    assert "search-query-qualification/by-resource" in workflow
