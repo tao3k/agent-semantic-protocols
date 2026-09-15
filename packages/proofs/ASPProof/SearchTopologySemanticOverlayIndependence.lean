@@ -29,11 +29,13 @@ structure QueryOverlay where
 
 structure AgentOrgSummaryArtifact where
   contentGenerationDigest : Nat
+  baseTopologyDigest : Nat
   selectorDigest : Nat
   modelIdentityDigest : Nat
   promptDigest : Nat
   summaryDigest : Nat
   orgAstDigest : Nat
+  overlayDigest : Nat
   deriving DecidableEq, Repr
 
 structure RuntimeSemanticState where
@@ -49,11 +51,13 @@ def queryOverlayAdmitted
 def summaryOverlayAdmitted
     (core : SearchCoreIdentity) (artifact : AgentOrgSummaryArtifact) : Bool :=
   artifact.contentGenerationDigest == core.contentGenerationDigest &&
+    artifact.baseTopologyDigest == core.topologyDigest &&
     artifact.selectorDigest != 0 &&
     artifact.modelIdentityDigest != 0 &&
     artifact.promptDigest != 0 &&
     artifact.summaryDigest != 0 &&
-    artifact.orgAstDigest != 0
+    artifact.orgAstDigest != 0 &&
+    artifact.overlayDigest != 0
 
 def publishQueryOverlay
     (state : RuntimeSemanticState) (overlay : QueryOverlay) : RuntimeSemanticState :=
@@ -113,8 +117,9 @@ theorem query_and_summary_publication_commute
 def coreA : SearchCoreIdentity := ⟨11, 12, 13, 14⟩
 def stateA : RuntimeSemanticState := ⟨coreA, none, none⟩
 def queryA : QueryOverlay := ⟨11, 21, 22⟩
-def summaryA : AgentOrgSummaryArtifact := ⟨11, 21, 31, 32, 33, 34⟩
-def staleSummary : AgentOrgSummaryArtifact := ⟨99, 21, 31, 32, 33, 34⟩
+def summaryA : AgentOrgSummaryArtifact := ⟨11, 14, 21, 31, 32, 33, 34, 35⟩
+def staleSummary : AgentOrgSummaryArtifact := ⟨99, 14, 21, 31, 32, 33, 34, 35⟩
+def wrongBaseTopology : AgentOrgSummaryArtifact := ⟨11, 99, 21, 31, 32, 33, 34, 35⟩
 
 theorem matching_summary_is_admitted :
     summaryOverlayAdmitted coreA summaryA = true := by
@@ -124,6 +129,10 @@ theorem stale_summary_is_rejected :
     summaryOverlayAdmitted coreA staleSummary = false := by
   decide
 
+theorem overlay_for_another_base_topology_is_rejected :
+    summaryOverlayAdmitted coreA wrongBaseTopology = false := by
+  decide
+
 theorem stale_summary_cannot_replace_an_admitted_overlay :
     let admitted := publishSummaryOverlay stateA summaryA
     publishSummaryOverlay admitted staleSummary = admitted := by
@@ -131,6 +140,10 @@ theorem stale_summary_cannot_replace_an_admitted_overlay :
 
 theorem summary_requires_an_org_ast_digest :
     summaryOverlayAdmitted coreA { summaryA with orgAstDigest := 0 } = false := by
+  decide
+
+theorem summary_requires_an_overlay_digest :
+    summaryOverlayAdmitted coreA { summaryA with overlayDigest := 0 } = false := by
   decide
 
 end ASPProof.SearchTopologySemanticOverlayIndependence

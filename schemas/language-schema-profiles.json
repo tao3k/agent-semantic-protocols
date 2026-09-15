@@ -530,6 +530,7 @@
       "parentFamilyId": "asp.schema-family.semantic",
       "namespace": {
         "filenamePrefixes": [
+          "agent-org-topology-",
           "project-topology-"
         ]
       }

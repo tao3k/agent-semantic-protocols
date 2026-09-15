@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+#[path = "unit/agent_org_topology_overlay.rs"]
+mod agent_org_topology_overlay;
 #[path = "unit/project_topology_closure.rs"]
 mod project_topology_closure;
 #[path = "unit/project_topology_frontier.rs"]

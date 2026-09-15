@@ -26,11 +26,11 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "CARGO_BIN_EXE_asp",
         "RuntimeArtifactStateLayout",
         "verify_runtime_artifact_bound_bundle",
-        "mod harness",
+        concat!("mod ", "harness"),
     ] {
         assert!(
             !runner.contains(forbidden),
-            "Live Corpus runner retained forbidden installation/harness coupling: {forbidden}"
+            "Live Corpus runner retained forbidden product or test-namespace coupling: {forbidden}"
         );
     }
 

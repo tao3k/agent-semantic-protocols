@@ -122,6 +122,14 @@ scenario TOML, or mark the lexical-only prefix as a complete pass.  Root
 counterexamples feed back through this RFC, a Lean invariant or countermodel,
 and the owning Rust boundary before the scenario can become green.
 
+The V1 overlay packet is
+=agent.semantic-protocols.agent-org-topology-overlay=.  Its admission
+recomputes summary, Org source, Org syntax-tree, relationship-set, and overlay
+digests, then joins only when both =sourceGenerationDigest= and
+=baseTopologyGenerationDigest= equal the independently supplied Search
+topology.  The join returns an overlay; it has no API capable of rewriting the
+base topology library.
+
 * First divergence
 
 The qualification test can be admitted and enumerate the declared

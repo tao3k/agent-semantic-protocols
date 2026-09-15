@@ -5,6 +5,7 @@
 //! Project-wide topology identity and admission boundary.
 #![forbid(unsafe_code)]
 
+mod agent_org_topology_overlay;
 mod project_topology_closure;
 mod project_topology_frontier;
 mod project_topology_generation_builder;
@@ -15,6 +16,11 @@ mod project_topology_program_binding;
 mod project_topology_source_program;
 mod runtime_project_topology_attachment;
 
+pub use agent_org_topology_overlay::{
+    AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_ID, AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_VERSION,
+    AgentOrgTopologyOverlay, AgentOrgTopologyOverlayError, AgentOrgTopologyOverlayTerminal,
+    AgentTopologyRelationship,
+};
 pub use agent_semantic_content_identity::ProjectWorkspaceBinding;
 pub use project_topology_closure::{
     ProjectTopologyClosure, ProjectTopologyClosureBuilder, ProjectTopologyClosureError,
