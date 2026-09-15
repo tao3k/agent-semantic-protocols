@@ -22,6 +22,8 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
         native_syntax,
         graph,
         clause_order,
+        composition: _,
+        normalized_composition,
     } = request;
     let rg = (!rg.is_empty()).then_some(rg);
     let tantivy = (!tantivy.is_empty()).then_some(tantivy);
@@ -94,6 +96,7 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                     syntax,
                     native_syntax,
                     graph,
+                    composition: lower_protocol_composition(normalized_composition),
                     clause_order,
                 },
             )
@@ -106,6 +109,50 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
         crate::projection_presentation::render_workspace_search_playbook_gql(&frame)?
     );
     Ok(())
+}
+
+pub(crate) fn lower_protocol_composition(
+    composition: agent_semantic_search::SearchPlaybookNormalizedComposition,
+) -> agent_semantic_client_protocol::AspClientSearchPlaybookComposition {
+    use agent_semantic_client_protocol::AspClientSearchPlaybookComposition as Protocol;
+    use agent_semantic_search::SearchPlaybookNormalizedComposition as Parsed;
+
+    match composition {
+        Parsed::Chain(children) => Protocol::Chain {
+            children: children
+                .into_iter()
+                .map(lower_protocol_composition)
+                .collect(),
+        },
+        Parsed::Intersect(children) => Protocol::Intersect {
+            children: children
+                .into_iter()
+                .map(lower_protocol_composition)
+                .collect(),
+        },
+        Parsed::Leaf(clause) => Protocol::Leaf {
+            clause: agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
+                axis: match clause.axis {
+                    agent_semantic_search::SearchPlaybookClauseAxis::Rg => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Tantivy => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Syntax => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::NativeSyntax => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::NativeSyntax
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Graph => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Graph
+                    }
+                },
+                block_index: clause.block_index,
+            },
+        },
+    }
 }
 
 async fn compile_resident_syntax_blocks(

@@ -957,9 +957,8 @@ new schema version.
 The current TypeScript public discovery and materialization surfaces are:
 
 ```shell
-asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" ".") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
-asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus" "src/index.ts") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
-asp query playbook --language typescript --selector <exact-selector> --projection source --workspace main
+asp search playbook '(search (workspace "main") (producers (language typescript)) (intersect (rg "-n" "-F" "OrderStatus") (tantivy "title:OrderStatus^2 OR body:OrderStatus")))'
+asp query playbook '(query (workspace "main") (producers (language typescript)) (select (selectors "<exact-selector>") (projection source)))'
 ```
 
 Provider-internal parser and lexical stages may resolve reasoning owners,
@@ -980,7 +979,7 @@ docs, api, public-external-types, tests, and ingest views.
 The current Python public discovery and materialization surfaces are:
 
 ```shell
-asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" ".") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
+asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
 asp search playbook '(search (workspace "main") (producers (language python)) (intersect (rg "-n" "-F" "AspPythonReport" "src/asp_python/_cli.py") (tantivy "title:AspPythonReport^2 OR body:AspPythonReport")))'
 asp query playbook --language python --selector <exact-selector> --projection source --workspace main
 ```

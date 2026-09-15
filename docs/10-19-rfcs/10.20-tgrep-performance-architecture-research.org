@@ -379,9 +379,10 @@ common branch plus an absent branch and requires zero decoded postings; Lean's
 soundness obligations.  This changes query work only, not the V1 artifact or
 Search schema.
 
-For regexes with no sound mandatory trigram, V1's required =rg ∩ Tantivy=
-composition provides the bounded fallback: Tantivy is evaluated first and the
-resident exact matcher scans only that owner scope.  A standalone
+For regexes with no sound mandatory trigram, the resident exact matcher scans
+the complete admitted owner universe. Tantivy is not a legal bounded fallback:
+a top-k lexical set can omit an exact regex hit. It may constrain rg only when a
+generation-bound coverage witness proves =R(p) ⊆ T(q,k)=. A standalone
 =notMaterialized= plan still cannot publish absence.
 
 ** P2: build a compact mmap byte-coverage artifact

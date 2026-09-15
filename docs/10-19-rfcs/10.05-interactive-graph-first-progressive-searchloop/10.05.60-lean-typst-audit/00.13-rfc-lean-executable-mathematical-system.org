@@ -129,6 +129,18 @@ The public expression family is recursively defined over the normalized core:
     \mid \operatorname{intersect}(C,C).
 \]
 
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code :file ../../../../.data/search-composition-algebra.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Typed finite Search Composition
+$ C := "leaf"(s) | "chain"(C, C) | "intersect"(C, C) $
+$ "nodes"("leaf"(s)) = 1 $
+$ "nodes"("op"(l, r)) = "nodes"(l) + "nodes"(r) + 1 $
+$ "depth"("op"(l, r)) = max("depth"(l), "depth"(r)) + 1 $
+$ "admitted"(C, B) "iff"
+  "nodes"(C) <= B_n and "depth"(C) <= B_d and
+  "staticWork"(C) <= B_w $
+#+end_src
+
 POO/MRR may add an open family of surface forms, but every admitted macro must
 produce this registered core together with
 
@@ -155,15 +167,106 @@ depth (n+1). Thus expressiveness has no fixed depth bound, while each value is
 finite. Executability is a separate admission predicate:
 
 \[
- admitted(C,B)\iff nodes(C)\le B_n\land depth(C)\le B_d
+admitted(C,B)\iff nodes(C)\le B_n\land depth(C)\le B_d
                     \land staticWork(C)\le B_w.
 \]
 
+The theorem =chain_associative_projection_preserves_leaf_order= establishes
+that recursively regrouping =chain= does not change its ordered leaf
+projection. This is the proof obligation used before an associative recursive
+chain is projected to the registered V1 linear tail; it does not authorize
+flattening an =intersect= into a =chain= or moving a leaf across domains.
+
+Scope is an effect of the whole Search program, not an argument owned by a
+leaf.  Let an rg surface leaf carry either =inheritWorkspace= or an
+=explicitPath(p)= request.  Its lowering is:
+
+\[
+ lowerRg(r)=
+ \begin{cases}
+   leaf(lexicalAcquire) & r.scope=inheritWorkspace,\\
+   \varnothing & r.scope=explicitPath(p).
+ \end{cases}
+\]
+
+Lean proves =rg_scope_admitted_iff_inherited= and
+=explicit_rg_path_cannot_enter_composition=.  It also executes the domain
+checker: acquisition is recursively closed under =intersect= over rg/Tantivy
+leaves, while structural leaves cannot enter an acquisition intersection.
+Theorems =nested_acquisition_intersection_is_valid= and
+=structural_intersection_is_not_an_acquisition= pin both the positive and
+negative sides of that boundary.
+
 This distinction is the architectural value of Scheme composition: the
 language can grow through macro expansion and recursive algebra without
-turning one request into unbounded work. The current Rust lowerer rejects
-nested Composition, so recursive closure remains a typed conformance gap rather
-than a completed capability.
+turning one request into unbounded work. The Rust core now retains recursive
+Composition, admits nested acquisition =intersect= and post-acquisition
+=chain= only where they preserve the registered V1 execution edges, and rejects
+unrepresentable cross-domain topology before wire projection. POO/MRR macro
+expansion and its registry/artifact binding remain the preceding authority
+boundary rather than arbitrary evaluation inside Runtime.
+
+* Retrieval set algebra and engine choice
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-SET-ALGEBRA
+:END:
+
+For one immutable generation let =U= be its admitted document universe and
+define:
+
+\[
+ R(p)\subseteq U,\qquad T(q,k)\subseteq U,\qquad
+ S(s)\subseteq U\times Facts.
+\]
+
+=R= is regex truth over resident source bytes, =T= is the Tantivy result set
+under query/cutoff policy, and =S= is the provider-native structural fact
+relation.  Sharing =U= does not make =R= and =T= semantically equivalent.  An
+explicit Scheme =intersect= means set conjunction.  Using Tantivy merely as an
+optimizer prefilter for regex is sound exactly when a coverage witness proves
+
+\[
+ R(p)\subseteq T(q,k).
+\]
+
+Lean proves =prefilter_preserves_regex_iff_coverage=.  It also proves
+=equivalent_backends_make_intersection_redundant=: if =R=T=, calculating the
+intersection adds no semantic information.  The constructive theorem
+=missing_coverage_can_create_false_negative= prevents a top-k or approximate
+Tantivy result from silently narrowing regex truth.
+
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code :file ../../../../.data/search-retrieval-set-algebra.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Retrieval set algebra
+$ R(p) subset.eq U, quad T(q, k) subset.eq U, quad S(s) subset.eq U times "Facts" $
+$ "prefilter-safe"(R, T) "iff" R(p) subset.eq T(q, k) $
+$ R(p) = T(q, k) => "intersect"(R(p), T(q, k)) = R(p) $
+$ R(p) not subset.eq T(q, k) => "exists" x: R(x) and not T(x) $
+#+end_src
+
+Engine selection follows predicate class, not a mandatory partner matrix:
+
+| Predicate class | Primary algorithm | Excluded work |
+| regex content | resident rg-compatible matcher | no mandatory Tantivy |
+| ranked text | Tantivy | no mandatory regex verification |
+| structural | provider-native syntax/fact query | no rg or Tantivy acquisition |
+| exact selector | Query owner/selector index, then selected materialization | no Search acquisition |
+
+Lean proves =structural_search_excludes_lexical_acquisition= and
+=exact_selector_routes_to_query_index=.  A mixed expression may still combine
+engines, but only an explicit typed operator supplies its semantics.  Runtime
+MUST NOT inject =intersect(rg, tantivy)= merely because both engines are
+available.
+
+The executable V1 boundary retains this distinction as a payload-free recursive
+=composition= tree whose leaves reference normalized blocks. A flat leaf order
+is insufficient because it cannot distinguish conjunction from accidental
+co-presence. Runtime executes rg and Tantivy independently unless a future
+optimizer supplies the proven coverage premise =R(p) \subseteq T(q,k)=. For a
+nonempty explicit intersection, a child whose removal leaves the same result
+has zero marginal gain in that generation. The receipt records it; branch
+elimination additionally requires a generation-bound coverage or equivalence
+witness because one observed equality is not universal predicate equivalence.
 
 * Search and exact Query are different algorithms
 :PROPERTIES:
@@ -181,17 +284,19 @@ is the direct owner/selector index lookup, (M_{selected}) is zero or one
 selected materialization miss, and (E) encodes the terminal.  It contains no
 rg acquisition, Tantivy acquisition, owner-set intersection, or graph rank.
 
-Search executes:
+Search executes exactly one predicate-directed acquisition family, or an
+explicit composition of families. For an explicit rg/Tantivy intersection:
 
 \[
  S=N+G+A_{rg}(n_r)+A_t(n_t)+I(n_r+n_t)+P(n_f)+R(n_p)+E.
 \]
 
-Here (n_r,n_t) are complete rg/Tantivy candidate counts, (n_f) their fused
-owner count, and (n_p) grounded parser candidates.  Search owns discovery;
-Query owns direct exact materialization.  Lean proves the stage exclusion and
-inclusion statements =exact_query_excludes_search_acquisition= and
-=search_contains_both_acquisition_cores=.
+Here (n_r,n_t) are complete independently computed rg/Tantivy candidate counts,
+(n_f) their fused owner count, and (n_p) grounded parser candidates. Regex-only,
+ranked-text-only, and structural-only routes omit every irrelevant term. Search
+owns discovery; Query owns direct exact materialization. Lean proves
+=exact_query_excludes_search_acquisition= and
+=predicate_directed_search_has_no_mandatory_partner=.
 
 * Resident, incremental, and full-build work
 :PROPERTIES:

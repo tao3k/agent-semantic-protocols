@@ -31,15 +31,15 @@
       "additionalProperties": false,
       "required": ["layoutId", "shape", "requiredInputSets", "graphBarrierAfter"],
       "properties": {
-        "layoutId": {"const": "rg-tantivy-structural-scope"},
-        "shape": {"const": "intersect(rg,tantivy)->structural-scope-facts->graph?"},
+        "layoutId": {"enum": ["rg-tantivy-structural-scope", "predicate-directed-composition"]},
+        "shape": {"enum": ["intersect(rg,tantivy)->structural-scope-facts->graph?", "typed-set-source->typed-chain?->graph?"]},
         "requiredInputSets": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "array",
             "minItems": 1,
-            "items": {"enum": ["rg", "tantivy"]}
+            "items": {"enum": ["rg", "tantivy", "syntax", "native-syntax"]}
           }
         },
         "graphBarrierAfter": {"const": "structural-scope-facts"}

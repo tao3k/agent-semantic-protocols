@@ -118,8 +118,8 @@ mod workspace_playbook_result_tests;
 pub use agent_semantic_search_playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
-    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
-    parse_search_playbook_producer_declaration,
+    SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
+    parse_progressive_search_playbook_args, parse_search_playbook_producer_declaration,
 };
 pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
 pub use content_generation::CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID;

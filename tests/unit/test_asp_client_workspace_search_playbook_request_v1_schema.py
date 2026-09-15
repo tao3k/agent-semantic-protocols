@@ -62,12 +62,23 @@ def request() -> dict:
         "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
         "schemaVersion": "1",
         "language": "rust|python",
-        "rg": [["-n", "-g", "*.rs", "runtime|transport", "crates"]],
+        "rg": [["-n", "-g", "*.rs", "runtime|transport"]],
         "tantivy": [['title:"runtime transport"^2', "OR", "body:client"]],
+        "composition": {
+            "operator": "intersect",
+            "children": [leaf("rg"), leaf("tantivy")],
+        },
         "clauseOrder": [
             {"axis": "rg", "blockIndex": 0},
             {"axis": "tantivy", "blockIndex": 0},
         ],
+    }
+
+
+def leaf(axis: str, block_index: int = 0) -> dict:
+    return {
+        "operator": "leaf",
+        "clause": {"axis": axis, "blockIndex": block_index},
     }
 
 
@@ -90,7 +101,7 @@ def test_workspace_playbook_request_v1_accepts_document_producers() -> None:
 
 
 @pytest.mark.parametrize("fact_axis", ["syntax", "nativeSyntax"])
-def test_workspace_playbook_request_v1_rejects_fact_extraction_without_file_context(
+def test_workspace_playbook_request_v1_accepts_structural_only_search(
     fact_axis: str,
 ) -> None:
     value = {
@@ -98,9 +109,12 @@ def test_workspace_playbook_request_v1_rejects_fact_extraction_without_file_cont
         "schemaVersion": "1",
         "language": "rust",
         fact_axis: (
-            [{"producer": "rust", "argv": ["query"]}]
+            [{"producer": "rust", "plan": resident_plan()}]
             if fact_axis == "syntax"
             else ["rust://src/lib.rs#item/function/main"]
+        ),
+        "composition": leaf(
+            "syntax" if fact_axis == "syntax" else "native-syntax"
         ),
         "clauseOrder": [
             {
@@ -109,8 +123,7 @@ def test_workspace_playbook_request_v1_rejects_fact_extraction_without_file_cont
             }
         ],
     }
-    with pytest.raises(jsonschema.ValidationError):
-        VALIDATOR.validate(value)
+    VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_rejects_contract_only_invocation() -> None:
@@ -131,14 +144,17 @@ def test_workspace_playbook_request_v1_rejects_unknown_axis() -> None:
 
 
 @pytest.mark.parametrize("missing", ["rg", "tantivy"])
-def test_workspace_playbook_request_v1_pairs_rg_and_tantivy(missing: str) -> None:
+def test_workspace_playbook_request_v1_admits_independent_retrieval_engine(
+    missing: str,
+) -> None:
     value = request()
     del value[missing]
     value["clauseOrder"] = [
         clause for clause in value["clauseOrder"] if clause["axis"] != missing
     ]
-    with pytest.raises(jsonschema.ValidationError):
-        VALIDATOR.validate(value)
+    remaining = "tantivy" if missing == "rg" else "rg"
+    value["composition"] = leaf(remaining)
+    VALIDATOR.validate(value)
 
 
 def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_distinct() -> None:
@@ -146,7 +162,7 @@ def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_di
         "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
         "schemaVersion": "1",
         "language": "rust",
-        "rg": [["-n", "Registry", "src"]],
+        "rg": [["-n", "Registry"]],
         "tantivy": [["title:\"Registry\"^2", "OR", "body:implementation"]],
         "syntax": [
             {
@@ -157,6 +173,17 @@ def test_workspace_playbook_request_v1_keeps_syntax_query_and_native_selector_di
         "nativeSyntax": [
             "rust://src/registry.rs#item/implementation/type/Registry"
         ],
+        "composition": {
+            "operator": "chain",
+            "children": [
+                {
+                    "operator": "intersect",
+                    "children": [leaf("rg"), leaf("tantivy")],
+                },
+                leaf("syntax"),
+                leaf("native-syntax"),
+            ],
+        },
         "clauseOrder": [
             {"axis": "rg", "blockIndex": 0},
             {"axis": "tantivy", "blockIndex": 0},

@@ -86,7 +86,7 @@ fn workspace_search_playbook_command() -> Command {
                 .help("One (search ...) expression compiled by the MRR-owned Search Playbook macro"),
         )
         .after_help(
-            "Example: (search (producers (language rust) (documents org)) (chain (intersect (rg \"-n\" \"owner\" \".\") (tantivy \"title:owner^2 OR body:authority\")) (syntax rust \"((function_item) @item (#asp-select! @item \\\"kind\\\" \\\"name\\\" \\\"selector\\\"))\"))). String-native argv and the single enhanced Tree-sitter Query source remain Scheme strings. V1 begins with intersect(rg, tantivy), chain adds structural stages, and graph remains the final barrier. The MRR-owned macro may add new POO Flow forms before the normalized Runtime request admits them.",
+            "Example: (search (producers (language rust)) (syntax rust \"((function_item) @item (#asp-select! @item \\\"kind\\\" \\\"name\\\" \\\"selector\\\"))\")). Choose rg for regex truth, Tantivy for ranked text, syntax for structural facts, and Query for a known exact selector. There is no mandatory engine pair. The rg leaf owns regex predicates, options, and globs but no path; the top-level Workspace binding owns scope. Intersect is an explicit conjunction over independently computed complete sets, chain adds typed scope transforms, and graph remains the final barrier. The MRR-owned macro may add new POO Flow forms before the normalized Runtime request admits them.",
         )
 }
 

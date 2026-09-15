@@ -65,8 +65,8 @@ asp search playbook '<one (search ...) Scheme expression>'
 to the generation-bound candidate graph.  This does not imply persistent
 storage: durable PGQ storage is a separate registry-owned backend used only
 for admitted low-volatility facts.  The public CLI accepts native arguments in
-this shape. Native rg argv carries filename, path, glob, type, and exact-content
-scope:
+this shape. Native rg argv carries regex, glob, type, and exact-content
+predicates. The top-level registered Workspace binding alone carries scope:
 
 #+begin_src sh
 asp search playbook '
@@ -75,8 +75,7 @@ asp search playbook '
     (chain
       (intersect
         (rg "-n" "-g" "*.rs" "-g" "*.py" "-g" "*.org" "-g" "*.md"
-            "-e" "ASP_RUNTIME_CLIENT_FD|transport-unavailable|ClientFrame"
-            "crates" "languages" "docs")
+            "-e" "ASP_RUNTIME_CLIENT_FD|transport-unavailable|ClientFrame")
         (tantivy "title:\"surface failure\"^2 OR body:transport"))
       (syntax rust
         "((_) @item
@@ -128,16 +127,17 @@ The single request satisfies =SP-REQUEST-002= and =SP-GRAMMAR-003=.
 * Request completeness and typed rejection
 
 Every complete request carries one =(search ...)= expression with at least one
-producer axis and a paired rg/Tantivy acquisition composition.
+producer axis and one predicate-directed set source: =rg= for regex truth,
+=tantivy= for ranked text, or =syntax=/=native-syntax= for structural truth.
 Host and Runtime bind the current =ProjectId=,
 =WorkspaceId=, source generation, and compiled layout identity; they are receipt
-fields, not Agent-authored executable code. The default layout is exactly
-=intersect(rg-owner-set, tantivy-owner-set) -> structural-scope-facts -> graph?=: rg and
-Tantivy consume one immutable generation owner universe, their intersection is
-the file-context scope. The structural-scope node then selects either the union
-of admitted explicit syntax/native-syntax matches or, when neither explicit
-input is present, automatic parser grounding. Both paths derive selectors and
-syntax/content facts inside that fused scope. Other
+fields, not Agent-authored executable code. There is no default engine pair.
+An explicit =intersect= denotes a real conjunction of independently evaluated
+complete set predicates; co-presence never implies intersection, and Tantivy is
+never injected as an rg prefilter without a generation-bound coverage witness.
+The structural-scope node then narrows the selected owner frontier using
+admitted explicit syntax/native-syntax predicates or, when neither is present,
+automatic parser grounding. Other
 registered layouts may declare serial =scope-transform= edges. Graph consumes
 only structurally grounded candidates and is not an independent vote
 (=SP-LAYOUT-004=).

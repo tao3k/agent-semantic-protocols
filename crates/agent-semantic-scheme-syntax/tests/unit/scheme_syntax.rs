@@ -35,7 +35,7 @@ fn incomplete_source_preserves_tree_sitter_location() {
 
 #[test]
 fn datum_lowering_preserves_nested_lists_and_string_escapes() {
-    let datums = parse_scheme_datums(r#"(search (rg "line\nvalue" "."))"#)
+    let datums = parse_scheme_datums(r#"(search (rg "line\nvalue"))"#)
         .expect("supported Scheme datum subset");
     assert_eq!(
         datums,
@@ -44,7 +44,6 @@ fn datum_lowering_preserves_nested_lists_and_string_escapes() {
             SchemeDatum::List(vec![
                 SchemeDatum::Symbol("rg".to_owned()),
                 SchemeDatum::String("line\nvalue".to_owned()),
-                SchemeDatum::String(".".to_owned()),
             ]),
         ])]
     );

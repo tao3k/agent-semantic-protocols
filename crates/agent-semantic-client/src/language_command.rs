@@ -17,6 +17,7 @@ use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
+use agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextRequest;
 use agent_semantic_client_protocol::ClientFrame;
 use agent_semantic_client_protocol::ClientOutcome;
 
@@ -24,6 +25,7 @@ use agent_semantic_client_protocol::ClientOutcome;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LanguageCommandOperation {
     WorkspaceSearchPlaybook(AspClientWorkspaceSearchPlaybookRequest),
+    WorkspaceSyntaxPlanContext(AspClientWorkspaceSyntaxPlanContextRequest),
     WorkspaceQueryPlaybook(AspClientWorkspaceQueryPlaybookRequest),
     ExactQuery(AspClientExactQueryRequest),
 }
@@ -34,6 +36,12 @@ impl LanguageCommandOperation {
             Self::WorkspaceSearchPlaybook(request) => encode_operation(
                 LanguageCommandRoute::Server(
                     agent_semantic_client_protocol::WORKSPACE_SEARCH_PLAYBOOK_METHOD,
+                ),
+                request,
+            ),
+            Self::WorkspaceSyntaxPlanContext(request) => encode_operation(
+                LanguageCommandRoute::Server(
+                    agent_semantic_client_protocol::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD,
                 ),
                 request,
             ),

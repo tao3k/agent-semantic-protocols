@@ -16,9 +16,21 @@ use agent_semantic_search::{
     WorkspaceSearchClauseReceipt, WorkspaceSearchPlaybookPlan, WorkspaceSearchSyntaxCandidate,
 };
 
+#[path = "runtime_workspace_search_structural_scope.rs"]
+mod structural_scope;
+pub(super) use structural_scope::{
+    bounded_graph_seed_scope, compile_graph_relation_pattern, intersect_clause_owner_scopes,
+    syntax_candidates_enclosing_rg_matches,
+};
+#[cfg(test)]
+use structural_scope::{
+    fused_file_context_scope, smallest_selector_overlapping_line, source_line_ranges,
+};
+
 pub(super) struct ProgressiveSearchEvidence {
     pub(super) clause_receipts: Vec<WorkspaceSearchClauseReceipt>,
     pub(super) syntax_candidates: Vec<WorkspaceSearchSyntaxCandidate>,
+    pub(super) graph_seed_scope: BTreeSet<String>,
     pub(super) graph_query_clauses: Vec<GraphNativeBlock>,
     pub(super) graph_relation_patterns: Vec<agent_semantic_search::ResidentGraphRelationPattern>,
     pub(super) execution_budget:
@@ -43,11 +55,44 @@ struct SearchClauseExecution {
     syntax_candidates: Vec<WorkspaceSearchSyntaxCandidate>,
 }
 
+struct SearchClauseMetrics {
+    input_owner_count: usize,
+    marginal_owner_reduction: Option<usize>,
+    elapsed_micros: u64,
+    coverage_complete: bool,
+    truncated: bool,
+}
+
 struct RetrievalLayoutExecution {
     clauses: Vec<SearchClauseExecution>,
     fused_scope: BTreeSet<String>,
     fused_matches: Vec<RuntimeGrepMatch>,
     tantivy_expressions_by_owner: BTreeMap<String, BTreeSet<String>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RetrievalCompositionKind {
+    None,
+    Single,
+    Intersect,
+}
+
+fn retrieval_composition_kind(
+    composition: &agent_semantic_client_protocol::AspClientSearchPlaybookComposition,
+) -> RetrievalCompositionKind {
+    use agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis as Axis;
+    use agent_semantic_client_protocol::AspClientSearchPlaybookComposition as Composition;
+
+    match composition {
+        Composition::Leaf { clause } if matches!(clause.axis, Axis::Rg | Axis::Tantivy) => {
+            RetrievalCompositionKind::Single
+        }
+        Composition::Leaf { .. } => RetrievalCompositionKind::None,
+        Composition::Intersect { .. } => RetrievalCompositionKind::Intersect,
+        Composition::Chain { children } => children
+            .first()
+            .map_or(RetrievalCompositionKind::None, retrieval_composition_kind),
+    }
 }
 
 #[expect(
@@ -120,10 +165,10 @@ pub(super) async fn execute_progressive_search_clauses(
         input_rank += 1;
     }
 
-    // The admitted layout, rather than CLI spelling order, owns execution:
-    // rg and Tantivy first determine one fused file-context scope; explicit
-    // syntax/native-syntax queries then determine the structural frontier
-    // inside it.
+    // The admitted typed route, rather than engine availability, owns
+    // execution. Regex and ranked-text leaves run independently unless an
+    // explicit intersection includes both; structural-only routes begin from
+    // the immutable Workspace universe and do no lexical acquisition.
     let retrieval_started = std::time::Instant::now();
     let retrieval_permit = generation
         .acquire_search_resources(
@@ -137,6 +182,7 @@ pub(super) async fn execute_progressive_search_clauses(
         .await
         .map_err(AspClientOperationError::Message)?;
     let retrieval_resource_receipt = retrieval_permit.receipt();
+    let has_retrieval_clauses = !retrieval_clauses.is_empty();
     let retrieval_plan = plan.clone();
     let retrieval_generation = Arc::clone(&generation);
     let retrieval_budget = execution_budget.clone();
@@ -158,56 +204,26 @@ pub(super) async fn execute_progressive_search_clauses(
     retrieval_permit.release_cpu();
     let retrieval_micros = retrieval_started.elapsed().as_micros();
     let owner_materialization_started = std::time::Instant::now();
-    let mut resident =
-        if let Some(resident) = resident_semantic_scope(&generation, &retrieval.fused_scope)? {
-            resident
-        } else {
-            owner_materializer
-                .ensure_candidates(
-                    request_id,
-                    workspace_identity,
-                    project_root,
-                    parser_artifact_root,
-                    generation.generation_digest(),
-                    &retrieval.fused_scope,
-                    providers,
-                    runtime_search_service,
-                    workspace_registry,
-                )
-                .await?
-                .into()
-        };
-    let topology_scope = if graph_query_clauses.is_empty() {
-        retrieval.fused_scope.clone()
+    let resident = if !has_retrieval_clauses {
+        generation.resident_arc()
+    } else if let Some(resident) = resident_semantic_scope(&generation, &retrieval.fused_scope)? {
+        resident
     } else {
-        relation_neighbor_scope(
-            &resident,
-            &retrieval.fused_scope,
-            execution_budget
-                .graph_candidate_owner_limit()
-                .max(retrieval.fused_scope.len()),
-        )?
+        owner_materializer
+            .ensure_candidates(
+                request_id,
+                workspace_identity,
+                project_root,
+                parser_artifact_root,
+                generation.generation_digest(),
+                &retrieval.fused_scope,
+                providers,
+                runtime_search_service,
+                workspace_registry,
+            )
+            .await?
+            .into()
     };
-    if topology_scope != retrieval.fused_scope {
-        resident = if let Some(resident) = resident_semantic_scope(&generation, &topology_scope)? {
-            resident
-        } else {
-            owner_materializer
-                .ensure_candidates(
-                    request_id,
-                    workspace_identity,
-                    project_root,
-                    parser_artifact_root,
-                    generation.generation_digest(),
-                    &topology_scope,
-                    providers,
-                    runtime_search_service,
-                    workspace_registry,
-                )
-                .await?
-                .into()
-        };
-    }
     let owner_materialization_micros = owner_materialization_started.elapsed().as_micros();
     let structural_started = std::time::Instant::now();
     let mut structural_resource_receipt = None;
@@ -259,20 +275,28 @@ pub(super) async fn execute_progressive_search_clauses(
                 .flatten()
                 .cloned()
                 .collect();
-            if !candidate.hit.rg.is_empty() {
+            if !candidate.hit.rg.is_empty() && !candidate.hit.tantivy.is_empty() {
                 candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
+            } else if !candidate.hit.rg.is_empty() {
+                candidate.relation = "native-parser:rg-grounded".to_owned();
+            } else if !candidate.hit.tantivy.is_empty() {
+                candidate.relation = "native-parser:tantivy-owner-scope".to_owned();
             }
         }
-        if let Some(clause) = retrieval
-            .clauses
-            .iter_mut()
-            .find(|clause| clause.receipt.axis == WorkspaceSearchAxisKind::Rg)
-        {
+        if let Some(clause) = retrieval.clauses.iter_mut().find(|clause| {
+            matches!(
+                clause.receipt.axis,
+                WorkspaceSearchAxisKind::Rg | WorkspaceSearchAxisKind::Tantivy
+            )
+        }) {
             clause.syntax_candidates = syntax_candidates;
         }
     }
     let mut clause_executions = retrieval.clauses;
+    let mut structural_scope = retrieval.fused_scope.clone();
     for (axis, block_index, priority_rank) in structural_clauses {
+        let clause_started = std::time::Instant::now();
+        let input_owner_count = structural_scope.len();
         let mut syntax_candidates = Vec::new();
         let receipt = match axis {
             SearchPlaybookClauseAxis::Rg | SearchPlaybookClauseAxis::Tantivy => {
@@ -300,7 +324,7 @@ pub(super) async fn execute_progressive_search_clauses(
                     .resident_read_client(workspace_identity, project_root)
                     .map_err(AspClientOperationError::Message)?;
                 let evidence = if let Some(evidence) = generation
-                    .resident_syntax_scope_evidence(&block.plan.plan_digest, &retrieval.fused_scope)
+                    .resident_syntax_scope_evidence(&block.plan.plan_digest, &structural_scope)
                     .map_err(AspClientOperationError::Message)?
                 {
                     evidence
@@ -312,14 +336,14 @@ pub(super) async fn execute_progressive_search_clauses(
                             &structural_resident,
                             providers,
                             execution_budget.syntax_selector_limit(),
-                            Some(&retrieval.fused_scope),
+                            Some(&structural_scope),
                         )
                         .await?,
                     );
                     generation
                         .publish_resident_syntax_scope_evidence(
                             block.plan.plan_digest.clone(),
-                            retrieval.fused_scope.clone(),
+                            structural_scope.clone(),
                             Arc::clone(&evidence),
                         )
                         .map_err(AspClientOperationError::Message)?;
@@ -331,6 +355,7 @@ pub(super) async fn execute_progressive_search_clauses(
                     .collect::<BTreeSet<_>>()
                     .into_iter()
                     .collect();
+                structural_scope = evidence.iter().map(|item| item.owner.clone()).collect();
                 syntax_candidates.extend(evidence.iter().map(|item| {
                     WorkspaceSearchSyntaxCandidate {
                         owner: item.owner.clone(),
@@ -347,8 +372,14 @@ pub(super) async fn execute_progressive_search_clauses(
                     block_index,
                     priority_rank,
                     owners,
-                    evidence.len() < execution_budget.syntax_selector_limit(),
-                    evidence.len() == execution_budget.syntax_selector_limit(),
+                    SearchClauseMetrics {
+                        input_owner_count,
+                        marginal_owner_reduction: None,
+                        elapsed_micros: elapsed_micros(clause_started),
+                        coverage_complete: evidence.len()
+                            < execution_budget.syntax_selector_limit(),
+                        truncated: evidence.len() == execution_budget.syntax_selector_limit(),
+                    },
                 )
             }
             SearchPlaybookClauseAxis::NativeSyntax => {
@@ -366,9 +397,9 @@ pub(super) async fn execute_progressive_search_clauses(
                 let owner = canonical
                     .owner_path()
                     .map_err(AspClientOperationError::Message)?;
-                if !retrieval.fused_scope.contains(&owner) {
+                if !structural_scope.contains(&owner) {
                     return Err(AspClientOperationError::Message(format!(
-                        "native-syntax selector owner is outside the fused rg/Tantivy file-context scope: {owner}"
+                        "native-syntax selector owner is outside the preceding typed Search scope: {owner}"
                     )));
                 }
                 let resident = workspace_registry
@@ -403,13 +434,20 @@ pub(super) async fn execute_progressive_search_clauses(
                         ..Default::default()
                     },
                 });
+                structural_scope.clear();
+                structural_scope.insert(owner.clone());
                 complete_receipt(
                     WorkspaceSearchAxisKind::NativeSyntax,
                     block_index,
                     priority_rank,
                     vec![owner],
-                    true,
-                    false,
+                    SearchClauseMetrics {
+                        input_owner_count,
+                        marginal_owner_reduction: None,
+                        elapsed_micros: elapsed_micros(clause_started),
+                        coverage_complete: true,
+                        truncated: false,
+                    },
                 )
             }
             SearchPlaybookClauseAxis::Graph => unreachable!("Graph is a fan-in barrier"),
@@ -427,11 +465,24 @@ pub(super) async fn execute_progressive_search_clauses(
         clause_receipts.push(execution.receipt);
         syntax_candidates.extend(execution.syntax_candidates);
     }
+    let graph_seed_scope = structural_scope;
+    let topology_scope = if graph_query_clauses.is_empty() {
+        graph_seed_scope.clone()
+    } else {
+        relation_neighbor_scope(
+            &resident,
+            &graph_seed_scope,
+            execution_budget
+                .graph_candidate_owner_limit()
+                .max(graph_seed_scope.len()),
+        )?
+    };
     let structural_micros = structural_started.elapsed().as_micros();
 
     Ok(ProgressiveSearchEvidence {
         clause_receipts,
         syntax_candidates,
+        graph_seed_scope,
         graph_query_clauses,
         graph_relation_patterns,
         execution_budget,
@@ -519,10 +570,21 @@ fn execute_default_retrieval_layout(
     budget: &crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget,
     clauses: &[(SearchPlaybookClauseAxis, usize, usize)],
 ) -> Result<RetrievalLayoutExecution, AspClientOperationError> {
+    let retrieval_composition = retrieval_composition_kind(&plan.axes.composition);
     if clauses.is_empty() {
+        if retrieval_composition != RetrievalCompositionKind::None {
+            return Err(AspClientOperationError::Message(
+                "Search composition declares retrieval without a normalized retrieval block"
+                    .to_owned(),
+            ));
+        }
         return Ok(RetrievalLayoutExecution {
             clauses: Vec::new(),
-            fused_scope: BTreeSet::new(),
+            fused_scope: generation
+                .resident()
+                .indexed_owner_paths()
+                .into_iter()
+                .collect(),
             fused_matches: Vec::new(),
             tantivy_expressions_by_owner: BTreeMap::new(),
         });
@@ -537,19 +599,17 @@ fn execute_default_retrieval_layout(
         .copied()
         .filter(|(axis, _, _)| *axis == SearchPlaybookClauseAxis::Tantivy)
         .collect::<Vec<_>>();
-    if rg_clauses.is_empty() || tantivy_clauses.is_empty() {
+    if retrieval_composition == RetrievalCompositionKind::None {
         return Err(AspClientOperationError::Message(
-            "Search Layout requires rg and Tantivy shared-scope inputs together".to_owned(),
+            "Search retrieval blocks are absent from the normalized composition".to_owned(),
         ));
     }
-    let exact_rg_owner_scope = exact_rg_owner_scope(plan, generation, &rg_clauses);
-
-    // Tantivy is evaluated independently first. Besides ranked recall, its
-    // bounded owner set is the sound fused scope for V1 regexes that cannot
-    // produce mandatory trigrams (short patterns and Unicode case folding).
+    // Each backend is an independent set producer.  When both are present the
+    // admitted Scheme intersection authorizes fusion; neither backend is
+    // invented as a mandatory partner for the other.
     let mut tantivy_results = Vec::with_capacity(tantivy_clauses.len());
-    let mut tantivy_clause_scopes = Vec::with_capacity(tantivy_clauses.len());
     for (_, block_index, priority_rank) in tantivy_clauses {
+        let clause_started = std::time::Instant::now();
         let block = plan.axes.tantivy.get(block_index).ok_or_else(|| {
             AspClientOperationError::Message("Tantivy clause index is out of bounds".to_owned())
         })?;
@@ -557,18 +617,32 @@ fn execute_default_retrieval_layout(
             block,
             &plan.routes,
             generation,
-            exact_rg_owner_scope.as_deref(),
+            None,
             budget.lexical_owner_limit(),
         )?;
-        result.require_complete_fused_scope()?;
-        tantivy_clause_scopes.push(result.owners.iter().cloned().collect());
-        tantivy_results.push((block_index, priority_rank, block.join(" "), result));
+        if retrieval_composition == RetrievalCompositionKind::Intersect {
+            result.require_complete_fused_scope()?;
+        }
+        tantivy_results.push((
+            block_index,
+            priority_rank,
+            block.join(" "),
+            result,
+            elapsed_micros(clause_started),
+        ));
     }
-    let tantivy_scope = intersect_clause_owner_scopes(&tantivy_clause_scopes);
+    // Execute rg against the complete indexed Workspace universe.  Tantivy is
+    // not a legal rg prefilter merely because the Agent wrote an intersection:
+    // that rewrite is sound only with a coverage witness R(p) ⊆ T(q, k).
+    let rg_constraint_scope = generation
+        .resident()
+        .indexed_owner_paths()
+        .into_iter()
+        .collect();
 
     let mut rg_results = Vec::with_capacity(rg_clauses.len());
-    let mut rg_clause_scopes = Vec::with_capacity(rg_clauses.len());
     for (_, block_index, priority_rank) in rg_clauses {
+        let clause_started = std::time::Instant::now();
         let block = plan.axes.rg.get(block_index).ok_or_else(|| {
             AspClientOperationError::Message("rg clause index is out of bounds".to_owned())
         })?;
@@ -577,7 +651,7 @@ fn execute_default_retrieval_layout(
             std::slice::from_ref(block),
             budget.rg_match_limit(),
             |candidate_plan, limit| {
-                resident_grep_candidate_scope(candidate_plan, &tantivy_scope, limit, || {
+                resident_grep_candidate_scope(candidate_plan, &rg_constraint_scope, limit, || {
                     generation
                         .resident()
                         .resident_grep_candidate_owner_paths(candidate_plan, limit)
@@ -604,20 +678,61 @@ fn execute_default_retrieval_layout(
                 AspClientOperationError::Message(message)
             }
         })?;
-        rg_clause_scopes.push(result.candidate_owner_paths.iter().cloned().collect());
-        rg_results.push((block_index, priority_rank, result));
+        rg_results.push((
+            block_index,
+            priority_rank,
+            result,
+            elapsed_micros(clause_started),
+        ));
     }
 
-    let rg_scope = intersect_clause_owner_scopes(&rg_clause_scopes);
-    let fused_scope = fused_file_context_scope(&rg_scope, &tantivy_scope);
+    let retrieval_branch_scopes = rg_results
+        .iter()
+        .map(|(block_index, _, result, _)| {
+            (
+                WorkspaceSearchAxisKind::Rg,
+                *block_index,
+                result.candidate_owner_paths.iter().cloned().collect(),
+            )
+        })
+        .chain(
+            tantivy_results
+                .iter()
+                .map(|(block_index, _, _, result, _)| {
+                    (
+                        WorkspaceSearchAxisKind::Tantivy,
+                        *block_index,
+                        result.owners.iter().cloned().collect(),
+                    )
+                }),
+        )
+        .collect::<Vec<(_, _, BTreeSet<String>)>>();
+    let branch_marginal_reductions = branch_marginal_reductions(&retrieval_branch_scopes);
+    let fused_scope = match retrieval_composition {
+        RetrievalCompositionKind::Single => retrieval_branch_scopes
+            .first()
+            .map(|(_, _, scope)| scope.clone())
+            .ok_or_else(|| {
+                AspClientOperationError::Message(
+                    "Search single retrieval composition has no branch".to_owned(),
+                )
+            })?,
+        RetrievalCompositionKind::Intersect => intersect_clause_owner_scopes(
+            &retrieval_branch_scopes
+                .iter()
+                .map(|(_, _, scope)| scope.clone())
+                .collect::<Vec<_>>(),
+        ),
+        RetrievalCompositionKind::None => unreachable!("retrieval absence rejected above"),
+    };
     let fused_matches = rg_results
         .iter()
-        .flat_map(|(_, _, result)| result.grounding_matches.iter())
+        .flat_map(|(_, _, result, _)| result.grounding_matches.iter())
         .filter(|matched| fused_scope.contains(&matched.owner_path))
         .cloned()
         .collect::<Vec<_>>();
     let mut tantivy_expressions_by_owner = BTreeMap::<String, BTreeSet<String>>::new();
-    for (_, _, expression, result) in &tantivy_results {
+    for (_, _, expression, result, _) in &tantivy_results {
         for owner in &result.owners {
             tantivy_expressions_by_owner
                 .entry(owner.clone())
@@ -626,12 +741,12 @@ fn execute_default_retrieval_layout(
         }
     }
     let mut executions = Vec::with_capacity(rg_results.len() + tantivy_results.len());
-    for (block_index, priority_rank, result) in rg_results {
-        let candidate_owners = result
-            .candidate_owner_paths
-            .into_iter()
-            .filter(|owner| fused_scope.contains(owner))
-            .collect();
+    let input_owner_count = generation.resident().indexed_owner_paths().len();
+    for (block_index, priority_rank, result, elapsed_micros) in rg_results {
+        let candidate_owners = result.candidate_owner_paths;
+        let marginal_owner_reduction = branch_marginal_reductions
+            .get(&(WorkspaceSearchAxisKind::Rg, block_index))
+            .copied();
         executions.push(SearchClauseExecution {
             priority_rank,
             receipt: complete_receipt(
@@ -639,13 +754,21 @@ fn execute_default_retrieval_layout(
                 block_index,
                 priority_rank,
                 candidate_owners,
-                !result.truncated,
-                result.truncated,
+                SearchClauseMetrics {
+                    input_owner_count,
+                    marginal_owner_reduction,
+                    elapsed_micros,
+                    coverage_complete: !result.truncated,
+                    truncated: result.truncated,
+                },
             ),
             syntax_candidates: Vec::new(),
         });
     }
-    for (block_index, priority_rank, _, result) in tantivy_results {
+    for (block_index, priority_rank, _, result, elapsed_micros) in tantivy_results {
+        let marginal_owner_reduction = branch_marginal_reductions
+            .get(&(WorkspaceSearchAxisKind::Tantivy, block_index))
+            .copied();
         executions.push(SearchClauseExecution {
             priority_rank,
             receipt: complete_receipt(
@@ -653,8 +776,13 @@ fn execute_default_retrieval_layout(
                 block_index,
                 priority_rank,
                 result.owners,
-                !result.truncated,
-                result.truncated,
+                SearchClauseMetrics {
+                    input_owner_count,
+                    marginal_owner_reduction,
+                    elapsed_micros,
+                    coverage_complete: !result.truncated,
+                    truncated: result.truncated,
+                },
             ),
             syntax_candidates: Vec::new(),
         });
@@ -665,29 +793,6 @@ fn execute_default_retrieval_layout(
         fused_matches,
         tantivy_expressions_by_owner,
     })
-}
-
-fn exact_rg_owner_scope(
-    plan: &WorkspaceSearchPlaybookPlan,
-    generation: &RuntimeQueryGeneration,
-    rg_clauses: &[(SearchPlaybookClauseAxis, usize, usize)],
-) -> Option<Vec<String>> {
-    let mut owners = BTreeSet::new();
-    for (_, block_index, _) in rg_clauses {
-        let block = plan.axes.rg.get(*block_index)?;
-        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(block);
-        if !analysis.is_admitted() || analysis.search_roots.is_empty() {
-            return None;
-        }
-        for root in &analysis.search_roots {
-            let owner = root.value.trim_end_matches('/');
-            if !generation.resident().contains_indexed_owner(owner) {
-                return None;
-            }
-            owners.insert(owner.to_owned());
-        }
-    }
-    (!owners.is_empty()).then(|| owners.into_iter().collect())
 }
 
 fn resident_grep_candidate_scope(
@@ -730,196 +835,6 @@ fn resident_grep_candidate_scope(
             lookup_nanos: 0,
         },
     ))
-}
-
-fn fused_file_context_scope(
-    rg_scope: &BTreeSet<String>,
-    tantivy_scope: &BTreeSet<String>,
-) -> BTreeSet<String> {
-    rg_scope.intersection(tantivy_scope).cloned().collect()
-}
-
-fn intersect_clause_owner_scopes(scopes: &[BTreeSet<String>]) -> BTreeSet<String> {
-    let Some((smallest_index, smallest)) = scopes
-        .iter()
-        .enumerate()
-        .min_by_key(|(_, scope)| scope.len())
-    else {
-        return BTreeSet::new();
-    };
-    let mut intersection = smallest.clone();
-    for (index, scope) in scopes.iter().enumerate() {
-        if index == smallest_index {
-            continue;
-        }
-        intersection.retain(|owner| scope.contains(owner));
-        if intersection.is_empty() {
-            break;
-        }
-    }
-    intersection
-}
-
-pub(super) fn structural_candidate_owner_scope(
-    candidates: &[WorkspaceSearchSyntaxCandidate],
-    limit: usize,
-) -> (Vec<String>, bool) {
-    let mut seen = BTreeSet::new();
-    let mut owners = Vec::new();
-    for candidate in candidates {
-        if seen.insert(candidate.owner.as_str()) {
-            if owners.len() == limit {
-                return (owners, true);
-            }
-            owners.push(candidate.owner.clone());
-        }
-    }
-    (owners, false)
-}
-
-fn syntax_candidates_enclosing_rg_matches<'a>(
-    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
-    owner_paths: &BTreeSet<String>,
-    matches: impl IntoIterator<Item = &'a RuntimeGrepMatch>,
-) -> Result<Vec<WorkspaceSearchSyntaxCandidate>, AspClientOperationError> {
-    let matches = matches.into_iter().cloned().collect::<Vec<_>>();
-    let owners = owner_paths.iter().cloned().collect::<Vec<_>>();
-    if owners.is_empty() {
-        return Ok(Vec::new());
-    }
-    let (projections, _, _) = resident
-        .native_syntax_playbook_projection(&owners)
-        .map_err(AspClientOperationError::Message)?;
-    let projections = projections
-        .into_iter()
-        .map(|projection| (projection.owner_path.clone(), projection))
-        .collect::<BTreeMap<_, _>>();
-    let mut line_ranges = BTreeMap::new();
-    for owner in &owners {
-        let snapshot = resident
-            .owner_snapshot(owner)
-            .map_err(AspClientOperationError::Message)?
-            .ok_or_else(|| {
-                AspClientOperationError::Message(format!(
-                    "rg syntax mapping owner disappeared: {owner}"
-                ))
-            })?;
-        line_ranges.insert(owner.clone(), source_line_ranges(&snapshot.bytes));
-    }
-
-    let matched_owners = matches
-        .iter()
-        .map(|item| item.owner_path.clone())
-        .collect::<BTreeSet<_>>();
-    let mut candidates = BTreeMap::<(String, String), WorkspaceSearchSyntaxCandidate>::new();
-    for owner in owner_paths.difference(&matched_owners) {
-        let Some(projection) = projections.get(owner) else {
-            continue;
-        };
-        for selector in &projection.selectors {
-            candidates.insert(
-                (owner.clone(), selector.selector.clone()),
-                WorkspaceSearchSyntaxCandidate {
-                    owner: owner.clone(),
-                    selector: selector.selector.clone(),
-                    relation: "native-parser:rg-owner-scope".to_owned(),
-                    hit: agent_semantic_search::WorkspaceSearchHitProjection {
-                        native: true,
-                        ..Default::default()
-                    },
-                },
-            );
-        }
-    }
-    for item in matches {
-        let Some((line_start, line_end)) = line_ranges
-            .get(&item.owner_path)
-            .and_then(|ranges| {
-                usize::try_from(item.owner_line)
-                    .ok()?
-                    .checked_sub(1)
-                    .and_then(|line| ranges.get(line))
-            })
-            .copied()
-        else {
-            return Err(AspClientOperationError::Message(format!(
-                "rg syntax mapping line is outside owner: owner={} line={}",
-                item.owner_path, item.owner_line
-            )));
-        };
-        let Some(projection) = projections.get(&item.owner_path) else {
-            continue;
-        };
-        let enclosing = smallest_selector_overlapping_line(projection, line_start, line_end);
-        if let Some(selector) = enclosing {
-            let candidate = candidates
-                .entry((item.owner_path.clone(), selector.selector.clone()))
-                .or_insert_with(|| WorkspaceSearchSyntaxCandidate {
-                    owner: item.owner_path.clone(),
-                    selector: selector.selector.clone(),
-                    relation: "syntax-encloses:rg-match".to_owned(),
-                    hit: agent_semantic_search::WorkspaceSearchHitProjection {
-                        native: true,
-                        ..Default::default()
-                    },
-                });
-            candidate.hit.rg.push([item.owner_line, item.owner_line]);
-        }
-    }
-    for candidate in candidates.values_mut() {
-        candidate.hit.rg.sort_unstable();
-        candidate.hit.rg.dedup();
-    }
-    Ok(candidates.into_values().collect())
-}
-
-fn smallest_selector_overlapping_line(
-    projection: &agent_semantic_search::NativeSyntaxProjection,
-    line_start: usize,
-    line_end: usize,
-) -> Option<&agent_semantic_search::NativeSyntaxSelector> {
-    projection
-        .selectors
-        .iter()
-        .filter(|selector| selector.byte_start < line_end && line_start < selector.byte_end)
-        .min_by(|left, right| {
-            (left.byte_end - left.byte_start)
-                .cmp(&(right.byte_end - right.byte_start))
-                .then_with(|| left.selector.cmp(&right.selector))
-        })
-}
-
-fn source_line_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
-    let mut starts = vec![0];
-    starts.extend(
-        bytes
-            .iter()
-            .enumerate()
-            .filter(|(_, byte)| **byte == b'\n')
-            .map(|(index, _)| index + 1)
-            .filter(|offset| *offset < bytes.len()),
-    );
-    starts
-        .iter()
-        .enumerate()
-        .map(|(index, start)| {
-            (
-                *start,
-                starts.get(index + 1).copied().unwrap_or(bytes.len()),
-            )
-        })
-        .collect()
-}
-
-fn compile_graph_relation_pattern(
-    block: &GraphNativeBlock,
-) -> Result<agent_semantic_search::ResidentGraphRelationPattern, AspClientOperationError> {
-    agent_semantic_mrr::compile_graph_relation_pattern_v1(
-        &block.language,
-        &block.argv,
-        Some("Owner"),
-    )
-    .map_err(|error| AspClientOperationError::Message(error.to_string()))
 }
 
 struct TantivyClauseResult {
@@ -1002,18 +917,58 @@ fn complete_receipt(
     block_index: usize,
     priority_rank: usize,
     candidate_owners: Vec<String>,
-    coverage_complete: bool,
-    truncated: bool,
+    metrics: SearchClauseMetrics,
 ) -> WorkspaceSearchClauseReceipt {
+    let output_owner_count = candidate_owners.len();
     WorkspaceSearchClauseReceipt {
         axis,
         block_index,
         priority_rank,
         candidate_owners,
+        input_owner_count: metrics.input_owner_count,
+        output_owner_count,
+        marginal_owner_reduction: metrics.marginal_owner_reduction,
+        elapsed_micros: metrics.elapsed_micros,
         complete: true,
-        coverage_complete,
-        truncated,
+        coverage_complete: metrics.coverage_complete,
+        truncated: metrics.truncated,
     }
+}
+
+fn elapsed_micros(started: std::time::Instant) -> u64 {
+    started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
+}
+
+fn branch_marginal_reductions(
+    branches: &[(WorkspaceSearchAxisKind, usize, BTreeSet<String>)],
+) -> BTreeMap<(WorkspaceSearchAxisKind, usize), usize> {
+    if branches.len() < 2 {
+        return BTreeMap::new();
+    }
+    let fused = intersect_clause_owner_scopes(
+        &branches
+            .iter()
+            .map(|(_, _, scope)| scope.clone())
+            .collect::<Vec<_>>(),
+    );
+    branches
+        .iter()
+        .enumerate()
+        .map(|(excluded, (axis, block_index, _))| {
+            let without_branch = intersect_clause_owner_scopes(
+                &branches
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| *index != excluded)
+                    .map(|(_, (_, _, scope))| scope.clone())
+                    .collect::<Vec<_>>(),
+            );
+            (
+                (*axis, *block_index),
+                without_branch.len().saturating_sub(fused.len()),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]

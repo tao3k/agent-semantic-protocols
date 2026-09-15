@@ -74,6 +74,22 @@ pub struct AspClientSearchPlaybookClauseRef {
     pub block_index: usize,
 }
 
+/// Payload-free V1 execution tree.  The operator is part of the protocol so
+/// Runtime never guesses intersection semantics from engine co-presence.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "operator", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum AspClientSearchPlaybookComposition {
+    Chain {
+        children: Vec<AspClientSearchPlaybookComposition>,
+    },
+    Intersect {
+        children: Vec<AspClientSearchPlaybookComposition>,
+    },
+    Leaf {
+        clause: AspClientSearchPlaybookClauseRef,
+    },
+}
+
 /// Workspace-scoped Search Playbook request owned by the Runtime Server.
 ///
 /// One or more acquisition clauses form an executable request; optional Graph
@@ -100,6 +116,7 @@ pub struct AspClientWorkspaceSearchPlaybookRequest {
     pub native_syntax: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph: Option<Vec<AspClientSearchPlaybookGraphBlock>>,
+    pub composition: AspClientSearchPlaybookComposition,
     pub clause_order: Vec<AspClientSearchPlaybookClauseRef>,
 }
 

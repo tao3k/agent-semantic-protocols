@@ -15,6 +15,9 @@ use agent_semantic_client_server::{AspClientDispatchError, AspClientDispatchRequ
 use super::query_generation_support::{
     RequestDispatchBudget, request_and_await_runtime_query_generation_ready,
 };
+use super::search_materialization::{
+    search_materialization_dispatch_error, settled_search_materialization,
+};
 use crate::RuntimeQueryGenerationState;
 use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
@@ -883,6 +886,7 @@ fn build_workspace_search_materialization_plan(
                 argv: block.argv,
             })
             .collect(),
+        composition: params.composition,
         clause_order: params
             .clause_order
             .into_iter()
@@ -974,41 +978,6 @@ async fn materialize_workspace_search(
     )
     .await?;
     Ok(projection.result)
-}
-
-fn search_materialization_dispatch_error(error: AspClientOperationError) -> AspClientDispatchError {
-    match error {
-        AspClientOperationError::Terminal(error) => error,
-        AspClientOperationError::Message(message) => AspClientDispatchError {
-            reason_kind: "search-materialization-failed".to_owned(),
-            message,
-            details: Some(serde_json::json!({
-                "schemaId": "agent.semantic-protocols.asp-client-dispatch-failure",
-                "schemaVersion": "1",
-                "state": "failed",
-                "phase": "runtime-search-materialization",
-                "reasonKind": "search-materialization-failed"
-            })),
-        },
-    }
-}
-
-async fn settled_search_materialization(
-    generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
-    key: &str,
-) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
-    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
-    match generation.await_search_materialization(key).await? {
-        RuntimeSearchMaterializationState::Ready(result) => {
-            Ok(agent_semantic_client_protocol::ClientResponsePayload::from_shared(result))
-        }
-        RuntimeSearchMaterializationState::Failed(error) => {
-            Err(AspClientOperationError::Terminal(error.as_ref().clone()))
-        }
-        RuntimeSearchMaterializationState::Building(_) => Err(AspClientOperationError::Message(
-            "Search completion preceded terminal publication".to_owned(),
-        )),
-    }
 }
 
 #[cfg(test)]

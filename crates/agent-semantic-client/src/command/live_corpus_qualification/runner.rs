@@ -4,8 +4,6 @@
 
 //! Live Corpus qualification runner over the shared ASP Client application boundary.
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -14,53 +12,59 @@ use std::time::UNIX_EPOCH;
 use super::client_protocol::ResidentSearchLatencyBudget;
 use super::client_protocol::qualify_public_client_case;
 use super::client_protocol::search_receipt_for_scheme;
+use super::contract::{
+    AgentOrgTopologyEvidence, ClientProtocolReceipt, QualificationCase, QualificationCaseReceipt,
+    QualificationReceipt,
+};
 use super::query_protocol::public_query_set;
-use super::query_protocol::validate_workspace_query_set_scheme_template;
+#[cfg(test)]
+use super::runner_contract::{parse_args, select_qualification_cases};
+use super::runner_prepare::prepare_run;
+#[cfg(test)]
+use super::runner_prepare::{artifact_current_pointer, validate_topology_scenarios};
+use super::search_receipt::qualification_result_string;
 use crate::command::live_corpus::LiveCorpusQualification;
-use crate::command::live_corpus::live_corpus_git_repository_paths;
 use crate::command::live_corpus::live_corpus_lock_digest;
-use crate::command::live_corpus::load_lock;
-use crate::command::live_corpus::unique_resource;
 
-const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-scheme-scenarios.v1.toml";
-const DEFAULT_TOPOLOGY_PLAN_PATH: &str =
+pub(super) const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-scheme-scenarios.v1.toml";
+pub(super) const DEFAULT_TOPOLOGY_PLAN_PATH: &str =
     "benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml";
 
 #[derive(Debug)]
 pub(super) struct QualifyArgs {
-    plan_path: PathBuf,
-    resource_id: Option<String>,
-    language_id: Option<String>,
-    json: bool,
+    pub(super) plan_path: PathBuf,
+    pub(super) resource_id: Option<String>,
+    pub(super) language_id: Option<String>,
+    pub(super) json: bool,
 }
 
-struct PreparedCase {
-    case: QualificationCase,
-    agent_prompt: String,
-    required_relation_kinds: Vec<String>,
-    composed_search: String,
-    multi_source_query: String,
-    multi_callable_skeleton_query: String,
-    minimum_composed_candidates: usize,
-    checkout_path: PathBuf,
-    remote: String,
-    qualification: LiveCorpusQualification,
-    artifact_digest: String,
+pub(super) struct PreparedCase {
+    pub(super) case: QualificationCase,
+    pub(super) agent_prompt: String,
+    pub(super) required_relation_kinds: Vec<String>,
+    pub(super) composed_search: String,
+    pub(super) multi_source_query: String,
+    pub(super) multi_callable_skeleton_query: String,
+    pub(super) minimum_composed_candidates: usize,
+    pub(super) checkout_path: PathBuf,
+    pub(super) remote: String,
+    pub(super) qualification: LiveCorpusQualification,
+    pub(super) artifact_digest: String,
 }
 
-struct PreparedRun {
-    args: QualifyArgs,
-    plan_bytes: Vec<u8>,
-    lock_bytes: Vec<u8>,
-    runtime_state_home: PathBuf,
-    resource_state_home: PathBuf,
-    resident_sample_count: usize,
-    sequential_sample_count: usize,
-    concurrent_sample_count: usize,
-    cold_load_sample_count: usize,
-    protocol_qualified_case_count: usize,
-    resident_search_latency_budget: ResidentSearchLatencyBudget,
-    cases: Vec<PreparedCase>,
+pub(super) struct PreparedRun {
+    pub(super) args: QualifyArgs,
+    pub(super) plan_bytes: Vec<u8>,
+    pub(super) lock_bytes: Vec<u8>,
+    pub(super) runtime_state_home: PathBuf,
+    pub(super) resource_state_home: PathBuf,
+    pub(super) resident_sample_count: usize,
+    pub(super) sequential_sample_count: usize,
+    pub(super) concurrent_sample_count: usize,
+    pub(super) cold_load_sample_count: usize,
+    pub(super) protocol_qualified_case_count: usize,
+    pub(super) resident_search_latency_budget: ResidentSearchLatencyBudget,
+    pub(super) cases: Vec<PreparedCase>,
 }
 
 pub(in crate::command::live_corpus) struct IsolatedBenchmarkWorkspace {
@@ -322,16 +326,6 @@ fn qualification_receipt_path(
             .join(format!("{language_id}.json")),
         (None, None) => receipt_root.join("search-query-qualification.json"),
     }
-}
-
-fn artifact_current_pointer(state_home: &Path, resource_id: &str) -> PathBuf {
-    agent_semantic_artifacts::StateHomeLayout::new(state_home)
-        .resources()
-        .live_corpus()
-        .join("artifacts")
-        .join("by-resource")
-        .join(resource_id)
-        .join("current")
 }
 
 pub(crate) async fn run(
@@ -714,201 +708,6 @@ pub(crate) async fn run(
     Ok(())
 }
 
-pub(crate) fn validate_args(args: &[String]) -> Result<(), String> {
-    parse_args(args).map(|_| ())
-}
-
-fn prepare_run(
-    args: &[String],
-    runtime_state_home: PathBuf,
-    resource_state_home: PathBuf,
-) -> Result<PreparedRun, String> {
-    let mut args = parse_args(args)?;
-    args.plan_path = qualification_input_path(&args.plan_path);
-    let plan_bytes = std::fs::read(&args.plan_path).map_err(|error| {
-        format!(
-            "failed to read Live Corpus qualification plan {}: {error}",
-            args.plan_path.display()
-        )
-    })?;
-    let plan_source = std::str::from_utf8(&plan_bytes)
-        .map_err(|error| format!("Live Corpus Scheme scenario suite is not UTF-8: {error}"))?;
-    let plan = toml::from_str::<QualificationPlan>(plan_source)
-        .map_err(|error| format!("failed to decode Live Corpus Scheme scenario suite: {error}"))?;
-    validate_plan(&plan)?;
-    let topology_plan_path = qualification_input_path(Path::new(DEFAULT_TOPOLOGY_PLAN_PATH));
-    let topology_plan_source = std::fs::read_to_string(&topology_plan_path).map_err(|error| {
-        format!(
-            "failed to read Live Corpus Agent Org topology scenario suite {}: {error}",
-            topology_plan_path.display()
-        )
-    })?;
-    let topology_plan = toml::from_str::<AgentOrgTopologyScenarioSuite>(&topology_plan_source)
-        .map_err(|error| {
-            format!("failed to decode Live Corpus Agent Org topology scenario suite: {error}")
-        })?;
-    let (topology_prompt_contract, topology_scenarios) =
-        validate_topology_scenarios(&plan.cases, topology_plan)?;
-    let lock_path = qualification_input_path(&plan.lock_path);
-    let lock_bytes = std::fs::read(&lock_path).map_err(|error| {
-        format!(
-            "failed to read Live Corpus lock {}: {error}",
-            lock_path.display()
-        )
-    })?;
-    let lock = load_lock(&lock_path)?;
-    let resident_sample_count = plan.resident_sample_count;
-    let sequential_sample_count = plan.sequential_sample_count;
-    let concurrent_sample_count = plan.concurrent_sample_count;
-    let cold_load_sample_count = plan
-        .cache_states
-        .iter()
-        .find(|state| state.state == "cold-load")
-        .map(|state| state.sample_count)
-        .ok_or_else(|| "Live Corpus plan omitted cold-load cache state".to_owned())?;
-    let protocol_qualified_case_count = plan.client_protocol.applies_to_case_count;
-    let resident_search_latency_budget = ResidentSearchLatencyBudget {
-        p50_micros: plan.client_protocol.p50_maximum_micros,
-        p99_micros: plan.client_protocol.p99_maximum_micros,
-        max_micros: plan.client_protocol.max_maximum_micros,
-    };
-    let cases = select_qualification_cases(
-        plan.cases,
-        args.language_id.as_deref(),
-        args.resource_id.as_deref(),
-    )?;
-    let mut prepared_cases = Vec::with_capacity(cases.len());
-    for case in cases {
-        let topology_scenario = topology_scenarios.get(&case.case_id).ok_or_else(|| {
-            format!(
-                "Live Corpus topology scenario is unavailable after admission: case={}",
-                case.case_id
-            )
-        })?;
-        let agent_prompt = render_agent_prompt(&topology_prompt_contract, topology_scenario);
-        let corpus = unique_resource(&lock.corpora, &case.resource_id)?;
-        if corpus.scenario_id != case.scenario_id
-            || corpus.language.as_str() != case.language_id
-            || corpus.provider_id != case.provider_id
-        {
-            return Err(format!(
-                "Live Corpus qualification identity drift: resource={} planScenario={} lockScenario={} planLanguage={} lockLanguage={} planProvider={} lockProvider={}",
-                case.resource_id,
-                case.scenario_id,
-                corpus.scenario_id,
-                case.language_id,
-                corpus.language,
-                case.provider_id,
-                corpus.provider_id
-            ));
-        }
-        let repository =
-            live_corpus_git_repository_paths(&resource_state_home, &corpus.git.remote)?;
-        let checkout_path = repository
-            .repository_dir
-            .join("checkouts")
-            .join(&corpus.git.revision)
-            .canonicalize()
-            .map_err(|error| {
-                format!(
-                    "Live Corpus checkout is unavailable: resource={} error={error}",
-                    case.resource_id
-                )
-            })?;
-        let current_pointer = artifact_current_pointer(&resource_state_home, &case.resource_id);
-        let artifact_dir = current_pointer.canonicalize().map_err(|error| {
-            format!(
-                "Live Corpus qualification requires a prepublished immutable artifact: resource={} pointer={} error={error}",
-                case.resource_id,
-                current_pointer.display()
-            )
-        })?;
-        let qualification_path = artifact_dir.join("qualification.json");
-        let qualification = serde_json::from_slice::<LiveCorpusQualification>(
-            &std::fs::read(&qualification_path).map_err(|error| {
-                format!(
-                    "failed to read Live Corpus immutable qualification {}: {error}",
-                    qualification_path.display()
-                )
-            })?,
-        )
-        .map_err(|error| {
-            format!(
-                "failed to decode Live Corpus immutable qualification {}: {error}",
-                qualification_path.display()
-            )
-        })?;
-        let artifact_digest = artifact_dir
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .ok_or_else(|| {
-                format!(
-                    "Live Corpus immutable artifact has no digest identity: {}",
-                    artifact_dir.display()
-                )
-            })?;
-        if qualification.schema_id != "agent.semantic-protocols.live-corpus-artifact-qualification"
-            || qualification.schema_version != "1"
-            || qualification.status != "qualified"
-            || !qualification.clean
-            || qualification.artifact_digest != artifact_digest
-            || qualification.head_revision != corpus.git.revision
-            || Path::new(&qualification.source_path)
-                .canonicalize()
-                .map_err(|error| {
-                    format!(
-                        "Live Corpus qualified source path is unavailable: case={} error={error}",
-                        case.case_id
-                    )
-                })?
-                != checkout_path
-        {
-            return Err(format!(
-                "Live Corpus immutable artifact identity drift: case={} artifact={}",
-                case.case_id,
-                artifact_dir.display()
-            ));
-        }
-        prepared_cases.push(PreparedCase {
-            case,
-            agent_prompt,
-            required_relation_kinds: topology_scenario.required_relation_kinds.clone(),
-            composed_search: topology_scenario.composed_search.clone(),
-            multi_source_query: topology_scenario.multi_source_query.clone(),
-            multi_callable_skeleton_query: topology_scenario.multi_callable_skeleton_query.clone(),
-            minimum_composed_candidates: topology_scenario.minimum_composed_candidates,
-            checkout_path,
-            remote: corpus.git.remote.clone(),
-            qualification,
-            artifact_digest: artifact_digest.to_owned(),
-        });
-    }
-    Ok(PreparedRun {
-        args,
-        plan_bytes,
-        lock_bytes,
-        runtime_state_home,
-        resource_state_home,
-        resident_sample_count,
-        sequential_sample_count,
-        concurrent_sample_count,
-        cold_load_sample_count,
-        protocol_qualified_case_count,
-        resident_search_latency_budget,
-        cases: prepared_cases,
-    })
-}
-
-fn qualification_input_path(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_owned()
-    } else {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(path)
-    }
-}
-
 #[expect(
     clippy::too_many_arguments,
     reason = "qualification binds case identity, corpus, budget, client, and evidence sinks explicitly"
@@ -1193,150 +992,6 @@ where
         status: "qualified",
     };
     Ok((receipt, topology_evidence))
-}
-
-fn qualification_result_string(result: &serde_json::Value, field: &str) -> Result<String, String> {
-    result
-        .get(field)
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| format!("Live Corpus callable projection omitted {field}"))
-}
-
-#[path = "runner_contract.rs"]
-mod contract_validation;
-
-use super::contract::AgentOrgTopologyEvidence;
-use super::contract::AgentOrgTopologyScenario;
-use super::contract::AgentOrgTopologyScenarioSuite;
-use super::contract::ClientProtocolReceipt;
-use super::contract::QualificationCase;
-use super::contract::QualificationCaseReceipt;
-use super::contract::QualificationPlan;
-use super::contract::QualificationReceipt;
-use contract_validation::parse_args;
-use contract_validation::select_qualification_cases;
-use contract_validation::validate_plan;
-
-fn validate_topology_scenarios(
-    search_cases: &[QualificationCase],
-    suite: AgentOrgTopologyScenarioSuite,
-) -> Result<(String, BTreeMap<String, AgentOrgTopologyScenario>), String> {
-    if suite.schema_id != "agent.semantic-protocols.live-corpus-agent-org-topology-scenario-suite"
-        || suite.schema_version != "1"
-        || suite.prompt_contract.trim().is_empty()
-    {
-        return Err("unsupported Live Corpus Agent Org topology scenario suite".to_owned());
-    }
-    let expected = search_cases
-        .iter()
-        .map(|case| case.case_id.clone())
-        .collect::<BTreeSet<_>>();
-    let mut scenarios = BTreeMap::new();
-    for mut scenario in suite.cases {
-        let search_case = search_cases
-            .iter()
-            .find(|case| case.case_id == scenario.case_id)
-            .ok_or_else(|| {
-                format!(
-                    "Live Corpus Agent Org topology scenario has no Search/Query case: {}",
-                    scenario.case_id
-                )
-            })?;
-        if scenario.case_id.is_empty()
-            || scenario.resource_id.is_empty()
-            || scenario.reasoning_focus.trim().is_empty()
-            || scenario.required_relation_kinds.is_empty()
-            || scenario.minimum_composed_candidates < 2
-            || scenario.composed_search.trim().is_empty()
-            || scenario.multi_source_query.matches("{{selectors}}").count() != 1
-            || scenario
-                .multi_callable_skeleton_query
-                .matches("{{selectors}}")
-                .count()
-                != 1
-            || scenario
-                .required_relation_kinds
-                .iter()
-                .any(|relation| relation.is_empty())
-        {
-            return Err("Live Corpus Agent Org topology scenario is incomplete".to_owned());
-        }
-        scenario.required_relation_kinds.sort();
-        scenario.required_relation_kinds.dedup();
-        let parsed = agent_semantic_search::parse_progressive_search_playbook_args(&[
-            "search".to_owned(),
-            "playbook".to_owned(),
-            scenario.composed_search.clone(),
-        ])
-        .map_err(|error| {
-            format!(
-                "Live Corpus composed Search Scheme is invalid: case={} error={error}",
-                scenario.case_id
-            )
-        })?;
-        if parsed.rg.len() < 2 || parsed.tantivy.len() < 2 {
-            return Err(format!(
-                "Live Corpus composed Search must contain multiple rg and Tantivy leaves: case={}",
-                scenario.case_id
-            ));
-        }
-        validate_workspace_query_set_scheme_template(
-            &search_case.language_id,
-            &scenario.multi_source_query,
-            "source",
-        )
-        .map_err(|error| {
-            format!(
-                "Live Corpus composed source Query Scheme is invalid: case={} error={error}",
-                scenario.case_id
-            )
-        })?;
-        validate_workspace_query_set_scheme_template(
-            &search_case.language_id,
-            &scenario.multi_callable_skeleton_query,
-            "callable-skeleton",
-        )
-        .map_err(|error| {
-            format!(
-                "Live Corpus composed callable-skeleton Query Scheme is invalid: case={} error={error}",
-                scenario.case_id
-            )
-        })?;
-        if scenarios
-            .insert(scenario.case_id.clone(), scenario)
-            .is_some()
-        {
-            return Err("Live Corpus Agent Org topology scenario is duplicated".to_owned());
-        }
-    }
-    let observed = scenarios.keys().cloned().collect::<BTreeSet<_>>();
-    if observed != expected {
-        return Err(format!(
-            "Live Corpus Agent Org topology scenarios must map one-to-one to Search/Query cases: expected={expected:?} observed={observed:?}"
-        ));
-    }
-    for case in search_cases {
-        if scenarios
-            .get(&case.case_id)
-            .is_none_or(|scenario| scenario.resource_id != case.resource_id)
-        {
-            return Err(format!(
-                "Live Corpus Agent Org topology resource drift: case={}",
-                case.case_id
-            ));
-        }
-    }
-    Ok((suite.prompt_contract, scenarios))
-}
-
-fn render_agent_prompt(prompt_contract: &str, scenario: &AgentOrgTopologyScenario) -> String {
-    format!(
-        "{prompt_contract}\n\nReasoning focus: {}\nRequired relationship kinds: {}",
-        scenario.reasoning_focus,
-        scenario.required_relation_kinds.join(", ")
-    )
 }
 
 #[cfg(test)]

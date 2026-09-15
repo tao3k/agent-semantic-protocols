@@ -11,7 +11,7 @@ resource_id = "gerbil-scheme.gerbil"
 reasoning_focus = "Explain the selected Gerbil definition's module and import role."
 required_relation_kinds = ["defined-in", "imports-from"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language gerbil-scheme)) (chain (intersect (rg "-n" "def|import" ".") (rg "-n" "-F" "def" ".") (tantivy "title:\"def import\"^2 OR body:def") (tantivy "body:import OR title:def^2"))))'''
+composed_search = '''(search (producers (language gerbil-scheme)) (intersect (rg "-n" "-F" "def") (tantivy "body:import OR title:module^2")))'''
 multi_source_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -21,7 +21,7 @@ resource_id = "julia.dataframes"
 reasoning_focus = "Explain how the selected DataFrames callable participates in tabular operations."
 required_relation_kinds = ["defined-in", "dispatches-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (chain (intersect (rg "-n" "DataFrame|function" ".") (rg "-n" "-F" "DataFrame" ".") (tantivy "title:\"DataFrame function\"^2 OR body:DataFrame") (tantivy "body:function OR title:DataFrame^2"))))'''
+composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "DataFrame") (tantivy "body:function OR title:table^2")))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -31,7 +31,7 @@ resource_id = "julia.flux"
 reasoning_focus = "Explain the selected Flux callable's model or training data flow."
 required_relation_kinds = ["calls", "defined-in"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (chain (intersect (rg "-n" "Flux|Chain" ".") (rg "-n" "-F" "Chain" ".") (tantivy "title:\"Flux Chain\"^2 OR body:Flux") (tantivy "body:Chain OR title:Flux^2"))))'''
+composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "Chain") (tantivy "body:training OR title:model^2")))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -41,7 +41,7 @@ resource_id = "julia.makie"
 reasoning_focus = "Explain the selected Makie callable's rendering or scene-graph role."
 required_relation_kinds = ["calls", "produces"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (chain (intersect (rg "-n" "Figure|plot" ".") (rg "-n" "-F" "plot" ".") (tantivy "title:\"Figure plot\"^2 OR body:Figure") (tantivy "body:plot OR title:Figure^2"))))'''
+composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "plot") (tantivy "body:scene OR title:Figure^2")))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -51,7 +51,7 @@ resource_id = "md.mdn-content"
 reasoning_focus = "Explain the selected MDN document section's concept and link topology."
 required_relation_kinds = ["documents", "links-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (documents md)) (chain (intersect (rg "-n" "JavaScript|CSS" ".") (rg "-n" "-F" "JavaScript" ".") (tantivy "title:\"JavaScript CSS\"^2 OR body:JavaScript") (tantivy "body:CSS OR title:JavaScript^2"))))'''
+composed_search = '''(search (producers (documents md)) (intersect (rg "-n" "-F" "JavaScript") (tantivy "body:CSS OR title:web^2")))'''
 multi_source_query = '''(query (producers (documents md)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (documents md)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -61,7 +61,7 @@ resource_id = "org.worg"
 reasoning_focus = "Explain the selected Org node's headline hierarchy and referenced concepts."
 required_relation_kinds = ["contains", "links-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (documents org)) (chain (intersect (rg "-n" "Org|Emacs" ".") (rg "-n" "-F" "Org" ".") (tantivy "title:\"Org Emacs\"^2 OR body:Org") (tantivy "body:Emacs OR title:Org^2"))))'''
+composed_search = '''(search (producers (documents org)) (intersect (rg "-n" "-F" "Org") (tantivy "body:Emacs OR title:manual^2")))'''
 multi_source_query = '''(query (producers (documents org)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (documents org)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -71,7 +71,7 @@ resource_id = "python.fastapi"
 reasoning_focus = "Explain the selected FastAPI callable's request-routing and dependency role."
 required_relation_kinds = ["depends-on", "routes-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (chain (intersect (rg "-n" "FastAPI|APIRouter" ".") (rg "-n" "-F" "FastAPI" ".") (tantivy "title:\"FastAPI APIRouter\"^2 OR body:FastAPI") (tantivy "body:APIRouter OR title:FastAPI^2"))))'''
+composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "FastAPI") (tantivy "body:APIRouter OR title:routing^2")))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -81,7 +81,7 @@ resource_id = "python.pandas"
 reasoning_focus = "Explain the selected pandas callable's data transformation path."
 required_relation_kinds = ["calls", "transforms"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (chain (intersect (rg "-n" "DataFrame|Series" ".") (rg "-n" "-F" "DataFrame" ".") (tantivy "title:\"DataFrame Series\"^2 OR body:DataFrame") (tantivy "body:Series OR title:DataFrame^2"))))'''
+composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "DataFrame") (tantivy "body:Series OR title:indexing^2")))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -91,7 +91,7 @@ resource_id = "python.rich"
 reasoning_focus = "Explain the selected Rich callable's rendering and output relationship."
 required_relation_kinds = ["calls", "renders-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (chain (intersect (rg "-n" "Console|RenderableType" ".") (rg "-n" "-F" "Console" ".") (tantivy "title:\"Console RenderableType\"^2 OR body:Console") (tantivy "body:RenderableType OR title:Console^2"))))'''
+composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "Console") (tantivy "body:RenderableType OR title:rendering^2")))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -101,7 +101,7 @@ resource_id = "rust.tokio"
 reasoning_focus = "Explain the selected Tokio callable's asynchronous scheduling or I/O role."
 required_relation_kinds = ["awaits", "dispatches-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (chain (intersect (rg "-n" "spawn|Runtime" ".") (rg "-n" "-F" "spawn" ".") (tantivy "title:\"spawn Runtime\"^2 OR body:spawn") (tantivy "body:Runtime OR title:spawn^2"))))'''
+composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "spawn") (tantivy "body:Runtime OR title:scheduler^2")))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -111,7 +111,7 @@ resource_id = "rust.bytes"
 reasoning_focus = "Explain the selected bytes callable's buffer ownership and data flow."
 required_relation_kinds = ["borrows-from", "returns"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (chain (intersect (rg "-n" "Bytes|Buf" ".") (rg "-n" "-F" "Bytes" ".") (tantivy "title:\"Bytes Buf\"^2 OR body:Bytes") (tantivy "body:Buf OR title:Bytes^2"))))'''
+composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "Bytes") (tantivy "body:Buf OR title:buffer^2")))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -121,7 +121,7 @@ resource_id = "rust.ripgrep"
 reasoning_focus = "Explain the selected ripgrep callable's matching or traversal role."
 required_relation_kinds = ["calls", "searches-with"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (chain (intersect (rg "-n" "RegexMatcher|search" ".") (rg "-n" "-F" "search" ".") (tantivy "title:\"RegexMatcher search\"^2 OR body:RegexMatcher") (tantivy "body:search OR title:RegexMatcher^2"))))'''
+composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "RegexMatcher") (tantivy "body:search OR title:matcher^2")))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -131,7 +131,7 @@ resource_id = "typescript.compiler"
 reasoning_focus = "Explain the selected TypeScript compiler callable's syntax or type-analysis role."
 required_relation_kinds = ["calls", "produces"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (chain (intersect (rg "-n" "createProgram|SourceFile" ".") (rg "-n" "-F" "createProgram" ".") (tantivy "title:\"createProgram SourceFile\"^2 OR body:createProgram") (tantivy "body:SourceFile OR title:createProgram^2"))))'''
+composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "createProgram") (tantivy "body:SourceFile OR title:compiler^2")))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -141,7 +141,7 @@ resource_id = "typescript.effect"
 reasoning_focus = "Explain the selected Effect callable's typed effect composition."
 required_relation_kinds = ["composes-with", "returns"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (chain (intersect (rg "-n" "Effect|Layer" ".") (rg "-n" "-F" "Effect" ".") (tantivy "title:\"Effect Layer\"^2 OR body:Effect") (tantivy "body:Layer OR title:Effect^2"))))'''
+composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "Effect") (tantivy "body:Layer OR title:service^2")))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -151,7 +151,7 @@ resource_id = "typescript.playwright"
 reasoning_focus = "Explain the selected Playwright callable's browser-control path."
 required_relation_kinds = ["dispatches-to", "waits-for"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (chain (intersect (rg "-n" "Browser|Page" ".") (rg "-n" "-F" "Page" ".") (tantivy "title:\"Browser Page\"^2 OR body:Browser") (tantivy "body:Page OR title:Browser^2"))))'''
+composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "Page") (tantivy "body:Browser OR title:automation^2")))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -161,7 +161,7 @@ resource_id = "typescript.vite"
 reasoning_focus = "Explain the selected Vite callable's module transformation or plugin path."
 required_relation_kinds = ["calls", "transforms"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (chain (intersect (rg "-n" "defineConfig|Plugin" ".") (rg "-n" "-F" "defineConfig" ".") (tantivy "title:\"defineConfig Plugin\"^2 OR body:defineConfig") (tantivy "body:Plugin OR title:defineConfig^2"))))'''
+composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "defineConfig") (tantivy "body:Plugin OR title:build^2")))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -171,6 +171,6 @@ resource_id = "typescript.vue"
 reasoning_focus = "Explain the selected Vue callable's component or reactivity relationship."
 required_relation_kinds = ["depends-on", "updates"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (chain (intersect (rg "-n" "createApp|Component" ".") (rg "-n" "-F" "createApp" ".") (tantivy "title:\"createApp Component\"^2 OR body:createApp") (tantivy "body:Component OR title:createApp^2"))))'''
+composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "createApp") (tantivy "body:Component OR title:application^2")))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''

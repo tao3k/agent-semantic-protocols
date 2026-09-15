@@ -26,6 +26,7 @@ pub(crate) use super::query_protocol::{WorkspaceQueryQualificationReceipt, publi
 pub(crate) use super::query_protocol::{
     render_workspace_query_scheme_source, workspace_query_qualification_request,
 };
+use super::search_receipt::workspace_search_qualification_receipt;
 
 #[derive(Debug, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -737,7 +738,13 @@ async fn search_receipt<C: LanguageCommandClient>(
     language_id: &str,
     scheme_source: &str,
 ) -> Result<WorkspaceSearchQualificationReceipt, String> {
-    let request = workspace_search_qualification_request(language_id, scheme_source)?;
+    let request = workspace_search_qualification_request_with_client(
+        client,
+        project_root,
+        language_id,
+        scheme_source,
+    )
+    .await?;
     let started = Instant::now();
     let response = client
         .dispatch(LanguageCommandRequest {
@@ -780,17 +787,11 @@ pub(crate) async fn search_receipt_for_literal<C: LanguageCommandClient>(
     if literal.is_empty() {
         return Err("Live Corpus Search literal must not be empty".to_owned());
     }
-    let tantivy_literal = literal.replace('\\', "\\\\").replace('"', "\\\"");
     let axis = registered_producer_axis(language_id)?;
     let literal = serde_json::to_string(literal)
         .map_err(|error| format!("encode Search Scheme literal: {error}"))?;
-    let tantivy = serde_json::to_string(&format!(
-        "title:\"{tantivy_literal}\"^2 OR body:\"{tantivy_literal}\""
-    ))
-    .map_err(|error| format!("encode Search Scheme Tantivy query: {error}"))?;
-    let source = format!(
-        "(search (producers ({axis} {language_id})) (intersect (rg \"-n\" \"-F\" {literal} \".\") (tantivy {tantivy})))"
-    );
+    let source =
+        format!("(search (producers ({axis} {language_id})) (rg \"-n\" \"-F\" {literal}))");
     search_receipt(client, project_root, language_id, &source).await
 }
 
@@ -803,10 +804,59 @@ pub(crate) async fn search_receipt_for_scheme<C: LanguageCommandClient>(
     search_receipt(client, project_root, language_id, scheme_source).await
 }
 
-pub(super) fn workspace_search_qualification_request(
+async fn workspace_search_qualification_request_with_client<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
     producer_id: &str,
     scheme_source: &str,
 ) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
+    let parsed = parse_workspace_search_qualification(producer_id, scheme_source)?;
+    let mut compiled = Vec::with_capacity(parsed.syntax.len());
+    for block in &parsed.syntax {
+        let [query_source] = block.argv.as_slice() else {
+            return Err(
+                "Live Corpus syntax requires exactly one enhanced Tree-sitter Query".to_owned(),
+            );
+        };
+        let response = client
+            .dispatch(LanguageCommandRequest {
+                language_id: agent_semantic_client::LanguageId::new(&block.producer),
+                operation: LanguageCommandOperation::WorkspaceSyntaxPlanContext(
+                    agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextRequest {
+                        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request".to_owned(),
+                        schema_version: "1".to_owned(),
+                        producer: block.producer.clone(),
+                    },
+                ),
+                project_root: project_root.to_path_buf(),
+                machine_readable: true,
+            })
+            .await?;
+        let payload =
+            typed_terminal(response.frame)?.require_ready("workspace.syntax.plan-context")?;
+        let context: agent_semantic_client_protocol::AspClientWorkspaceSyntaxPlanContextResponse =
+            serde_json::from_value(payload.clone())
+                .map_err(|error| format!("decode Live Corpus syntax plan context: {error}"))?;
+        context.validate()?;
+        let plan = agent_semantic_tree_sitter::compile_resident_syntax_plan(
+            query_source,
+            &context.generation_digest,
+            &context.capability,
+        )?;
+        compiled.push(
+            agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
+                producer: block.producer.clone(),
+                plan,
+            },
+        );
+    }
+    workspace_search_request_from_parsed(parsed, (!compiled.is_empty()).then_some(compiled))
+}
+
+fn parse_workspace_search_qualification(
+    producer_id: &str,
+    scheme_source: &str,
+) -> Result<agent_semantic_search::ProgressiveSearchPlaybookRequest, String> {
     if scheme_source.trim().is_empty() {
         return Err("Live Corpus Search requires a complete Scheme expression".to_owned());
     }
@@ -825,11 +875,15 @@ pub(super) fn workspace_search_qualification_request(
             parsed.language, parsed.documents
         ));
     }
-    if parsed.rg.is_empty() || parsed.tantivy.is_empty() {
-        return Err(
-            "Live Corpus Search Scheme must exercise both rg and Tantivy acquisition".to_owned(),
-        );
-    }
+    Ok(parsed)
+}
+
+fn workspace_search_request_from_parsed(
+    parsed: agent_semantic_search::ProgressiveSearchPlaybookRequest,
+    syntax: Option<Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>>,
+) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
+    let rg = (!parsed.rg.is_empty()).then_some(parsed.rg);
+    let tantivy = (!parsed.tantivy.is_empty()).then_some(parsed.tantivy);
     Ok(AspClientWorkspaceSearchPlaybookRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
@@ -837,9 +891,9 @@ pub(super) fn workspace_search_qualification_request(
         language: parsed.language,
         documents: parsed.documents,
         workspace: parsed.workspace,
-        rg: Some(parsed.rg),
-        tantivy: Some(parsed.tantivy),
-        syntax: None,
+        rg,
+        tantivy,
+        syntax,
         native_syntax: (!parsed.native_syntax.is_empty()).then_some(parsed.native_syntax),
         graph: (!parsed.graph.is_empty()).then(|| {
             parsed
@@ -853,6 +907,9 @@ pub(super) fn workspace_search_qualification_request(
                 )
                 .collect()
         }),
+        composition: crate::command::root_language_facade::lower_protocol_composition(
+            parsed.normalized_composition,
+        ),
         clause_order: parsed
             .clause_order
             .into_iter()
@@ -915,85 +972,4 @@ pub(crate) fn registered_producer_axis(producer_id: &str) -> Result<&'static str
             "Live Corpus producer must resolve to exactly one language/document axis: {producer_id}"
         )),
     }
-}
-
-fn workspace_search_qualification_receipt(
-    settlement: &serde_json::Value,
-    operation_id: String,
-    elapsed_micros: u64,
-    response_decode_elapsed_micros: u64,
-) -> Result<WorkspaceSearchQualificationReceipt, String> {
-    let binding = settlement
-        .get("binding")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| "Search settlement has no binding".to_owned())?;
-    let binding_digest = |field: &str| {
-        binding
-            .get(field)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| format!("Search settlement binding has no {field}"))
-    };
-    let selectors = settlement
-        .get("nodes")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|node| node.get("selector").and_then(serde_json::Value::as_str))
-        .map(str::to_owned)
-        .fold(
-            (std::collections::BTreeSet::new(), Vec::new()),
-            |(mut seen, mut ordered), selector| {
-                if seen.insert(selector.clone()) {
-                    ordered.push(selector);
-                }
-                (seen, ordered)
-            },
-        )
-        .1;
-    let owner_paths = selectors
-        .iter()
-        .map(|selector| {
-            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-                selector,
-            )
-            .and_then(|selector| selector.owner_path())
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .fold(
-            (std::collections::BTreeSet::new(), Vec::new()),
-            |(mut seen, mut ordered), owner_path| {
-                if seen.insert(owner_path.clone()) {
-                    ordered.push(owner_path);
-                }
-                (seen, ordered)
-            },
-        )
-        .1;
-    Ok(WorkspaceSearchQualificationReceipt {
-        operation_id,
-        source_generation_digest: binding_digest("sourceGenerationDigest")?,
-        provider_catalog_digest: binding_digest("providerCatalogDigest")?,
-        topology_generation_digest: binding_digest("topologyGenerationDigest")?,
-        selectors,
-        owner_paths,
-        elapsed_micros,
-        response_decode_elapsed_micros,
-        packet_bytes: serde_json::to_vec(settlement)
-            .map_err(|error| format!("encode admitted Search settlement profile: {error}"))?
-            .len(),
-        node_count: settlement_array_len(settlement, "nodes")?,
-        edge_count: settlement_array_len(settlement, "edges")?,
-        frontier_count: settlement_array_len(settlement, "frontiers")?,
-        coverage_certificate_count: settlement_array_len(settlement, "coverageCertificates")?,
-    })
-}
-
-fn settlement_array_len(settlement: &serde_json::Value, field: &str) -> Result<usize, String> {
-    settlement
-        .get(field)
-        .and_then(serde_json::Value::as_array)
-        .map(Vec::len)
-        .ok_or_else(|| format!("Search settlement has no {field} array"))
 }

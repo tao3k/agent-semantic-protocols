@@ -11,14 +11,15 @@ use serde_json::Value;
 use crate::routes::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
     AspClientGraphsTimelineRequest, AspClientSearchPlaybookClauseAxis,
-    AspClientSourceIndexLookupRequest, AspClientWorkspaceQueryPlaybookRequest,
-    AspClientWorkspaceSearchPlaybookRequest, AspClientWorkspaceSyntaxPlanContextResponse,
-    AspClientWorkspaceSyntaxQueryRequest, CLIENT_EXACT_QUERY_FAILURE, CLIENT_EXACT_QUERY_REQUEST,
-    CLIENT_EXACT_QUERY_RESPONSE, CLIENT_GRAPHS_TIMELINE_REQUEST,
-    CLIENT_SOURCE_INDEX_LOOKUP_REQUEST, CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST,
-    CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST, CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST,
-    CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE, CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST,
-    EXACT_REQUEST, EXACT_RESPONSE, ProviderNativeExactProjection, ProviderNativeExactRequest,
+    AspClientSearchPlaybookComposition, AspClientSourceIndexLookupRequest,
+    AspClientWorkspaceQueryPlaybookRequest, AspClientWorkspaceSearchPlaybookRequest,
+    AspClientWorkspaceSyntaxPlanContextResponse, AspClientWorkspaceSyntaxQueryRequest,
+    CLIENT_EXACT_QUERY_FAILURE, CLIENT_EXACT_QUERY_REQUEST, CLIENT_EXACT_QUERY_RESPONSE,
+    CLIENT_GRAPHS_TIMELINE_REQUEST, CLIENT_SOURCE_INDEX_LOOKUP_REQUEST,
+    CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST, CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
+    CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST, CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE,
+    CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST, EXACT_REQUEST, EXACT_RESPONSE,
+    ProviderNativeExactProjection, ProviderNativeExactRequest,
     RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID, RuntimeProviderSearchRequest,
     RuntimeResidentRequestPlaneReceipt, SEARCH_REQUEST,
 };
@@ -101,30 +102,56 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             }
         }
 
-        let acquisition_count = self.rg.as_ref().map_or(0, Vec::len)
+        let predicate_count = self.rg.as_ref().map_or(0, Vec::len)
             + self.tantivy.as_ref().map_or(0, Vec::len)
             + self.syntax.as_ref().map_or(0, Vec::len)
             + self.native_syntax.as_ref().map_or(0, Vec::len);
-        if self.rg.is_none() || self.tantivy.is_none() {
+        let graph_count = self.graph.as_ref().map_or(0, Vec::len);
+        if predicate_count == 0 && graph_count != 0 {
+            return Err("ASP workspace Search Graph requires a preceding predicate".to_owned());
+        }
+        if predicate_count == 0 {
             return Err(
-                "ASP workspace Search Layout requires rg and Tantivy file-context inputs"
+                "ASP workspace Search requires a retrieval or structural predicate clause"
                     .to_owned(),
             );
         }
-        let graph_count = self.graph.as_ref().map_or(0, Vec::len);
-        if acquisition_count == 0 && graph_count != 0 {
-            return Err("ASP workspace Search Graph requires preceding acquisition".to_owned());
-        }
-        if acquisition_count == 0 {
-            return Err("ASP workspace Search requires an acquisition clause".to_owned());
+        if self.rg.as_deref().is_some_and(has_duplicates)
+            || self.tantivy.as_deref().is_some_and(has_duplicates)
+            || self.syntax.as_deref().is_some_and(has_duplicates)
+            || self.native_syntax.as_deref().is_some_and(has_duplicates)
+            || self.graph.as_deref().is_some_and(has_duplicates)
+        {
+            return Err(
+                "ASP workspace Search rejects byte-identical predicate leaves as redundant work"
+                    .to_owned(),
+            );
         }
         let clause_order = &self.clause_order;
-        if acquisition_count == 0 || clause_order.len() != acquisition_count + graph_count {
+        if predicate_count == 0 || clause_order.len() != predicate_count + graph_count {
             return Err("ASP workspace Search clauseOrder coverage is invalid".to_owned());
         }
         let mut graph_started = false;
+        let mut structural_started = false;
         let mut covered = BTreeSet::new();
         for clause in clause_order {
+            if matches!(
+                clause.axis,
+                AspClientSearchPlaybookClauseAxis::Rg | AspClientSearchPlaybookClauseAxis::Tantivy
+            ) && structural_started
+            {
+                return Err(
+                    "ASP workspace Search retrieval cannot follow a structural chain stage"
+                        .to_owned(),
+                );
+            }
+            if matches!(
+                clause.axis,
+                AspClientSearchPlaybookClauseAxis::Syntax
+                    | AspClientSearchPlaybookClauseAxis::NativeSyntax
+            ) {
+                structural_started = true;
+            }
             let block_count = match clause.axis {
                 AspClientSearchPlaybookClauseAxis::Rg => self.rg.as_ref().map_or(0, Vec::len),
                 AspClientSearchPlaybookClauseAxis::Tantivy => {
@@ -151,6 +178,20 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             {
                 return Err("ASP workspace Search clauseOrder reference is invalid".to_owned());
             }
+        }
+
+        let mut composition_order = Vec::new();
+        let mut composition_nodes = 0;
+        validate_search_composition(
+            &self.composition,
+            1,
+            &mut composition_nodes,
+            &mut composition_order,
+        )?;
+        if composition_order != *clause_order {
+            return Err(
+                "ASP workspace Search composition leaves must exactly match clauseOrder".to_owned(),
+            );
         }
 
         for argv in self.rg.iter().chain(self.tantivy.iter()).flatten() {
@@ -184,6 +225,63 @@ impl AspClientWorkspaceSearchPlaybookRequest {
             return Err("ASP workspace Search Graph block must not be empty".to_owned());
         }
         Ok(())
+    }
+}
+
+fn has_duplicates<T: PartialEq>(values: &[T]) -> bool {
+    values
+        .iter()
+        .enumerate()
+        .any(|(index, value)| values[..index].contains(value))
+}
+
+fn validate_search_composition(
+    composition: &AspClientSearchPlaybookComposition,
+    depth: usize,
+    nodes: &mut usize,
+    order: &mut Vec<crate::routes::AspClientSearchPlaybookClauseRef>,
+) -> Result<(), String> {
+    *nodes = nodes.saturating_add(1);
+    if *nodes > 256 || depth > 32 {
+        return Err("ASP workspace Search composition budget exceeded".to_owned());
+    }
+    match composition {
+        AspClientSearchPlaybookComposition::Leaf { clause } => {
+            order.push(clause.clone());
+        }
+        AspClientSearchPlaybookComposition::Chain { children } => {
+            if children.is_empty() {
+                return Err("ASP workspace Search chain requires a child".to_owned());
+            }
+            for child in children {
+                validate_search_composition(child, depth + 1, nodes, order)?;
+            }
+        }
+        AspClientSearchPlaybookComposition::Intersect { children } => {
+            if children.len() < 2 || !children.iter().all(composition_is_retrieval_set) {
+                return Err(
+                    "ASP workspace Search intersection requires at least two rg/Tantivy set branches"
+                        .to_owned(),
+                );
+            }
+            for child in children {
+                validate_search_composition(child, depth + 1, nodes, order)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn composition_is_retrieval_set(composition: &AspClientSearchPlaybookComposition) -> bool {
+    match composition {
+        AspClientSearchPlaybookComposition::Leaf { clause } => matches!(
+            clause.axis,
+            AspClientSearchPlaybookClauseAxis::Rg | AspClientSearchPlaybookClauseAxis::Tantivy
+        ),
+        AspClientSearchPlaybookComposition::Intersect { children } => {
+            children.len() >= 2 && children.iter().all(composition_is_retrieval_set)
+        }
+        AspClientSearchPlaybookComposition::Chain { .. } => false,
     }
 }
 

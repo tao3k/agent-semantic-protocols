@@ -73,9 +73,14 @@ search packets, or agent-facing search guidance, follow this order:
 When `search playbook` exposes several independent semantic axes, prefer a
 fan-out/fan-in exploration step before editing. The playbook is the sole
 public search operation. It accepts exactly one `(search ...)` Scheme
-expression; the default V1 composition intersects rg and Tantivy acquisition,
-then establishes provider-native structural scope, then runs optional native
-Rust Ascent/GQL graph reasoning:
+expression. Choose the primary leaf by predicate: rg for regex truth over
+source bytes, Tantivy for ranked text, provider-native syntax for structural
+facts, and Query for an exact selector. There is no default rg/Tantivy pair.
+Use `intersect` only for an explicit semantic conjunction over independently
+computed complete sets; never use Tantivy as an rg prefilter without a
+generation-bound coverage witness. Workspace scope belongs at top level, so an
+rg leaf never carries a path. A typed chain may establish provider-native
+structural scope and then run optional native Rust Ascent/GQL graph reasoning:
 
 - fan out only independent axes, such as dependency API usage, source owners,
   test reachability, and policy findings

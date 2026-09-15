@@ -40,14 +40,14 @@ fn calibration(command: &str) -> Value {
 
 #[test]
 fn valid_scheme_composition_passes_without_rewrite_or_calibration() {
-    let command = ".devenv/devenv-profile-exec asp search playbook '(search (producers (language rust)) (chain (intersect (rg \"-n\" \"-g\" \"*.rs\" \"-e\" \"Owner|Route\" \"crates\") (tantivy \"title:Owner^2 OR body:Route\")) (syntax rust \"(function_item) @item\") (graph gql \"MATCH (owner:Owner)-[:CALLS]->(target:Item) RETURN owner\")))'";
+    let command = ".devenv/devenv-profile-exec asp search playbook '(search (producers (language rust)) (chain (intersect (rg \"-n\" \"-g\" \"*.rs\" \"-e\" \"Owner|Route\") (tantivy \"title:Owner^2 OR body:Route\")) (syntax rust \"(function_item) @item\") (graph gql \"MATCH (owner:Owner)-[:CALLS]->(target:Item) RETURN owner\")))'";
     assert_eq!(evaluate(command), None);
 }
 
 #[test]
 fn missing_tantivy_returns_scheme_source_calibration() {
     let calibration = calibration(
-        "asp search playbook '(search (producers (language rust)) (intersect (rg \"-n\" \"Owner\" \"crates\")))'",
+        "asp search playbook '(search (producers (language rust)) (intersect (rg \"-n\" \"Owner\")))'",
     );
     assert_eq!(calibration["schemaVersion"], "1");
     assert_eq!(calibration["tokenIndexBasis"], "search-playbook-argv");
@@ -74,7 +74,7 @@ fn malformed_native_rg_returns_the_native_reason() {
 #[test]
 fn bare_tantivy_text_is_rejected_by_native_analysis() {
     let calibration = calibration(
-        "asp search playbook '(search (producers (language rust)) (intersect (rg \"Owner\" \".\") (tantivy \"Owner\")))'",
+        "asp search playbook '(search (producers (language rust)) (intersect (rg \"Owner\") (tantivy \"Owner\")))'",
     );
     assert_eq!(
         calibration["issues"][0]["reasonKind"],

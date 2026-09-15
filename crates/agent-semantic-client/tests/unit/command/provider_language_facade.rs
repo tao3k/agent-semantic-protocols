@@ -98,7 +98,7 @@ fn search_playbook_uses_runtime_admission_for_registered_languages() {
     for language_id in ["rust", "python", "gerbil-scheme"] {
         let state_home = tempfile::tempdir().expect("isolated Runtime State Home");
         let source = format!(
-            "(search (producers (language {language_id})) (intersect (rg \"missing\" \".\") (tantivy \"title:\\\"missing\\\"^2 OR body:missing\")))"
+            "(search (producers (language {language_id})) (intersect (rg \"missing\" ) (tantivy \"title:\\\"missing\\\"^2 OR body:missing\")))"
         );
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .args(["search", "playbook", &source])

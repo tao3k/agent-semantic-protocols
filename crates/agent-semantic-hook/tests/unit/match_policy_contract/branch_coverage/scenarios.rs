@@ -25,7 +25,7 @@ struct Scenario {
 
 #[test]
 fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfaces() {
-    let command = "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'";
+    let command = "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"body:HookDecision\")))'";
     run_scenarios(
         "registered ASP search surfaces",
         &[
@@ -40,7 +40,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'",
+                    "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"body:HookDecision\")))'",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -50,7 +50,7 @@ fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfa
                 payload: shell_surface(
                     "Bash",
                     "command",
-                    "rtk --ultra-compact err asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'",
+                    "rtk --ultra-compact err asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"body:HookDecision\")))'",
                 ),
                 expected_rule: Some("registered-asp-reasoning-search"),
                 forbidden_rule: None,
@@ -343,7 +343,7 @@ fn priority_overlaps_have_explicit_winners() {
     let scenarios = [
         (
             "reasoning over json",
-            shell("asp search playbook '(search (producers (language rust)) (intersect (rg \"owner\" \".\") (tantivy \"body:owner\")))' --json"),
+            shell("asp search playbook '(search (producers (language rust)) (intersect (rg \"owner\" ) (tantivy \"body:owner\")))' --json"),
             "deny-agent-search-json",
         ),
         (

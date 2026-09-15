@@ -62,7 +62,7 @@ fn compiled_registered_asp_search_rule_matches_its_production_action() {
         project_root: ".".to_owned(),
     };
     let action = ToolAction::normalized_shell_command_action(
-        "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'".to_owned(),
+        "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"body:HookDecision\")))'".to_owned(),
         "Bash".to_owned(),
     );
 

@@ -98,11 +98,7 @@ fn request() -> NormalizedWorkspaceSearchPlaybookRequest {
         language: Some("rust|python".to_owned()),
         documents: None,
         workspace: None,
-        rg: vec![vec![
-            "-n".to_owned(),
-            "owner|consumer".to_owned(),
-            ".".to_owned(),
-        ]],
+        rg: vec![vec!["-n".to_owned(), "owner|consumer".to_owned()]],
         tantivy: vec![vec![
             "title:\"authority owner\"^2 OR body:impact".to_owned(),
         ]],
@@ -117,21 +113,34 @@ fn request() -> NormalizedWorkspaceSearchPlaybookRequest {
             language: "pgql".to_owned(),
             argv: vec!["MATCH (a)-[r]->(b) RETURN a, r, b".to_owned()],
         }],
+        composition: agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Chain {
+            children: vec![
+                agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Intersect {
+                    children: vec![
+                        protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg, 0),
+                        protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy, 0),
+                    ],
+                },
+                protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax, 0),
+                protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::NativeSyntax, 0),
+                protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Graph, 0),
+            ],
+        },
         clause_order: vec![
-            SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::Syntax,
-                block_index: 0,
-            },
-            SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::NativeSyntax,
-                block_index: 0,
-            },
             SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Rg,
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Tantivy,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Syntax,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::NativeSyntax,
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
@@ -163,19 +172,19 @@ fn plan_preserves_agent_authored_clause_priority_and_graph_barrier() {
         plan.axes.clause_order,
         vec![
             SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::Syntax,
-                block_index: 0,
-            },
-            SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::NativeSyntax,
-                block_index: 0,
-            },
-            SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Rg,
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Tantivy,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Syntax,
+                block_index: 0,
+            },
+            SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::NativeSyntax,
                 block_index: 0,
             },
             SearchPlaybookClauseRef {
@@ -194,11 +203,17 @@ fn request_without_a_producer_axis_is_rejected() {
             language: None,
             documents: None,
             workspace: None,
-            rg: vec![vec!["owner".to_owned(), ".".to_owned()]],
+            rg: vec![vec!["owner|consumer".to_owned()]],
             tantivy: vec![vec!["title:\"owner route\"^2 OR body:consumer".to_owned()]],
             syntax: vec![],
             native_syntax: vec![],
             graph: vec![],
+            composition: agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Intersect {
+                children: vec![
+                    protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg, 0),
+                    protocol_leaf(agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy, 0),
+                ],
+            },
             clause_order: vec![
                 SearchPlaybookClauseRef {
                     axis: SearchPlaybookClauseAxis::Rg,
@@ -224,6 +239,41 @@ fn request_without_a_producer_axis_is_rejected() {
     assert!(
         error.contains("requires --language or --documents"),
         "{error}"
+    );
+}
+
+fn protocol_leaf(
+    axis: agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis,
+    block_index: usize,
+) -> agent_semantic_client_protocol::AspClientSearchPlaybookComposition {
+    agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Leaf {
+        clause: agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
+            axis,
+            block_index,
+        },
+    }
+}
+
+#[test]
+fn plan_rejects_an_rg_path_even_if_a_client_bypasses_scheme_admission() {
+    let mut request = request();
+    request.rg[0].push("crates".to_owned());
+    let error = build_workspace_search_playbook_plan(
+        &request,
+        WorkspaceSearchPlanBinding {
+            project_id: "project".to_owned(),
+            workspace_id: "workspace".to_owned(),
+            content_generation_digest: "generation".to_owned(),
+        },
+        [
+            provider("rust", WorkspaceSearchProducerAxis::Language),
+            provider("python", WorkspaceSearchProducerAxis::Language),
+        ],
+    )
+    .expect_err("Runtime planning must independently enforce top-level scope authority");
+    assert!(
+        error.contains("reasonKind=search-playbook-rg-scope-conflict"),
+        "error={error}"
     );
 }
 

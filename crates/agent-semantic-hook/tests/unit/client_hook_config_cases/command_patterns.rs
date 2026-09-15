@@ -530,7 +530,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"agent hooks\" \".\") (tantivy \"body:\\\"agent hooks\\\"\")))'"}
+            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"agent hooks\" ) (tantivy \"body:\\\"agent hooks\\\"\")))'"}
         }),
     ]
     .map(|mut payload| {

@@ -175,7 +175,7 @@ service is managed by the ASP Server and is not invoked as a second executable:
 asp search playbook '(search (producers (language rust))
   (chain
     (intersect
-      (rg "-n" "-e" "graphs_timeline" "crates/agent-semantic-client/src")
+      (rg "-n" "-e" "graphs_timeline")
       (tantivy "body:graphs_timeline"))
     (graph gql "--query" "node(kind = \"owner\")")))'
 ```
@@ -186,8 +186,10 @@ Graph-turbo request packets use the ranking engine through schema-owned JSON:
 The retired compact graph renderer is a prompt/debug projection only; it is not a
 trusted graph, frontier, rank, or action protocol.
 
-Agent-facing search uses the fixed Playbook order: exact ripgrep acquisition,
-provider-native syntax, Tantivy lexical retrieval, then Python Graphs. The
+Agent-facing Search is predicate-directed: rg owns regex truth, Tantivy owns
+ranked text, provider syntax owns structural facts, and Query owns known exact
+selectors. There is no mandatory multi-engine order; `intersect` is an explicit
+set conjunction and `chain` is an explicit typed scope transform. The
 trusted structure remains the schema packet and its schema-owned GQL projection.
 Rank, profile, paths, scores, cache, trace, explanations, metrics, and frontier
 actions must be packet-visible before any presentation layer serializes them.
@@ -220,7 +222,7 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search playbook '(search (producers (language rust)) (intersect (rg "-n" "-e" "<term>" ".") (tantivy "title:<term>^2 OR body:<term>")))'
+asp search playbook '(search (producers (language rust)) (intersect (rg "-n" "-e" "<term>") (tantivy "title:<term>^2 OR body:<term>")))'
 asp query playbook '(query (producers (language rust)) (select (selectors "rust://src/lib.rs#item/function/run") (projection source)))'
 asp query playbook '(query (producers (documents org)) (select (selectors "org://docs/spec.org#item/heading/Contract") (projection source)))'
 ```
@@ -229,7 +231,8 @@ asp query playbook '(query (producers (documents org)) (select (selectors "org:/
 surfaces. Use `(language rust typescript python julia)` for code producers and
 `(documents org md)` for document producers; a cross-domain request may use
 both. Search
-accepts native argument blocks; Query accepts only selectors returned on the
+accepts one Scheme composition with top-level Workspace scope; an rg leaf never
+carries a path. Query accepts only selectors returned on the
 owning GQL nodes. Dependency discovery therefore starts with manifest terms in
 the Playbook and continues through returned selectors, rather than a separate
 provider mode.

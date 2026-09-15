@@ -54,10 +54,23 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
         assert entry["zero_match_search"].startswith("(search ")
         assert entry["source_query"].count("{{selector}}") == 1
         assert entry["callable_skeleton_query"].count("{{selector}}") == 1
-        assert set(entry["scenario_classes"]) == {
-            "lexical-intersection", "exact-parser-owner", "zero-match"
-        }
+        assert set(entry["scenario_classes"]) - {
+            "exact-parser-owner", "zero-match"
+        } in [
+            {"regex-truth"},
+            {"ranked-text"},
+            {"explicit-conjunction"},
+        ]
         assert set(entry["required_telemetry_events"]) == {
             "runtime_resident_search_terminal",
             "runtime_query_playbook_terminal",
         }
+
+    assert {
+        next(
+            value
+            for value in entry["scenario_classes"]
+            if value in {"regex-truth", "ranked-text", "explicit-conjunction"}
+        )
+        for entry in plan["cases"]
+    } == {"regex-truth", "ranked-text", "explicit-conjunction"}

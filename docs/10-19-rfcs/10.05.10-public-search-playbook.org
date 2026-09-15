@@ -46,20 +46,28 @@ evidence.
 
 The V1 executable request is exactly one =(search ...)= Scheme expression. It
 contains a required =(producers ...)= declaration, an optional
-=(workspace "registered-workspace-id")= form, a leading
-=(intersect (rg ...) (tantivy ...))= acquisition form, optional trailing
-=(syntax ...)= and =(native-syntax ...)= leaves, and optional final
-=(graph ...)= leaves.
-Native rg and Tantivy jointly establish the fused file-context scope. The
-immutable generation's owner/provider bindings select native parsers, optionally
-narrowed by the calibration expressions. Explicit Syntax and native-syntax
-inputs extract syntax and content facts within that scope, while exact selector
-materialization remains a Query operation.
+=(workspace "registered-workspace-id")= form, and one typed Composition.  A
+Composition may begin with an =rg= regex leaf, a Tantivy ranked-text leaf, or a
+provider-native =syntax= structural leaf.  An explicit =intersect= combines
+candidate sets; =chain= feeds one typed result into the next stage; an optional
+final =graph= leaf performs relation fan-in.  Runtime MUST NOT add a second
+engine merely because it is installed.
 
-Every input required by the admitted layout is present with one or more native blocks.
+The word or regular expression passed to =rg= is only lexical acquisition.  For
+example, =(rg "RuntimeClient|WorkspaceId|ResolvedRoute")= evaluates the
+complete ripgrep regex =RuntimeClient|WorkspaceId|ResolvedRoute= against the
+top-level Workspace scope; it does not invoke an ASP owner route and it cannot express parser-owned identity.
+Known-owner and exact-structure requests use a canonical =native-syntax=
+selector (or Query after the selector is known).  Examples MUST NOT use
+=(rg "owner" ...)= as shorthand for owner lookup because that would merely
+search for the literal text =owner=.
+
+Every input required by the selected typed route is present with one or more native blocks.
 All Graph blocks follow every retrieval and syntax block as the final fan-in barrier.
-An absent rg or Tantivy block, an incomplete native
-block, or an invalid argument is a typed request failure. The MRR-owned native
+An absent mandatory input of an explicitly chosen operator, an incomplete
+native block, or an invalid argument is a typed request failure. A standalone
+regex, ranked-text, or structural leaf is complete without an invented partner.
+The MRR-owned native
 Scheme reader admits the structure without evaluating it. For rg it projects
 the leaf's string arguments and consults the registered option-arity table.
 String-native leaves retain their exact token sequence. A Syntax leaf instead
@@ -71,18 +79,22 @@ The PreTool Hook applies this same boundary parser before execution. A complete
 request passes once without a Hook message. An incomplete or conflicting
 request returns one typed =search-playbook-pretool-calibration= terminal
 with the expression-argument count, source digest, Scheme-reader/Tree-sitter
-Query ABI/extension-table provenance, fixed normalized layout, and typed issue. It neither echoes the
+Query ABI/extension-table provenance, normalized typed route, and typed issue. It neither echoes the
 source nor returns a Guide or requires a repair round trip.
 
 *** SP-GRAMMAR-003 — Native grammar and shell separation
 
-=rg= receives native argv tokens including its paths and globs. After Host shell
+=rg= receives native predicate, option, and glob argv tokens, but never a search
+path. After Host shell
 tokenization ASP passes the complete =(rg ...)= string sequence unchanged to
 the admitted native rg adapter. The leaf parser consults native rg option
 arity, and the PreTool and Runtime admission paths parse the retained argv
-against the same registered native grammar. Neither path normalizes or rewrites
-an admitted token. After native rg =--=, the first positional token is retained as
-the pattern when no explicit pattern source exists. Tantivy receives its native
+against the same registered native grammar. An explicitly authored rg search
+root is a typed =search-playbook-rg-scope-conflict= failure. Runtime supplies the
+only root from the content-bound WorkspaceId; this implicit root is not added to
+the public argv. Neither path normalizes or rewrites an admitted token. After
+native rg =--=, the first positional token is retained as the pattern when no
+explicit pattern source exists. Tantivy receives its native
 query tokens and is parsed during PreTool calibration and execution admission.
 V1 requires a multi-leaf, explicitly Boolean, fielded expression with at least
 one phrase, boost, range, set, exists, or regex predicate; a bare word or plain
@@ -112,12 +124,19 @@ artifact digests, and checks maximum node count, depth, static work, bytes, and
 queue budget before execution. Every individual request is finite and bounded,
 although the family of representable finite compositions has no fixed depth.
 
-The current flat =lower_v1_composition= implementation accepts only a top-level
-=chain= or acquisition =intersect= and rejects nested composition. Therefore it
-does not yet satisfy this recursive closure and MUST be reported as an
-implementation-conformance gap until the Rust AST retains recursive structure;
-flattening nested composition without preserving its execution edges is not an
-admissible substitute.
+The Rust lowerer retains this recursive core AST.  It admits a standalone
+regex, ranked-text, or structural route; recursive =intersect= only where all
+children share a declared set carrier; and recursive =chain= only where each
+output type equals the next input type. It projects every payload-bearing leaf
+to a normalized block reference and sends the payload-free recursive
+=composition= tree in the V1 wire request. Runtime validates that its leaf
+traversal equals =clauseOrder= exactly; it never reconstructs operators from
+engine co-presence. A cross-carrier =intersect=, a type-incompatible chain edge, or
+another topology whose edges cannot be represented fails
+with =search-playbook-layout-invalid=; unconditional flattening is not an
+admissible substitute. POO/MRR surface-macro expansion remains a preceding
+authority boundary and must bind its operator-registry and macro-artifact
+identity before handing this core AST to Rust.
 
 Repeated leaves remain distinct, source-ordered layout inputs. No synthetic
 =priority= field is admitted: composition structure and leaf order are the
@@ -128,25 +147,34 @@ fan-in has related and filtered the acquired candidates.  A standalone
 unquoted shell =|= is rejected before request admission and can never connect
 backend processes.
 
-*** SP-LAYOUT-004 — Configured retrieval composition followed by native grounding
+*** SP-LAYOUT-004 — Predicate-directed typed execution routes
 
-The execution graph comes from one versioned Search-package layout model. Rust
-Runtime admits the exact layout digest and layout id, then executes that graph.
-A Scheme-authored layout compiler is deferred work and is not part of V1
-request admission or execution.
+The execution graph comes from a versioned Search-package route algebra. Rust
+Runtime admits the exact route identity, then executes only the stages present
+in the typed Composition. There is no universal =rg + Tantivy= default.
 
-The default V1 graph is
-=intersect(rg-owner-set, tantivy-owner-set) -> structural-scope-facts -> graph?=.
-rg and Tantivy consume the same immutable generation owner universe and each
-produces an owner set. Their intersection alone establishes the file-context
-scope. The structural-scope stage selects explicit syntax/native-syntax inputs
-when present and otherwise selects automatic parser grounding: admitted explicit
-matches replace the automatic fallback frontier, and multiple explicit inputs
-are unioned. Either path derives
-a narrower structural-selector scope and its facts inside that file scope;
-Graph is optional and consumes only structurally grounded facts. This is
-neither =rg -> parser -> Tantivy= nor a flat
-candidate union.
+The registered V1 route family contains at least:
+
+| Route | Input meaning | Execution |
+| regex-only | regex truth over source bytes | resident rg-compatible matcher |
+| ranked-text-only | indexed text relevance | Tantivy |
+| structural-only | provider-native AST/fact predicate | resident structural query |
+| explicit set-intersection | user-authored AND over one document carrier | intersect complete child sets |
+| typed chain | downstream input type matches upstream output | ordered scope transform |
+| exact selector | canonical known identity | Query owner index, outside Search |
+
+rg, Tantivy, and Syntax may consume the same immutable generation universe,
+but this does not make their result sets equal.  Tantivy may accelerate regex
+only when a coverage witness proves every regex hit remains in its candidate
+set.  Without that witness they are independent semantics, and implicit
+intersection is forbidden.  If two backends are proven equivalent, the
+optimizer may eliminate the more expensive duplicate rather than compute a
+meaningless intersection. Until such an optimizer carries a proof, Runtime
+executes both branches independently. Each clause receipt records its input,
+output, elapsed time, and marginal owner reduction. An observed zero marginal
+gain is audit evidence, not proof that two predicates are universally
+equivalent; elimination requires a generation-bound equivalence or coverage
+witness rather than a string heuristic.
 
 A registered layout may instead declare serial =scope-transform= edges. Every
 edge and fusion policy is explicit in the compiled layout, so Runtime cannot
@@ -156,9 +184,27 @@ selection. Explicit Syntax and native-syntax nodes may participate wherever the
 layout declares their input/output basis. The Agent may omit Graph when the
 selected layout declares it optional.
 
-V1 is refined in place. The former independent-axis behavior is removed rather
-than retained as a compatibility layout; only the current admitted V1 Search
-Layout may produce a successful receipt.
+V1 is refined in place. Its required payload-free =composition= tree preserves
+the registered route while =clauseOrder= preserves deterministic leaf order.
+The two views must cover the same unique block references. It MUST reject
+rather than flatten a recursive topology that the wire cannot preserve. No
+compatibility layout silently restores the former mandatory-partner behavior.
+
+*** SP-LAYOUT-004A — Rigorous-search admission is executable
+
+Agent guidance is not the correctness boundary. The Scheme compiler, V1
+schema, Client protocol validator, scheduler plan, and Runtime executor jointly
+enforce the route algebra. A request is rejected when it omits the operator
+tree, introduces an rg path below top-level Workspace scope, places a structural
+predicate inside lexical intersection, moves retrieval after structural scope,
+places Graph before the final barrier, duplicates or omits a leaf reference,
+or exceeds static work. Runtime receipts make zero-marginal work visible to the
+optimizer and Scenario qualification without changing the declared semantics.
+
+Therefore an Agent cannot obtain a successful Search result by asking several
+engines the same question and treating their overlap as rigor. Multi-engine
+work is admitted only as an explicit typed operation, and each successful
+branch remains attributable to one predicate-owning leaf.
 
 *** SP-RECOVERY-005 — Invalid requests fail without alternate rendering
 

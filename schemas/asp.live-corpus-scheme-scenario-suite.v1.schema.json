@@ -62,7 +62,18 @@
         "scenario_id": { "type": "string", "minLength": 1 },
         "language_id": { "type": "string", "minLength": 1 },
         "provider_id": { "type": "string", "minLength": 1 },
-        "scenario_classes": { "const": ["lexical-intersection", "exact-parser-owner", "zero-match"] },
+        "scenario_classes": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "prefixItems": [
+            { "enum": ["regex-truth", "ranked-text", "explicit-conjunction"] },
+            { "const": "exact-parser-owner" },
+            { "const": "zero-match" }
+          ],
+          "items": false
+        },
         "minimum_candidates": { "type": "integer", "minimum": 1 },
         "maximum_search_micros": { "type": "integer", "minimum": 1, "maximum": 500000 },
         "maximum_resident_query_micros": { "type": "integer", "minimum": 1, "maximum": 1000 },

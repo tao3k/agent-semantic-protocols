@@ -14,7 +14,6 @@ use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerm
 use crate::command::live_corpus::qualification::client_protocol::render_workspace_query_scheme_source;
 use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
 use crate::command::live_corpus::qualification::client_protocol::workspace_query_qualification_request;
-use crate::command::live_corpus::qualification::client_protocol::workspace_search_qualification_request;
 use crate::command::live_corpus::qualification::contract::AgentOrgTopologyEvidence;
 use crate::command::live_corpus::qualification::contract::AgentOrgTopologyScenarioSuite;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
@@ -31,15 +30,15 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
         language_id: language_id.to_owned(),
         provider_id: format!("asp-{language_id}"),
         scenario_classes: vec![
-            "lexical-intersection".to_owned(),
+            "explicit-conjunction".to_owned(),
             "exact-parser-owner".to_owned(),
             "zero-match".to_owned(),
         ],
         search: format!(
-            "(search (producers (language {language_id})) (intersect (rg \"-n\" \"owner\" \".\") (tantivy \"title:owner OR body:owner\")))"
+            "(search (producers (language {language_id})) (intersect (rg \"-n\" \"owner\") (tantivy \"title:owner OR body:owner\")))"
         ),
         zero_match_search: format!(
-            "(search (producers (language {language_id})) (intersect (rg \"-n\" \"definitely-absent\" \".\") (tantivy \"body:definitely-absent\")))"
+            "(search (producers (language {language_id})) (rg \"-n\" \"definitely-absent\"))"
         ),
         source_query: format!(
             "(query (producers (language {language_id})) (select (selectors {{{{selector}}}}) (projection source) (output json)))"
@@ -56,16 +55,20 @@ fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCas
 
 #[test]
 fn qualification_search_is_lowered_through_one_scheme_expression() {
-    let source = "(search (producers (language rust)) (intersect (rg \"-n\" \"-F\" \"owner \\\"identity\\\"\" \".\") (tantivy \"title:\\\"owner identity\\\"^2 OR body:owner\")))";
+    let source = "(search (producers (language rust)) (intersect (rg \"-n\" \"-F\" \"owner \\\"identity\\\"\") (tantivy \"title:\\\"owner identity\\\"^2 OR body:owner\")))";
     assert!(source.starts_with("(search (producers (language rust)) (intersect (rg "));
     assert!(source.contains("owner \\\"identity\\\""));
 
-    let request = workspace_search_qualification_request("rust", source)
-        .expect("Scheme-lowered Search request");
+    let request = agent_semantic_search::parse_progressive_search_playbook_args(&[
+        "search".to_owned(),
+        "playbook".to_owned(),
+        source.to_owned(),
+    ])
+    .expect("Scheme-lowered Search request");
     assert_eq!(request.language.as_deref(), Some("rust"));
     assert_eq!(request.documents, None);
-    assert!(request.rg.is_some());
-    assert!(request.tantivy.is_some());
+    assert!(!request.rg.is_empty());
+    assert!(!request.tantivy.is_empty());
     assert_eq!(request.clause_order.len(), 2);
 }
 

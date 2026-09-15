@@ -4,132 +4,14 @@
 
 //! Lightweight public Search Playbook V1 syntax and normalized request lowering.
 
+use crate::model::{
+    GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
+    ProgressiveSearchPlaybookRequest, SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH,
+    SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
+    SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
+    SearchPlaybookLeaf, SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
+};
 use agent_semantic_scheme_syntax::SchemeDatum;
-use serde::{Deserialize, Serialize};
-
-/// Canonical normalized request produced from one V1 Scheme composition.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProgressiveSearchPlaybookRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub documents: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub rg: Vec<Vec<String>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tantivy: Vec<Vec<String>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub syntax: Vec<ProducerNativeBlock>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub native_syntax: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub graph: Vec<GraphNativeBlock>,
-    pub clause_order: Vec<SearchPlaybookClauseRef>,
-}
-
-/// One provider-owned structural syntax leaf.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProducerNativeBlock {
-    pub producer: String,
-    pub argv: Vec<String>,
-}
-
-/// One native graph reasoning leaf.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GraphNativeBlock {
-    pub language: String,
-    pub argv: Vec<String>,
-}
-
-/// Producer axes declared by a structurally valid Search Playbook.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SearchPlaybookProducerDeclaration {
-    pub language: Vec<String>,
-    pub documents: Vec<String>,
-}
-
-/// Ordered V1 composition axis.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SearchPlaybookClauseAxis {
-    Rg,
-    Tantivy,
-    Syntax,
-    #[serde(rename = "native-syntax")]
-    NativeSyntax,
-    Graph,
-}
-
-/// Stable reference to a normalized block in clause order.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SearchPlaybookClauseRef {
-    pub axis: SearchPlaybookClauseAxis,
-    pub block_index: usize,
-}
-
-/// Typed rejection produced while admitting or lowering the V1 expression.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProgressiveSearchPlaybookError {
-    InvalidOperation,
-    IncompleteRequest(String),
-    InvalidClauseOrder(String),
-    UnsupportedOption(String),
-    InvalidParameter {
-        reason_kind: &'static str,
-        message: String,
-    },
-    InvalidRg {
-        reason_kind: &'static str,
-        message: String,
-    },
-    InvalidTantivy {
-        reason_kind: &'static str,
-        message: String,
-    },
-}
-
-impl std::fmt::Display for ProgressiveSearchPlaybookError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidOperation => formatter.write_str("use `asp search playbook`"),
-            Self::IncompleteRequest(reason) => {
-                write!(formatter, "search-playbook-request-incomplete: {reason}")
-            }
-            Self::InvalidClauseOrder(reason) => formatter.write_str(reason),
-            Self::UnsupportedOption(operator) => {
-                write!(
-                    formatter,
-                    "Search Playbook does not support operator `{operator}`"
-                )
-            }
-            Self::InvalidParameter { message, .. }
-            | Self::InvalidRg { message, .. }
-            | Self::InvalidTantivy { message, .. } => formatter.write_str(message),
-        }
-    }
-}
-
-impl std::error::Error for ProgressiveSearchPlaybookError {}
-
-impl ProgressiveSearchPlaybookError {
-    pub fn reason_kind(&self) -> &'static str {
-        match self {
-            Self::IncompleteRequest(_) => "search-playbook-request-incomplete",
-            Self::InvalidOperation => "search-playbook-operation-invalid",
-            Self::InvalidClauseOrder(_) => "search-playbook-clause-order-invalid",
-            Self::UnsupportedOption(_) => "search-playbook-operator-unsupported",
-            Self::InvalidParameter { reason_kind, .. }
-            | Self::InvalidRg { reason_kind, .. }
-            | Self::InvalidTantivy { reason_kind, .. } => reason_kind,
-        }
-    }
-}
 
 /// Admits exactly `search playbook <scheme-expression>` and lowers its V1 AST.
 pub fn parse_progressive_search_playbook_args(
@@ -306,13 +188,24 @@ fn lower_search(
         ));
     };
     let (language, documents) = lower_producers(producers)?;
+    let mut parsed_nodes = 0;
+    let composition = parse_composition(&root[flow_index], 1, &mut parsed_nodes)?;
+    admit_composition_budget(&composition)?;
+    reject_duplicate_leaves(&composition)?;
     let mut state = LoweringState::default();
-    lower_v1_composition(&root[flow_index], &mut state)?;
-    if state.rg.is_empty() || state.tantivy.is_empty() {
+    lower_v1_composition(&composition, &mut state)?;
+    if state.rg.is_empty()
+        && state.tantivy.is_empty()
+        && state.syntax.is_empty()
+        && state.native_syntax.is_empty()
+    {
         return Err(incomplete(
-            "the default layout requires rg and tantivy leaves",
+            "Search Playbook requires a regex, ranked-text, or structural acquisition leaf",
         ));
     }
+    let mut normalized_indices = NormalizedLeafIndices::default();
+    let normalized_composition =
+        normalize_composition_references(&composition, &mut normalized_indices);
     Ok(ProgressiveSearchPlaybookRequest {
         language,
         documents,
@@ -323,7 +216,100 @@ fn lower_search(
         native_syntax: state.native_syntax,
         graph: state.graph,
         clause_order: state.clause_order,
+        composition,
+        normalized_composition,
     })
+}
+
+fn reject_duplicate_leaves(
+    composition: &SearchPlaybookComposition,
+) -> Result<(), ProgressiveSearchPlaybookError> {
+    fn visit<'a>(
+        composition: &'a SearchPlaybookComposition,
+        seen: &mut Vec<&'a SearchPlaybookLeaf>,
+    ) -> Result<(), ProgressiveSearchPlaybookError> {
+        match composition {
+            SearchPlaybookComposition::Chain(children)
+            | SearchPlaybookComposition::Intersect(children) => {
+                for child in children {
+                    visit(child, seen)?;
+                }
+            }
+            SearchPlaybookComposition::Leaf(leaf) => {
+                if seen.contains(&leaf) {
+                    return Err(invalid_parameter(
+                        "search-playbook-redundant-predicate",
+                        "Search Playbook rejects byte-identical predicate leaves as redundant work",
+                    ));
+                }
+                seen.push(leaf);
+            }
+        }
+        Ok(())
+    }
+
+    visit(composition, &mut Vec::new())
+}
+
+#[derive(Default)]
+struct NormalizedLeafIndices {
+    rg: usize,
+    tantivy: usize,
+    syntax: usize,
+    native_syntax: usize,
+    graph: usize,
+}
+
+fn normalize_composition_references(
+    composition: &SearchPlaybookComposition,
+    indices: &mut NormalizedLeafIndices,
+) -> SearchPlaybookNormalizedComposition {
+    match composition {
+        SearchPlaybookComposition::Chain(children) => SearchPlaybookNormalizedComposition::Chain(
+            children
+                .iter()
+                .map(|child| normalize_composition_references(child, indices))
+                .collect(),
+        ),
+        SearchPlaybookComposition::Intersect(children) => {
+            SearchPlaybookNormalizedComposition::Intersect(
+                children
+                    .iter()
+                    .map(|child| normalize_composition_references(child, indices))
+                    .collect(),
+            )
+        }
+        SearchPlaybookComposition::Leaf(leaf) => {
+            let (axis, block_index) = match leaf {
+                SearchPlaybookLeaf::Rg(_) => {
+                    take_index(&mut indices.rg, SearchPlaybookClauseAxis::Rg)
+                }
+                SearchPlaybookLeaf::Tantivy(_) => {
+                    take_index(&mut indices.tantivy, SearchPlaybookClauseAxis::Tantivy)
+                }
+                SearchPlaybookLeaf::Syntax(_) => {
+                    take_index(&mut indices.syntax, SearchPlaybookClauseAxis::Syntax)
+                }
+                SearchPlaybookLeaf::NativeSyntax(_) => take_index(
+                    &mut indices.native_syntax,
+                    SearchPlaybookClauseAxis::NativeSyntax,
+                ),
+                SearchPlaybookLeaf::Graph(_) => {
+                    take_index(&mut indices.graph, SearchPlaybookClauseAxis::Graph)
+                }
+            };
+            SearchPlaybookNormalizedComposition::Leaf(SearchPlaybookClauseRef { axis, block_index })
+        }
+    }
+}
+
+fn take_index(
+    index: &mut usize,
+    axis: SearchPlaybookClauseAxis,
+) -> (SearchPlaybookClauseAxis, usize) {
+    let block_index = *index;
+    *index = index.saturating_add(1);
+    (axis, block_index)
 }
 
 fn lower_producers(
@@ -398,119 +384,242 @@ struct LoweringState {
 }
 
 fn lower_v1_composition(
-    datum: &SchemeDatum,
+    composition: &SearchPlaybookComposition,
     state: &mut LoweringState,
 ) -> Result<(), ProgressiveSearchPlaybookError> {
-    let form = operator_form(datum)?;
-    match symbol(form.first()).expect("operator_form checks the head") {
-        "chain" => {
-            if form.len() < 2 {
+    match composition {
+        SearchPlaybookComposition::Chain(_) => {
+            let mut sequence = Vec::new();
+            flatten_chain(composition, &mut sequence);
+            let Some((acquisition, tail)) = sequence.split_first() else {
                 return Err(incomplete("chain requires a child"));
+            };
+            if matches!(
+                acquisition,
+                SearchPlaybookComposition::Intersect(_)
+                    | SearchPlaybookComposition::Leaf(
+                        SearchPlaybookLeaf::Rg(_) | SearchPlaybookLeaf::Tantivy(_)
+                    )
+            ) {
+                lower_acquisition(acquisition, state)?;
+            } else {
+                lower_tail(acquisition, state)?;
             }
-            lower_acquisition(&form[1], state)?;
-            for child in &form[2..] {
-                lower_leaf(child, state)?;
+            for child in tail {
+                lower_tail(child, state)?;
             }
         }
-        "intersect" => {
-            lower_acquisition(datum, state)?;
-        }
-        "union" => {
-            return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-                "union".to_owned(),
-            ));
-        }
-        other => {
+        SearchPlaybookComposition::Intersect(_) => lower_acquisition(composition, state)?,
+        SearchPlaybookComposition::Leaf(
+            leaf @ (SearchPlaybookLeaf::Rg(_)
+            | SearchPlaybookLeaf::Tantivy(_)
+            | SearchPlaybookLeaf::Syntax(_)
+            | SearchPlaybookLeaf::NativeSyntax(_)),
+        ) => lower_leaf(leaf, state)?,
+        SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Graph(_)) => {
             return Err(invalid_parameter(
                 "search-playbook-layout-invalid",
-                format!("V1 composition must begin with intersect(rg, tantivy), found `{other}`"),
+                "graph requires a preceding retrieval or structural predicate leaf",
             ));
         }
     }
     Ok(())
+}
+
+fn flatten_chain<'a>(
+    composition: &'a SearchPlaybookComposition,
+    sequence: &mut Vec<&'a SearchPlaybookComposition>,
+) {
+    match composition {
+        SearchPlaybookComposition::Chain(children) => {
+            for child in children {
+                flatten_chain(child, sequence);
+            }
+        }
+        other => sequence.push(other),
+    }
 }
 
 fn lower_acquisition(
-    datum: &SchemeDatum,
+    composition: &SearchPlaybookComposition,
     state: &mut LoweringState,
 ) -> Result<(), ProgressiveSearchPlaybookError> {
-    let form = operator_form(datum)?;
-    if symbol(form.first()) != Some("intersect") {
-        return Err(invalid_parameter(
-            "search-playbook-layout-invalid",
-            "V1 begins with an intersect containing rg and tantivy leaves",
-        ));
-    }
-    if form.len() < 3 {
-        return Err(incomplete(
-            "the acquisition intersect requires rg and tantivy leaves",
-        ));
-    }
-    for child in &form[1..] {
-        let child_form = operator_form(child)?;
-        match symbol(child_form.first()).expect("operator_form checks the head") {
-            "rg" | "tantivy" => lower_leaf(child, state)?,
-            operator => {
-                return Err(invalid_parameter(
-                    "search-playbook-layout-invalid",
-                    format!("V1 acquisition intersect does not admit `{operator}`"),
+    match composition {
+        SearchPlaybookComposition::Intersect(children) => {
+            if children.len() < 2 {
+                return Err(incomplete(
+                    "the acquisition intersect requires at least two children",
                 ));
             }
+            for child in children {
+                lower_acquisition(child, state)?;
+            }
+        }
+        SearchPlaybookComposition::Leaf(
+            leaf @ (SearchPlaybookLeaf::Rg(_) | SearchPlaybookLeaf::Tantivy(_)),
+        ) => lower_leaf(leaf, state)?,
+        SearchPlaybookComposition::Leaf(_) | SearchPlaybookComposition::Chain(_) => {
+            return Err(invalid_parameter(
+                "search-playbook-layout-invalid",
+                "V1 acquisition intersection admits only nested intersect, rg, and tantivy",
+            ));
         }
     }
     Ok(())
 }
 
-fn lower_leaf(
-    datum: &SchemeDatum,
+fn lower_tail(
+    composition: &SearchPlaybookComposition,
     state: &mut LoweringState,
 ) -> Result<(), ProgressiveSearchPlaybookError> {
-    let form = operator_form(datum)?;
-    let operator = symbol(form.first()).expect("operator_form checks the head");
-    match operator {
-        "rg" => {
+    match composition {
+        SearchPlaybookComposition::Chain(children) => {
+            for child in children {
+                lower_tail(child, state)?;
+            }
+            Ok(())
+        }
+        SearchPlaybookComposition::Leaf(
+            leaf @ (SearchPlaybookLeaf::Syntax(_)
+            | SearchPlaybookLeaf::NativeSyntax(_)
+            | SearchPlaybookLeaf::Graph(_)),
+        ) => lower_leaf(leaf, state),
+        SearchPlaybookComposition::Leaf(_) | SearchPlaybookComposition::Intersect(_) => {
+            Err(invalid_parameter(
+                "search-playbook-layout-invalid",
+                "V1 chain tail admits only nested chain, syntax, native-syntax, and final graph",
+            ))
+        }
+    }
+}
+
+fn lower_leaf(
+    leaf: &SearchPlaybookLeaf,
+    state: &mut LoweringState,
+) -> Result<(), ProgressiveSearchPlaybookError> {
+    match leaf {
+        SearchPlaybookLeaf::Rg(argv) => {
             reject_after_graph(state)?;
-            let argv = string_arguments(operator, &form[1..])?;
-            require_nonempty(operator, &argv)?;
-            validate_rg(&argv)?;
             let block_index = state.rg.len();
-            state.rg.push(argv);
+            state.rg.push(argv.clone());
             state.clause_order.push(SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Rg,
                 block_index,
             });
         }
-        "tantivy" => {
+        SearchPlaybookLeaf::Tantivy(argv) => {
             reject_after_graph(state)?;
-            let argv = string_arguments(operator, &form[1..])?;
-            if argv.len() != 1 {
-                return Err(incomplete("tantivy requires one query string"));
-            }
-            validate_tantivy(&argv[0])?;
             let block_index = state.tantivy.len();
-            state.tantivy.push(argv);
+            state.tantivy.push(argv.clone());
             state.clause_order.push(SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Tantivy,
                 block_index,
             });
         }
-        "syntax" => {
+        SearchPlaybookLeaf::Syntax(block) => {
             reject_after_graph(state)?;
+            let block_index = state.syntax.len();
+            state.syntax.push(block.clone());
+            state.clause_order.push(SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Syntax,
+                block_index,
+            });
+        }
+        SearchPlaybookLeaf::NativeSyntax(selector) => {
+            reject_after_graph(state)?;
+            let block_index = state.native_syntax.len();
+            state.native_syntax.push(selector.clone());
+            state.clause_order.push(SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::NativeSyntax,
+                block_index,
+            });
+        }
+        SearchPlaybookLeaf::Graph(block) => {
+            if state.clause_order.is_empty() {
+                return Err(ProgressiveSearchPlaybookError::InvalidClauseOrder(
+                    "graph requires a preceding retrieval or syntax leaf".to_owned(),
+                ));
+            }
+            state.graph_started = true;
+            let block_index = state.graph.len();
+            state.graph.push(block.clone());
+            state.clause_order.push(SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Graph,
+                block_index,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn parse_composition(
+    datum: &SchemeDatum,
+    depth: usize,
+    parsed_nodes: &mut usize,
+) -> Result<SearchPlaybookComposition, ProgressiveSearchPlaybookError> {
+    *parsed_nodes = parsed_nodes.saturating_add(1);
+    if *parsed_nodes > SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES
+        || depth > SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH
+    {
+        return Err(invalid_parameter(
+            "search-playbook-composition-budget-exceeded",
+            "Search Playbook Composition exceeds the V1 node or depth budget",
+        ));
+    }
+    let form = operator_form(datum)?;
+    let operator = symbol(form.first()).expect("operator_form checks the head");
+    match operator {
+        "chain" | "intersect" => {
+            let minimum_children = if operator == "chain" { 1 } else { 2 };
+            if form.len() <= minimum_children {
+                return Err(incomplete(format!(
+                    "{operator} requires at least {minimum_children} child{}",
+                    if minimum_children == 1 { "" } else { "ren" }
+                )));
+            }
+            let children = form[1..]
+                .iter()
+                .map(|child| parse_composition(child, depth + 1, parsed_nodes))
+                .collect::<Result<Vec<_>, _>>()?;
+            if operator == "chain" {
+                Ok(SearchPlaybookComposition::Chain(children))
+            } else {
+                Ok(SearchPlaybookComposition::Intersect(children))
+            }
+        }
+        "union" => Err(ProgressiveSearchPlaybookError::UnsupportedOption(
+            "union".to_owned(),
+        )),
+        "rg" => {
+            let argv = string_arguments(operator, &form[1..])?;
+            require_nonempty(operator, &argv)?;
+            validate_rg(&argv)?;
+            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(
+                argv,
+            )))
+        }
+        "tantivy" => {
+            let argv = string_arguments(operator, &form[1..])?;
+            if argv.len() != 1 {
+                return Err(incomplete("tantivy requires one query string"));
+            }
+            validate_tantivy(&argv[0])?;
+            Ok(SearchPlaybookComposition::Leaf(
+                SearchPlaybookLeaf::Tantivy(argv),
+            ))
+        }
+        "syntax" => {
             let (producer, argv) = producer_arguments(operator, &form[1..])?;
             if argv.len() != 1 {
                 return Err(incomplete(
                     "syntax requires exactly one enhanced Tree-sitter Query string",
                 ));
             }
-            let block_index = state.syntax.len();
-            state.syntax.push(ProducerNativeBlock { producer, argv });
-            state.clause_order.push(SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::Syntax,
-                block_index,
-            });
+            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Syntax(
+                ProducerNativeBlock { producer, argv },
+            )))
         }
         "native-syntax" => {
-            reject_after_graph(state)?;
             let argv = string_arguments(operator, &form[1..])?;
             if argv.len() != 1 || !valid_exact_selector(&argv[0]) {
                 return Err(invalid_parameter(
@@ -518,19 +627,11 @@ fn lower_leaf(
                     "native-syntax requires one canonical parser-owned selector",
                 ));
             }
-            let block_index = state.native_syntax.len();
-            state.native_syntax.push(argv[0].clone());
-            state.clause_order.push(SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::NativeSyntax,
-                block_index,
-            });
+            Ok(SearchPlaybookComposition::Leaf(
+                SearchPlaybookLeaf::NativeSyntax(argv[0].clone()),
+            ))
         }
         "graph" => {
-            if state.clause_order.is_empty() {
-                return Err(ProgressiveSearchPlaybookError::InvalidClauseOrder(
-                    "graph requires a preceding retrieval or syntax leaf".to_owned(),
-                ));
-            }
             let (language, argv) = producer_arguments(operator, &form[1..])?;
             if !matches!(language.as_str(), "gql" | "pgql") {
                 return Err(invalid_parameter(
@@ -538,25 +639,31 @@ fn lower_leaf(
                     "graph language must be gql or pgql",
                 ));
             }
-            state.graph_started = true;
-            let block_index = state.graph.len();
-            state.graph.push(GraphNativeBlock { language, argv });
-            state.clause_order.push(SearchPlaybookClauseRef {
-                axis: SearchPlaybookClauseAxis::Graph,
-                block_index,
-            });
+            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Graph(
+                GraphNativeBlock { language, argv },
+            )))
         }
-        "chain" | "intersect" | "union" => {
-            return Err(invalid_parameter(
-                "search-playbook-layout-invalid",
-                format!("nested `{operator}` is not projected by the V1 normalized request"),
-            ));
-        }
-        other => {
-            return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-                other.to_owned(),
-            ));
-        }
+        other => Err(ProgressiveSearchPlaybookError::UnsupportedOption(
+            other.to_owned(),
+        )),
+    }
+}
+
+fn admit_composition_budget(
+    composition: &SearchPlaybookComposition,
+) -> Result<(), ProgressiveSearchPlaybookError> {
+    let metrics = composition.metrics();
+    if metrics.nodes > SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES
+        || metrics.depth > SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH
+        || metrics.static_work > SEARCH_PLAYBOOK_MAX_STATIC_WORK
+    {
+        return Err(invalid_parameter(
+            "search-playbook-composition-budget-exceeded",
+            format!(
+                "Search Playbook Composition budget exceeded: nodes={} depth={} staticWork={}",
+                metrics.nodes, metrics.depth, metrics.static_work
+            ),
+        ));
     }
     Ok(())
 }
@@ -653,10 +760,8 @@ fn require_nonempty(name: &str, values: &[String]) -> Result<(), ProgressiveSear
 
 fn validate_rg(argv: &[String]) -> Result<(), ProgressiveSearchPlaybookError> {
     use agent_semantic_shell_parser::NativeRgDiagnosticKind;
-    if let Some(diagnostic) = agent_semantic_shell_parser::analyze_native_rg_argv(argv)
-        .diagnostics
-        .first()
-    {
+    let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(argv);
+    if let Some(diagnostic) = analysis.diagnostics.first() {
         let reason_kind = match diagnostic.kind {
             NativeRgDiagnosticKind::UnknownOption
             | NativeRgDiagnosticKind::MissingOptionValue
@@ -675,6 +780,16 @@ fn validate_rg(argv: &[String]) -> Result<(), ProgressiveSearchPlaybookError> {
         return Err(ProgressiveSearchPlaybookError::InvalidRg {
             reason_kind,
             message: diagnostic.message.clone(),
+        });
+    }
+    if analysis
+        .search_roots
+        .iter()
+        .any(|root| root.token_index.is_some())
+    {
+        return Err(ProgressiveSearchPlaybookError::InvalidRg {
+            reason_kind: "search-playbook-rg-scope-conflict",
+            message: "rg must not carry a path; Search Playbook scope comes from the top-level registered WorkspaceId".to_owned(),
         });
     }
     Ok(())

@@ -115,11 +115,19 @@ fn receipt(
     priority_rank: usize,
     owners: &[&str],
 ) -> WorkspaceSearchClauseReceipt {
+    let candidate_owners = owners
+        .iter()
+        .map(|owner| (*owner).to_owned())
+        .collect::<Vec<_>>();
     WorkspaceSearchClauseReceipt {
         axis,
         block_index,
         priority_rank,
-        candidate_owners: owners.iter().map(|owner| (*owner).to_owned()).collect(),
+        input_owner_count: candidate_owners.len().max(1),
+        output_owner_count: candidate_owners.len(),
+        candidate_owners,
+        marginal_owner_reduction: None,
+        elapsed_micros: 1,
         complete: true,
         coverage_complete: true,
         truncated: false,

@@ -228,7 +228,7 @@ fn non_help_invocations_are_not_intercepted() {
         &[
             "search",
             "playbook",
-            "(search (producers (language rust)) (intersect (rg \"owner\" \".\") (tantivy \"title:owner^2 OR body:authority\")))",
+            "(search (producers (language rust)) (intersect (rg \"owner\" ) (tantivy \"title:owner^2 OR body:authority\")))",
         ][..],
         &["graph", "render", "--packet", "-"][..],
         &["rust", "search", "--", "--help"][..],

@@ -7,7 +7,7 @@
 use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
 use crate::runtime_asp_client::workspace_search_playbook::{
-    ProgressiveSearchEvidence, structural_candidate_owner_scope,
+    ProgressiveSearchEvidence, bounded_graph_seed_scope,
 };
 
 pub(super) struct ProgressiveSearchProjection {
@@ -24,6 +24,7 @@ pub(super) async fn synthesize_progressive_search_projection(
     let ProgressiveSearchEvidence {
         clause_receipts,
         syntax_candidates,
+        graph_seed_scope,
         graph_query_clauses,
         graph_relation_patterns,
         execution_budget,
@@ -46,7 +47,7 @@ pub(super) async fn synthesize_progressive_search_projection(
         None
     } else {
         let (candidate_owners, candidate_frontier_truncated) =
-            structural_candidate_owner_scope(&syntax_candidates, graph_candidate_owner_limit);
+            bounded_graph_seed_scope(&graph_seed_scope, graph_candidate_owner_limit);
         let graph_generation = resident
             .build_graph_generation_for_owner_scope(&topology_scope)
             .map_err(AspClientOperationError::Message)?;
@@ -85,6 +86,23 @@ pub(super) async fn synthesize_progressive_search_projection(
     };
     let graph_micros = graph_started.elapsed().as_micros();
     let result_started = std::time::Instant::now();
+    for receipt in &clause_receipts {
+        eprintln!(
+            "[runtime-search-clause] key={request_id} axis={} blockIndex={} priorityRank={} inputOwners={} outputOwners={} marginalOwnerReduction={} elapsedMicros={} complete={} coverageComplete={} truncated={}",
+            receipt.axis.label(),
+            receipt.block_index,
+            receipt.priority_rank,
+            receipt.input_owner_count,
+            receipt.output_owner_count,
+            receipt
+                .marginal_owner_reduction
+                .map_or_else(|| "na".to_owned(), |value| value.to_string()),
+            receipt.elapsed_micros,
+            receipt.complete,
+            receipt.coverage_complete,
+            receipt.truncated,
+        );
+    }
     let workspace_result = agent_semantic_search::synthesize_workspace_search_playbook_result(
         clause_receipts,
         syntax_candidates,

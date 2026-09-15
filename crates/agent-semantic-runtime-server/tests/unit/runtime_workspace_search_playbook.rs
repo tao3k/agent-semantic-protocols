@@ -3,10 +3,95 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    compile_graph_relation_pattern, fused_file_context_scope, intersect_clause_owner_scopes,
-    resident_grep_candidate_scope, smallest_selector_overlapping_line, source_line_ranges,
-    structural_candidate_owner_scope,
+    bounded_graph_seed_scope, branch_marginal_reductions, compile_graph_relation_pattern,
+    fused_file_context_scope, intersect_clause_owner_scopes, resident_grep_candidate_scope,
+    retrieval_composition_kind, smallest_selector_overlapping_line, source_line_ranges,
 };
+
+#[test]
+fn runtime_reads_retrieval_semantics_from_the_operator_tree() {
+    use agent_semantic_client_protocol::{
+        AspClientSearchPlaybookClauseAxis as Axis, AspClientSearchPlaybookClauseRef as Clause,
+        AspClientSearchPlaybookComposition as Composition,
+    };
+    let leaf = |axis| Composition::Leaf {
+        clause: Clause {
+            axis,
+            block_index: 0,
+        },
+    };
+    assert_eq!(
+        retrieval_composition_kind(&leaf(Axis::Rg)),
+        super::RetrievalCompositionKind::Single
+    );
+    assert_eq!(
+        retrieval_composition_kind(&leaf(Axis::Syntax)),
+        super::RetrievalCompositionKind::None
+    );
+    assert_eq!(
+        retrieval_composition_kind(&Composition::Chain {
+            children: vec![Composition::Intersect {
+                children: vec![leaf(Axis::Rg), leaf(Axis::Tantivy)],
+            }],
+        }),
+        super::RetrievalCompositionKind::Intersect
+    );
+}
+
+#[test]
+fn branch_receipt_detects_zero_marginal_intersection_work() {
+    let branches = vec![
+        (
+            agent_semantic_search::WorkspaceSearchAxisKind::Rg,
+            0,
+            ["a.rs", "shared.rs"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ),
+        (
+            agent_semantic_search::WorkspaceSearchAxisKind::Tantivy,
+            0,
+            ["shared.rs"].into_iter().map(str::to_owned).collect(),
+        ),
+    ];
+    let reductions = branch_marginal_reductions(&branches);
+    assert_eq!(
+        reductions[&(agent_semantic_search::WorkspaceSearchAxisKind::Rg, 0)],
+        0
+    );
+    assert_eq!(
+        reductions[&(agent_semantic_search::WorkspaceSearchAxisKind::Tantivy, 0)],
+        1
+    );
+}
+
+#[test]
+fn independent_branches_both_contribute_to_a_real_intersection() {
+    let branches = vec![
+        (
+            agent_semantic_search::WorkspaceSearchAxisKind::Rg,
+            0,
+            ["rg-only.rs", "shared.rs"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ),
+        (
+            agent_semantic_search::WorkspaceSearchAxisKind::Tantivy,
+            0,
+            ["tantivy-only.rs", "shared.rs"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ),
+    ];
+    assert!(
+        branch_marginal_reductions(&branches)
+            .values()
+            .all(|reduction| *reduction == 1)
+    );
+}
 
 #[test]
 fn truncated_tantivy_scope_cannot_authorize_an_empty_intersection() {
@@ -123,21 +208,9 @@ fn selective_grep_candidates_are_fused_before_exact_owner_reads() {
 }
 
 #[test]
-fn graph_scope_comes_from_structural_matches_not_the_broader_file_scope() {
-    let candidate =
-        |owner: &str, selector: &str| agent_semantic_search::WorkspaceSearchSyntaxCandidate {
-            owner: owner.to_owned(),
-            selector: selector.to_owned(),
-            relation: "syntax-capture:symbol".to_owned(),
-            hit: Default::default(),
-        };
-    let (owners, truncated) = structural_candidate_owner_scope(
-        &[
-            candidate("src/matched.rs", "rust://src/matched.rs#item/function/a"),
-            candidate("src/matched.rs", "rust://src/matched.rs#item/function/b"),
-        ],
-        30,
-    );
+fn graph_scope_comes_from_the_final_typed_frontier() {
+    let scope = ["src/matched.rs".to_owned()].into_iter().collect();
+    let (owners, truncated) = bounded_graph_seed_scope(&scope, 30);
     assert_eq!(owners, ["src/matched.rs"]);
     assert!(!truncated);
 }

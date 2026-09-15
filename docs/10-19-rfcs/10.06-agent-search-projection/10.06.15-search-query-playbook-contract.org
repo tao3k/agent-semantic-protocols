@@ -38,7 +38,7 @@ the former flag matrix is not a compatibility path:
  (producers (language rust python typescript) (documents org md))
  (chain
   (intersect
-   (rg "-n" "-e" "artifactDigest|publish" "crates")
+   (rg "-n" "-e" "artifactDigest|publish")
    (tantivy "title:\"artifact publication\"^2 AND body:runtime"))
   (syntax rust
    "((_) @item
@@ -81,12 +81,14 @@ required and both may occur. Search operations are ordinary POO Flow external
 steps. Serial composition uses =chain= and =flow-then=; concurrent acquisition
 uses =flow-fanout=; set intersection, union, subtraction, reranking, syntax, and
 graph work can remain named external operations with explicit input/output
-contracts. The current normalized V1 request admits only
-=chain(intersect(rg, tantivy), syntax*, native-syntax*, graph*)= with Graph as
-the final barrier. In particular, =union= remains an extensible macro form but
-is not yet admitted by ASP V1. Syntactically valid Scheme whose topology cannot
-be preserved by the normalized request fails before execution; it is never
-flattened into a different plan.
+contracts. The normalized V1 request admits one predicate-directed =rg=,
+=tantivy=, =syntax=, or =native-syntax= source; an explicit retrieval
+=intersect=; and a serial =chain= of structural predicates followed by an
+optional final Graph barrier. There is no mandatory rg/Tantivy pair. In
+particular, =union= remains an extensible macro form but is not yet admitted by
+ASP V1. Syntactically valid Scheme whose topology cannot be preserved by the
+normalized request fails before execution; it is never flattened into a
+different plan.
 
 Producer atoms resolve through the admitted semantic-language schema profiles
 and current Runtime provider registry. The S-expression compiler validates only
@@ -397,20 +399,21 @@ Rust Ascent/GQL crates. =agent-semantic-search= owns the default declaration and
 native acquisition leaves. Scheme declares composition; it is not a second
 Runtime execution path.
 
-The required default layout is:
+The admitted layout family is:
 
 #+begin_example
-intersect(rg-owner-set, tantivy-owner-set) -> structural-scope-facts -> graph?
+predicate-set-source -> structural-scope-transform* -> graph?
 #+end_example
 
-rg and Tantivy both read the same immutable generation owner universe. rg
-applies its native paths, globs, and predicates and produces an owner set plus
-exact match positions. Tantivy produces its lexical owner set and rank. Their
-owner-set intersection is the only file-context scope. The
-=structural-scope-facts= stage then chooses exactly one frontier: the union of
-admitted explicit =syntax= and =native-syntax= matches when either form is
-present, or automatic parser grounding when both are absent. Graph, when
-configured and requested, consumes only those structurally grounded facts.
+=rg= is selected only for regex truth, =tantivy= only for ranked lexical text,
+and =syntax=/=native-syntax= only for parser-owned structural truth. An explicit
+=intersect= is admitted only as a conjunction of independently computed
+retrieval sets; merely having two available engines never creates it. Runtime
+MUST NOT evaluate Tantivy first and use its bounded top-k as the rg universe
+unless a generation-bound witness proves that the Tantivy scope covers every
+rg match. Structural stages consume and narrow their predecessor frontier.
+Graph, when configured and requested, consumes only the final structurally
+grounded facts.
 
 A shared enhanced Tree-sitter Query string and an exact native selector are two
 query forms for this structural stage: the first describes captured structural
@@ -427,16 +430,15 @@ with an explicitly declared fusion policy. The compiled layout must make that
 difference visible. Runtime MUST NOT treat a serial edge as an independent vote
 or treat shared-scope siblings as a hidden serial pipeline.
 
-The active V1 expression projects the exact POO Flow graph: =rg= and =tantivy=
-are the two roots of one =flow-fanout= branch, the branch node feeds the external
-=intersect= step, and the intersection feeds =syntax= or =native-syntax=. The
-projection preserves POO node kind, name, dependency edges, root node IDs, and
-terminal node IDs; =chain= is the sole serial combinator and no =pipe= operator
-is invented. Automatic native
+The active V1 expression projects its exact POO Flow graph. A standalone leaf
+is one root; an explicit =intersect= fans out only its declared independent set
+predicates and feeds their conjunction; =chain= is the sole serial combinator.
+The projection preserves POO node kind, name, dependency edges, root node IDs,
+and terminal node IDs, and no =pipe= operator is invented. Automatic native
 parser execution derives its provider from retained owner bindings. Repeated
-homogeneous leaves remain siblings inside the acquisition =intersect=; a future
-=union= projection requires a versioned normalized request that can preserve
-that additional topology.
+homogeneous leaves remain distinct predicates, but byte-identical leaves are
+rejected as redundant work. A future =union= projection requires a versioned
+normalized request that can preserve that additional topology.
 The implementation transition is complete only when the CLI, Runtime request,
 Search-package layout, result receipt, and representative real-project trace
 all bind the same V1 layout identity. There is no parallel legacy request

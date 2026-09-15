@@ -416,7 +416,7 @@ fn default_hook_process_applies_state_home_config_overlay_without_policy_bundle_
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"title:HookDecision^2 OR body:policy\")))'"}
+            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"title:HookDecision^2 OR body:policy\")))'"}
         }),
     )
     .expect("write Host payload");

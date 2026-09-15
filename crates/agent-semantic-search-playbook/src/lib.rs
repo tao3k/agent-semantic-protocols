@@ -4,11 +4,18 @@
 
 //! Public facade for the lightweight Search Playbook V1 contract.
 
+mod model;
 mod playbook;
 
-pub use playbook::{
+pub use model::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
-    ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
-    SearchPlaybookProducerDeclaration, parse_progressive_search_playbook_args,
-    parse_query_playbook_producer_declaration, parse_search_playbook_producer_declaration,
+    ProgressiveSearchPlaybookRequest, SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH,
+    SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
+    SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
+    SearchPlaybookCompositionMetrics, SearchPlaybookLeaf, SearchPlaybookNormalizedComposition,
+    SearchPlaybookProducerDeclaration,
+};
+pub use playbook::{
+    parse_progressive_search_playbook_args, parse_query_playbook_producer_declaration,
+    parse_search_playbook_producer_declaration,
 };

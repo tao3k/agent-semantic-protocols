@@ -51,7 +51,7 @@ argvPatternAny = [["asp", "search", "playbook"]]
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"ownership\" \".\") (tantivy \"title:ownership^2 OR body:authority\")))'"}
+            "tool_input": {"command": "asp search playbook '(search (producers (language rust)) (intersect (rg \"ownership\" ) (tantivy \"title:ownership^2 OR body:authority\")))'"}
         }),
     });
 
@@ -279,7 +279,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .any(|provider| provider.language_id.as_str() == "rust"),
         "canonical projection must register Rust"
     );
-    let search_command = "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" \".\") (tantivy \"body:HookDecision\")))'";
+    let search_command = "asp search playbook '(search (producers (language rust)) (intersect (rg \"HookDecision\" ) (tantivy \"body:HookDecision\")))'";
     let stages = agent_semantic_shell_parser::parse_bash_command_candidates(search_command)
         .expect("parse direct ASP search command");
     assert!(

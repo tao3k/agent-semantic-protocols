@@ -85,15 +85,27 @@ fn search_request(
         language: Some("rust".to_owned()),
         documents: None,
         workspace: None,
-        rg: Some(vec![vec![
-            "-n".to_owned(),
-            pattern.to_owned(),
-            ".".to_owned(),
-        ]]),
+        rg: Some(vec![vec!["-n".to_owned(), pattern.to_owned()]]),
         tantivy: Some(vec![vec!["body:runtime".to_owned()]]),
         syntax: None,
         native_syntax: None,
         graph: None,
+        composition: agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Intersect {
+            children: vec![
+                agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Leaf {
+                    clause: agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
+                        axis: agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg,
+                        block_index: 0,
+                    },
+                },
+                agent_semantic_client_protocol::AspClientSearchPlaybookComposition::Leaf {
+                    clause: agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
+                        axis: agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy,
+                        block_index: 0,
+                    },
+                },
+            ],
+        },
         clause_order: vec![
             agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef {
                 axis: agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg,

@@ -122,9 +122,16 @@ def residentStages : List Stage :=
   [.identityNormalize, .generationLookup, .materializationLookup,
    .terminalEncode]
 
-def searchStages : List Stage :=
-  [.identityNormalize, .generationLookup, .lexicalAcquire, .tantivyAcquire,
-   .ownerIntersect, .parserGround, .graphRank, .terminalEncode]
+def regexSearchStages : List Stage :=
+  [.identityNormalize, .generationLookup, .lexicalAcquire, .parserGround,
+   .terminalEncode]
+
+def rankedTextSearchStages : List Stage :=
+  [.identityNormalize, .generationLookup, .tantivyAcquire, .parserGround,
+   .terminalEncode]
+
+def structuralSearchStages : List Stage :=
+  [.identityNormalize, .generationLookup, .parserGround, .terminalEncode]
 
 def exactQueryStages : List Stage :=
   [.identityNormalize, .generationLookup, .exactOwnerLookup,
@@ -143,10 +150,11 @@ theorem exact_query_excludes_search_acquisition :
     ¬ exactQueryStages.contains .graphRank := by
   decide
 
-theorem search_contains_both_acquisition_cores :
-    searchStages.contains .lexicalAcquire ∧
-    searchStages.contains .tantivyAcquire ∧
-    searchStages.contains .ownerIntersect := by
+theorem predicate_directed_search_has_no_mandatory_partner :
+    ¬ regexSearchStages.contains .tantivyAcquire ∧
+    ¬ rankedTextSearchStages.contains .lexicalAcquire ∧
+    ¬ structuralSearchStages.contains .lexicalAcquire ∧
+    ¬ structuralSearchStages.contains .tantivyAcquire := by
   decide
 
 /- Scheme composition is recursively extensible but every admitted value is a
@@ -171,6 +179,142 @@ def Composition.staticWork : Composition → Nat
   | .leaf _ => 1
   | .chain left right => left.staticWork + right.staticWork + 1
   | .intersect left right => left.staticWork + right.staticWork + 2
+
+def Composition.leaves : Composition → List Stage
+  | .leaf stage => [stage]
+  | .chain left right
+  | .intersect left right => left.leaves ++ right.leaves
+
+theorem chain_associative_projection_preserves_leaf_order
+    (left middle right : Composition) :
+    (Composition.chain (Composition.chain left middle) right).leaves =
+      (Composition.chain left (Composition.chain middle right)).leaves := by
+  simp [Composition.leaves, List.append_assoc]
+
+/- Workspace identity is the sole scope authority.  An rg leaf carries a
+   predicate, never an independently executable filesystem root. -/
+inductive RgScopeArgument where
+  | inheritWorkspace
+  | explicitPath (path : Digest)
+  deriving DecidableEq, Repr
+
+structure SurfaceRgLeaf where
+  pattern : Digest
+  scope : RgScopeArgument
+  deriving DecidableEq, Repr
+
+def lowerSurfaceRg (leaf : SurfaceRgLeaf) : Option Composition :=
+  match leaf.scope with
+  | .inheritWorkspace => some (.leaf .lexicalAcquire)
+  | .explicitPath _ => none
+
+theorem rg_scope_admitted_iff_inherited (leaf : SurfaceRgLeaf) :
+    lowerSurfaceRg leaf = some (.leaf .lexicalAcquire) ↔
+      leaf.scope = .inheritWorkspace := by
+  cases leaf with
+  | mk pattern scope => cases scope <;> simp [lowerSurfaceRg]
+
+theorem explicit_rg_path_cannot_enter_composition (pattern path : Digest) :
+    lowerSurfaceRg { pattern := pattern, scope := .explicitPath path } = none := by
+  rfl
+
+/- Executable domain checking mirrors the Rust V1 projection: acquisition is
+   closed under intersect, while the ordered tail is closed under chain. -/
+def Composition.acquisitionValid : Composition → Bool
+  | .leaf .lexicalAcquire
+  | .leaf .tantivyAcquire => true
+  | .intersect left right => left.acquisitionValid && right.acquisitionValid
+  | _ => false
+
+def Composition.tailValid : Composition → Bool
+  | .leaf .parserGround
+  | .leaf .graphRank => true
+  | .chain left right => left.tailValid && right.tailValid
+  | _ => false
+
+theorem nested_acquisition_intersection_is_valid :
+    (Composition.intersect
+      (.intersect (.leaf .lexicalAcquire) (.leaf .tantivyAcquire))
+      (.leaf .lexicalAcquire)).acquisitionValid = true := by
+  decide
+
+theorem structural_intersection_is_not_an_acquisition :
+    (Composition.intersect
+      (.leaf .parserGround) (.leaf .parserGround)).acquisitionValid = false := by
+  decide
+
+/- Candidate-set algebra distinguishes an explicit semantic intersection from
+   an optimizer prefilter.  A prefilter may preserve regex results only with a
+   coverage witness R ⊆ T. -/
+abbrev CandidateSet := Nat → Prop
+
+def CandidateSubset (left right : CandidateSet) : Prop :=
+  ∀ candidate, left candidate → right candidate
+
+def CandidateIntersect (left right : CandidateSet) : CandidateSet :=
+  fun candidate => left candidate ∧ right candidate
+
+def CandidateUnion (left right : CandidateSet) : CandidateSet :=
+  fun candidate => left candidate ∨ right candidate
+
+theorem prefilter_preserves_regex_iff_coverage
+    (regex tantivy : CandidateSet) :
+    CandidateSubset regex tantivy ↔
+      ∀ candidate, CandidateIntersect regex tantivy candidate ↔ regex candidate := by
+  constructor
+  · intro coverage candidate
+    constructor
+    · intro hit
+      exact hit.1
+    · intro hit
+      exact ⟨hit, coverage candidate hit⟩
+  · intro preserved candidate hit
+    exact (preserved candidate).mpr hit |>.2
+
+theorem equivalent_backends_make_intersection_redundant
+    (left right : CandidateSet)
+    (equivalent : ∀ candidate, left candidate ↔ right candidate) :
+    ∀ candidate, CandidateIntersect left right candidate ↔ left candidate := by
+  intro candidate
+  constructor
+  · exact fun hit => hit.1
+  · intro hit
+    exact ⟨hit, (equivalent candidate).mp hit⟩
+
+theorem superset_branch_has_zero_marginal_gain
+    (narrow broad : CandidateSet)
+    (coverage : CandidateSubset narrow broad) :
+    ∀ candidate, CandidateIntersect narrow broad candidate ↔ narrow candidate := by
+  exact (prefilter_preserves_regex_iff_coverage narrow broad).mp coverage
+
+theorem missing_coverage_can_create_false_negative :
+    ∃ (regex tantivy : CandidateSet) (candidate : Nat),
+      regex candidate ∧ ¬ CandidateIntersect regex tantivy candidate := by
+  refine ⟨fun value => value = 1, fun _ => False, 1, rfl, ?_⟩
+  simp [CandidateIntersect]
+
+inductive PredicateClass where
+  | regexContent
+  | rankedText
+  | structural
+  | exactSelector
+  deriving DecidableEq, Repr
+
+def primaryStages : PredicateClass → List Stage
+  | .regexContent => [.lexicalAcquire]
+  | .rankedText => [.tantivyAcquire]
+  | .structural => [.parserGround]
+  | .exactSelector => [.exactOwnerLookup, .selectedMaterialize]
+
+theorem structural_search_excludes_lexical_acquisition :
+    ¬ (primaryStages .structural).contains .lexicalAcquire ∧
+    ¬ (primaryStages .structural).contains .tantivyAcquire := by
+  decide
+
+theorem exact_selector_routes_to_query_index :
+    (primaryStages .exactSelector).contains .exactOwnerLookup ∧
+    ¬ (primaryStages .exactSelector).contains .lexicalAcquire := by
+  decide
 
 structure CompositionBudget where
   maxNodes : Nat

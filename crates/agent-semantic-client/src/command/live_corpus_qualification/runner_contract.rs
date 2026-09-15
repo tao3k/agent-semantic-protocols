@@ -6,10 +6,12 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use super::DEFAULT_PLAN_PATH;
-use super::QualificationCase;
-use super::QualificationPlan;
-use super::QualifyArgs;
+use super::contract::{QualificationCase, QualificationPlan};
+use super::runner::{DEFAULT_PLAN_PATH, QualifyArgs};
+
+pub(in crate::command::live_corpus) fn validate_args(args: &[String]) -> Result<(), String> {
+    parse_args(args).map(|_| ())
+}
 
 pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
     if plan.schema_id != "agent.semantic-protocols.live-corpus-scheme-scenario-suite"
@@ -157,6 +159,7 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
             ));
         }
     }
+    let mut covered_route_classes = BTreeSet::new();
     for case in &plan.cases {
         if !registered.contains(&case.language_id) {
             return Err(format!(
@@ -164,14 +167,23 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
                 case.case_id, case.language_id
             ));
         }
-        let required_classes =
-            BTreeSet::from(["lexical-intersection", "exact-parser-owner", "zero-match"]);
         let observed_classes = case
             .scenario_classes
             .iter()
             .map(String::as_str)
             .collect::<BTreeSet<_>>();
-        if observed_classes != required_classes
+        let route_classes = observed_classes
+            .intersection(&BTreeSet::from([
+                "regex-truth",
+                "ranked-text",
+                "explicit-conjunction",
+            ]))
+            .copied()
+            .collect::<Vec<_>>();
+        if route_classes.len() != 1
+            || !observed_classes.contains("exact-parser-owner")
+            || !observed_classes.contains("zero-match")
+            || observed_classes.len() != 3
             || case.search.trim().is_empty()
             || case.zero_match_search.trim().is_empty()
             || case.source_query.matches("{{selector}}").count() != 1
@@ -187,6 +199,75 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
                 case.case_id
             ));
         }
+        let route_class = route_classes[0];
+        validate_predicate_route(case, route_class)?;
+        covered_route_classes.insert(route_class);
+    }
+    let required_route_classes =
+        BTreeSet::from(["regex-truth", "ranked-text", "explicit-conjunction"]);
+    if covered_route_classes != required_route_classes {
+        return Err(format!(
+            "Live Corpus must cover every predicate-directed Search route: observed={covered_route_classes:?} required={required_route_classes:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_predicate_route(case: &QualificationCase, route_class: &str) -> Result<(), String> {
+    let parse = |source: &str| {
+        agent_semantic_search::parse_progressive_search_playbook_args(&[
+            "search".to_owned(),
+            "playbook".to_owned(),
+            source.to_owned(),
+        ])
+        .map_err(|error| {
+            format!(
+                "Live Corpus Search Scheme is invalid: case={} error={error}",
+                case.case_id
+            )
+        })
+    };
+    let request = parse(&case.search)?;
+    let route_matches = match route_class {
+        "regex-truth" => {
+            request.rg.len() == 1
+                && request.tantivy.is_empty()
+                && request.syntax.is_empty()
+                && request.native_syntax.is_empty()
+        }
+        "ranked-text" => {
+            request.rg.is_empty()
+                && request.tantivy.len() == 1
+                && request.syntax.is_empty()
+                && request.native_syntax.is_empty()
+        }
+        "explicit-conjunction" => {
+            !request.rg.is_empty()
+                && !request.tantivy.is_empty()
+                && matches!(
+                    request.normalized_composition,
+                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
+                        | agent_semantic_search::SearchPlaybookNormalizedComposition::Chain(_)
+                )
+        }
+        _ => false,
+    };
+    if !route_matches {
+        return Err(format!(
+            "Live Corpus declared predicate route does not match its Scheme AST: case={} routeClass={route_class}",
+            case.case_id
+        ));
+    }
+    let zero = parse(&case.zero_match_search)?;
+    if zero.rg.len() != 1
+        || !zero.tantivy.is_empty()
+        || !zero.syntax.is_empty()
+        || !zero.native_syntax.is_empty()
+    {
+        return Err(format!(
+            "Live Corpus zero-match proof must use one complete regex-truth route: case={}",
+            case.case_id
+        ));
     }
     Ok(())
 }

@@ -89,6 +89,7 @@ pub use routes::AspClientGraphsTimelineRequest;
 pub use routes::AspClientRuntimeWorkCounters;
 pub use routes::AspClientSearchPlaybookClauseAxis;
 pub use routes::AspClientSearchPlaybookClauseRef;
+pub use routes::AspClientSearchPlaybookComposition;
 pub use routes::AspClientSearchPlaybookGraphBlock;
 pub use routes::AspClientSearchPlaybookSyntaxBlock;
 pub use routes::AspClientSourceIndexLookupRequest;

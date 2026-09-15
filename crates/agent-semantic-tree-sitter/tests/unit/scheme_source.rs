@@ -6,10 +6,9 @@ use crate::{SchemeDatum, admit_scheme_source, parse_scheme_datums};
 
 #[test]
 fn admission_records_tree_sitter_provenance_and_form_heads() {
-    let receipt = admit_scheme_source(
-        "; declaration\n(search (producers (language rust)) (rg \"owner\" \".\"))",
-    )
-    .expect("admit structurally complete Scheme");
+    let receipt =
+        admit_scheme_source("; declaration\n(search (producers (language rust)) (rg \"owner\"))")
+            .expect("admit structurally complete Scheme");
     assert_eq!(receipt.grammar_id, "tree-sitter-scheme");
     assert_eq!(receipt.grammar_version, "0.24.7");
     assert_eq!(receipt.top_level_form_count, 1);
@@ -18,7 +17,7 @@ fn admission_records_tree_sitter_provenance_and_form_heads() {
 
 #[test]
 fn datum_projection_decodes_strings_without_evaluating_scheme() {
-    let datums = parse_scheme_datums(r#"(search (rg "-e" "owner\nidentity" "."))"#)
+    let datums = parse_scheme_datums(r#"(search (rg "-e" "owner\nidentity"))"#)
         .expect("parse one supported datum");
     assert_eq!(
         datums,
@@ -28,7 +27,6 @@ fn datum_projection_decodes_strings_without_evaluating_scheme() {
                 SchemeDatum::Symbol("rg".to_owned()),
                 SchemeDatum::String("-e".to_owned()),
                 SchemeDatum::String("owner\nidentity".to_owned()),
-                SchemeDatum::String(".".to_owned()),
             ]),
         ])]
     );

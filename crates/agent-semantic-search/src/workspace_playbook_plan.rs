@@ -44,6 +44,7 @@ pub struct WorkspaceSearchProgressivePlan {
     pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
+    pub composition: agent_semantic_client_protocol::AspClientSearchPlaybookComposition,
     pub clause_order: Vec<crate::SearchPlaybookClauseRef>,
 }
 
@@ -60,6 +61,7 @@ pub struct NormalizedWorkspaceSearchPlaybookRequest {
     pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
+    pub composition: agent_semantic_client_protocol::AspClientSearchPlaybookComposition,
     pub clause_order: Vec<crate::SearchPlaybookClauseRef>,
 }
 
@@ -90,6 +92,7 @@ pub fn build_workspace_search_playbook_plan(
         syntax,
         native_syntax,
         graph,
+        composition,
         clause_order,
     } = request;
     if binding.project_id.is_empty()
@@ -115,6 +118,15 @@ pub fn build_workspace_search_playbook_plan(
             return Err(format!(
                 "Search Playbook native rg block is not admitted: blockIndex={block_index} diagnostics={:?}",
                 analysis.diagnostics
+            ));
+        }
+        if analysis
+            .search_roots
+            .iter()
+            .any(|root| root.token_index.is_some())
+        {
+            return Err(format!(
+                "reasonKind=search-playbook-rg-scope-conflict Search Playbook rg block must not carry a path: blockIndex={block_index}; scope is bound by WorkspaceId"
             ));
         }
     }
@@ -177,6 +189,7 @@ pub fn build_workspace_search_playbook_plan(
             syntax: syntax.clone(),
             native_syntax: native_syntax.clone(),
             graph: graph.clone(),
+            composition: composition.clone(),
             clause_order: clause_order.clone(),
         },
     })

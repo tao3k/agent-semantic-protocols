@@ -5,24 +5,24 @@
   "description": "The normalized northbound Search request produced from one admitted Scheme composition expression. Code and document producer axes are projected into language and documents; Scheme source and POO implementation objects do not cross this boundary.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "clauseOrder"],
-  "dependentRequired": {"rg": ["tantivy"], "tantivy": ["rg"]},
+  "required": ["schemaId", "schemaVersion", "composition", "clauseOrder"],
   "properties": {
     "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-search-playbook-request"},
     "schemaVersion": {"const": "1"},
     "language": {"$ref": "#/$defs/producerExpression"},
     "documents": {"$ref": "#/$defs/producerExpression"},
     "workspace": {"description": "Explicit registered cross-workspace identity. Filesystem paths are not workspace identities.", "$ref": "#/$defs/registeredName"},
-    "rg": {"$ref": "#/$defs/nativeBlocks"},
-    "tantivy": {"$ref": "#/$defs/nativeBlocks"},
-    "syntax": {"description": "Compiled resident structural query plans whose admitted matches establish selector scope inside the fused rg/Tantivy file context. Tree-sitter Query source does not cross this normalized boundary.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/residentSyntaxBlock"}},
-    "nativeSyntax": {"description": "Exact selector queries whose singleton matches establish structural scope inside the fused rg/Tantivy file context.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
+    "rg": {"description": "Regex acquisition blocks. Search scope is inherited from workspace; argv must not contain a search root.", "$ref": "#/$defs/nativeBlocks"},
+    "tantivy": {"description": "Ranked-text acquisition blocks. They are independent unless an admitted composition explicitly intersects them with another carrier-compatible set.", "$ref": "#/$defs/nativeBlocks"},
+    "syntax": {"description": "Compiled resident structural query plans. A structural-only request starts directly from the immutable Workspace universe; Tree-sitter Query source does not cross this normalized boundary.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/residentSyntaxBlock"}},
+    "nativeSyntax": {"description": "Exact selector predicates whose singleton matches establish structural scope. Exact materialization remains a Query operation.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
     "graph": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/graphNativeBlock"}},
-    "clauseOrder": {"description": "Exact source order of leaves in the admitted V1 composition. This preserves repeated-leaf identity but does not independently create execution edges; the admitted Search Layout owns shared-scope and serial composition.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/clauseRef"}}
+    "composition": {"description": "Payload-free operator tree over normalized clause references. Runtime must execute these explicit operators and must not infer intersection from engine co-presence.", "$ref": "#/$defs/composition"},
+    "clauseOrder": {"description": "Exact source order of leaves in the admitted V1 composition. Retrieval stages cannot follow a structural stage; Graph is the final barrier.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/clauseRef"}}
   },
   "allOf": [
     {"anyOf": [{"required": ["language"]}, {"required": ["documents"]}]},
-    {"required": ["rg", "tantivy"]}
+    {"anyOf": [{"required": ["rg"]}, {"required": ["tantivy"]}, {"required": ["syntax"]}, {"required": ["nativeSyntax"]}]}
   ],
   "$defs": {
     "registeredName": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"},
@@ -32,6 +32,13 @@
     "nativeBlocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nativeArgv"}},
     "residentSyntaxBlock": {"type": "object", "additionalProperties": false, "required": ["producer", "plan"], "properties": {"producer": {"$ref": "#/$defs/registeredName"}, "plan": {"$ref": "resident-syntax-query-plan.v1.schema.json"}}},
     "graphNativeBlock": {"type": "object", "additionalProperties": false, "required": ["language", "argv"], "properties": {"language": {"enum": ["gql", "pgql"]}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
-    "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}}
+    "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}},
+    "composition": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["operator", "children"], "properties": {"operator": {"const": "chain"}, "children": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/composition"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["operator", "children"], "properties": {"operator": {"const": "intersect"}, "children": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/composition"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["operator", "clause"], "properties": {"operator": {"const": "leaf"}, "clause": {"$ref": "#/$defs/clauseRef"}}}
+      ]
+    }
   }
 }

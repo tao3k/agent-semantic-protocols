@@ -51,6 +51,9 @@ mod syntax_query_route;
 #[path = "runtime_asp_client_syntax_plan_context.rs"]
 mod syntax_plan_context_route;
 
+#[path = "runtime_asp_client_search_materialization.rs"]
+mod search_materialization;
+
 #[path = "runtime_workspace_search_playbook.rs"]
 mod workspace_search_playbook;
 

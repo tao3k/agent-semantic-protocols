@@ -8,9 +8,13 @@ pub(super) mod client_protocol;
 mod contract;
 mod query_protocol;
 mod runner;
+#[path = "runner_contract.rs"]
+mod runner_contract;
+mod runner_prepare;
+mod search_receipt;
 
 pub(in crate::command::live_corpus) use contract::AgentOrgTopologyEvidence;
 pub(in crate::command::live_corpus) use query_protocol::source_query_scheme_template;
 pub(super) use runner::IsolatedBenchmarkWorkspace;
 pub(super) use runner::run;
-pub(super) use runner::validate_args;
+pub(super) use runner_contract::validate_args;

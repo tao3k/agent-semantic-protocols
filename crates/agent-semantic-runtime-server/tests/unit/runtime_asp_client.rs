@@ -309,7 +309,7 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
         assert_eq!(error["reasonKind"], "client-method-dispatch-failed");
         assert_eq!(
             error["message"],
-            "ASP workspace Search Layout requires rg and Tantivy file-context inputs"
+            "ASP workspace Search requires a retrieval or structural predicate clause"
         );
         return;
     }
@@ -415,6 +415,7 @@ async fn workspace_search_playbook_without_acquisition_is_rejected_before_genera
             "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
             "schemaVersion": "1",
             "language": "rust",
+            "composition": {"operator": "leaf", "clause": {"axis": "rg", "blockIndex": 0}},
             "clauseOrder": []
         }),
     )
@@ -430,8 +431,15 @@ async fn workspace_search_playbook_requires_a_committed_complete_generation() {
             "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
             "schemaVersion": "1",
             "language": "rust",
-            "rg": [["-n", "ready", "."]],
+            "rg": [["-n", "ready"]],
             "tantivy": [["title:\"ready route\"^2 OR body:runtime"]],
+            "composition": {
+                "operator": "intersect",
+                "children": [
+                    {"operator": "leaf", "clause": {"axis": "rg", "blockIndex": 0}},
+                    {"operator": "leaf", "clause": {"axis": "tantivy", "blockIndex": 0}}
+                ]
+            },
             "clauseOrder": [
                 {"axis": "rg", "blockIndex": 0},
                 {"axis": "tantivy", "blockIndex": 0}

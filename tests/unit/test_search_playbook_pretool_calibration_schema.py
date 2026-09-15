@@ -56,9 +56,9 @@ def calibration() -> dict[str, object]:
         "reasonKind": "search-playbook-pretool-calibration",
         "tokenIndexBasis": "search-playbook-argv",
         "layout": {
-            "layoutId": "rg-tantivy-structural-scope",
-            "shape": "intersect(rg,tantivy)->structural-scope-facts->graph?",
-            "requiredInputSets": [["rg", "tantivy"]],
+            "layoutId": "predicate-directed-composition",
+            "shape": "typed-set-source->typed-chain?->graph?",
+            "requiredInputSets": [["rg"], ["tantivy"], ["syntax"]],
             "graphBarrierAfter": "structural-scope-facts",
         },
         "producers": [

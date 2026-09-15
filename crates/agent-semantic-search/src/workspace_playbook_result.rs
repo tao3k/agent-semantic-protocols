@@ -79,7 +79,7 @@ pub enum WorkspaceSearchAxisKind {
 }
 
 impl WorkspaceSearchAxisKind {
-    const fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Rg => "rg",
             Self::Syntax => "syntax",
@@ -95,6 +95,10 @@ pub struct WorkspaceSearchClauseReceipt {
     pub block_index: usize,
     pub priority_rank: usize,
     pub candidate_owners: Vec<String>,
+    pub input_owner_count: usize,
+    pub output_owner_count: usize,
+    pub marginal_owner_reduction: Option<usize>,
+    pub elapsed_micros: u64,
     pub complete: bool,
     pub coverage_complete: bool,
     pub truncated: bool,
@@ -217,6 +221,13 @@ pub fn synthesize_workspace_search_playbook_result(
         receipt
             .candidate_owners
             .retain(|owner| seen_owners.insert(owner.clone()));
+        if receipt.output_owner_count != receipt.candidate_owners.len()
+            || receipt.output_owner_count > receipt.input_owner_count
+        {
+            return Err(
+                "Search Playbook clause receipt owner cardinalities are inconsistent".to_owned(),
+            );
+        }
         if !identities.insert((receipt.axis, receipt.block_index))
             || !priorities.insert(receipt.priority_rank)
         {
