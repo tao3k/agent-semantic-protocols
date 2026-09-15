@@ -74,6 +74,13 @@ async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
         scenario_started.elapsed().as_micros()
     );
     stop_test_runtime(&server_artifact, fixture.path());
+    if result.is_err() {
+        let retained_root = fixture.keep();
+        eprintln!(
+            "[live-corpus-fixture] phase=diagnostic-retention state=retained root={}",
+            retained_root.display()
+        );
+    }
     result
 }
 

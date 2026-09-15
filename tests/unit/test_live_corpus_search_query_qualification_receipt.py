@@ -131,3 +131,6 @@ def test_receipt_separates_composite_search_from_sub_millisecond_exact_reads() -
     assert search_distribution["properties"]["sampleCount"]["minimum"] == 128
     for field in ("minMicros", "p50Micros", "p95Micros", "p99Micros", "maxMicros"):
         assert search_distribution["properties"][field]["maximum"] == 500_000
+
+    assert case_schema["properties"]["searchFrontierCount"]["minimum"] == 0
+    assert case_schema["properties"]["composedSearchFrontierCount"]["minimum"] == 0
