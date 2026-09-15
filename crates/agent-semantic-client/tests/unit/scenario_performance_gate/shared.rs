@@ -6,19 +6,27 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+pub(super) fn temp_project_root(label: &str) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "agent-semantic-protocol-{label}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("create temp project root");
+    root
+}
+
 pub(super) const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 pub(super) const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
 pub(super) const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
 pub(super) const JULIA_DATAFRAMES_BATCH_STEP_MAX_ELAPSED_MS: u64 = 75;
 pub(super) const JULIA_DATAFRAMES_BATCH_SAMPLE_COUNT: usize = 3;
 pub(super) const REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
-    "RUST-AGENT-ASP-PERF-SUBCOMMAND-AGENT-SESSION-STATUS-REUSE-001",
-    "RUST-AGENT-ASP-PERF-SUBCOMMAND-QUERY-SELECTOR-001",
-    "RUST-AGENT-ASP-PERF-SUBCOMMAND-QUERY-TREESITTER-001",
-    "GERBIL-SCHEME-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-DEPS-STDLIB-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
-    "RUST-AGENT-ASP-PERF-SUBCOMMAND-PROVIDER-FACTS-001",
-    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SOURCE-INDEX-LOOKUP-COLD-001",
+    "RUST-AGENT-ASP-PERF-SUBCOMMAND-MIXED-DOCUMENT-SEARCH-001",
     "RUST-AGENT-ASP-FUNCTIONAL-GRAPH-ROUTE-EVIDENCE-RANK-COLD-001",
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-SELECTOR-DIRECTORY-CODE-PREFLIGHT-COLD-001",
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-PROVIDER-CANDIDATE-ANNOTATIONS-COLD-001",
@@ -26,8 +34,6 @@ pub(super) const REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS: &[&str] =
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-EVIDENCE-PROJECTION-COLD-001",
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-NODE-PROJECTION-COLD-001",
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-OWNER-RANK-COLD-001",
-    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-QUERY-OWNER-SEED-COLD-001",
-    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-SEED-DECISION-COLD-001",
     "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-TOPOLOGY-PROJECTION-COLD-001",
 ];
 pub(super) const REQUIRED_WORKSPACE_ARGUMENT_POLICY_IDS: &[&str] =
@@ -60,7 +66,7 @@ pub(super) const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS:
     },
     LanguageScenarioBenchmarkRequirement {
         language: "gerbil-scheme",
-        root: "languages/asp-gerbil-scheme/t/scenarios/policy",
+        root: "languages/asp-gerbil-scheme/t/scenarios/shared-contract",
         syntax: ScenarioBenchmarkSyntax::GerbilBenchmarkSs,
     },
     LanguageScenarioBenchmarkRequirement {

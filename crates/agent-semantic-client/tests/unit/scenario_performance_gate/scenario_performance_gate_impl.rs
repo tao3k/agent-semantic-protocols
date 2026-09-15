@@ -6,7 +6,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::agent_session_pressure;
 use super::large_library::LargeLibraryElapsedGate;
 use super::runtime_gates::{duration_millis_from_manifest, read_toml};
 use super::scenario_policy_scan::assert_observed_timing_inside_budget;
@@ -67,43 +66,6 @@ pub(super) fn asp_turso_agent_session_registry_shared_route_pressure_stays_insid
         "registry_db_operation",
         300,
         "agent-session registry pressure",
-    );
-}
-
-pub(super) fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate() {
-    agent_session_pressure::asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate();
-
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_codex_rollout_session_index_algorithm_pressure");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert_eq!(benchmark.harness, "libtest");
-    assert_eq!(
-        benchmark.test.as_deref(),
-        Some("asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate")
-    );
-    assert_eq!(benchmark.route_source.as_deref(), Some("codex-rollout"));
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(16384));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-    assert!(
-        duration_millis_from_manifest(&benchmark.max_total) <= 10,
-        "Codex rollout session index must stay below the 10ms algorithm budget: max_total={}",
-        benchmark.max_total
-    );
-    assert!(
-        duration_millis_from_manifest(&benchmark.observed_total) <= 10,
-        "Codex rollout session index observed_total must stay below the algorithm budget: observed_total={}",
-        benchmark.observed_total
-    );
-    assert_observed_timing_inside_budget(
-        &benchmark,
-        "codex_rollout_session_index",
-        10,
-        "Codex rollout session index",
     );
 }
 

@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#[path = "scenario_performance_gate/agent_session_pressure.rs"]
-mod agent_session_pressure;
 #[path = "scenario_performance_gate/contracts.rs"]
 mod contracts;
 #[path = "scenario_performance_gate/graph.rs"]

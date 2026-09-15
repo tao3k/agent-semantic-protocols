@@ -1223,6 +1223,29 @@ provider artifacts, or provider processes.  A missing =asp-org= or =asp-md=
 artifact can never be a legal =query-not-ready= cause because those artifact
 authorities do not exist in the server-first architecture.
 
+Runtime admission MUST therefore join two disjoint catalogs without converting
+one into the other: installed programming-language providers come from the
+active provider projection, while embedded document producers come from the
+ASP binary's Orgize-owned document catalog and their admitted schema profiles.
+A =(documents ...)= atom MUST be checked against the latter catalog and MUST
+NOT be checked against installed provider receipts.  Its generation demand may
+name the document language but carries no external provider id; source owners
+are collected by the embedded document projection and no provider process is
+started.  The mixed =(language ...)= plus =(documents ...)= case must preserve
+both authorities in one generation-bound Search plan.  Acceptance requires a
+freshly published ASP binary with no Org/Markdown provider receipt to execute
+that mixed request successfully; a test that pre-seeds a synthetic =asp-org=
+installed provider is invalid evidence.
+
+Process-cold Runtime recovery MUST inventory the workspace once and publish one
+complete generation containing every discovered programming language and every
+embedded Orgize document language.  It MUST NOT publish one recovery generation
+per installed provider: that N-generation sequence races durability attachment,
+allows a successor to overlay a stale base, and turns the first Search into a
+coverage-repair loop.  Startup construction remains outside the Search/Query
+latency interval; after startup readiness, mixed producer admission is a
+resident generation coverage check and performs no provider construction.
+
 For a complete source-index successor, every non-=@scope/= file-hash record
 belongs to exactly one admitted owner.  Overlay construction derives that
 membership from the successor owner set and removes orphan hashes from the

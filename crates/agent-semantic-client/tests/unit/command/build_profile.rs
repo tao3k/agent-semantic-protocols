@@ -45,7 +45,7 @@ fn require_release_fails_closed_for_debug_artifacts() {
             "stderr={stderr}"
         );
         assert!(
-            stderr.contains("nextCommand=just agent-tools-install-protocol"),
+            stderr.contains("nextCommand=just agent-tools-install-client"),
             "stderr={stderr}"
         );
     } else {
@@ -58,15 +58,18 @@ fn require_release_fails_closed_for_debug_artifacts() {
 #[test]
 fn release_install_checks_release_profile_before_and_after_copy() {
     let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
+    assert!(!justfile.contains("agent-tools-install-protocol"));
+    assert!(!justfile.contains("agent-tools-install-asp bin_dir="));
+    assert!(!justfile.contains("agent-tools-install-asp-dev:"));
     assert!(
-        justfile.contains("agent-tools-install-protocol bin_dir=\"\": check-rust-workspace-policy"),
+        justfile.contains("agent-tools-install-client bin_dir=\"\": check-rust-workspace-policy"),
         "release publication must admit the Cargo-derived workspace policy exactly once before building"
     );
     let recipe = justfile
-        .split("agent-tools-install-protocol bin_dir=\"\":")
+        .split("agent-tools-install-client bin_dir=\"\":")
         .nth(1)
-        .and_then(|tail| tail.split("agent-tools-install-protocol-debug").next())
-        .expect("protocol install recipe");
+        .and_then(|tail| tail.split("agent-tools-install-client-debug").next())
+        .expect("client install recipe");
 
     assert_eq!(
         recipe.matches("--version --require-release").count(),
@@ -85,14 +88,14 @@ fn release_install_checks_release_profile_before_and_after_copy() {
 fn debug_install_never_publishes_a_stale_target_after_build_failure() {
     let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     assert!(
-        justfile.contains("agent-tools-install-protocol-debug: check-rust-workspace-policy"),
+        justfile.contains("agent-tools-install-client-debug: check-rust-workspace-policy"),
         "developer publication must admit the Cargo-derived workspace policy exactly once before building"
     );
     let recipe = justfile
-        .split("agent-tools-install-protocol-debug:")
+        .split("agent-tools-install-client-debug:")
         .nth(1)
         .and_then(|tail| tail.split("agent-tools-install-hook").next())
-        .expect("debug protocol install recipe");
+        .expect("debug client install recipe");
 
     assert!(
         recipe.contains(
@@ -109,18 +112,18 @@ fn debug_install_never_publishes_a_stale_target_after_build_failure() {
 fn asp_recipe_delegates_freshness_to_the_content_addressed_installer() {
     let justfile = fs::read_to_string(workspace_root().join("Justfile")).expect("read Justfile");
     let recipe = justfile
-        .split("agent-tools-install-protocol bin_dir=\"\"")
+        .split("agent-tools-install-client bin_dir=\"\"")
         .nth(1)
-        .and_then(|tail| tail.split("# Install the debug protocol binary").next())
-        .expect("release protocol install recipe");
+        .and_then(|tail| tail.split("# Install the debug client binary").next())
+        .expect("release client install recipe");
 
     assert!(
         recipe.contains("\"${asp_artifact}\" install binary || exit $?"),
         "ASP recipe must delegate freshness to the content-addressed installer"
     );
     assert!(
-        !recipe.contains("target/release/asp -nt \"${protocol_bin}\"")
-            && !recipe.contains("! cmp -s target/release/asp \"${protocol_bin}\""),
+        !recipe.contains("target/release/asp -nt \"${client_bin}\"")
+            && !recipe.contains("! cmp -s target/release/asp \"${client_bin}\""),
         "the recipe must not duplicate artifact identity with mtime or byte-comparison probes"
     );
     assert!(

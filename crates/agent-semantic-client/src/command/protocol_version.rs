@@ -32,7 +32,7 @@ fn require_release_protocol_build() -> Result<(), String> {
     Err(format!(
         "[asp-build-profile-error] expected=release actual={profile}\n\
          |hint global installs and performance receipts require a release ASP artifact\n\
-         nextCommand=just agent-tools-install-protocol"
+         nextCommand=just agent-tools-install-client"
     ))
 }
 

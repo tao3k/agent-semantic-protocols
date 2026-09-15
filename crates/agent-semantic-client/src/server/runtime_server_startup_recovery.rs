@@ -60,30 +60,12 @@ pub(super) async fn recover_startup_workspace_generation(
     >,
     authority: &agent_semantic_runtime_server::RuntimeQueryGenerationAuthority,
     entry: &agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry,
-    provider_targets: &[(String, String)],
 ) -> Result<String, String> {
-    let mut last_digest = None;
-    for (language_id, provider_id) in provider_targets {
-        let digest = committed_digest(
-            admission
-                .ensure_runtime_generation_ready_for_provider(
-                    entry.workspace_identity.clone(),
-                    entry.project_root.clone(),
-                    Some(
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                            language_id: language_id.clone(),
-                            provider_id: Some(provider_id.clone()),
-                        },
-                    ),
-                )
-                .await?,
-        )?;
-        await_query_generation(authority, entry, &digest).await?;
-        last_digest = Some(digest);
-    }
-    if let Some(digest) = last_digest {
-        return Ok(digest);
-    }
+    // Process-cold recovery owns one inventory-complete generation. Building
+    // one successor per installed provider creates N competing durability
+    // attachments and lets a later target read a stale durable base. The
+    // complete generation discovers all workspace programming languages plus
+    // embedded Orgize document languages and publishes them atomically.
     let digest = committed_digest(
         admission
             .ensure_runtime_generation_ready(

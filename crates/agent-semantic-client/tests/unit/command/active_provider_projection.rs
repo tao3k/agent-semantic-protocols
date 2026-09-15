@@ -138,6 +138,20 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         required,
         std::collections::BTreeSet::from(["rust".to_owned()])
     );
+    let required_with_embedded_documents = workspace_required_provider_languages_for_paths(
+        &closure_register,
+        [
+            Path::new("Cargo.toml"),
+            Path::new("src/lib.rs"),
+            Path::new("docs/architecture.org"),
+            Path::new("README.md"),
+        ],
+    )
+    .expect("workspace provider and embedded document closure");
+    assert_eq!(
+        required_with_embedded_documents,
+        std::collections::BTreeSet::from(["md".to_owned(), "org".to_owned(), "rust".to_owned(),])
+    );
     let targeted = provider_languages_for_generation_demand(
         &closure_register,
         &["Cargo.toml".to_owned(), "Project.toml".to_owned()],
@@ -199,6 +213,20 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
             .expect("an unused Julia provider must not block a Rust workspace");
     assert_eq!(rust_projection.providers.len(), 1);
     assert_eq!(rust_projection.providers[0].language_id.as_str(), "rust");
+
+    let org_only = std::collections::BTreeSet::from(["org".to_owned()]);
+    let (org_projection, _) =
+        runtime_source_index_provider_projection(&artifacts, &incomplete_register, &org_only)
+            .expect("embedded Org projection requires no installed provider artifact");
+    assert_eq!(org_projection.providers.len(), 1);
+    assert_eq!(org_projection.providers[0].language_id.as_str(), "org");
+    assert_eq!(org_projection.providers[0].provider_id.as_str(), "asp-org");
+    assert_eq!(org_projection.providers[0].binary, "asp:embedded-document");
+    assert_eq!(
+        org_projection.providers[0].source_extensions,
+        [".org", ".org_archive"]
+    );
+    assert!(org_projection.providers[0].runtime_operations.is_empty());
 
     let rust_and_julia = std::collections::BTreeSet::from(["julia".to_owned(), "rust".to_owned()]);
     let incomplete_error =

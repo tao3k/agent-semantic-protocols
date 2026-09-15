@@ -160,12 +160,11 @@ just agent-hooks-doctor "$HOME/.local/bin"
 Install individual agent tools when only one boundary changed:
 
 ```sh
-just agent-tools-install-protocol "$HOME/.local/bin"
-just agent-tools-install-asp "$HOME/.local/bin"
-just agent-tools-install-hook "$HOME/.local/bin"
-just agent-tools-install-rust "$HOME/.local/bin"
-just agent-tools-install-typescript "$HOME/.local/bin"
-just agent-tools-install-python "$HOME/.local/bin"
+just agent-tools-install-client
+just agent-tools-install-hook
+just agent-tools-install-rust
+just agent-tools-install-typescript
+just agent-tools-install-python
 ```
 
 Use the Runtime-owned Search Playbook when an agent step needs source discovery,

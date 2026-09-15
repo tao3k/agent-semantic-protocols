@@ -70,6 +70,36 @@ def test_provider_registration_is_the_only_package_local_wire_authority() -> Non
         workspace_path = descriptor_root / "asp-provider-workspace-install.json"
         workspace = load_json(workspace_path)
         assert isinstance(workspace, dict)
+        schema_receipt_path = (
+            workspace_path.parent / workspace["schemaBundleReceipt"]
+        ).resolve()
+        assert schema_receipt_path == (
+            provider.package_root / "schemas/.asp-schema-manager-receipt.json"
+        ).resolve()
+        assert schema_receipt_path.is_file()
+        artifact_root = (
+            REPOSITORY_ROOT / workspace["workspaceArtifact"]["root"]
+        ).resolve()
+        derived_roots = [
+            (REPOSITORY_ROOT / path).resolve()
+            for path in workspace["workspaceBuild"]["derivedPaths"]
+        ]
+        assert any(
+            artifact_root == derived_root
+            or artifact_root.is_relative_to(derived_root)
+            for derived_root in derived_roots
+        )
+        if provider.language_id == "gerbil-scheme":
+            assert workspace["workspaceArtifact"] == {
+                "root": "languages/asp-gerbil-scheme/.gerbil/bin/asp-gerbil-scheme",
+                "entrypoint": ".",
+            }
+            assert workspace["workspaceBuild"]["args"] == [
+                "gxi",
+                "build-provider.ss",
+                "compile",
+            ]
+            assert workspace["workspaceBuild"]["env"]["SDKROOT"] == ""
         registration_path = workspace_path.parent / workspace["providerRegistration"]
         registration = load_json(registration_path)
         assert isinstance(registration, dict)

@@ -156,9 +156,9 @@ def test_live_corpus_setup_owns_provider_installation() -> None:
 
     setup = justfile.split("check-live-corpus-search-query-all-setup:", 1)[1]
     setup = setup.split("check-live-corpus-search-query-all:", 1)[0]
-    for provider in ("protocol", "rs", "ts", "py", "julia", "orgize"):
+    for provider in ("client", "rs", "ts", "py", "julia", "gerbil"):
         assert f"just agent-tools-install-{provider}" in setup
-    assert "agent-tools-install-protocol .bin" not in setup
+    assert "agent-tools-install-protocol" not in setup
 
 
 def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
@@ -167,12 +167,12 @@ def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
     runner = justfile.split("_agent-tools-run-asp bin_dir +args:", 1)[1]
     runner = runner.split("# Install asp, asp-python-graphs", 1)[0]
 
-    assert 'protocol_bin="${ASP_BIN:-${bin_dir}/asp}"' in runner
+    assert 'client_bin="${ASP_BIN:-${bin_dir}/asp}"' in runner
     assert '[ -z "${ASP_BIN:-}" ]' in runner
-    assert '[ target/release/asp -nt "${protocol_bin}" ]' in runner
+    assert '[ target/release/asp -nt "${client_bin}" ]' in runner
     assert "crates/agent-semantic-protocol/src" in runner
     assert "agent-semantic-protocol Rust source is newer" in runner
-    assert "run \\`just agent-tools-install-protocol ${bin_dir}\\`" in runner
+    assert "run \\`just agent-tools-install-client\\`" in runner
 
 
 def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budget() -> (

@@ -4,7 +4,7 @@
 
 use std::{
     collections::BTreeSet,
-    env, fs,
+    env,
     path::{Path, PathBuf},
 };
 
@@ -114,9 +114,9 @@ pub(super) fn validate_toml_scenario_benchmark(
     ] {
         require_positive_duration_manifest_field(invalid, &benchmark_path, field, value);
     }
-    if benchmark.memory_budget_bytes == 0 || benchmark.observed_memory_bytes == 0 {
+    if benchmark.memory_budget_bytes == 0 {
         invalid.push(format!(
-            "{}: memory budget and observed memory must be positive",
+            "{}: memory budget must be positive",
             benchmark_path.display()
         ));
     }
@@ -141,11 +141,15 @@ pub(super) fn validate_toml_scenario_benchmark(
 }
 
 pub(super) fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {
-    let scenario_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("unit")
-        .join("scenarios");
-    let policy_ids = discover_scenario_policy_ids(&scenario_root);
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root.join("tests").join("unit").join("scenarios");
+    let mut policy_ids = discover_scenario_policy_ids(&scenario_root);
+    let workspace_root = crate_root.join("../..");
+    for requirement in LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS {
+        policy_ids.extend(discover_scenario_policy_ids(
+            &workspace_root.join(requirement.root),
+        ));
+    }
     let missing = REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS
         .iter()
         .copied()

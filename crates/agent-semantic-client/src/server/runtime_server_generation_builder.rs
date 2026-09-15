@@ -108,6 +108,10 @@ pub(super) fn build_workspace_generation_candidate_builder(
                     active_projection.execution_binding(),
                 )?;
                 validate_provider_target(provider_target.as_ref(), &registry)?;
+                let replacement_authority = provider_target
+                    .as_ref()
+                    .map(|target| replacement_authority_for_target(target, &registry))
+                    .transpose()?;
                 let mut build = agent_semantic_client_db::server_source_index::
                     prepare_runtime_server_workspace_generation_with_runtime_service_async(
                         runtime_search_service,
@@ -123,6 +127,7 @@ pub(super) fn build_workspace_generation_candidate_builder(
                         agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration,
                         candidate,
                         inventory.owner_paths,
+                        replacement_authority,
                         cancellation,
                     )
                     .await
@@ -150,6 +155,34 @@ pub(super) fn build_workspace_generation_candidate_builder(
     )
 }
 
+fn replacement_authority_for_target(
+    target: &agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget,
+    registry: &agent_semantic_client_core::RuntimeProviderProjection,
+) -> Result<agent_semantic_search::ResidentSearchAuthority, String> {
+    let provider = registry
+        .providers
+        .iter()
+        .find(|provider| provider.language_id.as_str() == target.language_id)
+        .ok_or_else(|| {
+            format!(
+                "query-demand target is absent from the Runtime projection: languageId={}",
+                target.language_id
+            )
+        })?;
+    if let Some(expected_provider_id) = target.provider_id.as_deref()
+        && provider.provider_id.as_str() != expected_provider_id
+    {
+        return Err(format!(
+            "query-demand target provider identity drift: languageId={} expectedProviderId={expected_provider_id} actualProviderId={}",
+            target.language_id, provider.provider_id
+        ));
+    }
+    Ok(agent_semantic_search::ResidentSearchAuthority {
+        language_id: target.language_id.clone().into(),
+        provider_id: provider.provider_id.as_str().to_owned().into(),
+    })
+}
+
 fn runtime_schema_bundle_digest<'a>(
     schema_bundles: &RuntimeSchemaBundleCatalog,
     required_languages: impl IntoIterator<Item = &'a str>,
@@ -168,12 +201,18 @@ fn validate_provider_target(
     let Some(provider_target) = provider_target else {
         return Ok(());
     };
-    let provider_id = provider_target.provider_id.as_deref().ok_or_else(|| {
-        format!(
-            "query-demand provider target requires resolved providerId: languageId={}",
+    let Some(provider_id) = provider_target.provider_id.as_deref() else {
+        if registry.providers.iter().any(|provider| {
+            provider.language_id.as_str() == provider_target.language_id
+                && provider.binary == "asp:embedded-document"
+        }) {
+            return Ok(());
+        }
+        return Err(format!(
+            "query-demand embedded document target is absent from the Runtime projection: languageId={}",
             provider_target.language_id
-        )
-    })?;
+        ));
+    };
     if registry.providers.iter().any(|provider| {
         provider.language_id.as_str() == provider_target.language_id
             && provider.provider_id.as_str() == provider_id

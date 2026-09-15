@@ -27,21 +27,21 @@ _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
     case ":$PATH:" in *":${bin_dir}:"*) ;; *) PATH="${bin_dir}:$PATH"; export PATH ;; esac; \
-    protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
-    if [ -x "${protocol_bin}" ]; then \
+    client_bin="${ASP_BIN:-${bin_dir}/asp}"; \
+    if [ -x "${client_bin}" ]; then \
       stale_reason=""; \
       if [ -z "${ASP_BIN:-}" ]; then \
-        if [ -x target/release/asp ] && [ target/release/asp -nt "${protocol_bin}" ]; then \
-          stale_reason="target/release/asp is newer than ${protocol_bin}"; \
-        elif [ -d crates/agent-semantic-protocol/src ] && [ -n "$(find crates/agent-semantic-protocol/src -type f -newer "${protocol_bin}" -print -quit)" ]; then \
-          stale_reason="agent-semantic-protocol Rust source is newer than ${protocol_bin}"; \
+        if [ -x target/release/asp ] && [ target/release/asp -nt "${client_bin}" ]; then \
+          stale_reason="target/release/asp is newer than ${client_bin}"; \
+        elif [ -d crates/agent-semantic-protocol/src ] && [ -n "$(find crates/agent-semantic-protocol/src -type f -newer "${client_bin}" -print -quit)" ]; then \
+          stale_reason="agent-semantic-protocol Rust source is newer than ${client_bin}"; \
         fi; \
       fi; \
       if [ -n "${stale_reason}" ]; then \
-        echo "[agent-tools-run-asp] stale ${protocol_bin}: ${stale_reason}; run \`just agent-tools-install-protocol ${bin_dir}\`" >&2; \
+        echo "[agent-tools-run-asp] stale ${client_bin}: ${stale_reason}; run \`just agent-tools-install-client\`" >&2; \
         exit 1; \
       fi; \
-      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${protocol_bin}" {{args}}; \
+      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${client_bin}" {{args}}; \
     else \
       SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-client --bin asp -- {{args}}; \
     fi
@@ -110,15 +110,14 @@ agent-hooks-smoke-codex:
 
 # Develop mode: build and install asp plus all providers from this checkout.
 agent-tools-install-global bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
-      just agent-tools-install-protocol "${bin_dir}"; \
+    @requested_bin_dir="{{bin_dir}}"; \
+      if [ -n "${requested_bin_dir}" ]; then \
+        echo "agent-tools-install-global does not accept a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
+        exit 2; \
+      fi; \
+      just agent-tools-install-client; \
       just agent-tools-install-languages; \
       echo "[agent-tools-install-global] installed asp and all ASP language providers; asp-python-graphs remains an ASP Server-owned runtime service"
-
-# Develop mode: build and install the shared asp binary with the embedded Orgize provider.
-agent-tools-install-orgize bin_dir="":
-    @just agent-tools-install-asp "{{bin_dir}}"
 
 # Develop mode: build and install all language providers from this checkout.
 agent-tools-install-languages:
@@ -129,18 +128,14 @@ agent-tools-install-languages:
     @just agent-tools-install-gerbil
     @echo "[agent-tools-install-languages] installed asp-rust, asp-typescript, asp-python, asp-julia, and asp-gerbil-scheme into {{asp_runtime_bin}}"
 
-# Develop mode: build and install the shared asp binary from this checkout.
-agent-tools-install-asp bin_dir="":
-	@just agent-tools-install-protocol "{{bin_dir}}"
-
 # Build the ASP release binary without coupling it to provider runtime artifacts.
 build-asp-release:
     cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
 
-agent-tools-install-protocol bin_dir="": check-rust-workspace-policy
+agent-tools-install-client bin_dir="": check-rust-workspace-policy
     @requested_bin_dir="{{bin_dir}}"; \
       if [ -n "${requested_bin_dir}" ]; then \
-        echo "agent-tools-install-protocol no longer accepts a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
+        echo "agent-tools-install-client does not accept a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
         exit 2; \
       fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
@@ -152,21 +147,21 @@ agent-tools-install-protocol bin_dir="": check-rust-workspace-policy
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null
 
-# Install the debug protocol binary into the canonical State Home runtime.
+# Install the debug client binary into the canonical State Home runtime.
 # Developer publication keeps member build scripts O(1), then admits the
 # complete Cargo-derived workspace policy exactly once before publishing.
 # ASP Rust owns content-addressed package evidence, so unchanged packages are
 # reused instead of being rescanned by every downstream build script.
-agent-tools-install-protocol-debug: check-rust-workspace-policy
+agent-tools-install-client-debug: check-rust-workspace-policy
     @asp_artifact="target/debug/asp"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary || exit $?; \
       test -x "${destination}"
 
-# Install the shared protocol binary used by hook runtime commands.
+# Install the shared client binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":
-	@just agent-tools-install-protocol "{{bin_dir}}"
+	@just agent-tools-install-client "{{bin_dir}}"
 
 # Install a language provider through ASP's registered workspace-install contract.
 # The root Justfile is only an adapter; provider-owned descriptors own builds and artifacts.
@@ -181,12 +176,12 @@ agent-tools-install-language language target="":
     if [[ -n "${target}" ]]; then
       install_args+=(--target "${target}")
     fi
-    protocol_bin="${state_home}/runtime/bin/asp"
-    if [[ ! -x "${protocol_bin}" ]]; then
-      echo "canonical ASP binary is required to install the provider; run 'just agent-tools-install-protocol' first" >&2
+    client_bin="${state_home}/runtime/bin/asp"
+    if [[ ! -x "${client_bin}" ]]; then
+      echo "canonical ASP client binary is required to install the provider; run 'just agent-tools-install-client' first" >&2
       exit 1
     fi
-    "${protocol_bin}" "${install_args[@]}"
+    "${client_bin}" "${install_args[@]}"
     echo "[agent-tools-install] language={{ language }} installMode=provider-workspace-install source=provider-registry receipt=recorded"
 
 # Develop mode: build and install the Rust provider from this checkout.
@@ -306,12 +301,12 @@ check-provider-knowledge-axes:
 
 # Qualify every locked large-library corpus through resident search, exact projection, and OTel.
 check-live-corpus-search-query-all-setup:
-    just agent-tools-install-protocol
+    just agent-tools-install-client
     just agent-tools-install-rs
     just agent-tools-install-ts
     just agent-tools-install-py
     just agent-tools-install-julia
-    just agent-tools-install-orgize
+    just agent-tools-install-gerbil
 
 check-live-corpus-search-query-all: check-live-corpus-search-query-all-setup
     "{{asp_runtime_bin}}/asp" server start >/dev/null
@@ -376,7 +371,7 @@ check-gerbil-owner-items-fast-path:
     if not asp_bin.is_file() or not os.access(asp_bin, os.X_OK):
         raise SystemExit(
             f"[gerbil-owner-items-fast] missing executable {asp_bin}; "
-            "run `just agent-tools-install-protocol .bin`"
+            "run `just agent-tools-install-client`"
         )
 
     profile = subprocess.run(
@@ -480,6 +475,3 @@ check-license-contract:
 
 report-python-policy:
     uv run --project {{asp_python_project}} --frozen python -c 'from asp_python import render_asp_python_report, run_asp_python; print(render_asp_python_report(run_asp_python("{{repo}}")), end="")'
-# Develop mode: build and install the debug asp binary from this checkout.
-agent-tools-install-asp-dev:
-    @just agent-tools-install-protocol-debug

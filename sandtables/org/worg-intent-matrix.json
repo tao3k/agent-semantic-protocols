@@ -43,18 +43,13 @@
       "id": "live-provider-query",
       "command": [
         "asp",
-        "org",
         "search",
-        "lexical",
-        "--query",
-        "agenda",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "playbook",
+        "(search (producers (documents org)) (intersect (rg \"-n\" \"agenda\" \".\") (tantivy \"body:agenda\")))"
       ],
       "expect": {
-        "lineProtocol": true
+        "lineProtocol": true,
+        "maxElapsedMs": 300
       }
     }
   ]

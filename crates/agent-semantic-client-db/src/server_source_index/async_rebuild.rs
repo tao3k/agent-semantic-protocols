@@ -362,6 +362,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     collection_scope: SourceIndexCollectionScope,
     candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     inventory: Vec<String>,
+    replacement_authority: Option<agent_semantic_search::ResidentSearchAuthority>,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<crate::runtime_server_admission::WorkspaceGenerationCandidateBuild, String> {
     let trace_started = Instant::now();
@@ -388,7 +389,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
             SourceIndexGenerationRefresh {
                 recovery_execution: Some(&recovery_execution),
                 changed_owner_paths: None,
-                replacement_authority: None,
+                replacement_authority: replacement_authority.as_ref(),
                 index_root: &project_root,
                 files: &collection.files,
                 project_resolutions: &collection.project_resolutions,

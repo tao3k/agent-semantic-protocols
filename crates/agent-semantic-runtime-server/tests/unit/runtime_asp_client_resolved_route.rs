@@ -58,6 +58,23 @@ fn playbook_language_set_is_admitted_before_generation_work() {
     assert!(message.contains("producer is not installed"), "{message}");
 }
 
+#[test]
+fn embedded_document_producer_has_no_external_provider_generation_target() {
+    let providers = vec![agent_semantic_search::WorkspaceSearchProvider {
+        language_id: "org".to_owned(),
+        provider_id: "asp-org".to_owned(),
+        source_extensions: vec!["org".to_owned()],
+        search_supported: true,
+        producer_axes: vec![agent_semantic_search::WorkspaceSearchProducerAxis::Document],
+        enhanced_query_capability: None,
+    }];
+    let targets = selected_playbook_provider_targets(None, Some("org"), &providers)
+        .unwrap_or_else(|_| panic!("embedded document producer admission"));
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].language_id, "org");
+    assert_eq!(targets[0].provider_id, None);
+}
+
 fn search_request(
     pattern: &str,
 ) -> agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest {

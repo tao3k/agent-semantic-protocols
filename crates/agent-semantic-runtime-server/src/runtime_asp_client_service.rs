@@ -118,6 +118,33 @@ pub fn workspace_search_providers_from_provider_register(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    for language in orgize::agent::DocumentLanguage::ALL {
+        let language_id = language.id();
+        let producer_axes = schema_bundles
+            .search_producer_axes(language_id)
+            .ok_or_else(|| {
+                format!(
+                    "embedded document producer has no admitted schema profile: languageId={language_id}"
+                )
+            })?;
+        if producer_axes != [agent_semantic_schema_manager::SearchProducerAxis::Document] {
+            return Err(format!(
+                "embedded document producer schema profile has invalid axes: languageId={language_id} axes={producer_axes:?}"
+            ));
+        }
+        providers.push(WorkspaceSearchProvider {
+            language_id: language_id.to_owned(),
+            provider_id: language.provider_id().to_owned(),
+            source_extensions: language
+                .source_extensions()
+                .iter()
+                .map(|extension| extension.trim_start_matches('.').to_owned())
+                .collect(),
+            search_supported: true,
+            producer_axes: vec![agent_semantic_search::WorkspaceSearchProducerAxis::Document],
+            enhanced_query_capability: None,
+        });
+    }
     providers.sort_by(|left, right| left.language_id.cmp(&right.language_id));
     if providers
         .windows(2)

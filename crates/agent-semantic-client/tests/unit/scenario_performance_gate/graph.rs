@@ -8,12 +8,10 @@ use super::contracts::{
     assert_graph_candidate_projection_benchmark_contract,
     assert_graph_evidence_projection_benchmark_contract,
     assert_graph_node_projection_benchmark_contract, assert_graph_owner_rank_benchmark_contract,
-    assert_graph_query_owner_seed_benchmark_contract,
     assert_graph_topology_projection_benchmark_contract,
 };
 use super::runtime_gates::{duration_literal, duration_millis_from_manifest, read_toml};
-use super::shared::SharedBenchmarkToml;
-use crate::provider_command::support::temp_project_root;
+use super::shared::{SharedBenchmarkToml, temp_project_root};
 
 pub(super) fn asp_graph_node_projection_cold_functional_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -258,19 +256,15 @@ pub(super) fn asp_graph_topology_projection_cold_functional_path_stays_inside_sc
         projection
             .nodes
             .iter()
-            .any(|node| { node["kind"] == "language-project" && node["path"] == "." })
+            .any(|node| { node["kind"] == "workspace" && node["path"] == "." })
     );
     assert!(
-        projection
-            .nodes
-            .iter()
-            .any(|node| { node["kind"] == "project-marker" && node["path"] == "Cargo.toml" })
-    );
-    assert!(
-        projection
-            .nodes
-            .iter()
-            .any(|node| { node["kind"] == "dependency-marker" && node["path"] == "Cargo.lock" })
+        projection.nodes.iter().all(|node| {
+            node["kind"] != "language-project"
+                && node["kind"] != "project-marker"
+                && node["kind"] != "dependency-marker"
+        }),
+        "repository marker files must not become semantic topology without an admitted ProjectResolution: {projection:?}"
     );
     assert!(
         projection
@@ -308,7 +302,7 @@ pub(super) fn asp_graph_topology_projection_cold_functional_path_stays_inside_sc
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["graph-topology-projection"],
             "forbiddenRoutes": ["command-project-marker-walk", "command-gitmodules-parser", "provider-process", "native-finder"],
-            "requireProviderManifestMarkers": true
+            "requireAdmittedProjectResolution": true
         },
         "observed": {
             "observedTotal": duration_literal(elapsed),
@@ -322,6 +316,7 @@ pub(super) fn asp_graph_topology_projection_cold_functional_path_stays_inside_sc
             "executedRoutes": ["graph-topology-projection"],
             "stdoutBytes": 0,
             "fallbackReason": "none"
+            ,"unprovenProjectNodeCount": 0
         },
         "verdict": "pass",
         "evidenceRefs": ["scenario:asp-graph-topology-projection-cold-functional-path"]
@@ -470,7 +465,7 @@ pub(super) fn asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_ga
     );
 }
 
- pub(super) fn asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate() {
+pub(super) fn asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")

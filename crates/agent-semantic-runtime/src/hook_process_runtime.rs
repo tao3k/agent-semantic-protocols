@@ -155,7 +155,7 @@ pub fn hook_development_installer_args(
         OsString::from("just"),
         OsString::from("--justfile"),
         justfile.as_os_str().to_owned(),
-        OsString::from("agent-tools-install-protocol"),
+        OsString::from("agent-tools-install-client"),
         runtime_bin.as_os_str().to_owned(),
     ]
 }

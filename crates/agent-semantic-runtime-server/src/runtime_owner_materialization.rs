@@ -152,6 +152,14 @@ impl RuntimeOwnerMaterializer {
                         "candidate parser owner disappeared after claim: ownerPath={owner_path}"
                     ))
                 })?;
+            // Org and Markdown are embedded lexical/document producers. Search
+            // consumes their resident bytes directly and must never ask the
+            // external provider runtime for an asp-org/asp-md parser process.
+            // Detailed document structure is an in-process Orgize projection
+            // owned by Query, not a prerequisite for candidate acquisition.
+            if !requires_external_parser(provider) {
+                continue;
+            }
             pending_by_language
                 .entry(provider.language_id.clone())
                 .or_default()
@@ -306,6 +314,10 @@ impl RuntimeOwnerMaterializer {
             mutex,
         })
     }
+}
+
+fn requires_external_parser(provider: &agent_semantic_search::WorkspaceSearchProvider) -> bool {
+    provider.producer_axes != [agent_semantic_search::WorkspaceSearchProducerAxis::Document]
 }
 
 async fn project_provider_group(

@@ -146,7 +146,12 @@ fn selected_playbook_provider_targets(
             targets.push(
                 agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
                     language_id: producer.to_owned(),
-                    provider_id: Some(provider.provider_id.clone()),
+                    provider_id: match producer_axis {
+                        agent_semantic_search::WorkspaceSearchProducerAxis::Language => {
+                            Some(provider.provider_id.clone())
+                        }
+                        agent_semantic_search::WorkspaceSearchProducerAxis::Document => None,
+                    },
                 },
             );
         }

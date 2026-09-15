@@ -41,17 +41,11 @@
       "id": "live-provider-query",
       "command": [
         "asp",
-        "gerbil-scheme",
         "search",
-        "lexical",
-        "--query",
-        "compiler",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "playbook",
+        "(search (producers (language gerbil-scheme)) (intersect (rg \"-n\" \"compiler\" \".\") (tantivy \"body:compiler\")))"
       ],
-      "expect": {"lineProtocol": true}
+      "expect": {"lineProtocol": true, "maxElapsedMs": 300}
     }
   ]
 }

@@ -2,7 +2,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use super::{ProviderProjectionTiming, RuntimeOwnerMaterializer};
+use super::{ProviderProjectionTiming, RuntimeOwnerMaterializer, requires_external_parser};
+
+fn provider(
+    axis: agent_semantic_search::WorkspaceSearchProducerAxis,
+) -> agent_semantic_search::WorkspaceSearchProvider {
+    agent_semantic_search::WorkspaceSearchProvider {
+        language_id: "org".to_owned(),
+        provider_id: "asp-org".to_owned(),
+        source_extensions: vec!["org".to_owned()],
+        search_supported: true,
+        producer_axes: vec![axis],
+        enhanced_query_capability: None,
+    }
+}
+
+#[test]
+fn embedded_document_candidates_never_require_an_external_parser_process() {
+    assert!(!requires_external_parser(&provider(
+        agent_semantic_search::WorkspaceSearchProducerAxis::Document,
+    )));
+    assert!(requires_external_parser(&provider(
+        agent_semantic_search::WorkspaceSearchProducerAxis::Language,
+    )));
+}
 
 #[test]
 fn provider_lifecycle_time_is_not_runtime_engine_work() {

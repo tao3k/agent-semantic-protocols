@@ -281,6 +281,14 @@ pub(crate) fn runtime_source_index_provider_projection(
     ),
     String,
 > {
+    let embedded_documents = required_languages
+        .iter()
+        .filter_map(|language_id| {
+            orgize::agent::DocumentLanguage::ALL
+                .into_iter()
+                .find(|language| language.id() == language_id)
+        })
+        .collect::<Vec<_>>();
     let registrations = register
         .installed_capabilities()
         .into_iter()
@@ -292,6 +300,9 @@ pub(crate) fn runtime_source_index_provider_projection(
             !registrations
                 .iter()
                 .any(|registration| &registration.language_id == *language_id)
+                && !embedded_documents
+                    .iter()
+                    .any(|language| language.id() == language_id.as_str())
         })
         .map(|language_id| format!("{language_id}:capability"))
         .collect::<Vec<_>>();
@@ -313,16 +324,20 @@ pub(crate) fn runtime_source_index_provider_projection(
             missing.join(",")
         ));
     }
-    runtime_source_index_provider_projection_for_registrations(artifacts, registrations)
+    runtime_source_index_provider_projection_for_registrations(
+        artifacts,
+        registrations,
+        &embedded_documents,
+    )
 }
 
 fn workspace_required_provider_languages_for_paths<'a>(
-    _register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     paths: impl IntoIterator<Item = &'a Path>,
 ) -> Result<BTreeSet<String>, String> {
     let paths = paths.into_iter().collect::<Vec<_>>();
     let mut required = BTreeSet::new();
-    for registration in agent_semantic_provider_protocol::builtin_provider_registrations()? {
+    for registration in register.installed_capabilities() {
         let inventory = registration.source_inventory()?;
         let has_entry_marker = inventory
             .project_resolution
@@ -342,6 +357,14 @@ fn workspace_required_provider_languages_for_paths<'a>(
         });
         if has_entry_marker || has_source {
             required.insert(registration.language_id);
+        }
+    }
+    for document_language in orgize::agent::DocumentLanguage::ALL {
+        if paths
+            .iter()
+            .any(|path| document_language.matches_path(path))
+        {
+            required.insert(document_language.id().to_owned());
         }
     }
     Ok(required)
@@ -371,6 +394,7 @@ pub(crate) fn provider_languages_for_generation_demand(
 fn runtime_source_index_provider_projection_for_registrations(
     artifacts: &RuntimeActiveProviderProjection,
     registrations: Vec<agent_semantic_provider_protocol::ProviderRegistrationDocument>,
+    embedded_documents: &[orgize::agent::DocumentLanguage],
 ) -> Result<
     (
         agent_semantic_client_core::RuntimeProviderProjection,
@@ -378,10 +402,10 @@ fn runtime_source_index_provider_projection_for_registrations(
     ),
     String,
 > {
-    if registrations.is_empty() {
+    if registrations.is_empty() && embedded_documents.is_empty() {
         return Err("state=provider-missing reasonKind=no-active-provider-capability".to_owned());
     }
-    let providers = registrations
+    let mut providers = registrations
         .into_iter()
         .map(|registration| {
             let artifact = artifacts
@@ -471,11 +495,19 @@ fn runtime_source_index_provider_projection_for_registrations(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    providers.extend(
+        embedded_documents
+            .iter()
+            .copied()
+            .map(embedded_document_runtime_provider)
+            .collect::<Result<Vec<_>, String>>()?,
+    );
+    providers.sort_by(|left, right| left.language_id.as_str().cmp(right.language_id.as_str()));
     let closure_bytes = serde_json::to_vec(
         &providers
             .iter()
             .map(|provider| -> Result<_, String> {
-                let artifact = artifacts
+                let artifact_digest = artifacts
                     .document
                     .providers
                     .iter()
@@ -483,18 +515,22 @@ fn runtime_source_index_provider_projection_for_registrations(
                         artifact.language_id == provider.language_id.as_str()
                             && artifact.provider_id == provider.provider_id.as_str()
                     })
+                    .map(|artifact| artifact.artifact_digest.as_str())
+                    .or_else(|| {
+                        (provider.binary == "asp:embedded-document")
+                            .then_some(provider.registration_digest.as_str())
+                    })
                     .ok_or_else(|| {
                         format!(
-                            "workspace provider closure lost admitted artifact: languageId={} providerId={}",
-                            provider.language_id.as_str(),
-                            provider.provider_id.as_str()
+                            "workspace provider closure lost admitted authority: languageId={} providerId={}",
+                            provider.language_id.as_str(), provider.provider_id.as_str()
                         )
                     })?;
                 Ok((
                     provider.language_id.as_str(),
                     provider.provider_id.as_str(),
                     provider.registration_digest.as_str(),
-                    artifact.artifact_digest.as_str(),
+                    artifact_digest,
                 ))
             })
             .collect::<Result<Vec<_>, String>>()?,
@@ -506,6 +542,72 @@ fn runtime_source_index_provider_projection_for_registrations(
         providers,
     };
     Ok((snapshot, closure_digest))
+}
+
+fn embedded_document_runtime_provider(
+    language: orgize::agent::DocumentLanguage,
+) -> Result<agent_semantic_client_core::RuntimeProvider, String> {
+    let descriptor = serde_json::json!({
+        "languageId": language.id(),
+        "providerId": language.provider_id(),
+        "namespace": language.provider_namespace(),
+        "parserAuthority": language.parser_authority(),
+        "sourceExtensions": language.source_extensions(),
+    });
+    let registration_digest = format!(
+        "sha256:{:x}",
+        Sha256::digest(
+            serde_json::to_vec(&descriptor)
+                .map_err(|error| format!("encode embedded document authority: {error}"))?
+        )
+    );
+    let search_capabilities = serde_json::from_value(serde_json::json!({
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": false,
+        "dependencyTopologyMetadata": false
+    }))
+    .map_err(|error| format!("construct embedded document Search capability: {error}"))?;
+    let query_pack_descriptor = serde_json::from_value(serde_json::json!({
+        "descriptorId": format!("{}.document-search", language.id()),
+        "descriptorVersion": "1",
+        "languageId": language.id(),
+        "termRoleOverrides": [],
+        "recipes": []
+    }))
+    .map_err(|error| format!("construct embedded document Query pack: {error}"))?;
+    Ok(agent_semantic_client_core::RuntimeProvider {
+        registration_digest,
+        namespace: language.provider_namespace().to_owned(),
+        language_id: agent_semantic_client_core::LanguageId::from(language.id()),
+        provider_id: agent_semantic_client_core::ProviderId::from(language.provider_id()),
+        binary: "asp:embedded-document".to_owned(),
+        package_roots: Vec::new(),
+        config_files: Vec::new(),
+        source_extensions: language
+            .source_extensions()
+            .iter()
+            .map(|extension| (*extension).to_owned())
+            .collect(),
+        source_inventory_capabilities:
+            agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+                project_resolution: None,
+                document_resolution: Some(
+                    agent_semantic_client_core::ProviderDocumentInventoryCapability {
+                        extensions: language
+                            .source_extensions()
+                            .iter()
+                            .map(|extension| (*extension).to_owned())
+                            .collect(),
+                        supports_git_candidates: true,
+                    },
+                ),
+            },
+        search_capabilities,
+        query_pack_descriptor,
+        semantic_facts_descriptor: None,
+        runtime_operations: Vec::new(),
+    })
 }
 
 #[cfg(test)]

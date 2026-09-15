@@ -43,18 +43,13 @@
       "id": "live-provider-query",
       "command": [
         "asp",
-        "md",
         "search",
-        "lexical",
-        "--query",
-        "JavaScript",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "playbook",
+        "(search (producers (documents markdown)) (intersect (rg \"-n\" \"JavaScript\" \".\") (tantivy \"body:JavaScript\")))"
       ],
       "expect": {
-        "lineProtocol": true
+        "lineProtocol": true,
+        "maxElapsedMs": 300
       }
     }
   ]

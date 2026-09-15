@@ -474,6 +474,7 @@ dependencies = [
  "hyper-util",
  "opentelemetry",
  "opentelemetry_sdk",
+ "orgize",
  "parking_lot",
  "prost",
  "protoc-bin-vendored",

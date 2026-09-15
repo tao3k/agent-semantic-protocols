@@ -13,8 +13,7 @@ use std::{
 use serde::Deserialize;
 
 use super::contracts::assert_runtime_timeout_policy_benchmark_contract;
-use super::shared::SharedBenchmarkToml;
-use crate::provider_command::support::temp_project_root;
+use super::shared::{SharedBenchmarkToml, temp_project_root};
 
 pub(crate) fn scenario_benchmark_duration_contract_rejects_zero_budget() {
     let path = Path::new("scenario/benchmark.toml");
@@ -351,12 +350,13 @@ pub(crate) fn asp_provider_projection_batch_workspace_pressure_stays_inside_scen
 
     assert_eq!(
         ranges.len(),
-        usize::try_from(
-            benchmark
-                .max_provider_process_count
-                .expect("process budget")
-        )
-        .expect("process budget fits usize")
+        49,
+        "294 owners must form 49 six-owner byte-bounded request frames"
+    );
+    assert_eq!(
+        benchmark.max_provider_process_count,
+        Some(1),
+        "request-frame count is not provider-process count; one resident provider owns all frames"
     );
     assert!(
         ranges
@@ -381,14 +381,15 @@ pub(crate) fn asp_provider_projection_batch_workspace_pressure_stays_inside_scen
         "phase": "cold-generation-planning",
         "expected": {
             "workspaceOwnerCount": 294,
-            "maxOwnersPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_OWNERS,
-            "maxSourceBytesPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
+            "maxOwnersPerRequestFrame": MAX_PROVIDER_PROJECTION_BATCH_OWNERS,
+            "maxSourceBytesPerRequestFrame": MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
             "maxProviderProcessCount": benchmark.max_provider_process_count,
             "fallbackReason": "none"
         },
         "observed": {
             "observedTotal": duration_literal(elapsed),
-            "plannedProviderProcessCount": ranges.len(),
+            "providerProcessCount": 1,
+            "plannedRequestFrameCount": ranges.len(),
             "maxBatchOwnerCount": ranges.iter().map(|range| range.len()).max(),
             "maxBatchSourceBytes": max_batch_source_bytes,
             "fallbackReason": "none"
@@ -396,8 +397,5 @@ pub(crate) fn asp_provider_projection_batch_workspace_pressure_stays_inside_scen
         "verdict": "pass",
         "evidenceRefs": ["scenario:asp-provider-projection-batch-workspace-pressure"]
     });
-    assert_eq!(
-        performance_gate["observed"]["plannedProviderProcessCount"],
-        10
-    );
+    assert_eq!(performance_gate["observed"]["plannedRequestFrameCount"], 49);
 }

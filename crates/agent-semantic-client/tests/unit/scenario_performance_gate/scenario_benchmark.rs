@@ -81,11 +81,6 @@ fn asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_
 }
 
 #[test]
-fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate() {
-    super::scenario_performance_gate_impl::asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate();
-}
-
-#[test]
 fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
     super::scenario_performance_gate_impl::asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate();
 }

@@ -625,7 +625,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             &generation_admission,
             &query_generation_authority,
             entry,
-            &provider_targets,
         )
         .await
         {

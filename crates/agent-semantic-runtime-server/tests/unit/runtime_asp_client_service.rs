@@ -68,6 +68,16 @@ fn workspace_search_provider_snapshot_uses_admitted_register_facts() {
             .iter()
             .any(|provider| provider.language_id == "rust")
     );
+    let org = providers
+        .iter()
+        .find(|provider| provider.language_id == "org")
+        .expect("embedded Org producer");
+    assert_eq!(org.provider_id, "asp-org");
+    assert_eq!(org.source_extensions, ["org", "org_archive"]);
+    assert_eq!(
+        org.producer_axes,
+        [agent_semantic_search::WorkspaceSearchProducerAxis::Document]
+    );
     assert_eq!(
         schema_bundles
             .search_producer_axes("org")

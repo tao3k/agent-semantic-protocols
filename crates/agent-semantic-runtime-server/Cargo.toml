@@ -78,6 +78,7 @@ opentelemetry_sdk.workspace = true
 parking_lot.workspace = true
 turso.workspace = true
 dashmap = "6.2.1"
+orgize.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
