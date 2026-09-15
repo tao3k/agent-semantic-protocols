@@ -4,8 +4,11 @@
 
 use std::path::PathBuf;
 
+use base64::Engine;
 use serde::Deserialize;
 use serde::Serialize;
+
+const AGENT_ORG_TOPOLOGY_PROMPT_V1: &str = "Analyze only the exact source and callable-skeleton evidence in this packet. Return one Agent Org Topology Contribution V1 with a concise summary, a valid Org document, and typed relationships touching the selected scope. Do not infer from filenames or mutate the base Search topology.";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -208,4 +211,139 @@ pub(super) struct QualificationCaseReceipt {
     pub(super) payload_schema_id: String,
     pub(super) payload_digest: String,
     pub(super) status: &'static str,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::command::live_corpus) struct AgentOrgTopologyEvidence {
+    pub(in crate::command::live_corpus) schema_id: String,
+    pub(in crate::command::live_corpus) schema_version: String,
+    pub(in crate::command::live_corpus) case_id: String,
+    pub(in crate::command::live_corpus) resource_id: String,
+    pub(in crate::command::live_corpus) source_generation_digest: String,
+    pub(in crate::command::live_corpus) base_topology_generation_digest: String,
+    pub(in crate::command::live_corpus) selector: String,
+    pub(in crate::command::live_corpus) source_query_operation_id: String,
+    pub(in crate::command::live_corpus) source_bytes_base64: String,
+    pub(in crate::command::live_corpus) callable_skeleton_operation_id: String,
+    pub(in crate::command::live_corpus) callable_skeleton_bytes_base64: String,
+    pub(in crate::command::live_corpus) evidence_digest: String,
+    pub(in crate::command::live_corpus) prompt: String,
+    pub(in crate::command::live_corpus) prompt_digest: String,
+    pub(in crate::command::live_corpus) terminal: AgentOrgTopologyEvidenceTerminal,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::command::live_corpus) struct AgentOrgTopologyEvidenceTerminal {
+    pub(in crate::command::live_corpus) state: String,
+    pub(in crate::command::live_corpus) terminal_count: u64,
+    pub(in crate::command::live_corpus) reason_kind: Option<String>,
+}
+
+impl AgentOrgTopologyEvidence {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the exact Query evidence identity must stay explicit at the Live Corpus boundary"
+    )]
+    pub(in crate::command::live_corpus) fn admit(
+        case_id: String,
+        resource_id: String,
+        source_generation_digest: String,
+        base_topology_generation_digest: String,
+        selector: String,
+        source_query_operation_id: String,
+        source_bytes: &[u8],
+        callable_skeleton_operation_id: String,
+        callable_skeleton_bytes: &[u8],
+    ) -> Result<Self, String> {
+        for (field, value) in [
+            ("sourceGenerationDigest", source_generation_digest.as_str()),
+            (
+                "baseTopologyGenerationDigest",
+                base_topology_generation_digest.as_str(),
+            ),
+        ] {
+            if value.len() != 75
+                || !value.starts_with("blake3-256:")
+                || !value[11..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(format!(
+                    "reasonKind=live-corpus-topology-evidence-binding-invalid field={field}"
+                ));
+            }
+        }
+        if case_id.is_empty()
+            || resource_id.is_empty()
+            || selector.is_empty()
+            || source_query_operation_id.is_empty()
+            || source_bytes.is_empty()
+            || callable_skeleton_operation_id.is_empty()
+            || callable_skeleton_bytes.is_empty()
+        {
+            return Err("reasonKind=live-corpus-topology-evidence-content-empty".to_owned());
+        }
+        let identity = serde_json::to_vec(&(
+            &case_id,
+            &resource_id,
+            &source_generation_digest,
+            &base_topology_generation_digest,
+            &selector,
+            &source_query_operation_id,
+            source_bytes,
+            &callable_skeleton_operation_id,
+            callable_skeleton_bytes,
+        ))
+        .map_err(|error| format!("encode Live Corpus topology evidence identity: {error}"))?;
+        Ok(Self {
+            schema_id: "agent.semantic-protocols.agent-org-topology-evidence".to_owned(),
+            schema_version: "1".to_owned(),
+            case_id,
+            resource_id,
+            source_generation_digest,
+            base_topology_generation_digest,
+            selector,
+            source_query_operation_id,
+            source_bytes_base64: base64::engine::general_purpose::STANDARD.encode(source_bytes),
+            callable_skeleton_operation_id,
+            callable_skeleton_bytes_base64: base64::engine::general_purpose::STANDARD
+                .encode(callable_skeleton_bytes),
+            evidence_digest: format!("blake3-256:{}", blake3::hash(&identity).to_hex()),
+            prompt: AGENT_ORG_TOPOLOGY_PROMPT_V1.to_owned(),
+            prompt_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(AGENT_ORG_TOPOLOGY_PROMPT_V1.as_bytes()).to_hex()
+            ),
+            terminal: AgentOrgTopologyEvidenceTerminal {
+                state: "ready".to_owned(),
+                terminal_count: 1,
+                reason_kind: None,
+            },
+        })
+    }
+
+    pub(in crate::command::live_corpus) fn validate(&self) -> Result<(), String> {
+        let source_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.source_bytes_base64)
+            .map_err(|error| format!("decode Live Corpus source evidence: {error}"))?;
+        let callable_skeleton_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.callable_skeleton_bytes_base64)
+            .map_err(|error| format!("decode Live Corpus skeleton evidence: {error}"))?;
+        let rebuilt = Self::admit(
+            self.case_id.clone(),
+            self.resource_id.clone(),
+            self.source_generation_digest.clone(),
+            self.base_topology_generation_digest.clone(),
+            self.selector.clone(),
+            self.source_query_operation_id.clone(),
+            &source_bytes,
+            self.callable_skeleton_operation_id.clone(),
+            &callable_skeleton_bytes,
+        )?;
+        if rebuilt == *self {
+            Ok(())
+        } else {
+            Err("reasonKind=live-corpus-topology-evidence-derived-identity-mismatch".to_owned())
+        }
+    }
 }

@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schemaId", "schemaVersion", "sourceGenerationDigest",
-    "baseTopologyGenerationDigest", "selector", "agentIdentityDigest",
+    "baseTopologyGenerationDigest", "selector", "evidenceDigest", "agentIdentityDigest",
     "promptDigest", "summary", "summaryDigest", "orgSource",
     "orgSourceDigest", "orgAstDigest", "overlayDigest", "relationships", "terminal"
   ],
@@ -17,6 +17,7 @@
     "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
     "baseTopologyGenerationDigest": {"$ref": "#/$defs/digest"},
     "selector": {"type": "string", "minLength": 1},
+    "evidenceDigest": {"$ref": "#/$defs/digest"},
     "agentIdentityDigest": {"$ref": "#/$defs/digest"},
     "promptDigest": {"$ref": "#/$defs/digest"},
     "summary": {"type": "string", "minLength": 1},

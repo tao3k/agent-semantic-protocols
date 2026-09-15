@@ -38,7 +38,8 @@ struct PreparedRun {
     args: QualifyArgs,
     plan_bytes: Vec<u8>,
     lock_bytes: Vec<u8>,
-    state_home: PathBuf,
+    runtime_state_home: PathBuf,
+    resource_state_home: PathBuf,
     resident_sample_count: usize,
     sequential_sample_count: usize,
     concurrent_sample_count: usize,
@@ -245,6 +246,47 @@ fn publish_qualification_receipt(
     Ok(receipt_path)
 }
 
+fn publish_topology_evidence(
+    state_home: &Path,
+    evidence: &AgentOrgTopologyEvidence,
+) -> Result<PathBuf, String> {
+    let receipt_path = agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .resources()
+        .live_corpus()
+        .join("receipts")
+        .join("agent-org-topology-evidence")
+        .join("by-resource")
+        .join(format!("{}.json", evidence.resource_id));
+    let parent = receipt_path
+        .parent()
+        .ok_or_else(|| "Live Corpus topology evidence has no parent".to_owned())?;
+    std::fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "create Live Corpus topology evidence directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let encoded = serde_json::to_vec(evidence)
+        .map_err(|error| format!("encode Live Corpus topology evidence: {error}"))?;
+    let temporary = parent.join(format!(
+        ".agent-org-topology-evidence.{}.tmp",
+        std::process::id()
+    ));
+    std::fs::write(&temporary, encoded).map_err(|error| {
+        format!(
+            "write Live Corpus topology evidence {}: {error}",
+            temporary.display()
+        )
+    })?;
+    std::fs::rename(&temporary, &receipt_path).map_err(|error| {
+        format!(
+            "publish Live Corpus topology evidence {}: {error}",
+            receipt_path.display()
+        )
+    })?;
+    Ok(receipt_path)
+}
+
 fn qualification_receipt_path(
     state_home: &Path,
     language_id: Option<&str>,
@@ -280,17 +322,21 @@ fn artifact_current_pointer(state_home: &Path, resource_id: &str) -> PathBuf {
 pub(crate) async fn run(
     args: &[String],
     runtime_handoff: agent_semantic_client::AspClientRuntimeHandoff,
-    state_home: PathBuf,
+    runtime_state_home: PathBuf,
+    resource_state_home: PathBuf,
 ) -> Result<(), String> {
     let args = args.to_vec();
-    let prepared = tokio::task::spawn_blocking(move || prepare_run(&args, state_home))
-        .await
-        .map_err(|error| format!("prepare Live Corpus qualification task: {error}"))??;
+    let prepared = tokio::task::spawn_blocking(move || {
+        prepare_run(&args, runtime_state_home, resource_state_home)
+    })
+    .await
+    .map_err(|error| format!("prepare Live Corpus qualification task: {error}"))??;
     let PreparedRun {
         args,
         plan_bytes,
         lock_bytes,
-        state_home,
+        runtime_state_home,
+        resource_state_home,
         resident_sample_count,
         sequential_sample_count,
         concurrent_sample_count,
@@ -301,11 +347,11 @@ pub(crate) async fn run(
     let selected_case_count = cases.len();
     let mut case_tasks = tokio::task::JoinSet::new();
     for (case_index, prepared_case) in cases.into_iter().enumerate() {
-        let state_home = state_home.clone();
+        let runtime_state_home = runtime_state_home.clone();
         let runtime_handoff = runtime_handoff.clone();
         case_tasks.spawn(async move {
         let source_path = prepared_case.checkout_path.clone();
-        let state_home_for_materialization = state_home.clone();
+        let state_home_for_materialization = runtime_state_home.clone();
         let resource_id = prepared_case.case.resource_id.clone();
         let artifact_digest = prepared_case.artifact_digest.clone();
         let remote = prepared_case.remote.clone();
@@ -325,16 +371,16 @@ pub(crate) async fn run(
         let materialization = isolated.materialization.to_owned();
         let materialization_elapsed_micros = isolated.materialization_elapsed_micros;
         let retained_path = checkout_path.clone();
-        let case_result: Result<(QualificationCaseReceipt, u64), String> = async {
+        let case_result: Result<(QualificationCaseReceipt, AgentOrgTopologyEvidence, u64), String> = async {
             let cache_client = agent_semantic_client::AspClient::new_from_runtime_handoff(
-                state_home.clone(),
+                runtime_state_home.clone(),
                 checkout_path.clone(),
                 runtime_handoff.clone(),
             )
             .admit_runtime_workspace("Live Corpus qualification")
             .await?;
             let client = agent_semantic_client::RuntimeLanguageSessionClient::new(
-                state_home.clone(),
+                runtime_state_home.clone(),
                 checkout_path.clone(),
                 runtime_handoff.clone(),
             );
@@ -372,7 +418,7 @@ pub(crate) async fn run(
             }
             let cancellation_elapsed =
                 agent_semantic_client::AspClient::new_from_runtime_handoff(
-                    state_home.clone(),
+                    runtime_state_home.clone(),
                     checkout_path.clone(),
                     runtime_handoff.clone(),
                 )
@@ -380,14 +426,14 @@ pub(crate) async fn run(
                 .await?;
             let backpressure =
                 agent_semantic_client::AspClient::new_from_runtime_handoff(
-                    state_home.clone(),
+                    runtime_state_home.clone(),
                     checkout_path.clone(),
                     runtime_handoff.clone(),
                 )
                 .backpressure_probe()
                 .await?;
             let source_merkle_root = prepared_case.qualification.source_merkle_root.clone();
-            let mut qualified = qualify_case(
+            let (mut qualified, topology_evidence) = qualify_case(
                 &client,
                 &checkout_path,
                 prepared_case.case,
@@ -513,10 +559,10 @@ pub(crate) async fn run(
                 ));
             }
             qualified.release_prepare_elapsed_micros = release.elapsed_micros;
-            Ok((qualified, cancellation_elapsed))
+            Ok((qualified, topology_evidence, cancellation_elapsed))
         }
         .await;
-        let (mut qualified, cancellation_elapsed) = case_result.map_err(|error| {
+        let (mut qualified, topology_evidence, cancellation_elapsed) = case_result.map_err(|error| {
             format!(
                 "{error}; isolated benchmark workspace retained for diagnosis at {}",
                 retained_path.display()
@@ -527,7 +573,7 @@ pub(crate) async fn run(
             .map_err(|error| format!("cleanup isolated Live Corpus workspace task: {error}"))??;
         qualified.benchmark_workspace_cleanup_elapsed_micros = cleanup_elapsed_micros;
         qualified.benchmark_workspace_retained = false;
-            Ok::<_, String>((case_index, (qualified, cancellation_elapsed)))
+            Ok::<_, String>((case_index, (qualified, topology_evidence, cancellation_elapsed)))
         });
     }
     let completed_cases = agent_semantic_workspace_scheduler::join_tasks_in_plan_order(
@@ -536,10 +582,12 @@ pub(crate) async fn run(
     )
     .await?;
     let mut receipts = Vec::with_capacity(selected_case_count);
+    let mut topology_evidence = Vec::with_capacity(selected_case_count);
     let mut cancellation_samples = Vec::with_capacity(selected_case_count);
-    for (_, (qualified, cancellation_elapsed)) in completed_cases {
+    for (_, (qualified, evidence, cancellation_elapsed)) in completed_cases {
         cancellation_samples.push(cancellation_elapsed);
         receipts.push(qualified);
+        topology_evidence.push(evidence);
     }
     if cancellation_samples.len() != receipts.len() {
         return Err(
@@ -599,7 +647,16 @@ pub(crate) async fn run(
     };
     let encoded = serde_json::to_string(&receipt)
         .map_err(|error| format!("encode Live Corpus qualification receipt: {error}"))?;
-    let publish_state_home = state_home.clone();
+    let topology_state_home = resource_state_home.clone();
+    let topology_paths = tokio::task::spawn_blocking(move || {
+        topology_evidence
+            .iter()
+            .map(|evidence| publish_topology_evidence(&topology_state_home, evidence))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await
+    .map_err(|error| format!("publish Live Corpus topology evidence task: {error}"))??;
+    let publish_state_home = resource_state_home.clone();
     let publish_encoded = encoded.clone();
     let publish_language_id = args.language_id.clone();
     let publish_resource_id = args.resource_id.clone();
@@ -617,11 +674,12 @@ pub(crate) async fn run(
         println!("{encoded}");
     } else {
         println!(
-            "[live-corpus-qualification] cases={} planDigest={} lockDigest={} receipt={} status=qualified",
+            "[live-corpus-qualification] cases={} planDigest={} lockDigest={} receipt={} topologyEvidenceCount={} status=qualified",
             receipt.qualified_case_count,
             receipt.plan_digest,
             receipt.lock_digest,
-            receipt_path.display()
+            receipt_path.display(),
+            topology_paths.len()
         );
     }
     Ok(())
@@ -631,7 +689,11 @@ pub(crate) fn validate_args(args: &[String]) -> Result<(), String> {
     parse_args(args).map(|_| ())
 }
 
-fn prepare_run(args: &[String], state_home: PathBuf) -> Result<PreparedRun, String> {
+fn prepare_run(
+    args: &[String],
+    runtime_state_home: PathBuf,
+    resource_state_home: PathBuf,
+) -> Result<PreparedRun, String> {
     let mut args = parse_args(args)?;
     args.plan_path = qualification_input_path(&args.plan_path);
     let plan_bytes = std::fs::read(&args.plan_path).map_err(|error| {
@@ -686,7 +748,8 @@ fn prepare_run(args: &[String], state_home: PathBuf) -> Result<PreparedRun, Stri
                 corpus.provider_id
             ));
         }
-        let repository = live_corpus_git_repository_paths(&state_home, &corpus.git.remote)?;
+        let repository =
+            live_corpus_git_repository_paths(&resource_state_home, &corpus.git.remote)?;
         let checkout_path = repository
             .repository_dir
             .join("checkouts")
@@ -698,7 +761,7 @@ fn prepare_run(args: &[String], state_home: PathBuf) -> Result<PreparedRun, Stri
                     case.resource_id
                 )
             })?;
-        let current_pointer = artifact_current_pointer(&state_home, &case.resource_id);
+        let current_pointer = artifact_current_pointer(&resource_state_home, &case.resource_id);
         let artifact_dir = current_pointer.canonicalize().map_err(|error| {
             format!(
                 "Live Corpus qualification requires a prepublished immutable artifact: resource={} pointer={} error={error}",
@@ -764,7 +827,8 @@ fn prepare_run(args: &[String], state_home: PathBuf) -> Result<PreparedRun, Stri
         args,
         plan_bytes,
         lock_bytes,
-        state_home,
+        runtime_state_home,
+        resource_state_home,
         resident_sample_count,
         sequential_sample_count,
         concurrent_sample_count,
@@ -805,7 +869,7 @@ async fn qualify_case<C>(
     benchmark_workspace_materialization_elapsed_micros: u64,
     cancellation_probe_elapsed_micros: u64,
     backpressure: agent_semantic_client::ClientBackpressureProbeReceipt,
-) -> Result<QualificationCaseReceipt, String>
+) -> Result<(QualificationCaseReceipt, AgentOrgTopologyEvidence), String>
 where
     C: agent_semantic_client::LanguageCommandClient + Clone + Send + Sync + 'static,
 {
@@ -886,7 +950,18 @@ where
         "providerCatalogDigest": evidence.search.provider_catalog_digest,
         "topologyGenerationDigest": evidence.search.topology_generation_digest,
     });
-    Ok(QualificationCaseReceipt {
+    let topology_evidence = AgentOrgTopologyEvidence::admit(
+        case.case_id.clone(),
+        case.resource_id.clone(),
+        evidence.search.source_generation_digest.clone(),
+        evidence.search.topology_generation_digest.clone(),
+        selector.clone(),
+        evidence.source.operation_id.clone(),
+        &evidence.source.bytes,
+        evidence.callable_skeleton.operation_id.clone(),
+        &evidence.callable_skeleton.bytes,
+    )?;
+    let receipt = QualificationCaseReceipt {
         case_id: case.case_id,
         resource_id: case.resource_id,
         scenario_id: case.scenario_id,
@@ -955,7 +1030,8 @@ where
         payload_schema_id,
         payload_digest,
         status: "qualified",
-    })
+    };
+    Ok((receipt, topology_evidence))
 }
 
 fn qualification_result_string(result: &serde_json::Value, field: &str) -> Result<String, String> {
@@ -970,6 +1046,7 @@ fn qualification_result_string(result: &serde_json::Value, field: &str) -> Resul
 #[path = "runner_contract.rs"]
 mod contract_validation;
 
+use super::contract::AgentOrgTopologyEvidence;
 use super::contract::ClientProtocolReceipt;
 use super::contract::QualificationCase;
 use super::contract::QualificationCaseReceipt;

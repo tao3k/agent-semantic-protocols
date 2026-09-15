@@ -410,8 +410,7 @@ pub(super) async fn dispatch_resolved_route(
             active_telemetry_trace_count.as_ref(),
             &query_generation,
         )
-        .await
-        .map(Into::into);
+        .await;
     }
     let (language_id, provider_id, route) = match resolved {
         agent_semantic_client_protocol::ResolvedServerClientMethod::Language {

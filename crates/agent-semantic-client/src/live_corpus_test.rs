@@ -12,7 +12,13 @@ pub async fn run_live_corpus_test(args: Vec<String>) -> Result<(), String> {
 /// Runs qualification against a test-owned Runtime State Home.
 pub async fn run_live_corpus_test_at(
     args: Vec<String>,
-    isolated_state_home: &std::path::Path,
+    isolated_runtime_state_home: &std::path::Path,
+    resource_state_home: &std::path::Path,
 ) -> Result<(), String> {
-    crate::command::live_corpus::run_live_corpus_test_at(&args, Some(isolated_state_home)).await
+    crate::command::live_corpus::run_live_corpus_test_at(
+        &args,
+        Some(isolated_runtime_state_home),
+        Some(resource_state_home),
+    )
+    .await
 }

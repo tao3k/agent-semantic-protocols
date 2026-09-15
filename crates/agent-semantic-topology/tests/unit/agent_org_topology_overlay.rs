@@ -15,6 +15,7 @@ fn admitted() -> AgentOrgTopologyOverlay {
         "src/lib.rs#item=run",
         digest('3'),
         digest('4'),
+        digest('5'),
         "run dispatches the admitted request to the runtime.",
         "* Agent summary\n** Relationship\nrun dispatches runtime request.\n",
         vec![AgentTopologyRelationship {
@@ -44,6 +45,7 @@ fn stale_generation_and_unscoped_relationships_fail_closed() {
         "src/lib.rs#item=run",
         digest('3'),
         digest('4'),
+        digest('5'),
         "summary",
         "* Summary\n",
         vec![AgentTopologyRelationship {
@@ -64,6 +66,7 @@ fn stale_generation_and_unscoped_relationships_fail_closed() {
         "src/lib.rs#item=run",
         digest('3'),
         digest('4'),
+        digest('5'),
         "summary",
         "* Summary\n",
         vec![AgentTopologyRelationship {
@@ -92,6 +95,7 @@ fn relationship_input_order_does_not_change_overlay_identity() {
             base.source_generation_digest.clone(),
             base.base_topology_generation_digest.clone(),
             base.selector.clone(),
+            base.evidence_digest.clone(),
             base.agent_identity_digest.clone(),
             base.prompt_digest.clone(),
             base.summary.clone(),

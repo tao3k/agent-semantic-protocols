@@ -33,5 +33,5 @@ def test_cache_state_contract_is_scoped_and_content_bound() -> None:
     } <= required
     receipt_properties = receipt_schema["properties"]
     assert receipt_properties["sourceWorkspaceMutationCount"]["const"] == 0
-    assert receipt_properties["globalCacheMutationCount"]["const"] == 0
+    assert "globalCacheMutationCount" not in receipt_properties
     assert receipt_properties["filesystemDeleteCount"]["const"] == 0

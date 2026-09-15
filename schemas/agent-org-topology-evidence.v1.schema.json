@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/agent-org-topology-evidence.v1.schema.json",
+  "title": "Agent Org Topology Evidence V1",
+  "description": "Exact content-bound Query evidence prepared by Live Corpus for an external reasoning Agent; it is not an Agent result or a Search mutation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "caseId", "resourceId",
+    "sourceGenerationDigest", "baseTopologyGenerationDigest", "selector",
+    "sourceQueryOperationId", "sourceBytesBase64",
+    "callableSkeletonOperationId", "callableSkeletonBytesBase64",
+    "evidenceDigest", "prompt", "promptDigest", "terminal"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.agent-org-topology-evidence"},
+    "schemaVersion": {"const": "1"},
+    "caseId": {"type": "string", "minLength": 1},
+    "resourceId": {"type": "string", "minLength": 1},
+    "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
+    "baseTopologyGenerationDigest": {"$ref": "#/$defs/digest"},
+    "selector": {"type": "string", "minLength": 1},
+    "sourceQueryOperationId": {"type": "string", "minLength": 1},
+    "sourceBytesBase64": {"type": "string", "minLength": 1, "contentEncoding": "base64"},
+    "callableSkeletonOperationId": {"type": "string", "minLength": 1},
+    "callableSkeletonBytesBase64": {"type": "string", "minLength": 1, "contentEncoding": "base64"},
+    "evidenceDigest": {"$ref": "#/$defs/digest"},
+    "prompt": {"type": "string", "minLength": 1},
+    "promptDigest": {"$ref": "#/$defs/digest"},
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "terminalCount", "reasonKind"],
+      "properties": {
+        "state": {"const": "ready"},
+        "terminalCount": {"const": 1},
+        "reasonKind": {"type": "null"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+  }
+}

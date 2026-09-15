@@ -52,6 +52,8 @@ fn materialized_source_identity(
 }
 #[path = "live_corpus_qualification/mod.rs"]
 mod qualification;
+#[path = "live_corpus_topology_qualification.rs"]
+mod topology_qualification;
 const BUILDER_ID: &str = "asp-live-corpus";
 
 #[derive(Clone, Debug, Deserialize)]
@@ -173,12 +175,13 @@ struct LiveCorpusSyncReceipt {
 }
 
 pub(crate) async fn run_live_corpus_test(args: &[String]) -> Result<(), String> {
-    run_live_corpus_test_at(args, None).await
+    run_live_corpus_test_at(args, None, None).await
 }
 
 pub(crate) async fn run_live_corpus_test_at(
     args: &[String],
-    isolated_state_home: Option<&Path>,
+    isolated_runtime_state_home: Option<&Path>,
+    resource_state_home: Option<&Path>,
 ) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
@@ -187,14 +190,20 @@ pub(crate) async fn run_live_corpus_test_at(
             // keeps argument validation deterministic even when no Runtime
             // endpoint is available.
             qualification::validate_args(&args[1..])?;
-            let state_home = isolated_state_home
+            let runtime_state_home = isolated_runtime_state_home
                 .ok_or_else(|| {
                     "reasonKind=live-corpus-isolated-runtime-required qualification must be launched by the test-owned Runtime fixture"
                         .to_owned()
                 })?
                 .to_path_buf();
+            let resource_state_home = resource_state_home
+                .ok_or_else(|| {
+                    "reasonKind=live-corpus-resource-authority-required qualification requires an explicit Live Corpus resource authority"
+                        .to_owned()
+                })?
+                .to_path_buf();
             let mut ready = crate::server::runtime_server::
-                ensure_healthy_runtime_server_for_bounded_operation_at(&state_home).await?;
+                ensure_healthy_runtime_server_for_bounded_operation_at(&runtime_state_home).await?;
             let transaction = ready.resident_transaction.take().ok_or_else(|| {
                 "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
                     .to_owned()
@@ -202,9 +211,14 @@ pub(crate) async fn run_live_corpus_test_at(
             qualification::run(
                 &args[1..],
                 crate::AspClientRuntimeHandoff::try_from(&transaction)?,
-                state_home,
+                runtime_state_home,
+                resource_state_home,
             )
             .await
+        }
+        Some("qualify-topology") => {
+            let resource_state_home = resolve_state_home()?;
+            topology_qualification::run(&args[1..], &resource_state_home)
         }
         Some("path") => print_path(parse_path_request(&args[1..])?),
         Some("sync") => sync_resource(parse_resource_request(&args[1..], sync_usage)?),
@@ -747,7 +761,7 @@ fn unique_temporary_path(parent: &Path, prefix: &str) -> PathBuf {
 
 fn root_usage() -> String {
     format!(
-        "Usage: live_corpus <path|sync|materialize|qualify> ...\n\nCargo test target for Live Corpus qualification; this is not an asp subcommand.\n\ndefaultLock={DEFAULT_LOCK_PATH}"
+        "Usage: live_corpus <path|sync|materialize|qualify|qualify-topology> ...\n\nCargo test target for Live Corpus qualification; this is not an asp subcommand.\n\ndefaultLock={DEFAULT_LOCK_PATH}"
     )
 }
 

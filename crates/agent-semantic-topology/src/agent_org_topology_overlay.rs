@@ -29,6 +29,7 @@ pub struct AgentOrgTopologyOverlay {
     pub source_generation_digest: String,
     pub base_topology_generation_digest: String,
     pub selector: String,
+    pub evidence_digest: String,
     pub agent_identity_digest: String,
     pub prompt_digest: String,
     pub summary: String,
@@ -58,6 +59,7 @@ impl AgentOrgTopologyOverlay {
         source_generation_digest: impl Into<String>,
         base_topology_generation_digest: impl Into<String>,
         selector: impl Into<String>,
+        evidence_digest: impl Into<String>,
         agent_identity_digest: impl Into<String>,
         prompt_digest: impl Into<String>,
         summary: impl Into<String>,
@@ -67,6 +69,7 @@ impl AgentOrgTopologyOverlay {
         let source_generation_digest = source_generation_digest.into();
         let base_topology_generation_digest = base_topology_generation_digest.into();
         let selector = selector.into();
+        let evidence_digest = evidence_digest.into();
         let agent_identity_digest = agent_identity_digest.into();
         let prompt_digest = prompt_digest.into();
         let summary = summary.into();
@@ -77,6 +80,7 @@ impl AgentOrgTopologyOverlay {
                 "baseTopologyGenerationDigest",
                 base_topology_generation_digest.as_str(),
             ),
+            ("evidenceDigest", evidence_digest.as_str()),
             ("agentIdentityDigest", agent_identity_digest.as_str()),
             ("promptDigest", prompt_digest.as_str()),
         ] {
@@ -110,6 +114,7 @@ impl AgentOrgTopologyOverlay {
             &source_generation_digest,
             &base_topology_generation_digest,
             &selector,
+            &evidence_digest,
             &agent_identity_digest,
             &prompt_digest,
             &summary_digest,
@@ -125,6 +130,7 @@ impl AgentOrgTopologyOverlay {
             source_generation_digest,
             base_topology_generation_digest,
             selector,
+            evidence_digest,
             agent_identity_digest,
             prompt_digest,
             summary,
@@ -149,6 +155,7 @@ impl AgentOrgTopologyOverlay {
             self.source_generation_digest.clone(),
             self.base_topology_generation_digest.clone(),
             self.selector.clone(),
+            self.evidence_digest.clone(),
             self.agent_identity_digest.clone(),
             self.prompt_digest.clone(),
             self.summary.clone(),

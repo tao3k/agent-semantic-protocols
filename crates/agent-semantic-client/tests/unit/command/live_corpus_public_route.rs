@@ -22,6 +22,7 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
     assert!(runner.contains("materialize_provider_workspace_artifact"));
     assert!(!runner.contains("command::install_provider"));
     assert!(runner.contains("provider-artifact-digest="));
+    assert!(!runner.contains("symlink("));
     for forbidden in [
         "CARGO_BIN_EXE_asp",
         "RuntimeArtifactStateLayout",
@@ -94,7 +95,7 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         "tokio::task::JoinSet::new()",
         "case_tasks.spawn(async move",
         "join_tasks_in_plan_order(",
-        "for (_, (qualified, cancellation_elapsed)) in completed_cases",
+        "for (_, (qualified, evidence, cancellation_elapsed)) in completed_cases",
         "workspace_scheduling: \"tokio-join-set\"",
     ] {
         assert!(

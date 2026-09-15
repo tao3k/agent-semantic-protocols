@@ -14,6 +14,7 @@ use crate::command::live_corpus::qualification::client_protocol::render_workspac
 use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
 use crate::command::live_corpus::qualification::client_protocol::workspace_query_qualification_request;
 use crate::command::live_corpus::qualification::client_protocol::workspace_search_qualification_request;
+use crate::command::live_corpus::qualification::contract::AgentOrgTopologyEvidence;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
 use crate::command::live_corpus::qualification::contract::QualificationCase;
 
@@ -258,6 +259,41 @@ fn latency_distribution_reports_executed_sample_count_and_nearest_ranks() {
     assert_eq!(distribution.p95_micros, 95);
     assert_eq!(distribution.p99_micros, 99);
     assert_eq!(distribution.max_micros, 100);
+}
+
+#[test]
+fn topology_evidence_binds_exact_query_bytes_and_base_topology() {
+    let digest = |byte: char| format!("blake3-256:{}", byte.to_string().repeat(64));
+    let admit = |source: &[u8]| {
+        AgentOrgTopologyEvidence::admit(
+            "rust.bytes.core".to_owned(),
+            "rust.bytes".to_owned(),
+            digest('1'),
+            digest('2'),
+            "rust://src/lib.rs#item/function/run".to_owned(),
+            "query-source-1".to_owned(),
+            source,
+            "query-skeleton-1".to_owned(),
+            br#"{"schemaId":"agent.semantic-protocols.callable-skeleton"}"#,
+        )
+        .expect("admitted exact Query evidence")
+    };
+    let baseline = admit(b"pub fn run() {}\n");
+    let changed = admit(b"pub fn run() { todo!() }\n");
+    assert_ne!(baseline.evidence_digest, changed.evidence_digest);
+    assert_eq!(baseline.base_topology_generation_digest, digest('2'));
+    assert_eq!(baseline.terminal.state, "ready");
+    assert_eq!(baseline.terminal.terminal_count, 1);
+    assert!(baseline.terminal.reason_kind.is_none());
+
+    let mut self_attested = baseline;
+    self_attested.source_bytes_base64 = "bXV0YXRlZA==".to_owned();
+    assert!(
+        self_attested
+            .validate()
+            .expect_err("mutated evidence must fail closed")
+            .contains("derived-identity-mismatch")
+    );
 }
 
 #[test]

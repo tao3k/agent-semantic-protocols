@@ -9,6 +9,7 @@ mod contract;
 mod query_protocol;
 mod runner;
 
+pub(in crate::command::live_corpus) use contract::AgentOrgTopologyEvidence;
 pub(in crate::command::live_corpus) use query_protocol::source_query_scheme_template;
 pub(super) use runner::IsolatedBenchmarkWorkspace;
 pub(super) use runner::run;

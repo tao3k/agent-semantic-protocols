@@ -42,14 +42,14 @@ pub fn main() -> std::process::ExitCode {
 
 async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
     let started = std::time::Instant::now();
-    eprintln!("[live-corpus-fixture] phase=resource-bind state=starting");
     let resource_state_home = agent_semantic_runtime::resolve_state_home()?;
     let fixture = tempfile::tempdir()
         .map_err(|error| format!("create isolated Live Corpus Runtime root: {error}"))?;
-    link_live_corpus_resources(&resource_state_home, fixture.path())?;
     eprintln!(
-        "[live-corpus-fixture] phase=resource-bind state=ready elapsedMicros={}",
-        started.elapsed().as_micros()
+        "[live-corpus-fixture] phase=resource-authority state=ready source={} runtime={} elapsedMicros={}",
+        resource_state_home.display(),
+        fixture.path().display(),
+        started.elapsed().as_micros(),
     );
     let publish_started = std::time::Instant::now();
     eprintln!("[live-corpus-fixture] phase=runtime-bundle state=starting");
@@ -62,9 +62,12 @@ async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
     );
     let scenario_started = std::time::Instant::now();
     eprintln!("[live-corpus-fixture] phase=server-and-scenario state=starting");
-    let result =
-        agent_semantic_client::live_corpus_test::run_live_corpus_test_at(args, fixture.path())
-            .await;
+    let result = agent_semantic_client::live_corpus_test::run_live_corpus_test_at(
+        args,
+        fixture.path(),
+        &resource_state_home,
+    )
+    .await;
     eprintln!(
         "[live-corpus-fixture] phase=server-and-scenario state={} elapsedMicros={}",
         if result.is_ok() { "ready" } else { "failed" },
@@ -72,40 +75,6 @@ async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
     );
     stop_test_runtime(&server_artifact, fixture.path());
     result
-}
-
-#[cfg(unix)]
-fn link_live_corpus_resources(
-    source_state_home: &Path,
-    fixture_state_home: &Path,
-) -> Result<(), String> {
-    use std::os::unix::fs::symlink;
-
-    let source = source_state_home.join("resources/live-corpus");
-    if !source.is_dir() {
-        return Err(format!(
-            "Live Corpus test resource root is unavailable: {}",
-            source.display()
-        ));
-    }
-    let target = fixture_state_home.join("resources/live-corpus");
-    std::fs::create_dir_all(target.parent().expect("resource target parent"))
-        .map_err(|error| format!("create isolated resource parent: {error}"))?;
-    symlink(&source, &target).map_err(|error| {
-        format!(
-            "link immutable Live Corpus resources into isolated Runtime: source={} target={} error={error}",
-            source.display(),
-            target.display()
-        )
-    })
-}
-
-#[cfg(not(unix))]
-fn link_live_corpus_resources(
-    _source_state_home: &Path,
-    _fixture_state_home: &Path,
-) -> Result<(), String> {
-    Err("isolated Live Corpus resource binding currently requires Unix symlinks".to_owned())
 }
 
 async fn publish_test_runtime_bundle(

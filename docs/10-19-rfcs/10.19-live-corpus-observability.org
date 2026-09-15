@@ -125,10 +125,29 @@ and the owning Rust boundary before the scenario can become green.
 The V1 overlay packet is
 =agent.semantic-protocols.agent-org-topology-overlay=.  Its admission
 recomputes summary, Org source, Org syntax-tree, relationship-set, and overlay
-digests, then joins only when both =sourceGenerationDigest= and
+digests, requires the exact Query =evidenceDigest=, then joins only when both =sourceGenerationDigest= and
 =baseTopologyGenerationDigest= equal the independently supplied Search
 topology.  The join returns an overlay; it has no API capable of rewriting the
 base topology library.
+
+Search/Query qualification publishes a separate V1 evidence sidecar,
+=agent.semantic-protocols.agent-org-topology-evidence=.  It binds the exact
+source and callable-skeleton byte arrays returned by Query to the source
+generation, base topology generation, selector, case, resource, and Query
+operation identities.  This sidecar is the only permitted Agent input for the
+next topology stage.  It also carries the runner-owned prompt bytes and digest;
+the Agent contribution cannot choose or self-attest another prompt.  It is published outside the Search/Query qualification
+receipt so that the existing V1 receipt remains stable and its Runtime timing
+does not absorb Agent execution or Org parsing.
+
+The test runner carries separate path capabilities for the isolated Runtime
+State Home and the Live Corpus resource/receipt authority.  It MUST NOT symlink
+the whole =resources/live-corpus= tree into Runtime State: that aliases
+immutable corpus inputs, materialized artifacts, and mutable receipts behind
+one path and defeats isolation.  Runtime generations and benchmark workspaces
+remain under the temporary Runtime root; pinned repositories and artifacts are
+read from the explicit resource authority, and receipts are atomically
+published to its receipt subtree.
 
 * First divergence
 
