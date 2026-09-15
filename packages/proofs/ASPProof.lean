@@ -7,6 +7,7 @@ import ASPProof.SearchLoopTrace
 import ASPProof.SearchLoopMerge
 import ASPProof.SearchLoopCacheIdentity
 import ASPProof.SearchLoopCacheRefinement
+import ASPProof.SearchLoopRfcLeanSystem
 import ASPProof.SearchRouteCost
 import ASPProof.SearchRouteDAG
 import ASPProof.SearchRouteDAGEnumeration
@@ -307,6 +308,7 @@ import ASPProof.Audit.HookSourceAccessReplayIdentity
 import ASPProof.IncrementalCacheAuthority
 import ASPProof.RuntimeEndpointAuthority
 import ASPProof.HotPathEffectIsolation
+import ASPProof.Audit.SearchLoopRfcLeanSystem
 import ASPProof.SearchEvidenceReflection
 import ASPProof.Audit.SearchEvidenceReflection
 import ASPProof.SearchEvidenceDerivation

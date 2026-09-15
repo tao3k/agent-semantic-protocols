@@ -65,3 +65,4 @@ receipt validation remains a separate required gate.
 - [[file:00.10-clause-first-lean-proof-plan.org][Clause-first Lean proof plan]]
 - [[file:00.11-clause-first-mathematical-model.org][Clause-first mathematical model]]
 - [[file:00.12-searchloop-trace-and-lean-json-audit.org][SearchLoop trace and Lean JSON audit]]
+- [[file:00.13-rfc-lean-executable-mathematical-system.org][RFC-Lean executable mathematical system]]

@@ -1,0 +1,299 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Core Architecture and Authority
+#+OPTIONS: toc:3 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05.00-core-architecture
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Global architecture invariant
+
+ASP Server-First Agent Search Architecture.
+The public gRPC ClientFrame is the sole public search/query route; the command entry is a thin typed CLI adapter.
+
+Provider installation may advance the Runtime-owned Provider Register while the
+daemon remains healthy.  Search Playbook and syntax Query therefore resolve a
+fresh immutable register snapshot at request admission; a daemon-bootstrap
+snapshot is not provider-contract authority.  Each admitted request retains one
+snapshot for its complete execution, so refresh is visible to the next request
+without mixing generations or requiring a restart.
+Git history is the only historical architecture archive; this working tree describes only the current server-first design.
+
+* Status
+
+Search and Query result materialization is generation-bound single-flight.
+The first caller and concurrent joiners await a retained completion event under
+the request-phase ClientFrame deadline and cancellation boundary. Cache-ready
+resident reads keep 1ms; first computation uses a separate absolute diagnostic
+deadline pending measured qualification (RFC 10.20). Completion before
+subscription must not be lost.  Cancelling one waiter does not invalidate shared
+work or its terminal cache entry.  There is no client retry loop and no new V1
+request field; a real deadline still returns the existing typed failure.
+Cold generation misses join the daemon's retained publication event after one
+single-flight submission; neither a failed generation nor a timeout is retried.
+The V1 zero-work resident-read receipt applies only to the cache-ready phase.
+First-computation timing is a separate diagnostic, never a forged resident receipt.
+
+A generation-bound Search materialization hit is resolved before request-local
+provider planning, workspace-root cloning, parser grounding, graph evaluation,
+or topology settlement.  Its hot-path algorithm is one normalized request
+identity computation, one current-generation lookup, and one materialization
+map lookup.  The cached terminal already binds the provider/catalog and
+generation identities established by its first computation; replaying those
+expensive stages on a hit is neither additional validation nor admissible
+resident work.
+
+The lightweight Search-core Project Topology is a generation-scoped
+single-flight attachment built only from immutable Search projection segments.
+Its identity cannot depend on one request's candidate set: a zero-match and a
+positive Search over the same generation settle against the same base topology.
+Request-local parser/Relation enrichment remains an on-demand overlay and does
+not rebuild or rename that base closure.
+
+** Process-cold generation reuse is proof-bound
+
+A Runtime restart MUST NOT turn an unchanged workspace into an unconditional
+full source/parser rebuild.  The durable V1 generation is reusable only when a
+separate V1 admission binding proves the exact tuple
+=(WorkspaceId, canonical project root, repository candidate generation,
+policy overlay digest, source root digest, generation digest)=.  Provider
+Runtime bundle admission remains an independent conjunct.  Missing, malformed,
+non-Git-resident, stale, or cross-scope binding evidence fails closed to one
+normal generation build; it never weakens Query semantics.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  C[Current Git candidate + policy] --> A{V1 admission binding exact?}
+  P[Durable generation pointer] --> A
+  B[Current provider bundle] --> A
+  A -->|yes| R[restore mmap + exact owner index]
+  A -->|no| F[one complete generation build]
+  R --> Q[direct generation-bound Query]
+  F --> Q
+#+end_src
+
+#+begin_src typst :exports code :file ../../.data/runtime-generation-admission-cost.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Runtime generation admission cost
+$
+  "restore"_("cold") =
+    "pointer"_("exact") and "scope"_("exact") and "candidate"_("exact")
+    and "generation"_("exact") and "source"_("exact") and "provider"_("exact")
+$
+
+$
+  "cost"("query"_("resident")) = O(1),
+  quad "cost"("query"_("process-cold")) =
+    "cost"("candidate"_("git")) + "cost"("mmap"_("generation"))
+$
+#+end_src
+
+The admission binding is a generation-specific proof, not parser output and
+not a new public Search/Query schema.  Content-addressed parser artifacts remain
+reusable independently, while the binding is replaced atomically for each
+published generation.  Thus a process-cold exact Query pays candidate
+verification plus mmap restoration, not repository-wide parsing, when and only
+when all identities are unchanged.
+
+The workspace durability single writer MUST publish in this order: generation,
+exact-projection, and search segments; generation-specific admission binding;
+active-generation pointer.  The directory is synchronized before advancing the
+pointer.  Therefore a visible new pointer implies that its binding was already
+durable.  A crash before pointer publication leaves either the old pointer or a
+binding/pointer mismatch, both of which fail closed.  A writer lacking a current
+candidate proof MUST invalidate an older binding before publishing its pointer.
+Resident publication may acknowledge before its Source Index durability
+attachment completes, but a successor build for the same workspace MUST join
+that attachment before opening or deriving durable Source Index state.  The
+Runtime therefore owns one build-through-durability lane per workspace: the
+lane begins before restore/build reads and transfers to the asynchronous
+durability attachment after resident publication.  Different workspaces remain
+independent.  This prevents a targeted provider successor from racing the
+previous generation's Turso commit while preserving early resident visibility.
+
+Normative architectural root for RFC 10.05.
+
+This file is intentionally a compact index.  Detailed state machines,
+algorithms, receipts, proofs, provider rules, and acceptance gates live in the
+linked child owners.  Git is the only archive; the working tree contains only
+the current server-first architecture.
+
+The governing principles are:
+
+- server-first;
+- agent-first;
+- graph-first; and
+- progressive-first.
+
+* Decision
+
+ASP exposes one SearchLoop data plane:
+
+#+begin_example
+typed request client
+  -> shared agent-semantic-client
+  -> ClientFrame gRPC/Tokio stream
+  -> Host-admitted transport binding
+  -> ASP Runtime Server admission
+  -> resident provider/generation/search authority
+  -> typed terminal receipt and client presentation
+#+end_example
+
+The CLI, Hook, Live Corpus, native integrations, and language clients are equal
+clients of this route.  They do not own provider execution, workspace
+generation, cache construction, projection truth, lifecycle recovery, or a
+semantic fast path.
+
+The Runtime daemon mounts the public =AspClientFrameService= through both the
+=AspClientGrpcService= gRPC adapter and the =serve_http_json= HTTP/JSON
+adapter.  Both adapters consume the same transport-neutral =ClientFrame=
+schema, method catalog, lifecycle admission, and dispatcher; neither adapter
+may parse a method into a second route or provide a fallback.  Runtime audits
+the existing =data_socket= before endpoint allocation; it does not create a
+fourth semantic authority.
+
+Host-native clients use the Runtime-published loopback HTTP/2 endpoint.
+Restricted clients receive an already-connected descriptor from the Host and
+never discover, bind, or connect a socket themselves.  A filesystem socket,
+client-local endpoint derivation, and retrying a denied connect in a broader
+permission domain are not admitted transports.  The endpoint record and an
+inherited descriptor are two bindings to the same =AspClientFrameService=,
+not two semantic dispatchers.  HTTP/JSON remains a debug adapter over that
+same service and therefore produces the same typed terminal semantics.
+
+** LSP lessons are negative requirements
+
+SearchLoop does not copy the request-time process composition of LSP.  The
+following historically common LSP failure modes are explicit countermodels:
+
+- initialization state scoped to a client process rather than an immutable
+  workspace generation;
+- capability discovery that advertises a method before its lifecycle and
+  terminal route exist;
+- request-time server spawning, socket discovery, reconnect, or client retry;
+- mutable text/document caches treated as semantic membership authority;
+- cancellation that drops a client future but leaves unowned background work;
+- dynamic registration or a compatibility command that creates a second
+  dispatcher; and
+- cross-process chaining of independent features on every interactive read.
+
+ASP improves on LSP by moving all expensive cross-language work to generation
+construction and mutation admission.  A Ready Search/Query is a single
+generation lease followed by bounded Rust reads over one fused immutable
+artifact.  Transports are ablatable, capabilities are generation-bound, and
+every request emits exactly one typed terminal without fallback.
+
+A selected-language demand carries only an internal provider work hint.  It
+cannot choose collection scope, generation membership, or publication shape.
+Generation construction inventories the workspace once, derives the complete
+current provider and owner membership, and publishes one complete successor.
+The hinted provider may be scheduled first, but publication cannot omit
+unhinted admitted owners.  Publishing a selected provider or changed-owner set
+as if it were a complete workspace generation is forbidden: a later demand
+would erase earlier membership and recreate LSP-style per-language state.  Cold
+and mutation admission use the same =CompleteGeneration= linearization point.
+
+Project isolation has one composite key authority.  State Core derives
+=ProjectId= from repository identity and =WorkspaceId= from the canonical
+checkout binding.  Admission, single-flight lanes, resident generations, and
+cache partitions MUST key on the indivisible =(ProjectId, WorkspaceId)= pair.
+The absolute project root is validated content used to locate source bytes; it
+is not a third partition key.  The same =WorkspaceId= may exist under distinct
+projects without aliasing, while a request presenting an existing pair with a
+different root is identity drift and fails closed.
+
+This decision deliberately starts from LSP's real trade-offs rather than a
+generic client/server analogy.  The official LSP architecture puts each
+language analysis tool in a separate process and negotiates client/server
+capabilities during =initialize=; the reference implementation also maintains
+an incrementally synchronized document mirror through open/change/close
+notifications.  Those mechanisms solve editor/tool M-by-N integration, but
+they are not admitted as ASP Search authority.  See the upstream
+[[https://code.visualstudio.com/api/language-extensions/language-server-extension-guide][Language Server Extension Guide]] and
+[[https://microsoft.github.io/language-server-protocol/specifications/specification-current][current LSP specification]].
+
+ASP retains LSP's useful separation of language-specific analysis from the
+client, then removes the request-time authority that causes lifecycle and
+freshness ambiguity:
+
+| LSP mechanism | ASP hard cut |
+|-
+| per-client =initialize= capability state | generation-bound server catalog |
+| client-maintained document synchronization | content-addressed source snapshot |
+| independent language-server process hop | lazy construction worker, absent from Ready reads |
+| dynamic registration | immutable admitted capability set |
+| request cancellation notification | server-owned attempt with exactly one terminal |
+| reconnect/restart recovery | Host-supervised binding plus typed unavailable terminal |
+
+The table is normative.  A Rust type, schema, CLI alias, adapter, or provider
+that reintroduces the left-hand authority is legacy and MUST be removed rather
+than hidden behind a compatibility feature.
+
+LSP also teaches a less visible lifecycle lesson: a client-visible
+=initialize/start accepted= acknowledgement is not service readiness.  ASP
+therefore does not admit =SpawnAccepted= or =Starting= as the terminal of a
+Search/Query request.  Bootstrap owns the spawned attempt until the Runtime
+publishes either the exact Healthy transaction identity or one typed Failed or
+Cancelled terminal.  A client never polls a guessed endpoint path, and it
+never derives a second endpoint location from State Home.  The endpoint path
+and transport identity are values published by the elected Runtime owner.
+
+Schema catalog publication follows the same rule.  Deleting a schema while a
+schema family still names that path is a torn publication and MUST fail before
+Runtime activation.  Removing a capability deletes its schema, family
+membership, method catalog entry, artifact member, and dispatcher route in one
+reviewed change.  Runtime startup is not a late garbage collector for stale
+schema membership.
+
+Schema Manager executes during the Rust artifact build/publication boundary,
+not during daemon bootstrap.  It emits one deterministic catalog that is
+embedded in the Runtime binary and therefore covered by the active bundle's
+content digest.  Runtime startup only decodes and validates those immutable
+bytes.  It MUST NOT locate =CARGO_MANIFEST_DIR=, read a checkout schema tree,
+materialize package copies, or repair registry membership.  This moves schema
+drift from a post-install availability failure to a pre-publication build
+failure.
+
+The build boundary itself is read-only.  It consumes Schema Manager's
+=resolve_bundles= value API, which returns canonical closure bytes, document
+digests, root-set identities, and the bundle digest without a destination
+path.  Calling =materialize= from =build.rs= is forbidden: Cargo would mutate
+downstream packages while compiling and then treat those mutable copies as its
+own input.  Materialization remains an explicit publication command for
+external language packages; embedded Rust consumers receive the same
+declarative closure directly from the manager.
+
+Cancellation has two orthogonal dimensions: terminal outcome and diagnostic
+payload.  The correlated request emits exactly one =Cancelled= response frame;
+that same frame MUST carry a typed =client-request-cancelled= diagnostic and
+MUST NOT carry a result or catalog.  The diagnostic is not a second terminal
+and does not change the outcome to =Error=.  Conversely, a client MUST reject a
+bare =Cancelled= frame, an =Error= frame labelled as cancellation, a mismatched
+request identity, or any cancellation response that also carries successful
+result data.  This separation avoids the LSP-era ambiguity where cancelling a
+local future, receiving a protocol error, and stopping server work could be
+mistaken for the same event.
+
+The package and route contract is owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
+Atomic resident activation is owned by
+[[file:10.05.03-runtime-state-authority-and-retention.org][10.05.03 Runtime State Authority and Retention]].
+
+* Naming
+
+The canonical short name is =SearchLoop=.
+
+=Interactive= means each agent turn observes a typed evidence state, chooses a
+bounded action, receives a compact receipt, and advances a session frontier.
+It does not mean a terminal prompt or human menu.
+
+=Graph-first= means semantic owners, items, dependencies, capabilities, and
+proof obligations are typed nodes and edges.  Commands transport graph
+operations; command strings are not the ontology.
+
+=Progressive= means each turn expands only the evidence needed for the next
+decision.  It never weakens fail-closed authority or permits best-effort source
+claims.
