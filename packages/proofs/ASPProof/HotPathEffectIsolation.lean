@@ -5,17 +5,18 @@
 namespace ASPProof.HotPathEffectIsolation
 
 inductive Effect where
-  | mpsc | oneshot | cancel | response
+  | sessionIdentityRead | frameEncode | mpsc | oneshot | cancel | response
   | process | filesystem | dbWrite | generationMutation
-  | providerActivation | controlPoll
+  | providerActivation | controlPoll | identityResolve
   deriving DecidableEq, Repr
 
 def forbidden : Effect → Prop
   | .process | .filesystem | .dbWrite | .generationMutation
-  | .providerActivation | .controlPoll => True
+  | .providerActivation | .controlPoll | .identityResolve => True
   | _ => False
 
-def ReadyEffects : List Effect := [.mpsc, .oneshot, .cancel, .response]
+def ReadyEffects : List Effect :=
+  [.sessionIdentityRead, .frameEncode, .mpsc, .oneshot, .cancel, .response]
 
 def contains (effect : Effect) : List Effect → Prop
   | [] => False
@@ -27,6 +28,10 @@ def ReadyPlan (effects : List Effect) : Prop :=
 theorem ready_plan_is_local : ReadyPlan ReadyEffects := by
   intro effect present
   cases effect <;> simp [ReadyEffects, contains, forbidden] at present ⊢
+
+theorem identity_resolution_is_not_a_ready_effect :
+    ¬ contains .identityResolve ReadyEffects := by
+  simp [ReadyEffects, contains]
 
 inductive AdmissionState where
   | ready | building | failed | cancelled
