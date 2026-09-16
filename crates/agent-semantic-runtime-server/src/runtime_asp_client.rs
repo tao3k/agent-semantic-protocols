@@ -267,6 +267,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let workspace_store_root = self.workspace_store_root.clone();
         let current_runtime_bundle_digest = self.current_runtime_bundle_digest.clone();
         let query_generation_authority = self.query_generation_authority.clone();
+        let query_resource_supervisor = query_generation_authority.resource_supervisor();
+        let query_task_scope = query_generation_authority.task_scope();
         let query_generation = query_generation_authority.subscribe();
         let query_generation_for_receipt = query_generation.clone();
         let telemetry_sender = self.telemetry_sender.clone();
@@ -718,6 +720,8 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     owner_materializer,
                     workspace_store_root,
                     current_runtime_bundle_digest,
+                    resource_supervisor: query_resource_supervisor,
+                    task_scope: query_task_scope,
                     active_provider_targets,
                     workspace_search_providers,
                     query_generation,

@@ -517,10 +517,67 @@ fn durable_exact_execution_matches_current(
     exact_generation_digest: &str,
     exact_root_digest: &str,
 ) -> bool {
+    let same_content_digest = |left: &str, right: &str| {
+        agent_semantic_search::canonical_blake3_digest(left)
+            .ok()
+            .zip(agent_semantic_search::canonical_blake3_digest(right).ok())
+            .is_some_and(|(left, right)| left == right)
+    };
     publication.workspace_identity == workspace_id
         && publication.runtime_bundle_digest.as_str() == current_runtime_bundle_digest
         && publication.generation_digest.as_str() == exact_generation_digest
-        && publication.source_root_digest.as_str() == exact_root_digest
+        && same_content_digest(publication.source_root_digest.as_str(), exact_root_digest)
+}
+
+async fn process_cold_owner_content_digest(
+    owner_path: std::path::PathBuf,
+    resource_supervisor: &agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    task_scope: &agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+) -> Result<Option<String>, AspClientOperationError> {
+    const HASH_BUFFER_BYTES: usize = 64 * 1024;
+    let permit = resource_supervisor
+        .acquire(
+            agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                cpu: 1,
+                memory_bytes: HASH_BUFFER_BYTES,
+            },
+        )
+        .await
+        .map_err(AspClientOperationError::Message)?;
+    let task = task_scope
+        .spawn_blocking("process-cold-query-owner-digest", move || {
+            let _permit = permit;
+            use std::io::Read;
+            let mut file = match std::fs::File::open(&owner_path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => {
+                    return Err(AspClientOperationError::Message(format!(
+                        "read exact Query owner {}: {error}",
+                        owner_path.display()
+                    )));
+                }
+            };
+            let mut hasher = blake3::Hasher::new();
+            let mut buffer = [0_u8; HASH_BUFFER_BYTES];
+            loop {
+                let count = file.read(&mut buffer).map_err(|error| {
+                    AspClientOperationError::Message(format!(
+                        "read exact Query owner {}: {error}",
+                        owner_path.display()
+                    ))
+                })?;
+                if count == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..count]);
+            }
+            Ok(Some(format!("blake3-256:{}", hasher.finalize().to_hex())))
+        })
+        .map_err(AspClientOperationError::Message)?;
+    task.join()
+        .await
+        .map_err(AspClientOperationError::Message)?
 }
 
 #[expect(
@@ -534,6 +591,8 @@ async fn try_process_cold_exact_owner_replay(
     initialized: &InitializedWorkspace,
     workspace_store_root: &std::path::Path,
     current_runtime_bundle_digest: &str,
+    resource_supervisor: &agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    task_scope: &agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     active_provider_targets: &[(String, String)],
     started: tokio::time::Instant,
 ) -> Result<Option<agent_semantic_client_protocol::ClientResponsePayload>, AspClientOperationError>
@@ -593,17 +652,15 @@ async fn try_process_cold_exact_owner_replay(
             let Some(owner) = exact.owner_snapshot(owner_path)? else {
                 return Ok(None);
             };
-            let current_bytes =
-                match tokio::fs::read(initialized.project_root.join(owner_path)).await {
-                    Ok(bytes) => bytes,
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                    Err(error) => {
-                        return Err(AspClientOperationError::Message(format!(
-                            "read exact Query owner {owner_path}: {error}"
-                        )));
-                    }
-                };
-            let current_digest = format!("blake3-256:{}", blake3::hash(&current_bytes).to_hex());
+            let Some(current_digest) = process_cold_owner_content_digest(
+                initialized.project_root.join(owner_path),
+                resource_supervisor,
+                task_scope,
+            )
+            .await?
+            else {
+                return Ok(None);
+            };
             if current_digest != owner.content_digest {
                 return Ok(None);
             }
@@ -620,23 +677,60 @@ async fn try_process_cold_exact_owner_replay(
         projections.push_back(read);
     }
 
-    let receipt = materialize_query_playbook_receipt(
-        request_id,
-        params,
-        &execution_publication.runtime_execution_binding,
-        execution_publication.publication_digest.as_str(),
-        execution_publication.runtime_bundle_digest.as_str(),
-        execution_publication.generation_digest.as_str(),
-        execution_publication.source_root_digest.as_str(),
-        initialized.host_workspace.project_workspace(),
-        active_provider_targets,
-        None,
-        |_projection, _selector| {
-            projections.pop_front().ok_or_else(|| {
-                "durable exact-owner replay ended before the requested selector".to_owned()
-            })
-        },
-    )?;
+    let template_request_id = request_id.to_owned();
+    let params = params.clone();
+    let runtime_binding = execution_publication.runtime_execution_binding.clone();
+    let execution_publication_digest = execution_publication.publication_digest.to_string();
+    let runtime_bundle_digest = execution_publication.runtime_bundle_digest.to_string();
+    let source_generation_digest = execution_publication.generation_digest.to_string();
+    let source_root_digest = exact.root_digest();
+    let project_workspace = initialized.host_workspace.project_workspace().clone();
+    let active_provider_targets = active_provider_targets.to_vec();
+    let projection_bytes = projections
+        .iter()
+        .map(|projection| match projection {
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => bytes.len(),
+            _ => 0,
+        })
+        .sum::<usize>();
+    let receipt_memory_bytes = projection_bytes
+        .saturating_mul(std::mem::size_of::<serde_json::Value>().saturating_add(2))
+        .saturating_add(256 * 1024);
+    let receipt_permit = resource_supervisor
+        .acquire(
+            agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                cpu: 1,
+                memory_bytes: receipt_memory_bytes,
+            },
+        )
+        .await
+        .map_err(AspClientOperationError::Message)?;
+    let receipt_task = task_scope
+        .spawn_blocking("process-cold-query-receipt", move || {
+            let _permit = receipt_permit;
+            materialize_query_playbook_receipt(
+                &template_request_id,
+                &params,
+                &runtime_binding,
+                &execution_publication_digest,
+                &runtime_bundle_digest,
+                &source_generation_digest,
+                &source_root_digest,
+                &project_workspace,
+                &active_provider_targets,
+                None,
+                |_projection, _selector| {
+                    projections.pop_front().ok_or_else(|| {
+                        "durable exact-owner replay ended before the requested selector".to_owned()
+                    })
+                },
+            )
+        })
+        .map_err(AspClientOperationError::Message)?;
+    let receipt = receipt_task
+        .join()
+        .await
+        .map_err(AspClientOperationError::Message)??;
     bind_query_materialization_to_request(Arc::new(receipt), request_id, "materialized", started)
         .map(Some)
 }
@@ -657,6 +751,8 @@ pub(super) async fn dispatch_workspace_query_playbook(
     owner_materializer: &super::owner_materialization::RuntimeOwnerMaterializer,
     parser_artifact_root: &std::path::Path,
     current_runtime_bundle_digest: &str,
+    resource_supervisor: &agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    task_scope: &agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     workspace_search_providers: &[agent_semantic_search::WorkspaceSearchProvider],
     active_provider_targets: &[(String, String)],
     telemetry_sender: &RuntimeTelemetryBusSender,
@@ -718,6 +814,8 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 &initialized,
                 parser_artifact_root,
                 current_runtime_bundle_digest,
+                resource_supervisor,
+                task_scope,
                 active_provider_targets,
                 wait_started,
             )

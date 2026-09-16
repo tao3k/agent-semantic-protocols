@@ -6,9 +6,10 @@ use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, durable_exact_execution_matches_current,
     durable_projection_is_direct, emit_runtime_search_trace_observation,
-    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
-    read_query_projection_handoff, record_settled_client_timing_observations,
-    resident_exact_query_projections, runtime_search_trace_budget_micros,
+    materialize_query_playbook_receipt, process_cold_owner_content_digest,
+    query_playbook_generation_provider_targets, read_query_projection_handoff,
+    record_settled_client_timing_observations, resident_exact_query_projections,
+    runtime_search_trace_budget_micros, try_process_cold_exact_owner_replay,
     workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
@@ -118,6 +119,409 @@ fn execution_publication() -> RuntimeWorkspaceExecutionPublication {
         runtime_bundle_digest: digest('f').into(),
     })
     .expect("workspace execution publication")
+}
+
+fn process_cold_generation(
+    project_root: &std::path::Path,
+    workspace_identity: &str,
+    selector: &str,
+    source: &[u8],
+) -> agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration {
+    use agent_semantic_client_db::active_generation_projection_capability::{
+        ActiveGenerationProjectionCapabilityManifest, ActiveGenerationProjectionMode,
+    };
+    use agent_semantic_client_db::runtime_server_workspace::{
+        WorkspaceGenerationBuild, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
+    };
+    use agent_semantic_search::{
+        ContentSearchGenerationReceipt, SearchGenerationConstructionStage,
+        SearchGenerationIdentity, SearchGenerationStageReceipt, canonical_blake3_digest,
+    };
+
+    let owner_path = "src/lib.rs";
+    let owner_digest = format!("blake3-256:{}", blake3::hash(source).to_hex());
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        [(owner_path.to_owned(), owner_digest.clone())],
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        digest('b'),
+    );
+    let module_graph_digest = digest('c');
+    let project_id = "repo-0000000000000001";
+    let runtime_provider_execution_binding = agent_semantic_artifacts::runtime_provider_execution_binding::RuntimeProviderExecutionBinding::build(
+        project_id.to_owned(),
+        workspace_identity.to_owned(),
+        digest('1'),
+        digest('2'),
+        digest('3'),
+        source_snapshot
+            .root_integrity_reference()
+            .expect("process-cold source integrity reference"),
+        module_graph_digest.clone(),
+    )
+    .expect("process-cold provider execution binding");
+    let search_identity = SearchGenerationIdentity {
+        project_id: project_id.to_owned(),
+        workspace_id: workspace_identity.to_owned(),
+        source_root_digest: canonical_blake3_digest(&source_snapshot.root_digest)
+            .expect("process-cold source root digest"),
+        provider_digest: canonical_blake3_digest(&source_snapshot.provider_digest)
+            .expect("process-cold provider digest"),
+        schema_digest: canonical_blake3_digest(
+            &agent_semantic_content_identity::project_resolution_schema_digest(),
+        )
+        .expect("process-cold schema digest"),
+        generation_candidate_digest: digest('d'),
+    };
+    let content_search_generation =
+        ContentSearchGenerationReceipt::new(SearchGenerationStageReceipt {
+            stage: SearchGenerationConstructionStage::SourceByteAcquisition,
+            identity: search_identity,
+            artifact_digest: digest('e'),
+            worker_id: "process-cold-query-test".to_owned(),
+            complete: true,
+        })
+        .expect("process-cold search generation");
+    let projection_capability = ActiveGenerationProjectionCapabilityManifest::single_selector(
+        digest('f'),
+        selector.to_owned(),
+        owner_path.to_owned(),
+        std::collections::BTreeSet::from([ActiveGenerationProjectionMode::Source]),
+    )
+    .expect("process-cold projection capability");
+    agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration::try_from_build(
+        WorkspaceGenerationBuild {
+            projection_capability,
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.display().to_string(),
+            active_epoch: 1,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest,
+            runtime_provider_execution_binding: Some(runtime_provider_execution_binding),
+            content_search_generation,
+            project_resolutions: Vec::new(),
+            auxiliary_owners: Vec::new(),
+            owners: vec![WorkspaceOwnerSnapshot {
+                authority: None,
+                owner_path: owner_path.to_owned(),
+                content_digest: owner_digest,
+                bytes: source.to_vec(),
+                native_syntax_diagnostic: None,
+                selectors: vec![WorkspaceSelectorSnapshot {
+                    selector: selector.to_owned(),
+                    byte_start: 0,
+                    byte_end: source.len(),
+                    query_keys: Vec::new(),
+                    derived_projections: Vec::new(),
+                }],
+            }],
+            relations: Vec::new(),
+        },
+    )
+    .expect("process-cold workspace generation")
+}
+
+fn execution_publication_for_exact_generation(
+    workspace_identity: &str,
+    generation_digest: &str,
+    source_root_digest: &str,
+    runtime_bundle_digest: &str,
+    project_workspace: agent_semantic_content_identity::ProjectWorkspaceBinding,
+) -> RuntimeWorkspaceExecutionPublication {
+    let identity = ContentIdentity {
+        runtime_artifact_digest: digest('1'),
+        workspace_snapshot_digest: source_root_digest.to_owned(),
+        source_generation_digest: generation_digest.to_owned(),
+        source_index_digest: digest('4'),
+        schema_digest: digest('5'),
+        provider_catalog_digest: digest('2'),
+    };
+    let content_binding = ContentBinding::new(
+        identity.clone(),
+        AuthorityStamp {
+            key_id: "runtime-server-complete-generation".into(),
+            canonical_digest: identity.digest(),
+            signature: digest('7'),
+        },
+    )
+    .expect("process-cold content binding");
+    let runtime_execution_binding = RuntimeExecutionBinding::new(RuntimeExecutionBindingInput {
+        project_workspace,
+        worktree_instance_id: "worktree-main".into(),
+        publication_nonce: "process-cold-publication".into(),
+        content_binding,
+        runtime_artifact_digest: digest('1').into(),
+        evaluator_policy_digest: digest('8').into(),
+        active_artifact_receipt_digest: digest('9').into(),
+        evaluator_abi_digest: digest('a').into(),
+    })
+    .expect("process-cold runtime binding");
+    let content_publication_commit = ContentPublicationCommit::linearize(
+        runtime_execution_binding.content_binding.identity.clone(),
+        runtime_execution_binding
+            .content_binding
+            .authority_stamp
+            .clone(),
+    )
+    .expect("process-cold content publication commit");
+    RuntimeWorkspaceExecutionPublication::new(RuntimeWorkspaceExecutionPublicationInput {
+        workspace_identity: workspace_identity.to_owned(),
+        generation_digest: generation_digest.to_owned().into(),
+        source_root_digest: source_root_digest.to_owned().into(),
+        content_publication_commit,
+        runtime_execution_binding,
+        runtime_bundle_digest: runtime_bundle_digest.to_owned().into(),
+    })
+    .expect("process-cold execution publication")
+}
+
+fn process_cold_resources() -> (
+    agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
+) {
+    (
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor::new(
+            4,
+            16 * 1024 * 1024,
+        ),
+        agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new("process-cold-query-test"),
+    )
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn process_cold_owner_digest_runs_outside_the_async_worker_and_fails_closed_when_missing() {
+    let root = tempfile::tempdir().expect("process-cold owner digest workspace");
+    let owner = root.path().join("owner.rs");
+    std::fs::write(&owner, b"fn owner() {}\n").expect("write process-cold owner");
+    let (resource_supervisor, task_scope) = process_cold_resources();
+
+    let digest =
+        match process_cold_owner_content_digest(owner.clone(), &resource_supervisor, &task_scope)
+            .await
+        {
+            Ok(Some(digest)) => digest,
+            Ok(None) => panic!("existing owner must produce a digest"),
+            Err(_) => panic!("existing owner digest task must succeed"),
+        };
+    assert_eq!(
+        digest,
+        format!("blake3-256:{}", blake3::hash(b"fn owner() {}\n").to_hex())
+    );
+
+    std::fs::remove_file(&owner).expect("remove process-cold owner");
+    match process_cold_owner_content_digest(owner, &resource_supervisor, &task_scope).await {
+        Ok(None) => {}
+        Ok(Some(_)) => panic!("missing owner must not produce a digest"),
+        Err(_) => panic!("missing owner must be a cache rejection, not an operation failure"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_on_first_call() {
+    use agent_semantic_client_db::runtime_server_workspace::{
+        RuntimeServerWorkspaceRegistry, RuntimeWorkspaceExecutionPublicationStore,
+        WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
+        WorkspaceRecoverySource, workspace_generation_pointer_path,
+    };
+
+    let temporary = tempfile::tempdir().expect("process-cold Query workspace");
+    let project_root = temporary.path().join("project");
+    std::fs::create_dir_all(project_root.join("src")).expect("create owner directory");
+    let source = b"pub fn exact_owner() -> usize { 23 }\n";
+    std::fs::write(project_root.join("src/lib.rs"), source).expect("write exact owner");
+    let workspace_identity = "workspace-process-cold-query";
+    let selector = "rust://src/lib.rs#item/function/exact_owner";
+    let workspace_store_root = temporary.path().join("workspace-store");
+    let registry = RuntimeServerWorkspaceRegistry::new(workspace_store_root.clone())
+        .expect("process-cold registry");
+    let recovery = registry
+        .publish(
+            "process-cold-generation",
+            WorkspaceRecoverySource::TursoGeneration,
+            process_cold_generation(&project_root, workspace_identity, selector, source),
+        )
+        .await
+        .expect("publish process-cold generation");
+
+    let project_workspace = agent_semantic_content_identity::ProjectWorkspaceBinding::new(
+        "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/process-cold",
+        ".",
+        "cross-machine",
+        Vec::new(),
+    )
+    .expect("process-cold Project Workspace");
+    let host_workspace = agent_semantic_content_identity::HostWorkspaceInitializationBinding::new(
+        project_workspace.clone(),
+        "worktree-main",
+    )
+    .expect("process-cold Host workspace");
+    let runtime_bundle_digest = digest('f');
+    let pointer_path =
+        workspace_generation_pointer_path(&workspace_store_root, workspace_identity, &project_root)
+            .expect("process-cold generation pointer");
+    let WorkspaceExactProjectionDataPlaneOpen::Ready(exact) =
+        WorkspaceExactProjectionDataPlaneClient::open_state(&pointer_path)
+            .await
+            .expect("open process-cold exact generation")
+    else {
+        panic!("published process-cold generation must have an exact data plane");
+    };
+    let exact_generation_digest = exact.generation_digest();
+    let exact_root_digest = exact.root_digest();
+    assert_eq!(exact_generation_digest, recovery.generation_digest);
+    let publication_root_digest =
+        agent_semantic_search::canonical_blake3_digest(&exact_root_digest)
+            .expect("canonical process-cold publication root digest");
+    let publication = execution_publication_for_exact_generation(
+        workspace_identity,
+        &exact_generation_digest,
+        &publication_root_digest,
+        &runtime_bundle_digest,
+        project_workspace,
+    );
+    let execution_root = pointer_path.parent().expect("process-cold execution root");
+    RuntimeWorkspaceExecutionPublicationStore::open(execution_root)
+        .await
+        .expect("open process-cold execution store")
+        .publish(&publication)
+        .await
+        .expect("publish process-cold execution binding");
+
+    let request = AspClientWorkspaceQueryPlaybookRequest {
+        schema_id: "agent.semantic-protocols.asp-client-workspace-query-playbook-request".into(),
+        schema_version: "1".into(),
+        language: Some("rust".into()),
+        documents: None,
+        selectors: vec![selector.to_owned()],
+        projection: "source".into(),
+    };
+    let initialized = super::InitializedWorkspace {
+        project_root,
+        host_workspace,
+    };
+    let (resource_supervisor, task_scope) = process_cold_resources();
+    let result = try_process_cold_exact_owner_replay(
+        "request-process-cold",
+        workspace_identity,
+        &request,
+        &initialized,
+        &workspace_store_root,
+        &runtime_bundle_digest,
+        &resource_supervisor,
+        &task_scope,
+        &[("rust".to_owned(), "asp-rust".to_owned())],
+        tokio::time::Instant::now(),
+    )
+    .await;
+    let payload = match result {
+        Ok(Some(payload)) => payload,
+        Ok(None) => panic!("matching durable generation must replay on the first Query call"),
+        Err(AspClientOperationError::Message(message)) => {
+            panic!("matching durable generation replay must succeed: {message}")
+        }
+        Err(AspClientOperationError::Terminal(error)) => panic!(
+            "matching durable generation replay must succeed: reasonKind={} message={}",
+            error.reason_kind, error.message
+        ),
+    };
+    let receipt = serde_json::to_value(payload).expect("serialize process-cold Query receipt");
+    assert_eq!(receipt["requestId"], "request-process-cold");
+    assert_eq!(receipt["requestProfile"], "materialized");
+    assert_eq!(receipt["terminal"]["state"], "ready");
+    assert_eq!(receipt["sourceGenerationDigest"], exact_generation_digest);
+    assert_eq!(receipt["sourceRootDigest"], exact_root_digest);
+    assert_eq!(receipt["materializations"][0]["selector"], selector);
+    let mut request_plane_samples = vec![
+        receipt["requestPlaneElapsedMicros"]
+            .as_u64()
+            .expect("process-cold request-plane timing"),
+    ];
+    for sample in 1..32 {
+        let repeated = try_process_cold_exact_owner_replay(
+            &format!("request-process-cold-sample-{sample}"),
+            workspace_identity,
+            &request,
+            &initialized,
+            &workspace_store_root,
+            &runtime_bundle_digest,
+            &resource_supervisor,
+            &task_scope,
+            &[("rust".to_owned(), "asp-rust".to_owned())],
+            tokio::time::Instant::now(),
+        )
+        .await;
+        let payload = match repeated {
+            Ok(Some(payload)) => payload,
+            _ => panic!("every process-cold qualification sample must replay exactly"),
+        };
+        let receipt = serde_json::to_value(payload).expect("serialize repeated Query receipt");
+        request_plane_samples.push(
+            receipt["requestPlaneElapsedMicros"]
+                .as_u64()
+                .expect("repeated process-cold request-plane timing"),
+        );
+    }
+    request_plane_samples.sort_unstable();
+    let percentile = |percent: usize| {
+        let rank = request_plane_samples
+            .len()
+            .saturating_mul(percent)
+            .div_ceil(100);
+        request_plane_samples[rank.saturating_sub(1)]
+    };
+    println!(
+        "[scenario-benchmark] id=runtime-query-process-cold-exact-owner-replay sampleCount={} p50Micros={} p95Micros={} p99Micros={} ownerDigestTaskCount=1 receiptTaskCount=1 providerProcessCount=0 fullGenerationAdmissionCount=0",
+        request_plane_samples.len(),
+        percentile(50),
+        percentile(95),
+        percentile(99),
+    );
+
+    std::fs::write(
+        initialized.project_root.join("README.md"),
+        b"unrelated workspace mutation\n",
+    )
+    .expect("write unrelated workspace file");
+    assert!(matches!(
+        try_process_cold_exact_owner_replay(
+            "request-process-cold-unrelated-change",
+            workspace_identity,
+            &request,
+            &initialized,
+            &workspace_store_root,
+            &runtime_bundle_digest,
+            &resource_supervisor,
+            &task_scope,
+            &[("rust".to_owned(), "asp-rust".to_owned())],
+            tokio::time::Instant::now(),
+        )
+        .await,
+        Ok(Some(_))
+    ));
+
+    std::fs::write(
+        initialized.project_root.join("src/lib.rs"),
+        b"pub fn exact_owner() -> usize { 24 }\n",
+    )
+    .expect("mutate requested owner");
+    assert!(matches!(
+        try_process_cold_exact_owner_replay(
+            "request-process-cold-owner-change",
+            workspace_identity,
+            &request,
+            &initialized,
+            &workspace_store_root,
+            &runtime_bundle_digest,
+            &resource_supervisor,
+            &task_scope,
+            &[("rust".to_owned(), "asp-rust".to_owned())],
+            tokio::time::Instant::now(),
+        )
+        .await,
+        Ok(None)
+    ));
 }
 
 #[tokio::test]
@@ -292,12 +696,30 @@ fn process_cold_replay_rejects_a_stale_runtime_bundle() {
         publication.generation_digest.as_str(),
         publication.source_root_digest.as_str(),
     ));
+    assert!(durable_exact_execution_matches_current(
+        &publication,
+        &publication.workspace_identity,
+        publication.runtime_bundle_digest.as_str(),
+        publication.generation_digest.as_str(),
+        publication
+            .source_root_digest
+            .as_str()
+            .strip_prefix("blake3-256:")
+            .expect("raw exact-segment root digest"),
+    ));
     assert!(!durable_exact_execution_matches_current(
         &publication,
         &publication.workspace_identity,
         &digest('0'),
         publication.generation_digest.as_str(),
         publication.source_root_digest.as_str(),
+    ));
+    assert!(!durable_exact_execution_matches_current(
+        &publication,
+        &publication.workspace_identity,
+        publication.runtime_bundle_digest.as_str(),
+        publication.generation_digest.as_str(),
+        "not-a-content-digest",
     ));
 }
 

@@ -47,6 +47,9 @@ pub(super) struct ResolvedRouteContext {
     pub(super) owner_materializer: super::owner_materialization::RuntimeOwnerMaterializer,
     pub(super) workspace_store_root: std::path::PathBuf,
     pub(super) current_runtime_bundle_digest: String,
+    pub(super) resource_supervisor:
+        agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
+    pub(super) task_scope: agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
     pub(super) active_provider_targets: Arc<[(String, String)]>,
     pub(super) workspace_search_providers: Arc<[agent_semantic_search::WorkspaceSearchProvider]>,
     pub(super) query_generation: tokio::sync::watch::Receiver<
@@ -179,6 +182,8 @@ pub(super) async fn dispatch_resolved_route(
         owner_materializer,
         workspace_store_root,
         current_runtime_bundle_digest,
+        resource_supervisor,
+        task_scope,
         active_provider_targets,
         workspace_search_providers,
         query_generation,
@@ -409,6 +414,8 @@ pub(super) async fn dispatch_resolved_route(
             &owner_materializer,
             &workspace_store_root,
             &current_runtime_bundle_digest,
+            &resource_supervisor,
+            &task_scope,
             workspace_search_providers.as_ref(),
             active_provider_targets.as_ref(),
             &telemetry_sender,

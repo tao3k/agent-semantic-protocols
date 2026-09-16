@@ -21,6 +21,10 @@ pub struct RuntimeServerRuntimeBuilder {
     builder: tokio::runtime::Builder,
 }
 
+/// Runtime Server scheduling floor. Four workers keep I/O/reactor progress
+/// independent from admitted Query/Search computation under constrained hosts.
+pub const MIN_RUNTIME_SERVER_WORKER_THREADS: usize = 4;
+
 /// Effective CPU capacity exposed to this process. The OS value accounts for
 /// processor-set and cgroup limits.
 #[must_use]
@@ -28,6 +32,7 @@ pub fn adaptive_tokio_worker_count() -> usize {
     std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
+        .max(MIN_RUNTIME_SERVER_WORKER_THREADS)
 }
 
 impl RuntimeServerRuntimeBuilder {

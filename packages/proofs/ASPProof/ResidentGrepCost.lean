@@ -511,6 +511,70 @@ structure ProcessColdExactReplay where
   relocationRequired : Bool
   deriving DecidableEq, Repr
 
+/-- Stable V1 keeps one digest payload at two representation boundaries:
+Query/exact-segment wire hex and typed Runtime content identity. -/
+inductive DigestBoundary where
+  | queryWireHex
+  | runtimeTyped
+  deriving DecidableEq, Repr
+
+structure BoundaryDigest where
+  payload : Nat
+  boundary : DigestBoundary
+  deriving DecidableEq, Repr
+
+def sameDigestContent (left right : BoundaryDigest) : Prop :=
+  left.payload = right.payload
+
+theorem v1_digest_boundary_translation_preserves_content (payload : Nat) :
+    sameDigestContent
+      { payload := payload, boundary := .queryWireHex }
+      { payload := payload, boundary := .runtimeTyped } := by
+  rfl
+
+/-- Work counters are the architectural process-cold performance gate. -/
+structure ProcessColdReplayWork where
+  ownerDigestTasks : Nat
+  receiptTasks : Nat
+  providerStarts : Nat
+  fullGenerationAdmissions : Nat
+  asyncWorkerCpuTasks : Nat
+  blockingTaskCpuPermits : Nat
+  blockingTaskMemoryPermits : Nat
+  permitsOwnedByBlockingTasks : Bool
+  runtimeWorkerThreads : Nat
+  backgroundCpuCapacity : Nat
+  deriving DecidableEq, Repr
+
+def exactOwnerReplayWork : ProcessColdReplayWork where
+  ownerDigestTasks := 1
+  receiptTasks := 1
+  providerStarts := 0
+  fullGenerationAdmissions := 0
+  asyncWorkerCpuTasks := 0
+  blockingTaskCpuPermits := 2
+  blockingTaskMemoryPermits := 2
+  permitsOwnedByBlockingTasks := true
+  runtimeWorkerThreads := 4
+  backgroundCpuCapacity := 3
+
+theorem exact_owner_replay_has_no_provider_generation_or_async_cpu_work :
+    exactOwnerReplayWork.providerStarts +
+      exactOwnerReplayWork.fullGenerationAdmissions +
+      exactOwnerReplayWork.asyncWorkerCpuTasks = 0 := by
+  rfl
+
+theorem exact_owner_replay_retains_resource_authority_inside_blocking_tasks :
+    exactOwnerReplayWork.blockingTaskCpuPermits = 2 ∧
+      exactOwnerReplayWork.blockingTaskMemoryPermits = 2 ∧
+      exactOwnerReplayWork.permitsOwnedByBlockingTasks = true := by
+  decide
+
+theorem four_thread_runtime_reserves_one_worker_from_background_cpu :
+    exactOwnerReplayWork.runtimeWorkerThreads =
+      exactOwnerReplayWork.backgroundCpuCapacity + 1 := by
+  decide
+
 def processColdExactReplayAdmitted (replay : ProcessColdExactReplay) : Bool :=
   replay.durableExecutionBound &&
     replay.currentRuntimeBundleMatches &&

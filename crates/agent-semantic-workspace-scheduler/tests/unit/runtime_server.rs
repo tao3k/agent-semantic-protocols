@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use crate::{
-    RuntimeServerClientExecutor, RuntimeServerOwnedTask, RuntimeServerResourceRequest,
-    RuntimeServerResourceSupervisor, RuntimeServerRuntimeBuilder, RuntimeServerTaskScope,
-    adaptive_tokio_worker_count,
+    MIN_RUNTIME_SERVER_WORKER_THREADS, RuntimeServerClientExecutor, RuntimeServerOwnedTask,
+    RuntimeServerResourceRequest, RuntimeServerResourceSupervisor, RuntimeServerRuntimeBuilder,
+    RuntimeServerTaskScope, adaptive_tokio_worker_count,
 };
 
 #[test]
@@ -17,6 +17,7 @@ fn daemon_profile_owns_spawn_and_join_lifecycle() {
     let workers =
         runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
     assert_eq!(workers, adaptive_tokio_worker_count());
+    assert!(workers >= MIN_RUNTIME_SERVER_WORKER_THREADS);
     let joined = runtime.block_on(async {
         RuntimeServerOwnedTask::spawn("fixture-daemon-task", async { 42_u64 })
             .join()

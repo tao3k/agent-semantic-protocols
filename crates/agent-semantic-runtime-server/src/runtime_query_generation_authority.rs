@@ -102,6 +102,16 @@ impl RuntimeQueryGenerationAuthority {
         self.builder.derived_attachment_snapshot()
     }
 
+    pub(crate) fn resource_supervisor(
+        &self,
+    ) -> agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor {
+        self.builder.resource_supervisor()
+    }
+
+    pub(crate) fn task_scope(&self) -> agent_semantic_workspace_scheduler::RuntimeServerTaskScope {
+        self.builder.task_scope()
+    }
+
     pub fn publish_ready(
         &self,
         key: RuntimeProjectWorkspaceKey,

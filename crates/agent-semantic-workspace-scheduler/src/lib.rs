@@ -15,8 +15,8 @@ pub use resource_supervisor::{
     RuntimeServerResourceSupervisor, runtime_server_process_memory_budget_bytes,
 };
 pub use runtime_profile::{
-    RuntimeServerClientExecutor, RuntimeServerRuntime, RuntimeServerRuntimeBuilder,
-    adaptive_tokio_worker_count,
+    MIN_RUNTIME_SERVER_WORKER_THREADS, RuntimeServerClientExecutor, RuntimeServerRuntime,
+    RuntimeServerRuntimeBuilder, adaptive_tokio_worker_count,
 };
 pub use task_scope::{
     RuntimeServerOwnedTask, RuntimeServerTaskLifecycleReceipt, RuntimeServerTaskPermit,
