@@ -510,12 +510,30 @@ fn durable_projection_is_direct(
     )
 }
 
+fn durable_exact_execution_matches_current(
+    publication: &agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
+    workspace_id: &str,
+    current_runtime_bundle_digest: &str,
+    exact_generation_digest: &str,
+    exact_root_digest: &str,
+) -> bool {
+    publication.workspace_identity == workspace_id
+        && publication.runtime_bundle_digest.as_str() == current_runtime_bundle_digest
+        && publication.generation_digest.as_str() == exact_generation_digest
+        && publication.source_root_digest.as_str() == exact_root_digest
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the replay gate binds current Runtime, workspace, durable source, and request identities"
+)]
 async fn try_process_cold_exact_owner_replay(
     request_id: &str,
     workspace_id: &str,
     params: &AspClientWorkspaceQueryPlaybookRequest,
     initialized: &InitializedWorkspace,
     workspace_store_root: &std::path::Path,
+    current_runtime_bundle_digest: &str,
     active_provider_targets: &[(String, String)],
     started: tokio::time::Instant,
 ) -> Result<Option<agent_semantic_client_protocol::ClientResponsePayload>, AspClientOperationError>
@@ -549,10 +567,13 @@ async fn try_process_cold_exact_owner_replay(
             "validate durable exact-owner execution publication: {error:?}"
         ))
     })?;
-    if execution_publication.workspace_identity != workspace_id
-        || execution_publication.generation_digest.as_str() != exact.generation_digest()
-        || execution_publication.source_root_digest.as_str() != exact.root_digest()
-    {
+    if !durable_exact_execution_matches_current(
+        &execution_publication,
+        workspace_id,
+        current_runtime_bundle_digest,
+        &exact.generation_digest(),
+        &exact.root_digest(),
+    ) {
         return Ok(None);
     }
 
@@ -635,6 +656,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
     runtime_search_service: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     owner_materializer: &super::owner_materialization::RuntimeOwnerMaterializer,
     parser_artifact_root: &std::path::Path,
+    current_runtime_bundle_digest: &str,
     workspace_search_providers: &[agent_semantic_search::WorkspaceSearchProvider],
     active_provider_targets: &[(String, String)],
     telemetry_sender: &RuntimeTelemetryBusSender,
@@ -695,6 +717,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 &params,
                 &initialized,
                 parser_artifact_root,
+                current_runtime_bundle_digest,
                 active_provider_targets,
                 wait_started,
             )

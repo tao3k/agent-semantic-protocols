@@ -4,11 +4,12 @@
 
 use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
-    bind_query_materialization_to_request, durable_projection_is_direct,
-    emit_runtime_search_trace_observation, materialize_query_playbook_receipt,
-    query_playbook_generation_provider_targets, read_query_projection_handoff,
-    record_settled_client_timing_observations, resident_exact_query_projections,
-    runtime_search_trace_budget_micros, workspace_query_materialization_key,
+    bind_query_materialization_to_request, durable_exact_execution_matches_current,
+    durable_projection_is_direct, emit_runtime_search_trace_observation,
+    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
+    read_query_projection_handoff, record_settled_client_timing_observations,
+    resident_exact_query_projections, runtime_search_trace_budget_micros,
+    workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -278,6 +279,25 @@ fn process_cold_replay_accepts_only_the_requested_owner_selector() {
             root_digest: digest('2'),
             resolved_selector: selector.clone(),
         }
+    ));
+}
+
+#[test]
+fn process_cold_replay_rejects_a_stale_runtime_bundle() {
+    let publication = execution_publication();
+    assert!(durable_exact_execution_matches_current(
+        &publication,
+        &publication.workspace_identity,
+        publication.runtime_bundle_digest.as_str(),
+        publication.generation_digest.as_str(),
+        publication.source_root_digest.as_str(),
+    ));
+    assert!(!durable_exact_execution_matches_current(
+        &publication,
+        &publication.workspace_identity,
+        &digest('0'),
+        publication.generation_digest.as_str(),
+        publication.source_root_digest.as_str(),
     ));
 }
 

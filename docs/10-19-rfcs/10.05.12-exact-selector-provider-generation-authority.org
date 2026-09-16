@@ -60,7 +60,9 @@ republishing that generation as the workspace's current resident authority,
 but only through an exact-owner replay cut.  Runtime MUST read the requested
 owner from the immutable exact segment, hash the current file at the selector's
 canonical owner path, and require equality with the segment owner digest.  It
-MUST also require an exact selector hit; owner-independent relocation,
+MUST also require the durable execution publication's Runtime bundle digest to
+equal the currently activated Runtime bundle and require an exact selector hit;
+owner-independent relocation,
 projection repair, an absent owner, or any content mismatch escalates to normal
 complete-generation admission.
 

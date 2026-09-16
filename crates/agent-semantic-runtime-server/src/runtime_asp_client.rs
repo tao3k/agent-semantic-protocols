@@ -265,6 +265,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let active_provider_targets = Arc::clone(&self.active_provider_targets);
         let workspace_search_providers = Arc::clone(&self.workspace_search_providers);
         let workspace_store_root = self.workspace_store_root.clone();
+        let current_runtime_bundle_digest = self.current_runtime_bundle_digest.clone();
         let query_generation_authority = self.query_generation_authority.clone();
         let query_generation = query_generation_authority.subscribe();
         let query_generation_for_receipt = query_generation.clone();
@@ -716,6 +717,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     runtime_search_service,
                     owner_materializer,
                     workspace_store_root,
+                    current_runtime_bundle_digest,
                     active_provider_targets,
                     workspace_search_providers,
                     query_generation,

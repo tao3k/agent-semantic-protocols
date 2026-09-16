@@ -505,6 +505,7 @@ theorem one_generation_barrier_removes_duplicate_inventory
 segment and the current owner bytes.  It cannot mint workspace Ready. -/
 structure ProcessColdExactReplay where
   durableExecutionBound : Bool
+  currentRuntimeBundleMatches : Bool
   currentOwnerDigestMatches : Bool
   exactSelectorHit : Bool
   relocationRequired : Bool
@@ -512,6 +513,7 @@ structure ProcessColdExactReplay where
 
 def processColdExactReplayAdmitted (replay : ProcessColdExactReplay) : Bool :=
   replay.durableExecutionBound &&
+    replay.currentRuntimeBundleMatches &&
     replay.currentOwnerDigestMatches &&
     replay.exactSelectorHit &&
     !replay.relocationRequired
@@ -526,6 +528,12 @@ theorem process_cold_exact_replay_never_publishes_workspace_ready
 theorem changed_owner_rejects_process_cold_exact_replay
     (replay : ProcessColdExactReplay)
     (changed : replay.currentOwnerDigestMatches = false) :
+    processColdExactReplayAdmitted replay = false := by
+  simp [processColdExactReplayAdmitted, changed]
+
+theorem changed_runtime_bundle_rejects_process_cold_exact_replay
+    (replay : ProcessColdExactReplay)
+    (changed : replay.currentRuntimeBundleMatches = false) :
     processColdExactReplayAdmitted replay = false := by
   simp [processColdExactReplayAdmitted, changed]
 

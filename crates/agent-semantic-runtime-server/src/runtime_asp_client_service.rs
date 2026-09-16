@@ -204,6 +204,7 @@ pub struct RuntimeAspClientDispatcher {
     /// Search/Query requests only clone this immutable resident snapshot.
     pub(super) workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
     pub(super) workspace_store_root: std::path::PathBuf,
+    pub(super) current_runtime_bundle_digest: String,
     pub(super) query_generation_authority: RuntimeQueryGenerationAuthority,
     pub(super) telemetry_sender:
         agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
@@ -240,6 +241,7 @@ impl RuntimeAspClientDispatcher {
         active_provider_targets: Arc<[(String, String)]>,
         workspace_search_providers: Arc<[WorkspaceSearchProvider]>,
         workspace_store_root: std::path::PathBuf,
+        current_runtime_bundle_digest: String,
         query_generation_authority: RuntimeQueryGenerationAuthority,
         telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
     ) -> Self {
@@ -254,6 +256,7 @@ impl RuntimeAspClientDispatcher {
             active_provider_targets,
             workspace_search_providers,
             workspace_store_root,
+            current_runtime_bundle_digest,
             query_generation_authority,
             telemetry_sender,
             telemetry_traces: Arc::new(Mutex::new(HashMap::new())),
@@ -290,7 +293,7 @@ pub fn build_frame_service(
     telemetry_sender: agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 ) -> Result<Arc<AspClientFrameService<RuntimeAspClientDispatcher>>, String> {
     let initialized_workspaces = Arc::new(Mutex::new(HashMap::new()));
-    let catalog_generation = client_catalog_generation;
+    let catalog_generation = client_catalog_generation.clone();
     let catalog_provider_targets = Arc::clone(&active_provider_targets);
     let workspace_search_providers = workspace_search_providers_from_provider_register(
         provider_register.as_ref(),
@@ -306,6 +309,7 @@ pub fn build_frame_service(
         active_provider_targets,
         workspace_search_providers,
         workspace_store_root,
+        client_catalog_generation,
         query_generation_authority,
         telemetry_sender,
     ));
