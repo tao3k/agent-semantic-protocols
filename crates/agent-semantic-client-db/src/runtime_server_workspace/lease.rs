@@ -272,6 +272,49 @@ impl WorkspaceGenerationLease {
         self.overlay.topology_source_segments(self.generation())
     }
 
+    pub fn topology_source_segments_for_owner_scope(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Vec<WorkspaceTopologySourceSegment> {
+        self.overlay
+            .topology_source_segments_for_owner_scope(self.generation(), owner_paths)
+    }
+
+    pub fn owner_paths_for_graph_entry_node_ids<'a>(
+        &self,
+        node_ids: impl IntoIterator<Item = &'a str>,
+    ) -> std::collections::BTreeSet<String> {
+        let node_ids = node_ids.into_iter().collect::<Vec<_>>();
+        let mut owners = self
+            .search_data_plane()
+            .owner_paths_for_graph_entry_node_ids(node_ids.iter().copied());
+        owners.extend(
+            self.overlay
+                .owner_paths_for_graph_entry_node_ids(self.generation(), node_ids.iter().copied()),
+        );
+        owners.retain(|owner| {
+            self.overlay
+                .owner_snapshot(self.generation(), owner)
+                .is_some_and(|snapshot| {
+                    node_ids.iter().any(|node_id| {
+                        **node_id
+                            == agent_semantic_search::stable_graph_node_id(
+                                "owner",
+                                &snapshot.owner_path,
+                            )
+                            || snapshot.selectors.iter().any(|selector| {
+                                **node_id
+                                    == agent_semantic_search::stable_graph_node_id(
+                                        "item",
+                                        &selector.selector,
+                                    )
+                            })
+                    })
+                })
+        });
+        owners
+    }
+
     #[expect(
         clippy::type_complexity,
         reason = "the V1 projection returns its three typed evidence collections"

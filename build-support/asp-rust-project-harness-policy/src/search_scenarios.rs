@@ -41,6 +41,10 @@ pub const PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID: &str = "parser-artifact-con
 /// generation-owned terminal without a caller retry.
 pub const FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID: &str = "first-call-single-flight-terminal";
 
+/// Detailed topology materialization reads only the bounded candidate owner
+/// frontier and never projects the complete workspace on a request path.
+pub const CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID: &str = "candidate-topology-owner-scope";
+
 /// Merkle-qualified live-memory code search must never open Turso on the warm path.
 pub const CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID: &str =
     "code-search-merkle-memory-warm-path";
@@ -297,6 +301,49 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                         { name: "generation_owned_task_count", unit: "tasks", kind: Exact, target: 2 },
                         { name: "caller_retry_count", unit: "retries", kind: Exact, target: 0 },
                         { name: "public_building_terminal_count", unit: "terminals", kind: Exact, target: 0 }
+                    ]
+                }
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Detailed topology materialization projects only the exact candidate owner scope from a large resident generation.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/candidate_topology_owner_scope",
+                tags: ["search", "topology", "candidate-scope", "performance"],
+                commands: [
+                    {
+                        label: "candidate-scope-work-metrics",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--lib",
+                            "runtime_server_workspace::registry::canonical_publication::tests::candidate_topology_owner_scope_is_scenario_measured",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+                benchmark: {
+                    harness: "libtest",
+                    test: "candidate_topology_owner_scope_is_scenario_measured",
+                    snapshot: "candidate_topology_owner_scope_v1",
+                    target_total: "250us",
+                    max_total: "10ms",
+                    regression_budget: "250us",
+                    memory_budget_bytes: 262_144,
+                    target_rationale: "A request over two owners performs two indexed owner reads regardless of total workspace owner cardinality; timing is diagnostic and exact work counters are authoritative.",
+                    warmup_iterations: 16,
+                    measure_iterations: 128,
+                    metrics: [
+                        { name: "workspace_owner_count", unit: "owners", kind: Exact, target: 4096 },
+                        { name: "requested_owner_count", unit: "owners", kind: Exact, target: 2 },
+                        { name: "returned_owner_count", unit: "owners", kind: Exact, target: 2 },
+                        { name: "unrequested_owner_projection_count", unit: "owners", kind: Exact, target: 0 },
+                        { name: "entry_node_lookup_count", unit: "lookups", kind: Exact, target: 2 },
+                        { name: "request_workspace_scan_count", unit: "scans", kind: Exact, target: 0 }
                     ]
                 }
             ),

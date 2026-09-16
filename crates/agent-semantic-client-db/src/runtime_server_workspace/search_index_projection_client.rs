@@ -24,6 +24,57 @@ use super::{
     WorkspaceSearchGenerationAuthority,
 };
 
+fn graph_entry_owner_index(
+    owners: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut index = BTreeMap::new();
+    for (owner_path, owner) in owners {
+        let entries = std::iter::once(agent_semantic_search::stable_graph_node_id(
+            "owner", owner_path,
+        ))
+        .chain(owner.selectors.iter().map(|selector| {
+            agent_semantic_search::stable_graph_node_id("item", &selector.selector)
+        }));
+        for node_id in entries {
+            if let Some(previous) = index.insert(node_id.clone(), owner_path.clone())
+                && previous != *owner_path
+            {
+                return Err(format!(
+                    "graph entry node id collision between owners {previous} and {owner_path}: {node_id}"
+                ));
+            }
+        }
+    }
+    Ok(index)
+}
+
+fn owned_relation_index(
+    owners: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+    relations: &[crate::ClientDbSourceIndexOwnedRelation],
+) -> Result<BTreeMap<String, Arc<[crate::ClientDbSourceIndexOwnedRelation]>>, String> {
+    let mut index = BTreeMap::<String, Vec<_>>::new();
+    for relation in relations {
+        relation.relation.validate()?;
+        if !owners.contains_key(relation.owner_path.as_str()) {
+            return Err(format!(
+                "topology relation owner is absent from generation: {}",
+                relation.owner_path
+            ));
+        }
+        index
+            .entry(relation.owner_path.to_string())
+            .or_default()
+            .push(relation.clone());
+    }
+    Ok(index
+        .into_iter()
+        .map(|(owner, mut relations)| {
+            relations.sort();
+            (owner, Arc::from(relations))
+        })
+        .collect())
+}
+
 impl WorkspaceSearchGenerationDataPlaneClient {
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
         Self::open_inner(pointer_path, project_root).await
@@ -152,8 +203,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         }
         let owner_records_micros = elapsed_micros(owner_records_started);
         let relation_records_started = std::time::Instant::now();
-        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
-            Arc::from(generation.relations.clone());
+        let owned_relations_by_owner =
+            owned_relation_index(&owner_directory_records, &generation.relations)?;
         let mut graph_relation_records = BTreeMap::<(String, String), Vec<_>>::new();
         for owned in &generation.relations {
             let relation = &owned.relation;
@@ -168,6 +219,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         let (source_documents, callable_selector_by_owner) =
             build_admitted_owner_search_indexes(&owner_directory_records)?;
         let provider_authorities = provider_authorities(&source_documents);
+        let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
         let owner_search_micros = elapsed_micros(owner_search_started);
         let byte_coverage_started = std::time::Instant::now();
         let resident_byte_coverage =
@@ -220,9 +272,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
+            graph_entry_owner_by_node_id,
             owner_bytes_range: None,
             merkle_owner_records,
-            owned_relations,
+            owned_relations_by_owner,
             graph_relation_records,
             graph_generation: Arc::new(tokio::sync::OnceCell::new()),
             lexical_accelerator: Arc::new(tokio::sync::OnceCell::new()),
@@ -320,11 +373,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             }
             graph_relations.extend(owned_relations);
         }
-        let owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]> =
-            Arc::from(graph_relations.clone());
+        let owned_relations_by_owner =
+            owned_relation_index(&owner_directory_records, &graph_relations)?;
         let (source_documents, callable_selector_by_owner) =
             build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
         let provider_authorities = provider_authorities(&source_documents);
+        let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
         let graph_generation = Arc::new(tokio::sync::OnceCell::new());
         let lexical_accelerator = Arc::new(tokio::sync::OnceCell::new());
         Ok(Self {
@@ -342,9 +396,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
+            graph_entry_owner_by_node_id,
             owner_bytes_range: Some(owner_bytes_range),
             merkle_owner_records,
-            owned_relations,
+            owned_relations_by_owner,
             graph_relation_records,
             graph_generation,
             lexical_accelerator,

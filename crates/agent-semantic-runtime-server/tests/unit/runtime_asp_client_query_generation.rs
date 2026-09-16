@@ -28,10 +28,9 @@ fn generation_without_resident_authority(
             "runtime-client-query-generation-test",
         ),
         execution_publication: None,
-        project_topology_attachment: std::sync::OnceLock::new(),
+        project_topology_attachment: std::sync::Mutex::new(None),
         project_topology_build_lock: tokio::sync::Mutex::new(()),
         resident_syntax_scope_evidence: std::sync::Mutex::new(None),
-        project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
         search_materializations: std::sync::Arc::new(std::sync::Mutex::new(

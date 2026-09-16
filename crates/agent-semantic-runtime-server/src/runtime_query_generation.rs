@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 
@@ -30,16 +30,9 @@ pub struct RuntimeQueryGeneration {
             agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication,
         >,
     >,
-    pub(super) project_topology_attachment:
-        OnceLock<
-            Result<
-                Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
-                Arc<str>,
-            >,
-        >,
+    pub(super) project_topology_attachment: Mutex<Option<RuntimeProjectTopologyCacheEntry>>,
     pub(super) project_topology_build_lock: tokio::sync::Mutex<()>,
     pub(super) resident_syntax_scope_evidence: Mutex<Option<RuntimeSyntaxScopeEvidence>>,
-    pub(super) project_topology_completion: tokio::sync::watch::Sender<bool>,
     pub(super) lexical_attachment_completion: tokio::sync::watch::Sender<bool>,
     pub(super) build_resource_receipt:
         std::sync::OnceLock<RuntimeSearchGenerationBuildResourceReceipt>,
@@ -50,6 +43,39 @@ pub struct RuntimeQueryGeneration {
         std::collections::HashMap<String, RuntimeQueryMaterializationState>,
     >>,
     pub(super) materialization_tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
+}
+
+#[derive(Clone)]
+pub(super) struct RuntimeProjectTopologyCacheEntry {
+    topology_source_generation_digest: String,
+    owner_scope: BTreeSet<String>,
+    attachment: Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, Arc<str>>,
+}
+
+impl RuntimeProjectTopologyCacheEntry {
+    pub(super) fn new(
+        topology_source_generation_digest: String,
+        owner_scope: BTreeSet<String>,
+        attachment: Result<
+            Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
+            Arc<str>,
+        >,
+    ) -> Self {
+        Self {
+            topology_source_generation_digest,
+            owner_scope,
+            attachment,
+        }
+    }
+
+    pub(super) fn matches(
+        &self,
+        topology_source_generation_digest: &str,
+        requested: &BTreeSet<String>,
+    ) -> bool {
+        self.topology_source_generation_digest == topology_source_generation_digest
+            && self.owner_scope == *requested
+    }
 }
 
 #[derive(Clone)]
@@ -146,10 +172,9 @@ impl RuntimeQueryGeneration {
             resource_supervisor,
             task_scope,
             execution_publication: None,
-            project_topology_attachment: OnceLock::new(),
+            project_topology_attachment: Mutex::new(None),
             project_topology_build_lock: tokio::sync::Mutex::new(()),
             resident_syntax_scope_evidence: Mutex::new(None),
-            project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -193,10 +218,9 @@ impl RuntimeQueryGeneration {
             resource_supervisor,
             task_scope,
             execution_publication: None,
-            project_topology_attachment: OnceLock::new(),
+            project_topology_attachment: Mutex::new(None),
             project_topology_build_lock: tokio::sync::Mutex::new(()),
             resident_syntax_scope_evidence: Mutex::new(None),
-            project_topology_completion: tokio::sync::watch::channel(false).0,
             lexical_attachment_completion: tokio::sync::watch::channel(false).0,
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -460,41 +484,6 @@ impl RuntimeQueryGeneration {
         self.task_scope.spawn_blocking(name, operation)
     }
 
-    /// Atomically joins the already admitted Runtime generation and Project
-    /// Topology product. Lower-level resident reads can exist without this
-    /// attachment; Search Playbook cannot.
-    pub fn with_project_topology_attachment(
-        self,
-        attachment: agent_semantic_topology::RuntimeProjectTopologyAttachment,
-    ) -> Result<Self, String> {
-        let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
-            "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
-        })?;
-        if attachment.runtime_generation_digest() != self.generation_digest
-            || attachment.runtime_execution_binding()
-                != &execution_publication.runtime_execution_binding
-        {
-            return Err("reasonKind=runtime-project-topology-attachment-mismatch".to_owned());
-        }
-        self.project_topology_attachment
-            .set(Ok(Arc::new(attachment)))
-            .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
-        self.project_topology_completion.send_replace(true);
-        Ok(self)
-    }
-
-    /// Builds and admits the Project Topology attachment from the exact
-    /// resident parser generation. The CPU-heavy closure builder runs on its
-    /// bounded blocking lane and never participates in SearchCoreReady.
-    pub async fn build_and_attach_project_topology(
-        &self,
-        project_root: &std::path::Path,
-    ) -> Result<(), String> {
-        self.build_or_get_project_topology(project_root, self.resident())
-            .await
-            .map(|_| ())
-    }
-
     pub(crate) fn publish_lexical_attachment_terminal(&self) {
         self.lexical_attachment_completion.send_replace(true);
     }
@@ -508,22 +497,35 @@ impl RuntimeQueryGeneration {
         &self,
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
+        owner_scope: &BTreeSet<String>,
     ) -> Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, String> {
-        if let Some(stored) = self.project_topology_attachment.get() {
-            return stored
-                .as_ref()
-                .map(Arc::clone)
-                .map_err(|error| error.to_string());
+        if owner_scope.is_empty() {
+            return Err("reasonKind=runtime-project-topology-owner-scope-empty".to_owned());
+        }
+        let topology_source_generation_digest = resident.topology_source_generation_digest()?;
+        if let Some(stored) = self
+            .project_topology_attachment
+            .lock()
+            .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
+            .as_ref()
+            .filter(|stored| stored.matches(&topology_source_generation_digest, owner_scope))
+            .cloned()
+        {
+            return stored.attachment.map_err(|error| error.to_string());
         }
         let _build = self.project_topology_build_lock.lock().await;
-        if let Some(stored) = self.project_topology_attachment.get() {
-            return stored
-                .as_ref()
-                .map(Arc::clone)
-                .map_err(|error| error.to_string());
+        if let Some(stored) = self
+            .project_topology_attachment
+            .lock()
+            .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
+            .as_ref()
+            .filter(|stored| stored.matches(&topology_source_generation_digest, owner_scope))
+            .cloned()
+        {
+            return stored.attachment.map_err(|error| error.to_string());
         }
         let stored = self
-            .build_project_topology(project_root, resident)
+            .build_project_topology(project_root, resident, owner_scope)
             .await
             .map(Arc::new)
             .map_err(Arc::<str>::from);
@@ -532,9 +534,13 @@ impl RuntimeQueryGeneration {
             .map(Arc::clone)
             .map_err(|error| error.to_string());
         self.project_topology_attachment
-            .set(stored)
-            .map_err(|_| "reasonKind=runtime-project-topology-attachment-already-set".to_owned())?;
-        self.project_topology_completion.send_replace(true);
+            .lock()
+            .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
+            .replace(RuntimeProjectTopologyCacheEntry::new(
+                topology_source_generation_digest,
+                owner_scope.clone(),
+                stored,
+            ));
         returned
     }
 
@@ -578,6 +584,7 @@ impl RuntimeQueryGeneration {
         &self,
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
+        owner_scope: &BTreeSet<String>,
     ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
         let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
             "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
@@ -590,7 +597,7 @@ impl RuntimeQueryGeneration {
             return Err("reasonKind=runtime-project-topology-manifest-binding-mismatch".to_owned());
         }
 
-        let source = resident.search_topology_source_segments()?;
+        let source = resident.topology_source_segments_for_owner_scope(owner_scope)?;
         if source.is_empty() {
             return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
         }
@@ -864,31 +871,6 @@ impl RuntimeQueryGeneration {
     ) -> Option<&agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication>
     {
         self.execution_publication.as_deref()
-    }
-
-    /// Borrows the exact topology authority required by Search Playbook.
-    pub fn require_search_playbook_topology_attachment(
-        &self,
-    ) -> Result<&agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
-        match self.project_topology_attachment.get() {
-            Some(Ok(attachment)) => Ok(attachment),
-            Some(Err(error)) => Err(error.to_string()),
-            None => Err("reasonKind=runtime-project-topology-attachment-missing".to_owned()),
-        }
-    }
-
-    pub async fn await_search_playbook_topology_attachment(
-        &self,
-    ) -> Result<&agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
-        if self.project_topology_attachment.get().is_none() {
-            let mut completion = self.project_topology_completion.subscribe();
-            if !*completion.borrow_and_update() {
-                completion.changed().await.map_err(|_| {
-                    "reasonKind=runtime-project-topology-completion-closed".to_owned()
-                })?;
-            }
-        }
-        self.require_search_playbook_topology_attachment()
     }
 
     pub async fn await_lexical_attachment(&self) -> Result<(), String> {

@@ -54,9 +54,11 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
     pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
+    pub(super) graph_entry_owner_by_node_id: BTreeMap<String, String>,
     pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
     pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
-    pub(super) owned_relations: Arc<[crate::ClientDbSourceIndexOwnedRelation]>,
+    pub(super) owned_relations_by_owner:
+        BTreeMap<String, Arc<[crate::ClientDbSourceIndexOwnedRelation]>>,
     pub(super) graph_relation_records: BTreeMap<
         (String, String),
         Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,

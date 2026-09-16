@@ -20,6 +20,7 @@ use crate::query_generation_calibration::select_runtime_search_build_resources;
 use crate::query_generation_calibration::select_single_segment_bulk;
 use crate::query_generation_calibration::upsert_runtime_search_calibration_decision;
 use crate::query_generation_calibration::workload_bucket;
+use crate::runtime_query_generation::RuntimeProjectTopologyCacheEntry;
 use crate::runtime_query_generation::RuntimeQueryMaterializationState;
 use crate::runtime_query_generation::RuntimeQueryTerminalState;
 use crate::runtime_query_generation::RuntimeSearchMaterializationState;
@@ -341,10 +342,9 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
             "query-generation-test",
         ),
         execution_publication: None,
-        project_topology_attachment: std::sync::OnceLock::new(),
+        project_topology_attachment: std::sync::Mutex::new(None),
         project_topology_build_lock: tokio::sync::Mutex::new(()),
         resident_syntax_scope_evidence: std::sync::Mutex::new(None),
-        project_topology_completion: tokio::sync::watch::channel(false).0,
         lexical_attachment_completion: tokio::sync::watch::channel(false).0,
         build_resource_receipt: std::sync::OnceLock::new(),
         search_materializations: std::sync::Arc::new(std::sync::Mutex::new(
@@ -797,15 +797,24 @@ fn query_materialization_claims_once_and_preserves_a_generation_local_terminal()
 mod runtime_query_materialization_tasks;
 
 #[test]
-fn search_playbook_readiness_rejects_generation_without_topology_attachment() {
-    let generation = test_generation("blake3-256:missing-topology");
-    let error = generation
-        .require_search_playbook_topology_attachment()
-        .expect_err("flat resident evidence cannot mint a Search GQL settlement");
-    assert_eq!(
-        error,
-        "reasonKind=runtime-project-topology-attachment-missing"
+fn project_topology_cache_identity_requires_source_generation_and_owner_scope() {
+    let first = RuntimeProjectTopologyCacheEntry::new(
+        "overlay-generation-a".to_owned(),
+        std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
+        Err(std::sync::Arc::from("fixture")),
     );
+    assert!(first.matches(
+        "overlay-generation-a",
+        &std::collections::BTreeSet::from(["src/a.rs".to_owned()])
+    ));
+    assert!(!first.matches(
+        "overlay-generation-b",
+        &std::collections::BTreeSet::from(["src/a.rs".to_owned()])
+    ));
+    assert!(!first.matches(
+        "overlay-generation-a",
+        &std::collections::BTreeSet::from(["src/b.rs".to_owned()])
+    ));
 }
 
 #[tokio::test]

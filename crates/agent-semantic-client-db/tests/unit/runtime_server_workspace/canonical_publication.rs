@@ -352,6 +352,72 @@ fn large_generation(
     generation_from_owners(project_root, owners)
 }
 
+#[test]
+fn candidate_topology_owner_scope_is_scenario_measured() {
+    use asp_rust_project_harness_policy::{
+        AspRustProjectHarnessScenarioObservation, CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID,
+        asp_search_scenario_package, measure_asp_rust_scenario,
+        render_asp_rust_scenario_benchmark_toml,
+    };
+
+    let temporary = tempfile::tempdir().expect("temporary topology scope");
+    let generation = large_generation(temporary.path(), 4_096);
+    let resident =
+        crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::from_generation(
+            generation,
+        )
+        .expect("resident search projection");
+    let scope = std::collections::BTreeSet::from([
+        "src/lib.rs".to_owned(),
+        "src/generated/owner_4095.rs".to_owned(),
+    ]);
+    let entry_node_ids = [
+        agent_semantic_search::stable_graph_node_id("owner", "src/lib.rs"),
+        agent_semantic_search::stable_graph_node_id(
+            "item",
+            "rust://src/generated/owner_4095.rs#item/function/owner_4095",
+        ),
+    ];
+
+    let scenario = asp_search_scenario_package()
+        .scenarios
+        .into_iter()
+        .find(|scenario| scenario.name == CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID)
+        .expect("candidate topology owner scope Scenario");
+    let measurement = measure_asp_rust_scenario(&scenario, || {
+        let started = std::time::Instant::now();
+        let segments = resident
+            .topology_source_segments_for_owner_scope(&scope)
+            .expect("bounded topology source segments");
+        let resolved = resident
+            .owner_paths_for_graph_entry_node_ids(entry_node_ids.iter().map(String::as_str));
+        let elapsed = started.elapsed();
+        assert_eq!(segments.len(), 2);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.owner_path.as_str())
+                .collect::<Vec<_>>(),
+            ["src/generated/owner_4095.rs", "src/lib.rs"]
+        );
+        assert_eq!(resolved, scope);
+        AspRustProjectHarnessScenarioObservation::default()
+            .with_timing("candidate_topology_read", elapsed)
+            .with_metric("workspace_owner_count", 4_096)
+            .with_metric("requested_owner_count", 2)
+            .with_metric("returned_owner_count", 2)
+            .with_metric("unrequested_owner_projection_count", 0)
+            .with_metric("entry_node_lookup_count", 2)
+            .with_metric("request_workspace_scan_count", 0)
+    })
+    .expect("measure candidate topology owner scope Scenario");
+    let rendered = render_asp_rust_scenario_benchmark_toml(&scenario, &measurement)
+        .expect("render candidate topology owner scope benchmark");
+    assert!(rendered.contains("[metrics.unrequested_owner_projection_count]"));
+    assert!(rendered.contains("observed = 0"));
+    println!("{rendered}");
+}
+
 async fn publish_with_held_durability(
     publisher_directory: std::path::PathBuf,
 ) -> (

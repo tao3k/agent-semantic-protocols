@@ -114,7 +114,7 @@ pub(super) async fn synthesize_progressive_search_projection(
     let result_micros = result_started.elapsed().as_micros();
     let topology_started = std::time::Instant::now();
     let attachment = generation
-        .build_or_get_project_topology(project_root, &resident)
+        .build_or_get_project_topology(project_root, &resident, &topology_scope)
         .await
         .map_err(AspClientOperationError::Message)?;
     let topology_micros = topology_started.elapsed().as_micros();

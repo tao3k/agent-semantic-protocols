@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use asp_rust_project_harness_policy::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
+use asp_rust_project_harness_policy::CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID;
 use asp_rust_project_harness_policy::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;
 use asp_rust_project_harness_policy::PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID;
 use asp_rust_project_harness_policy::SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID;
@@ -35,6 +36,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID
     ));
     assert!(names.contains(&PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID));
+    assert!(names.contains(&CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID));
     assert!(names.contains(&SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID));
     assert!(names.contains(

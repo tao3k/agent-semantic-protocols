@@ -676,8 +676,18 @@ immutable resident generation.
 Graph, Tantivy, and Project Topology construction run as one bounded concurrent
 fan-out and join before a Search-ready observation. Project Topology consumes
 the parser-owned topology source segments already retained by that exact
-resident generation, including explicit edge ownership. It MUST NOT rescan the
-workspace, reopen a provider, or reconstruct ownership from relation endpoints.
+resident generation, including explicit edge ownership, but only for the exact
+bounded owner scope admitted by the current Search plan.  Its one-slot cache is
+keyed by both Runtime generation and the canonical owner set; a narrower,
+wider, or disjoint later request replaces the slot instead of reusing a stale
+topology. The cache identity also includes the exact resident topology-source
+generation digest, so a parser-overlay revision for the same owner set rejects
+the earlier attachment. It MUST NOT rescan the workspace, reopen a provider, include
+unselected base owners merely because their bytes are resident, or reconstruct
+ownership from relation endpoints. Owner and item =entryNodeIds= resolve through
+a generation-admitted node-to-owner reverse index. Request execution performs
+one indexed lookup per supplied entry node and MUST NOT enumerate workspace
+owners or topology segments to rediscover that ownership.
 The MRR closure kernel crosses a bounded =spawn_blocking= boundary; it does not
 occupy a Tokio worker or create an unowned detached publication task.
 

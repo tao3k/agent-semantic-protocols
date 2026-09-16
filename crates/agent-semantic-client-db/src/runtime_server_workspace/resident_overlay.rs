@@ -415,6 +415,32 @@ impl ResidentOverlayStore {
 }
 
 impl ResidentOverlaySnapshot {
+    pub(super) fn owner_paths_for_graph_entry_node_ids<'a>(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        node_ids: impl IntoIterator<Item = &'a str>,
+    ) -> BTreeSet<String> {
+        let requested = node_ids.into_iter().collect::<HashSet<_>>();
+        self.state
+            .owners
+            .values()
+            .filter(|owner| !self.state.tombstones.contains(&owner.owner_path))
+            .filter(|owner| {
+                requested.contains(
+                    agent_semantic_search::stable_graph_node_id("owner", &owner.owner_path)
+                        .as_str(),
+                ) || owner.selectors.iter().any(|selector| {
+                    requested.contains(
+                        agent_semantic_search::stable_graph_node_id("item", &selector.selector)
+                            .as_str(),
+                    )
+                })
+            })
+            .map(|owner| owner.owner_path.clone())
+            .filter(|owner| self.owner_snapshot(base, owner).is_some())
+            .collect()
+    }
+
     pub(super) fn materialize_generation(
         &self,
         _base: &WorkspaceMemoryGeneration,
@@ -458,12 +484,21 @@ impl ResidentOverlaySnapshot {
             .chain(self.state.owners.keys().cloned())
             .collect::<BTreeSet<_>>();
         owner_paths.retain(|owner| !self.state.tombstones.contains(owner));
+        self.topology_source_segments_for_owner_scope(base, &owner_paths)
+    }
+
+    pub(super) fn topology_source_segments_for_owner_scope(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        owner_paths: &BTreeSet<String>,
+    ) -> Vec<super::WorkspaceTopologySourceSegment> {
         owner_paths
-            .into_iter()
+            .iter()
+            .filter(|owner| !self.state.tombstones.contains(*owner))
             .filter_map(|owner_path| {
-                let owner = self.owner_snapshot(base, &owner_path)?;
+                let owner = self.owner_snapshot(base, owner_path)?;
                 Some(super::WorkspaceTopologySourceSegment {
-                    relations: self.owner_relations(base, &owner_path),
+                    relations: self.owner_relations(base, owner_path),
                     selectors: owner
                         .selectors
                         .iter()

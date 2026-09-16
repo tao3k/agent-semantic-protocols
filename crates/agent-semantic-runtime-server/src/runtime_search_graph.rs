@@ -58,21 +58,11 @@ pub(crate) fn resident_graph_candidate_owner_scope(
         .map(|seed| seed.as_str().expect("validated seed"))
         .collect::<std::collections::BTreeSet<_>>();
     if !entry_node_ids.is_empty() {
-        for owner_path in resident.indexed_owner_paths() {
-            if entry_node_ids.contains(stable_graph_node_id("owner", &owner_path).as_str()) {
-                owners.insert(owner_path);
-            }
-        }
-        for segment in resident
-            .topology_source_segments()
-            .map_err(RuntimeSearchGraphFailure::invalid)?
-        {
-            if segment.selectors.iter().any(|selector| {
-                entry_node_ids.contains(stable_graph_node_id("item", selector).as_str())
-            }) {
-                owners.insert(segment.owner_path);
-            }
-        }
+        owners.extend(
+            resident
+                .owner_paths_for_graph_entry_node_ids(entry_node_ids.iter().copied())
+                .map_err(RuntimeSearchGraphFailure::invalid)?,
+        );
     }
     Ok(owners.into_iter().take(max_nodes).collect())
 }

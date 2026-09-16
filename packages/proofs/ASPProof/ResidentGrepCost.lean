@@ -866,6 +866,56 @@ theorem full_scan_settlement_pays_workspace_node_scan
   unfold fullScanSettlementLookupWork
   omega
 
+/-- A one-slot topology cache is reusable only for the same immutable
+generation and the same canonical owner scope. -/
+structure TopologyCacheIdentity where
+  generation : Nat
+  topologySourceGeneration : Nat
+  ownerScope : List Nat
+  deriving DecidableEq, Repr
+
+def topologyCacheReusable
+    (stored requested : TopologyCacheIdentity) : Prop :=
+  stored = requested
+
+theorem changed_topology_owner_scope_rejects_cache
+    (stored requested : TopologyCacheIdentity)
+    (changed : stored.ownerScope ≠ requested.ownerScope) :
+    ¬ topologyCacheReusable stored requested := by
+  intro same
+  exact changed (congrArg TopologyCacheIdentity.ownerScope same)
+
+theorem changed_topology_source_generation_rejects_cache
+    (stored requested : TopologyCacheIdentity)
+    (changed : stored.topologySourceGeneration ≠ requested.topologySourceGeneration) :
+    ¬ topologyCacheReusable stored requested := by
+  intro same
+  exact changed (congrArg TopologyCacheIdentity.topologySourceGeneration same)
+
+theorem exact_topology_identity_reuses_cache (identity : TopologyCacheIdentity) :
+    topologyCacheReusable identity identity := rfl
+
+/-- Graph entry-node grounding is a generation-admission index lookup.  The
+workspace cardinality is retained in the model so a request-time full scan
+cannot be hidden inside the same cost term. -/
+structure GraphEntryGroundingWork where
+  workspaceOwners : Nat
+  requestedEntryNodes : Nat
+  indexedLookups : Nat
+  requestWorkspaceScans : Nat
+  deriving DecidableEq, Repr
+
+def indexedGraphEntryGrounding (workspaceOwners requestedEntryNodes : Nat) :
+    GraphEntryGroundingWork :=
+  ⟨workspaceOwners, requestedEntryNodes, requestedEntryNodes, 0⟩
+
+theorem graph_entry_grounding_has_zero_request_workspace_scans
+    (workspaceOwners requestedEntryNodes : Nat) :
+    let work := indexedGraphEntryGrounding workspaceOwners requestedEntryNodes
+    work.requestWorkspaceScans = 0 ∧
+      work.indexedLookups = requestedEntryNodes := by
+  exact ⟨rfl, rfl⟩
+
 /-- Completed response history has one Search and one Query slot. In-flight
 claims are task-lifetime state and are not completed-history retention. -/
 structure GenerationTerminalRetention where

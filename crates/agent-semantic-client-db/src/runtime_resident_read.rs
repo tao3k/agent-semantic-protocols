@@ -62,6 +62,35 @@ impl RuntimeResidentReadClient {
         }
     }
 
+    /// Returns parser topology only for the canonical bounded owner frontier.
+    /// Callers must not materialize the complete workspace and filter it
+    /// afterward on a request path.
+    pub fn topology_source_segments_for_owner_scope(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self
+                .search_projection
+                .topology_source_segments_for_owner_scope(owner_paths),
+            (None, Some(lease)) => Ok(lease.topology_source_segments_for_owner_scope(owner_paths)),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    pub fn owner_paths_for_graph_entry_node_ids<'a>(
+        &self,
+        node_ids: impl IntoIterator<Item = &'a str>,
+    ) -> Result<std::collections::BTreeSet<String>, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => Ok(self
+                .search_projection
+                .owner_paths_for_graph_entry_node_ids(node_ids)),
+            (None, Some(lease)) => Ok(lease.owner_paths_for_graph_entry_node_ids(node_ids)),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
     /// Returns only the immutable Search-core topology projection.
     ///
     /// Parser materialization may enrich the process-resident exact-query
@@ -462,11 +491,7 @@ impl RuntimeResidentReadClient {
         &self,
         owner_paths: &std::collections::BTreeSet<String>,
     ) -> Result<agent_semantic_search::ResidentGraphGeneration, String> {
-        let segments = self
-            .topology_source_segments()?
-            .into_iter()
-            .filter(|segment| owner_paths.contains(&segment.owner_path))
-            .collect::<Vec<_>>();
+        let segments = self.topology_source_segments_for_owner_scope(owner_paths)?;
         let mut admitted = std::collections::BTreeSet::new();
         for segment in &segments {
             admitted.insert((
@@ -565,6 +590,17 @@ impl RuntimeResidentReadClient {
 
     pub fn generation_digest(&self) -> String {
         self.search_projection.authority().generation_digest.clone()
+    }
+
+    /// Identity of the exact topology source visible to this read handle.
+    /// Resident semantic overlays advance this digest without pretending to
+    /// publish a new immutable Search generation.
+    pub fn topology_source_generation_digest(&self) -> Result<String, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => Ok(self.generation_digest()),
+            (None, Some(lease)) => Ok(lease.runtime_generation_digest()),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
     }
 
     /// Digest of the source snapshot admitted into this generation.

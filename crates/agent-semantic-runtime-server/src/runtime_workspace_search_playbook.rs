@@ -531,10 +531,8 @@ pub(super) fn relation_neighbor_scope(
         .into_iter()
         .collect::<BTreeSet<_>>();
     for segment in resident
-        .topology_source_segments()
+        .topology_source_segments_for_owner_scope(seed)
         .map_err(AspClientOperationError::Message)?
-        .into_iter()
-        .filter(|segment| seed.contains(&segment.owner_path))
     {
         for relation in segment.relations {
             for endpoint in [&relation.relation.from, &relation.relation.to] {

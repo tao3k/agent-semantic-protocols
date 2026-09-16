@@ -10,31 +10,37 @@ use std::sync::Arc;
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 
 impl WorkspaceSearchGenerationDataPlaneClient {
+    pub fn owner_paths_for_graph_entry_node_ids<'a>(
+        &self,
+        node_ids: impl IntoIterator<Item = &'a str>,
+    ) -> BTreeSet<String> {
+        node_ids
+            .into_iter()
+            .filter_map(|node_id| self.graph_entry_owner_by_node_id.get(node_id).cloned())
+            .collect()
+    }
+
     /// Returns the immutable parser-owned topology inputs retained by this
     /// exact resident or mmap generation.
     pub fn topology_source_segments(
         &self,
     ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
-        let mut relations_by_owner = self
+        let owner_paths = self
             .owner_directory_records
             .keys()
-            .map(|owner_path| (owner_path.clone(), Vec::new()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        for relation in self.owned_relations.iter() {
-            relation.relation.validate()?;
-            relations_by_owner
-                .get_mut(relation.owner_path.as_str())
-                .ok_or_else(|| {
-                    format!(
-                        "topology relation owner is absent from generation: {}",
-                        relation.owner_path.as_str()
-                    )
-                })?
-                .push(relation.clone());
-        }
-        self.owner_directory_records
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        self.topology_source_segments_for_owner_scope(&owner_paths)
+    }
+
+    pub fn topology_source_segments_for_owner_scope(
+        &self,
+        owner_paths: &BTreeSet<String>,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        owner_paths
             .iter()
-            .map(|(owner_path, owner)| {
+            .filter_map(|owner_path| {
+                let owner = self.owner_directory_records.get(owner_path)?;
                 let mut selectors = owner
                     .selectors
                     .iter()
@@ -42,11 +48,11 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                     .collect::<Vec<_>>();
                 selectors.sort();
                 selectors.dedup();
-                let mut relations = relations_by_owner
-                    .remove(owner_path)
-                    .expect("owner relation bucket was initialized");
-                relations.sort();
-                Ok(
+                let relations = self
+                    .owned_relations_by_owner
+                    .get(owner_path)
+                    .map_or_else(Vec::new, |relations| relations.to_vec());
+                Some(Ok(
                     crate::runtime_server_workspace::WorkspaceTopologySourceSegment {
                         owner_path: owner_path.clone(),
                         content_digest: owner.content_digest.clone(),
@@ -54,7 +60,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                         selectors,
                         relations,
                     },
-                )
+                ))
             })
             .collect()
     }
