@@ -15,6 +15,7 @@ required_categories = [
   "unicode",
   "boundary",
   "glob",
+  "filter",
   "crlf",
   "multiline",
   "limit",
@@ -28,5 +29,6 @@ normal_suite_requires_external_process = false
 policy = "SEARCH-RUNTIME-RESIDENT-GREP-SEMANTICS-001"
 candidate_acceleration_must_be_sound = true
 apply_result_limit_after_exact_verification = true
+ordered_glob_override_semantics = true
 max_normal_process_count = 0
 max_normal_filesystem_operation_count = 0

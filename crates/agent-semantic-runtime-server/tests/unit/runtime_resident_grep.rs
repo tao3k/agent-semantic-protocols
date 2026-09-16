@@ -315,6 +315,7 @@ fn resident_grep_semantics_scenario_covers_v1_matrix_without_external_processes(
             "boundary",
             "crlf",
             "fixed",
+            "filter",
             "glob",
             "limit",
             "multiline",

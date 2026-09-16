@@ -429,8 +429,11 @@ gate. The normal Runtime suite executes every catalog case without a process or
 filesystem operation. The external rg binary is test-reference authority only;
 it is never a production dependency and runs only in the explicit ignored
 qualification command. Unicode, word and line boundaries, positive glob and
-iglob filtering, CRLF, multiline dotall, fixed strings, zero-width EOF, and
-post-verification limit order are mandatory catalog categories.
+iglob filtering, ordered exclusion and re-inclusion overrides, CRLF, multiline
+dotall, fixed strings, zero-width EOF, and post-verification limit order are
+mandatory catalog categories. An ordered glob sequence starts excluded when it
+contains a positive rule and included when it contains only exclusion rules;
+each later matching rule replaces the earlier decision.
 
 A shared enhanced Tree-sitter Query string and an exact native selector are two
 query forms for this structural stage: the first describes captured structural

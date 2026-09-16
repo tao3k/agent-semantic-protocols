@@ -222,14 +222,21 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
 struct ResidentGrepMatcher {
     expression: grep_regex::RegexMatcher,
     candidate_plan: agent_semantic_search::ResidentGrepCandidatePlan,
-    path_globs: Option<globset::GlobSet>,
+    path_globs: Vec<ResidentGrepPathGlobRule>,
+    path_glob_default: bool,
+}
+
+struct ResidentGrepPathGlobRule {
+    include: bool,
+    matcher: globset::GlobMatcher,
 }
 
 impl ResidentGrepMatcher {
     fn path_matches(&self, owner_path: &str) -> bool {
         self.path_globs
-            .as_ref()
-            .is_none_or(|globs| globs.is_match(owner_path))
+            .iter()
+            .filter(|rule| rule.matcher.is_match(owner_path))
+            .fold(self.path_glob_default, |_, rule| rule.include)
     }
 }
 
@@ -300,7 +307,7 @@ fn compile_resident_matcher(
                 "resident GREP pattern compilation failed: blockIndex={block_index} error={error}"
             )
         })?;
-    let globs = analysis
+    let path_globs = analysis
         .options
         .iter()
         .filter(|option| matches!(option.option.as_str(), "-g" | "--glob" | "--iglob"))
@@ -310,36 +317,33 @@ fn compile_resident_matcher(
                 .as_deref()
                 .ok_or_else(|| "resident GREP glob is missing its value".to_owned())
                 .and_then(|value| {
-                    if value.starts_with('!') {
-                        return Err(
-                            "reasonKind=resident-rg-option-not-materialized resident GREP exclusion globs are not materialized in V1".to_owned()
-                        );
+                    let (include, pattern) = value
+                        .strip_prefix('!')
+                        .map_or((true, value), |pattern| (false, pattern));
+                    if pattern.is_empty() {
+                        return Err("resident GREP exclusion glob has no pattern".to_owned());
                     }
-                    let mut builder = globset::GlobBuilder::new(value);
+                    let mut builder = globset::GlobBuilder::new(pattern);
                     builder.case_insensitive(option.option == "--iglob");
                     builder
                         .build()
+                        .map(|glob| ResidentGrepPathGlobRule {
+                            include,
+                            matcher: glob.compile_matcher(),
+                        })
                         .map_err(|error| format!("resident GREP glob is invalid: {error}"))
                 })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let path_globs = if globs.is_empty() {
-        None
-    } else {
-        let mut builder = globset::GlobSetBuilder::new();
-        for glob in globs {
-            builder.add(glob);
-        }
-        Some(
-            builder
-                .build()
-                .map_err(|error| format!("build resident GREP glob set: {error}"))?,
-        )
-    };
+    // rg begins outside the set when any positive glob exists; an
+    // exclusion-only sequence starts from the normal searchable universe.
+    // Every later matching rule overrides the earlier decision.
+    let path_glob_default = !path_globs.iter().any(|rule| rule.include);
     Ok(ResidentGrepMatcher {
         expression,
         candidate_plan,
         path_globs,
+        path_glob_default,
     })
 }
 
@@ -347,15 +351,6 @@ fn validate_resident_options(
     analysis: &agent_semantic_shell_parser::NativeRgArgvAnalysis,
     block_index: usize,
 ) -> Result<(), String> {
-    if analysis.options.iter().any(|option| {
-        matches!(option.option.as_str(), "-g" | "--glob" | "--iglob")
-            && option
-                .value
-                .as_deref()
-                .is_some_and(|value| value.starts_with('!'))
-    }) {
-        return Err("reasonKind=resident-rg-option-not-materialized exclusion globs require qualified ordered override semantics".to_owned());
-    }
     const SUPPORTED: &[&str] = &[
         "-e",
         "--regexp",

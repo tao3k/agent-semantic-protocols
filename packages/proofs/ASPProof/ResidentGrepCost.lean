@@ -219,6 +219,21 @@ theorem external_rg_is_confined_to_reference_qualification :
     grepQualificationProcessCount .residentNormal = 0 := by
   decide
 
+def applyOrderedGlobRule (current isMatch isInclude : Bool) : Bool :=
+  if isMatch then isInclude else current
+
+theorem later_matching_positive_glob_reincludes :
+    applyOrderedGlobRule (applyOrderedGlobRule true true false) true true = true := by
+  rfl
+
+theorem later_matching_exclusion_glob_wins :
+    applyOrderedGlobRule (applyOrderedGlobRule false true true) true false = false := by
+  rfl
+
+theorem nonmatching_glob_preserves_prior_decision (current isInclude : Bool) :
+    applyOrderedGlobRule current false isInclude = current := by
+  rfl
+
 def packedGramBytes : Nat := 4
 def directoryEntryBytes : Nat := 32
 

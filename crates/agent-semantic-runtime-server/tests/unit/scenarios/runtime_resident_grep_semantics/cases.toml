@@ -75,6 +75,36 @@ expected = [{ owner_path = "caps.RS", owner_line = 1 }]
 truncated = false
 
 [[cases]]
+id = "exclusion-only-filter"
+category = "filter"
+argv = ["--no-config", "--json", "-n", "-g", "!*.md", "-e", "alpha", "."]
+limit = 16
+expected = [
+  { owner_path = "alpha.rs", owner_line = 1 },
+  { owner_path = "alpha.rs", owner_line = 2 },
+]
+truncated = false
+
+[[cases]]
+id = "later-positive-glob-reincludes"
+category = "filter"
+argv = ["--no-config", "--json", "-n", "-g", "*.rs", "-g", "!alpha.rs", "-g", "alpha.rs", "-e", "alpha", "."]
+limit = 16
+expected = [
+  { owner_path = "alpha.rs", owner_line = 1 },
+  { owner_path = "alpha.rs", owner_line = 2 },
+]
+truncated = false
+
+[[cases]]
+id = "later-exclusion-glob-wins"
+category = "filter"
+argv = ["--no-config", "--json", "-n", "-g", "*.md", "-g", "!notes.md", "-e", "alpha", "."]
+limit = 16
+expected = []
+truncated = false
+
+[[cases]]
 id = "crlf-line-end"
 category = "crlf"
 argv = ["--no-config", "--json", "-n", "-e", "Runtime\\r?$", "."]

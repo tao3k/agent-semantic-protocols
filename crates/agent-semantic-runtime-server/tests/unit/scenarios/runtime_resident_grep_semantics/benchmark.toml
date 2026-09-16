@@ -6,7 +6,7 @@
 id = "runtime-resident-grep-semantics"
 scenario = "runtime-resident-grep-semantics"
 performance_owner = "resident_grep_4096_owner_reads_have_submillisecond_kernel_and_wall_p99"
-semantic_case_count = 10
+semantic_case_count = 13
 normal_process_count = 0
 normal_filesystem_operation_count = 0
 
