@@ -423,6 +423,15 @@ its work-byte authority; exact verification then applies the requested result
 limit. A trigram false positive ordered before a real match therefore cannot
 hide that match.
 
+The V1 semantic qualification catalog is a versioned Scenario input shared by
+the resident zero-process gate and an explicitly selected rg differential
+gate. The normal Runtime suite executes every catalog case without a process or
+filesystem operation. The external rg binary is test-reference authority only;
+it is never a production dependency and runs only in the explicit ignored
+qualification command. Unicode, word and line boundaries, positive glob and
+iglob filtering, CRLF, multiline dotall, fixed strings, zero-width EOF, and
+post-verification limit order are mandatory catalog categories.
+
 A shared enhanced Tree-sitter Query string and an exact native selector are two
 query forms for this structural stage: the first describes captured structural
 patterns plus typed resident-fact predicates, while the second is an

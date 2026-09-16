@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "runtime-resident-grep-semantics"
+title = "Resident GREP preserves admitted rg semantics"
+package = "agent-semantic-runtime-server"
+phase = "resident"
+intent = "qualify exact regex semantics independently from candidate acceleration"
+case_catalog = "cases.toml"
+
+[coverage]
+required_categories = [
+  "unicode",
+  "boundary",
+  "glob",
+  "crlf",
+  "multiline",
+  "limit",
+  "zero-width",
+  "fixed",
+]
+require_external_rg_differential = true
+normal_suite_requires_external_process = false
+
+[gate]
+policy = "SEARCH-RUNTIME-RESIDENT-GREP-SEMANTICS-001"
+candidate_acceleration_must_be_sound = true
+apply_result_limit_after_exact_verification = true
+max_normal_process_count = 0
+max_normal_filesystem_operation_count = 0

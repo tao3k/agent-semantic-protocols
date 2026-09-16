@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+schema_version = "asp.runtime-resident-grep-semantics-scenario.v1"
+
+[[owners]]
+path = "alpha.rs"
+content = "alpha\nalpha beta\nbar appears before foo\nstart\nmiddle\nend\nRuntime\r\n"
+
+[[owners]]
+path = "caps.RS"
+content = "CaseFold\n"
+
+[[owners]]
+path = "empty.rs"
+content = ""
+
+[[owners]]
+path = "notes.md"
+content = "alpha\nfoo appears before bar\n"
+
+[[owners]]
+path = "unicode.rs"
+content = "ÜBER\nüber\nxüberx\nβeta\nβeta_suffix\n"
+
+[[cases]]
+id = "unicode-case-fold"
+category = "unicode"
+argv = ["--no-config", "--json", "-n", "-i", "-e", "über", "."]
+limit = 16
+expected = [
+  { owner_path = "unicode.rs", owner_line = 1 },
+  { owner_path = "unicode.rs", owner_line = 2 },
+  { owner_path = "unicode.rs", owner_line = 3 },
+]
+truncated = false
+
+[[cases]]
+id = "unicode-word-boundary"
+category = "boundary"
+argv = ["--no-config", "--json", "-n", "-w", "-e", "βeta", "."]
+limit = 16
+expected = [{ owner_path = "unicode.rs", owner_line = 4 }]
+truncated = false
+
+[[cases]]
+id = "whole-line-boundary"
+category = "boundary"
+argv = ["--no-config", "--json", "-n", "-x", "-e", "alpha", "."]
+limit = 16
+expected = [
+  { owner_path = "alpha.rs", owner_line = 1 },
+  { owner_path = "notes.md", owner_line = 1 },
+]
+truncated = false
+
+[[cases]]
+id = "case-sensitive-glob"
+category = "glob"
+argv = ["--no-config", "--json", "-n", "-g", "*.rs", "-e", "alpha", "."]
+limit = 16
+expected = [
+  { owner_path = "alpha.rs", owner_line = 1 },
+  { owner_path = "alpha.rs", owner_line = 2 },
+]
+truncated = false
+
+[[cases]]
+id = "case-insensitive-glob"
+category = "glob"
+argv = ["--no-config", "--json", "-n", "--iglob", "*.rs", "-e", "CaseFold", "."]
+limit = 16
+expected = [{ owner_path = "caps.RS", owner_line = 1 }]
+truncated = false
+
+[[cases]]
+id = "crlf-line-end"
+category = "crlf"
+argv = ["--no-config", "--json", "-n", "-e", "Runtime\\r?$", "."]
+limit = 16
+expected = [{ owner_path = "alpha.rs", owner_line = 7 }]
+truncated = false
+
+[[cases]]
+id = "multiline-dotall-start-line"
+category = "multiline"
+argv = ["--no-config", "--json", "-n", "-U", "--multiline-dotall", "-e", "start.*end", "."]
+limit = 16
+expected = [{ owner_path = "alpha.rs", owner_line = 4 }]
+truncated = false
+
+[[cases]]
+id = "limit-after-false-positive"
+category = "limit"
+argv = ["--no-config", "--json", "-n", "-e", "foo.*bar", "."]
+limit = 1
+expected = [{ owner_path = "notes.md", owner_line = 2 }]
+truncated = false
+
+[[cases]]
+id = "zero-width-eof-is-not-a-line"
+category = "zero-width"
+argv = ["--no-config", "--json", "-n", "-e", "^$", "."]
+limit = 16
+expected = []
+truncated = false
+
+[[cases]]
+id = "fixed-unicode-literal"
+category = "fixed"
+argv = ["--no-config", "--json", "-n", "-F", "-e", "βeta_suffix", "."]
+limit = 16
+expected = [{ owner_path = "unicode.rs", owner_line = 5 }]
+truncated = false

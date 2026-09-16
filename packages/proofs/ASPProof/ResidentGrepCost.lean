@@ -201,6 +201,24 @@ theorem candidate_limit_before_exact_verification_loses_hit :
     ([false, true].filter id).take 1 = [true] := by
   decide
 
+inductive GrepQualificationLane where
+  | residentNormal
+  | externalReference
+  deriving DecidableEq, Repr
+
+def grepQualificationProcessCount : GrepQualificationLane → Nat
+  | .residentNormal => 0
+  | .externalReference => 1
+
+theorem resident_semantic_matrix_has_zero_external_processes :
+    grepQualificationProcessCount .residentNormal = 0 := by
+  rfl
+
+theorem external_rg_is_confined_to_reference_qualification :
+    grepQualificationProcessCount .externalReference = 1 ∧
+    grepQualificationProcessCount .residentNormal = 0 := by
+  decide
+
 def packedGramBytes : Nat := 4
 def directoryEntryBytes : Nat := 32
 

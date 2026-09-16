@@ -45,6 +45,9 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
     ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID
+    ));
     assert!(names.contains(&"tree-sitter-querycursor-native-hot-path"));
 
     let parser_reuse = package
@@ -83,6 +86,24 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
             .metrics
             .iter()
             .any(|metric| metric.name == "queue_wait_micros")
+    );
+
+    let resident_grep = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID
+        })
+        .expect("resident GREP semantics Scenario is registered");
+    assert_eq!(resident_grep.commands.len(), 2);
+    assert_eq!(
+        resident_grep.commands[0].label,
+        "resident-zero-process-matrix"
+    );
+    assert_eq!(
+        resident_grep.commands[1].label,
+        "explicit-rg-differential-qualification"
     );
 
     let lexical = package

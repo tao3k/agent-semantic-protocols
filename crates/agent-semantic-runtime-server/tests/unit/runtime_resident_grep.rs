@@ -45,6 +45,67 @@ fn digest(bytes: &[u8]) -> String {
     format!("blake3-256:{}", blake3::hash(bytes).to_hex())
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct ResidentGrepSemanticsScenario {
+    schema_version: String,
+    owners: Vec<ResidentGrepSemanticsOwner>,
+    cases: Vec<ResidentGrepSemanticsCase>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ResidentGrepSemanticsOwner {
+    path: String,
+    content: String,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize)]
+struct ResidentGrepSemanticsExpectedMatch {
+    owner_path: String,
+    owner_line: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ResidentGrepSemanticsCase {
+    id: String,
+    category: String,
+    argv: Vec<String>,
+    limit: u32,
+    expected: Vec<ResidentGrepSemanticsExpectedMatch>,
+    truncated: bool,
+}
+
+fn resident_grep_semantics_scenario() -> ResidentGrepSemanticsScenario {
+    toml::from_str(include_str!(
+        "scenarios/runtime_resident_grep_semantics/cases.toml"
+    ))
+    .expect("resident GREP semantics Scenario")
+}
+
+fn scenario_corpus(
+    scenario: &ResidentGrepSemanticsScenario,
+) -> agent_semantic_search::ResidentGrepCorpusArtifact {
+    let digests = scenario
+        .owners
+        .iter()
+        .map(|owner| digest(owner.content.as_bytes()))
+        .collect::<Vec<_>>();
+    agent_semantic_search::build_resident_grep_corpus(
+        &digest(b"resident-grep-semantics-v1"),
+        scenario
+            .owners
+            .iter()
+            .zip(&digests)
+            .map(
+                |(owner, content_digest)| agent_semantic_search::ResidentGrepCorpusOwner {
+                    owner_path: &owner.path,
+                    content_digest,
+                    bytes: owner.content.as_bytes(),
+                },
+            ),
+    )
+    .expect("resident GREP Scenario corpus")
+}
+
 fn two_owner_corpus() -> agent_semantic_search::ResidentGrepCorpusArtifact {
     let first = b"pub struct RuntimeServingEndpoint;\n";
     let second = b"pub enum ClientFrame {}\n";
@@ -220,69 +281,94 @@ fn result_limit_is_applied_after_complete_candidate_verification() {
     assert!(!result.truncated);
 }
 
+#[test]
+fn resident_grep_semantics_scenario_covers_v1_matrix_without_external_processes() {
+    let scenario = resident_grep_semantics_scenario();
+    let metadata = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_resident_grep_semantics/scenario.toml"
+    ))
+    .expect("resident GREP Scenario metadata");
+    let benchmark = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_resident_grep_semantics/benchmark.toml"
+    ))
+    .expect("resident GREP Scenario benchmark metadata");
+    assert_eq!(
+        scenario.schema_version,
+        "asp.runtime-resident-grep-semantics-scenario.v1"
+    );
+    assert_eq!(
+        metadata["scenario"]["id"].as_str(),
+        Some("runtime-resident-grep-semantics")
+    );
+    assert_eq!(
+        benchmark["benchmark"]["semantic_case_count"].as_integer(),
+        Some(scenario.cases.len() as i64)
+    );
+    let categories = scenario
+        .cases
+        .iter()
+        .map(|case| case.category.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        categories,
+        std::collections::BTreeSet::from([
+            "boundary",
+            "crlf",
+            "fixed",
+            "glob",
+            "limit",
+            "multiline",
+            "unicode",
+            "zero-width",
+        ])
+    );
+    let corpus = scenario_corpus(&scenario);
+    for case in &scenario.cases {
+        let result = execute_runtime_resident_grep_blocks(
+            &corpus,
+            std::slice::from_ref(&case.argv),
+            case.limit,
+        )
+        .unwrap_or_else(|error| panic!("Scenario case {} failed: {error}", case.id));
+        let mut actual = result.branch_matches[0]
+            .iter()
+            .map(|hit| ResidentGrepSemanticsExpectedMatch {
+                owner_path: hit.owner_path.clone(),
+                owner_line: hit.owner_line,
+            })
+            .collect::<Vec<_>>();
+        let mut expected = case.expected.clone();
+        actual.sort();
+        expected.sort();
+        assert_eq!(actual, expected, "Scenario mismatch for {}", case.id);
+        assert_eq!(result.truncated, case.truncated, "case={}", case.id);
+        assert!(result.block_receipts.iter().all(|receipt| {
+            receipt.process_count == 0 && receipt.filesystem_operation_count == 0
+        }));
+    }
+}
+
 /// Reference processes exist only in this explicitly selected qualification test.
 #[test]
 #[ignore = "requires an installed rg reference binary"]
 fn admitted_grep_matches_rg_reference_corpus() {
+    let scenario = resident_grep_semantics_scenario();
     let directory = tempfile::tempdir().unwrap();
-    let files = [
-        ("a.rs", "abc abc\nRuntime\nruntime\n@abc@\nabc\ndef\n\n"),
-        ("b.rs", "ÜBER\nüber\nabc def\nxabcx\n abc \n"),
-        ("c.rs", "abc\r\nRuntime"),
-        ("empty.rs", ""),
-    ];
-    let digests = files
-        .iter()
-        .map(|(_, bytes)| digest(bytes.as_bytes()))
-        .collect::<Vec<_>>();
-    for (path, bytes) in &files {
-        std::fs::write(directory.path().join(path), bytes).unwrap();
+    for owner in &scenario.owners {
+        std::fs::write(directory.path().join(&owner.path), &owner.content).unwrap();
     }
-    let corpus = agent_semantic_search::build_resident_grep_corpus(
-        &digest(b"reference-generation"),
-        files.iter().zip(&digests).map(|((path, bytes), digest)| {
-            agent_semantic_search::ResidentGrepCorpusOwner {
-                owner_path: path,
-                content_digest: digest,
-                bytes: bytes.as_bytes(),
-            }
-        }),
-    )
+    let corpus = scenario_corpus(&scenario);
+    let index = agent_semantic_search::ResidentByteCoverageIndex::new(scenario.owners.iter().map(
+        |owner| agent_semantic_search::ResidentByteCoverageInput {
+            owner_path: owner.path.clone(),
+            authority: None,
+            bytes: owner.content.as_bytes(),
+        },
+    ))
     .unwrap();
-    let index =
-        agent_semantic_search::ResidentByteCoverageIndex::new(files.iter().map(|(path, bytes)| {
-            agent_semantic_search::ResidentByteCoverageInput {
-                owner_path: (*path).into(),
-                authority: None,
-                bytes: bytes.as_bytes(),
-            }
-        }))
-        .unwrap();
-    for (flags, pattern) in [
-        (vec![], "abc"),
-        (vec!["-i", "-s"], "Runtime"),
-        (vec!["-s", "-i"], "Runtime"),
-        (vec!["-i", "-S"], "Runtime"),
-        (vec!["-i"], "über"),
-        (vec!["-w"], "@abc@"),
-        (vec!["-w"], "abc"),
-        (vec!["-w", "-x"], "@abc@"),
-        (vec![], r"abc\s+def"),
-        (vec!["-U", "--multiline-dotall"], "abc.*def"),
-        (vec![], "^$"),
-        (vec![], ""),
-        (vec!["-F"], "@abc@"),
-        (vec![], "missing"),
-    ] {
-        let mut argv = vec![
-            "--no-config".to_owned(),
-            "--json".to_owned(),
-            "-n".to_owned(),
-        ];
-        argv.extend(flags.into_iter().map(str::to_owned));
-        argv.extend(["-e", pattern, "."].map(str::to_owned));
+    for case in &scenario.cases {
         let reference = std::process::Command::new("rg")
-            .args(&argv)
+            .args(&case.argv)
             .current_dir(directory.path())
             .output()
             .expect("run rg reference");
@@ -309,17 +395,21 @@ fn admitted_grep_matches_rg_reference_corpus() {
             .collect::<Vec<_>>();
         let result = execute_runtime_resident_grep_blocks_impl(
             &corpus,
-            &[argv.clone()],
-            100,
+            std::slice::from_ref(&case.argv),
+            case.limit,
             |plan, limit| {
                 if plan.is_match_all() {
                     Ok((
-                        files.iter().map(|(path, _)| (*path).to_owned()).collect(),
+                        scenario
+                            .owners
+                            .iter()
+                            .map(|owner| owner.path.clone())
+                            .collect(),
                         agent_semantic_search::ResidentByteCoverageQueryReceipt {
                             requested_gram_count: 0,
                             decoded_posting_count: 0,
                             smallest_posting_count: 0,
-                            candidate_count: files.len(),
+                            candidate_count: scenario.owners.len(),
                             lookup_nanos: 0,
                         },
                     ))
@@ -335,8 +425,8 @@ fn admitted_grep_matches_rg_reference_corpus() {
             .collect::<Vec<_>>();
         expected.sort();
         actual.sort();
-        assert_eq!(actual, expected, "reference mismatch for {argv:?}");
-        assert!(!result.truncated);
+        assert_eq!(actual, expected, "reference mismatch for {}", case.id);
+        assert_eq!(result.truncated, case.truncated, "case={}", case.id);
     }
 }
 

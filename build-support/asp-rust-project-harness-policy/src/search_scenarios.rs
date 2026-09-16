@@ -67,6 +67,9 @@ pub const SEARCH_DEGRADED_ROUTE_BOUNDED_SCENARIO_ID: &str = "search-degraded-rou
 pub const RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID: &str =
     "runtime-search-tokio-resource-lifecycle";
 
+/// Resident GREP semantic matrix and explicit external-rg qualification lane.
+pub const RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID: &str = "runtime-resident-grep-semantics";
+
 /// Builds the ASP-owned search scenario package consumed by Rust harness policy.
 #[must_use]
 pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
@@ -503,6 +506,42 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                         { name: "runtime_owned_blocking_stage_count", unit: "count", kind: Exact, target: 1 }
                     ]
                 }
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Resident GREP qualifies Unicode, boundary, glob, CRLF, multiline, fixed-string, zero-width, and post-verification limit semantics from one versioned case catalog.",
+                fixture_root: "crates/agent-semantic-runtime-server/tests/unit/scenarios/runtime_resident_grep_semantics",
+                tags: ["search", "runtime", "resident-grep", "rg-differential", "semantics"],
+                commands: [
+                    {
+                        label: "resident-zero-process-matrix",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-runtime-server",
+                            "runtime_resident_grep::tests::resident_grep_semantics_scenario_covers_v1_matrix_without_external_processes",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "explicit-rg-differential-qualification",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-runtime-server",
+                            "runtime_resident_grep::tests::admitted_grep_matches_rg_reference_corpus",
+                            "--",
+                            "--ignored",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
             ),
             crate::asp_rust_project_harness_scenario!(
                 name: "tree-sitter-querycursor-native-hot-path",
