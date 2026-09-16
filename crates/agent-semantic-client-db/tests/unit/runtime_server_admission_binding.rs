@@ -76,12 +76,36 @@ fn reuse_requires_every_scope_candidate_and_generation_identity() {
         "workspace-v1",
     ));
     assert!(!binding.admits_identity(
+        "workspace-v1",
+        std::path::Path::new("/tmp/relocated-workspace-v1"),
+        &candidate,
+        &digest("blake3-256:", 'b'),
+        &digest("blake3-256:", 'c'),
+        "workspace-v1",
+    ));
+    assert!(!binding.admits_identity(
+        "workspace-v1",
+        root,
+        &candidate,
+        &digest("blake3-256:", 'b'),
+        &digest("blake3-256:", 'f'),
+        "workspace-v1",
+    ));
+    assert!(!binding.admits_identity(
         "workspace-other",
         root,
         &candidate,
         &digest("blake3-256:", 'b'),
         &digest("blake3-256:", 'c'),
         "workspace-v1",
+    ));
+    assert!(!binding.admits_identity(
+        "workspace-v1",
+        root,
+        &candidate,
+        &digest("blake3-256:", 'b'),
+        &digest("blake3-256:", 'c'),
+        "workspace-other",
     ));
 }
 

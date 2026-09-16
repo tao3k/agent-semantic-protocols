@@ -61,11 +61,11 @@ fn candidate_build(
     workspace_identity: &str,
     project_root: &std::path::Path,
     candidate: WorkspaceGenerationCandidateIdentity,
+    bytes: &[u8],
 ) -> WorkspaceGenerationCandidateBuild {
-    let bytes = b"pub fn process_cold_restore() -> u8 { 1 }\n";
     let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
         "src/lib.rs",
-        bytes.as_slice(),
+        bytes,
     )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
@@ -147,9 +147,20 @@ fn candidate_build(
     )
 }
 
+fn runtime_bundle_probe_with(
+    digest_byte: char,
+) -> Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static> {
+    Arc::new(move || {
+        Ok(Some(format!(
+            "blake3-256:{}",
+            digest_byte.to_string().repeat(64)
+        )))
+    })
+}
+
 fn runtime_bundle_probe() -> Arc<dyn Fn() -> Result<Option<String>, String> + Send + Sync + 'static>
 {
-    Arc::new(|| Ok(Some(format!("blake3-256:{}", "1".repeat(64)))))
+    runtime_bundle_probe_with('1')
 }
 
 fn counting_builder(build_count: Arc<AtomicUsize>) -> WorkspaceGenerationCandidateBuilder {
@@ -164,10 +175,14 @@ fn counting_builder(build_count: Arc<AtomicUsize>) -> WorkspaceGenerationCandida
             Box::pin(async move {
                 assert!(provider_target.is_none());
                 build_count.fetch_add(1, Ordering::SeqCst);
+                let bytes = tokio::fs::read(project_root.join("src/lib.rs"))
+                    .await
+                    .expect("read current process-cold source owner");
                 Ok(candidate_build(
                     &workspace_identity,
                     &project_root,
                     candidate,
+                    &bytes,
                 ))
             })
         },
@@ -255,7 +270,7 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn unchanged_process_cold_generation_restores_without_invoking_source_builder() {
+async fn process_cold_recovery_reuses_only_an_exact_fresh_binding() {
     let runtime_dir = tempfile::tempdir().expect("process-cold runtime directory");
     let fixture_parent = std::env::current_dir()
         .expect("current repository root")
@@ -364,6 +379,42 @@ async fn unchanged_process_cold_generation_restores_without_invoking_source_buil
         .expect("resolve generation directory");
     stop_unserved_server(&restored).await;
     drop(restored);
+
+    tokio::fs::write(
+        project_root.join("src/lib.rs"),
+        b"pub fn process_cold_restore() -> u8 { 2 }\n",
+    )
+    .await
+    .expect("change process-cold source owner");
+    run_git(&project_root, &["add", "src/lib.rs"]);
+    let changed_builds = Arc::new(AtomicUsize::new(0));
+    let (changed_endpoint, changed_artifacts) = fixture_endpoint(&runtime_dir, 43).await;
+    let changed = RuntimeServer::bind_with_catalog(
+        changed_endpoint,
+        Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+        changed_artifacts,
+    )
+    .await
+    .expect("bind changed-content Runtime Server")
+    .with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
+        counting_builder(Arc::clone(&changed_builds)),
+        catalog.clone(),
+        runtime_bundle_probe(),
+    );
+    changed
+        .workspace_generation_admission()
+        .expect("changed-content generation admission")
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+        .await
+        .expect("rebuild changed source generation");
+    assert_eq!(
+        changed_builds.load(Ordering::SeqCst),
+        1,
+        "changed source content must reject the durable generation and rebuild"
+    );
+    stop_unserved_server(&changed).await;
+    drop(changed);
+
     tokio::fs::write(
         generation_directory.join("generation-admission-binding.v1.json"),
         b"{truncated",
@@ -372,7 +423,7 @@ async fn unchanged_process_cold_generation_restores_without_invoking_source_buil
     .expect("corrupt admission binding");
 
     let rebuilt_count = Arc::new(AtomicUsize::new(0));
-    let (rebuilt_endpoint, rebuilt_artifacts) = fixture_endpoint(&runtime_dir, 43).await;
+    let (rebuilt_endpoint, rebuilt_artifacts) = fixture_endpoint(&runtime_dir, 44).await;
     let rebuilt = RuntimeServer::bind_with_catalog(
         rebuilt_endpoint,
         Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
@@ -382,13 +433,13 @@ async fn unchanged_process_cold_generation_restores_without_invoking_source_buil
     .expect("bind rebuilding Runtime Server")
     .with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
         counting_builder(Arc::clone(&rebuilt_count)),
-        catalog,
+        catalog.clone(),
         runtime_bundle_probe(),
     );
     rebuilt
         .workspace_generation_admission()
         .expect("rebuilding generation admission")
-        .ensure_runtime_generation_ready(workspace_identity, project_root)
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
         .await
         .expect("rebuild after corrupt binding");
     assert_eq!(
@@ -397,4 +448,32 @@ async fn unchanged_process_cold_generation_restores_without_invoking_source_buil
         "corrupt admission evidence must fail closed to a complete rebuild"
     );
     stop_unserved_server(&rebuilt).await;
+    drop(rebuilt);
+
+    let mismatched_bundle_builds = Arc::new(AtomicUsize::new(0));
+    let (mismatched_endpoint, mismatched_artifacts) = fixture_endpoint(&runtime_dir, 45).await;
+    let mismatched = RuntimeServer::bind_with_catalog(
+        mismatched_endpoint,
+        Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+        mismatched_artifacts,
+    )
+    .await
+    .expect("bind changed-runtime-bundle Runtime Server")
+    .with_workspace_generation_builder_catalog_and_runtime_bundle_probe(
+        counting_builder(Arc::clone(&mismatched_bundle_builds)),
+        catalog,
+        runtime_bundle_probe_with('9'),
+    );
+    mismatched
+        .workspace_generation_admission()
+        .expect("changed-runtime-bundle generation admission")
+        .ensure_runtime_generation_ready(workspace_identity, project_root)
+        .await
+        .expect("rebuild after runtime bundle drift");
+    assert_eq!(
+        mismatched_bundle_builds.load(Ordering::SeqCst),
+        1,
+        "changed Runtime bundle must reject the durable generation and rebuild"
+    );
+    stop_unserved_server(&mismatched).await;
 }
