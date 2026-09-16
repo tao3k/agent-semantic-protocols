@@ -393,12 +393,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     let params: SchemaBundleRequest = serde_json::from_value(request.params)
                         .map_err(|error| format!("decode schema bundle request: {error}"))?;
                     params.validate()?;
-                    let response = schema_bundles.project(&params);
-                    response.validate()?;
-                    return serde_json::to_value(response.as_ref())
-                        .map(ClientResponsePayload::from)
-                        .map_err(|error| error.to_string())
-                        .map_err(AspClientOperationError::Message);
+                    return Ok(schema_bundles.project(&params));
                 }
                 if request.method == LIVE_CORPUS_CACHE_STATE_METHOD {
                     let started = tokio::time::Instant::now();

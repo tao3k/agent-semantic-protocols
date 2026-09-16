@@ -253,15 +253,17 @@ fn typed_schema_bundle_unchanged_validates_entry_identity() {
         name: "schema.schema.json".to_owned(),
         digest: format!("blake3-256:{}", "a".repeat(64)),
     };
+    let entries = vec![entry];
     let response = SchemaBundleResponse::Unchanged {
         schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         receipt: SchemaBundleReceipt {
             language_id: "rust".to_owned(),
             root_set_ids: vec!["client-protocol".to_owned()],
-            bundle_digest: format!("blake3-256:{}", "b".repeat(64)),
+            bundle_digest: agent_semantic_client_protocol::schema_bundle_digest(&entries)
+                .expect("schema bundle identity"),
         },
-        entries: vec![entry],
+        entries,
     };
     response.validate().expect("valid typed response");
 }

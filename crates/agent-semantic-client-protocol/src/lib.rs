@@ -68,6 +68,7 @@ pub use identity::ClientRouteId;
 pub use identity::ClientSchemaId;
 pub use identity::ClientSessionId;
 pub use identity::ClientWorkspaceIdentity;
+pub use schema_bundle::schema_bundle_digest;
 pub use session::ClientSession;
 pub use session::ClientSessionState;
 #[cfg(test)]

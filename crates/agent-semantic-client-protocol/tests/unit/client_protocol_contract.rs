@@ -754,11 +754,6 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
     };
     request.validate().expect("registered profile selector");
 
-    let receipt = crate::SchemaBundleReceipt {
-        language_id: "python".to_owned(),
-        root_set_ids: vec!["client-protocol".to_owned()],
-        bundle_digest: format!("blake3-256:{}", "b".repeat(64)),
-    };
     let entry = crate::SchemaBundleEntry {
         family_id: "asp.schema-family.asp-client".to_owned(),
         schema_id: "https://schemas.agent-semantic-protocols.dev/asp-client-frame.schema.json"
@@ -766,6 +761,13 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
         schema_version: SCHEMA_VERSION.to_owned(),
         name: "asp-client-frame.schema.json".to_owned(),
         digest: format!("blake3-256:{}", "c".repeat(64)),
+    };
+    let bundle_digest =
+        crate::schema_bundle_digest(std::slice::from_ref(&entry)).expect("schema bundle identity");
+    let receipt = crate::SchemaBundleReceipt {
+        language_id: "python".to_owned(),
+        root_set_ids: vec!["client-protocol".to_owned()],
+        bundle_digest,
     };
     let ready = crate::SchemaBundleResponse::Ready {
         schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
@@ -796,6 +798,18 @@ fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
         entries: vec![entry],
     };
     unchanged.validate().expect("unchanged schema bundle");
+
+    let mut corrupted = unchanged.clone();
+    let crate::SchemaBundleResponse::Unchanged { entries, .. } = &mut corrupted else {
+        unreachable!("fixture is Unchanged")
+    };
+    entries[0].digest = format!("blake3-256:{}", "d".repeat(64));
+    assert!(
+        corrupted
+            .validate()
+            .unwrap_err()
+            .contains("schema bundle receipt digest mismatch")
+    );
 
     let failed = crate::SchemaBundleResponse::Failed {
         schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),

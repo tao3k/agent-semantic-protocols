@@ -569,6 +569,12 @@ fn measure_projection_latency(
     }
 }
 
+fn decode_schema_bundle_projection(
+    payload: agent_semantic_client_protocol::ClientResponsePayload,
+) -> SchemaBundleResponse {
+    serde_json::from_value(payload.into_value()).expect("typed schema bundle projection")
+}
+
 #[tokio::test]
 async fn canonical_profiles_project_ready_and_unchanged_in_process_under_one_millisecond() {
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -587,14 +593,14 @@ async fn canonical_profiles_project_ready_and_unchanged_in_process_under_one_mil
             root_set_ids: profile.root_sets,
             known_bundle_digest: None,
         };
-        let ready = catalog.project(&request);
+        let ready = decode_schema_bundle_projection(catalog.project(&request));
         ready.validate().expect("valid Ready response");
         let SchemaBundleResponse::Ready {
             receipt,
             entries,
             documents,
             ..
-        } = ready.as_ref()
+        } = &ready
         else {
             panic!("registered profile must be Ready")
         };
@@ -604,12 +610,9 @@ async fn canonical_profiles_project_ready_and_unchanged_in_process_under_one_mil
             known_bundle_digest: Some(receipt.bundle_digest.clone()),
             ..request.clone()
         };
-        let unchanged = catalog.project(&unchanged_request);
+        let unchanged = decode_schema_bundle_projection(catalog.project(&unchanged_request));
         unchanged.validate().expect("valid Unchanged response");
-        assert!(matches!(
-            unchanged.as_ref(),
-            SchemaBundleResponse::Unchanged { .. }
-        ));
+        assert!(matches!(&unchanged, SchemaBundleResponse::Unchanged { .. }));
 
         for (state, measured_request) in [("ready", &request), ("unchanged", &unchanged_request)] {
             let latency = measure_projection_latency(&catalog, measured_request);
@@ -633,23 +636,110 @@ async fn canonical_profiles_project_ready_and_unchanged_in_process_under_one_mil
         }
     }
 
-    let failed = catalog.project(&SchemaBundleRequest {
+    let failed = decode_schema_bundle_projection(catalog.project(&SchemaBundleRequest {
         schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         language_id: "unregistered-language".to_owned(),
         root_set_ids: vec!["client-protocol".to_owned()],
         known_bundle_digest: None,
-    });
+    }));
     failed.validate().expect("valid Failed response");
     assert!(matches!(
-        failed.as_ref(),
+        &failed,
         SchemaBundleResponse::Failed { reason_kind, .. }
             if reason_kind == "schema-bundle-language-unregistered"
     ));
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct SchemaBundleSocketScenario {
+    schema_version: String,
+    cases: Vec<SchemaBundleSocketCase>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SchemaBundleSocketCase {
+    id: String,
+    language: String,
+    root_sets: String,
+    digest: String,
+    expected: String,
+    #[serde(default)]
+    reason_kind: Option<String>,
+    #[serde(default)]
+    message_contains: Option<String>,
+}
+
+fn schema_bundle_socket_scenario() -> SchemaBundleSocketScenario {
+    toml::from_str(include_str!(
+        "scenarios/runtime_schema_bundle_socket/cases.toml"
+    ))
+    .expect("Runtime schema bundle socket Scenario")
+}
+
 #[tokio::test]
-async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
+async fn runtime_schema_bundle_socket_scenario_is_generation_independent_and_fail_closed() {
+    let scenario = schema_bundle_socket_scenario();
+    let metadata = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_schema_bundle_socket/scenario.toml"
+    ))
+    .expect("Runtime schema bundle socket Scenario metadata");
+    let benchmark = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_schema_bundle_socket/benchmark.toml"
+    ))
+    .expect("Runtime schema bundle socket benchmark metadata");
+    assert_eq!(
+        scenario.schema_version,
+        "asp.runtime-schema-bundle-socket-scenario.v1"
+    );
+    assert_eq!(
+        metadata["scenario"]["id"].as_str(),
+        Some("runtime-schema-bundle-socket")
+    );
+    assert_eq!(
+        benchmark["benchmark"]["semantic_case_count"].as_integer(),
+        Some(scenario.cases.len() as i64)
+    );
+    let expected_state_counts = scenario.cases.iter().fold(
+        std::collections::BTreeMap::<String, i64>::new(),
+        |mut counts, case| {
+            *counts.entry(case.expected.replace('-', "_")).or_default() += 1;
+            counts
+        },
+    );
+    let declared_state_counts = benchmark["workload"]["response_state_counts"]
+        .as_table()
+        .expect("declared response-state counts")
+        .iter()
+        .map(|(state, count)| {
+            (
+                state.clone(),
+                count.as_integer().expect("integer response-state count"),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(expected_state_counts, declared_state_counts);
+    assert_eq!(
+        benchmark["workload"]["workspace_generation_count"].as_integer(),
+        Some(0)
+    );
+    assert_eq!(
+        benchmark["workload"]["package_schema_materialization_count"].as_integer(),
+        Some(0)
+    );
+    let required_cases = metadata["coverage"]["required_cases"]
+        .as_array()
+        .expect("required Scenario cases")
+        .iter()
+        .map(|value| value.as_str().expect("case id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let actual_cases = scenario
+        .cases
+        .iter()
+        .map(|case| case.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual_cases, required_cases);
+
     let directory = tempfile::tempdir().expect("temporary workspace");
     let project_root = directory.path().join("project");
     std::fs::create_dir_all(&project_root).expect("create project root");
@@ -720,13 +810,6 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
     let client = AspClientGrpcTransport::connect_tcp(endpoint)
         .await
         .expect("connect loopback endpoint");
-    let request = SchemaBundleRequest {
-        schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
-        schema_version: SCHEMA_VERSION.to_owned(),
-        language_id: profile.language_id,
-        root_set_ids: profile.root_sets,
-        known_bundle_digest: None,
-    };
     let base = ClientFrameBase {
         schema_id: CLIENT_FRAME_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
@@ -756,31 +839,123 @@ async fn host_uds_schema_bundle_route_bypasses_workspace_generation() {
     else {
         panic!("initialize must return the exact Runtime catalog")
     };
-    let frame = client
-        .call(ClientFrame::Request {
-            base,
-            request_id: ClientRequestId::new("schema-bundle-ready").expect("request id"),
-            catalog_generation: catalog.catalog_generation,
-            workspace_generation: catalog.workspace_generation,
-            method: "asp.schema.bundle".to_owned(),
-            params: serde_json::to_value(request).expect("request JSON"),
-            client_timing_witness: None,
-        })
-        .await
-        .expect("schema bundle response");
-    let ClientFrame::Response {
-        result: Some(result),
-        error: None,
-        ..
-    } = frame
-    else {
-        panic!("schema bundle UDS route must return Ready")
-    };
-    let response: SchemaBundleResponse =
-        serde_json::from_value(result.into_value()).expect("typed response");
-    response.validate().expect("valid response");
-    assert!(matches!(response, SchemaBundleResponse::Ready { .. }));
+    let catalog_generation = catalog.catalog_generation;
+    let workspace_generation = catalog.workspace_generation;
+    let mut current_digest = None;
+    for case in &scenario.cases {
+        let language_id = match case.language.as_str() {
+            "registered" => profile.language_id.clone(),
+            "unknown" => "unregistered-language".to_owned(),
+            other => panic!("unsupported Scenario language selector: {other}"),
+        };
+        let root_set_ids = match case.root_sets.as_str() {
+            "registered" => profile.root_sets.clone(),
+            "drifted" => vec!["drifted-root-set".to_owned()],
+            other => panic!("unsupported Scenario root-set selector: {other}"),
+        };
+        let known_bundle_digest = match case.digest.as_str() {
+            "absent" => None,
+            "current" => Some(
+                current_digest
+                    .clone()
+                    .expect("Ready case must establish the current bundle digest"),
+            ),
+            "stale-valid" => Some(digest('f')),
+            "malformed" => Some("blake3-256:not-a-digest".to_owned()),
+            other => panic!("unsupported Scenario digest selector: {other}"),
+        };
+        let request = SchemaBundleRequest {
+            schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
+            schema_version: SCHEMA_VERSION.to_owned(),
+            language_id,
+            root_set_ids,
+            known_bundle_digest,
+        };
+        let started = std::time::Instant::now();
+        let frame = client
+            .call(ClientFrame::Request {
+                base: base.clone(),
+                request_id: ClientRequestId::new(format!("schema-bundle-{}", case.id))
+                    .expect("request id"),
+                catalog_generation: catalog_generation.clone(),
+                workspace_generation: workspace_generation.clone(),
+                method: "asp.schema.bundle".to_owned(),
+                params: serde_json::to_value(request).expect("request JSON"),
+                client_timing_witness: None,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("Scenario case {} transport failed: {error}", case.id));
+        let elapsed_micros = started.elapsed().as_micros();
+        eprintln!(
+            "schemaBundleSocket case={} expected={} elapsedMicros={elapsed_micros}",
+            case.id, case.expected
+        );
+        match case.expected.as_str() {
+            "ready" | "unchanged" | "failed" => {
+                let ClientFrame::Response {
+                    outcome: agent_semantic_client_protocol::ClientOutcome::Ready,
+                    result: Some(result),
+                    error: None,
+                    ..
+                } = frame
+                else {
+                    panic!(
+                        "Scenario case {} must return a typed result: {frame:?}",
+                        case.id
+                    )
+                };
+                let response: SchemaBundleResponse = serde_json::from_value(result.into_value())
+                    .unwrap_or_else(|error| {
+                        panic!("Scenario case {} returned invalid JSON: {error}", case.id)
+                    });
+                response
+                    .validate()
+                    .unwrap_or_else(|error| panic!("Scenario case {}: {error}", case.id));
+                match (&case.expected[..], response) {
+                    ("ready", SchemaBundleResponse::Ready { receipt, .. }) => {
+                        current_digest.get_or_insert(receipt.bundle_digest);
+                    }
+                    ("unchanged", SchemaBundleResponse::Unchanged { receipt, .. }) => {
+                        assert_eq!(Some(&receipt.bundle_digest), current_digest.as_ref());
+                    }
+                    ("failed", SchemaBundleResponse::Failed { reason_kind, .. }) => {
+                        assert_eq!(Some(reason_kind.as_str()), case.reason_kind.as_deref())
+                    }
+                    (_, response) => panic!(
+                        "Scenario case {} expected {} but received {response:?}",
+                        case.id, case.expected
+                    ),
+                }
+            }
+            "dispatch-error" => {
+                let ClientFrame::Response {
+                    outcome: agent_semantic_client_protocol::ClientOutcome::Error,
+                    result: None,
+                    error: Some(error),
+                    ..
+                } = frame
+                else {
+                    panic!("Scenario case {} must fail closed: {frame:?}", case.id)
+                };
+                assert_eq!(error["reasonKind"].as_str(), case.reason_kind.as_deref());
+                let message = error["message"].as_str().expect("typed error message");
+                assert!(
+                    message.contains(
+                        case.message_contains
+                            .as_deref()
+                            .expect("expected message fragment")
+                    ),
+                    "Scenario case {} returned unexpected message: {message}",
+                    case.id
+                );
+            }
+            other => panic!("unsupported Scenario expectation: {other}"),
+        }
+    }
     drop(client);
-    shutdown.send(true).expect("shutdown UDS");
-    server.await.expect("join UDS").expect("serve UDS");
+    shutdown.send(true).expect("shutdown Runtime socket");
+    server
+        .await
+        .expect("join Runtime socket")
+        .expect("serve Runtime socket");
 }

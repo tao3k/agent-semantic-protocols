@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use agent_semantic_client_protocol::ClientResponsePayload;
 use agent_semantic_client_protocol::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
 use agent_semantic_client_protocol::SchemaBundleDocument;
 use agent_semantic_client_protocol::SchemaBundleEntry;
@@ -56,9 +57,9 @@ struct VerifiedLanguageBundle {
     search_producer_axes: Arc<[agent_semantic_schema_manager::SearchProducerAxis]>,
     root_set_ids: Arc<[String]>,
     bundle_digest: String,
-    ready: Arc<SchemaBundleResponse>,
-    unchanged: Arc<SchemaBundleResponse>,
-    profile_mismatch: Arc<SchemaBundleResponse>,
+    ready: ClientResponsePayload,
+    unchanged: ClientResponsePayload,
+    profile_mismatch: ClientResponsePayload,
 }
 
 /// Startup-built, immutable projection used by the public ClientFrame route.
@@ -113,28 +114,28 @@ impl RuntimeSchemaBundleCatalog {
                 root_set_ids: bundle.root_set_ids.clone(),
                 bundle_digest: bundle.bundle_digest.clone(),
             };
-            let ready = Arc::new(SchemaBundleResponse::Ready {
+            let ready = SchemaBundleResponse::Ready {
                 schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: SCHEMA_VERSION.to_owned(),
                 receipt: receipt.clone(),
                 entries: entries.clone(),
                 documents,
-            });
-            let unchanged = Arc::new(SchemaBundleResponse::Unchanged {
+            };
+            let unchanged = SchemaBundleResponse::Unchanged {
                 schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: SCHEMA_VERSION.to_owned(),
                 receipt: receipt.clone(),
                 entries,
-            });
-            let profile_mismatch = Arc::new(failed(
+            };
+            let profile_mismatch = failed(
                 &bundle.language_id,
                 "schema-bundle-profile-mismatch",
                 serde_json::json!({"action": "use-registered-root-set-profile"}),
                 serde_json::json!({"registeredRootSetIds": bundle.root_set_ids}),
-            ));
-            ready.validate()?;
-            unchanged.validate()?;
-            profile_mismatch.validate()?;
+            );
+            let ready = verified_payload(ready)?;
+            let unchanged = verified_payload(unchanged)?;
+            let profile_mismatch = verified_payload(profile_mismatch)?;
             if bundles
                 .insert(
                     bundle.language_id.clone(),
@@ -269,28 +270,28 @@ impl RuntimeSchemaBundleCatalog {
                 root_set_ids: profile.root_sets.clone(),
                 bundle_digest: bundle.bundle_digest,
             };
-            let ready = Arc::new(SchemaBundleResponse::Ready {
+            let ready = SchemaBundleResponse::Ready {
                 schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: SCHEMA_VERSION.to_owned(),
                 receipt: projected_receipt.clone(),
                 entries: entries.clone(),
                 documents,
-            });
-            let unchanged = Arc::new(SchemaBundleResponse::Unchanged {
+            };
+            let unchanged = SchemaBundleResponse::Unchanged {
                 schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: SCHEMA_VERSION.to_owned(),
                 receipt: projected_receipt.clone(),
                 entries,
-            });
-            let profile_mismatch = Arc::new(failed(
+            };
+            let profile_mismatch = failed(
                 &bundle.language_id,
                 "schema-bundle-profile-mismatch",
                 serde_json::json!({"action": "use-registered-root-set-profile"}),
                 serde_json::json!({"registeredRootSetIds": profile.root_sets}),
-            ));
-            ready.validate()?;
-            unchanged.validate()?;
-            profile_mismatch.validate()?;
+            );
+            let ready = verified_payload(ready)?;
+            let unchanged = verified_payload(unchanged)?;
+            let profile_mismatch = verified_payload(profile_mismatch)?;
             let projected = VerifiedLanguageBundle {
                 search_producer_axes: Arc::from(profile.search_producer_axes.clone()),
                 root_set_ids: Arc::from(profile.root_sets.clone()),
@@ -314,24 +315,27 @@ impl RuntimeSchemaBundleCatalog {
         })
     }
 
-    pub fn project(&self, request: &SchemaBundleRequest) -> Arc<SchemaBundleResponse> {
+    pub fn project(&self, request: &SchemaBundleRequest) -> ClientResponsePayload {
         match self.bundles.get(&request.language_id) {
-            None => Arc::new(failed(
-                &request.language_id,
-                "schema-bundle-language-unregistered",
-                serde_json::json!({"action": "select-registered-language-profile"}),
-                serde_json::json!({"registeredLanguages": self.registered_languages()}),
-            )),
+            None => ClientResponsePayload::from(
+                serde_json::to_value(failed(
+                    &request.language_id,
+                    "schema-bundle-language-unregistered",
+                    serde_json::json!({"action": "select-registered-language-profile"}),
+                    serde_json::json!({"registeredLanguages": self.registered_languages()}),
+                ))
+                .expect("fixed schema bundle failure response is serializable"),
+            ),
             Some(bundle) if request.root_set_ids.as_slice() != bundle.root_set_ids.as_ref() => {
-                Arc::clone(&bundle.profile_mismatch)
+                bundle.profile_mismatch.clone()
             }
             Some(bundle)
                 if request.known_bundle_digest.as_deref()
                     == Some(bundle.bundle_digest.as_str()) =>
             {
-                Arc::clone(&bundle.unchanged)
+                bundle.unchanged.clone()
             }
-            Some(bundle) => Arc::clone(&bundle.ready),
+            Some(bundle) => bundle.ready.clone(),
         }
     }
 
@@ -340,6 +344,13 @@ impl RuntimeSchemaBundleCatalog {
         languages.sort_unstable();
         languages
     }
+}
+
+fn verified_payload(response: SchemaBundleResponse) -> Result<ClientResponsePayload, String> {
+    response.validate()?;
+    let value = serde_json::to_value(response)
+        .map_err(|error| format!("encode verified schema bundle response: {error}"))?;
+    Ok(ClientResponsePayload::from_shared(Arc::new(value)))
 }
 
 #[cfg(test)]

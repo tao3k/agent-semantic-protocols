@@ -103,8 +103,28 @@ the Runtime depend on a source checkout at startup.
    and explicitly declared bootstrap files.
 4. [X] Remove generated shared copies from Language trees and stop CI from
    publishing a portable client bundle back into a Language source directory.
-5. Qualify =Ready=, =Unchanged=, unknown-language, root-set drift, and digest
-   corruption through the real Runtime socket.
+5. [X] Qualify =Ready=, =Unchanged=, unknown-language, root-set drift, and
+   digest corruption through the real Runtime socket.  The executable Scenario
+   is
+   =crates/agent-semantic-runtime-server/tests/unit/scenarios/runtime_schema_bundle_socket/=.
+   It distinguishes a well-formed stale digest (a cache miss returning =Ready=)
+   from a malformed digest (a typed dispatch failure), and records one socket
+   round trip per case without invoking workspace generation or package schema
+   materialization.  The shared V1 response validator recomputes
+   =bundleDigest= from the ordered public entries, so receipt or membership
+   corruption is rejected without giving Language clients filesystem
+   authority.  Runtime stores the startup-validated response as an immutable
+   shared payload; the request path performs an O(1) projection rather than
+   revalidating and rematerializing the complete JSON tree.
+
+* Qualification boundary
+
+The Scenario reports, but does not disguise with a threshold, both cold
+distribution and resident identity lookup.  =Ready= and a well-formed stale
+digest serialize the complete document closure and therefore remain linear in
+wire bytes.  =Unchanged= transfers only receipt identity and entries.  The
+catalog projection itself is an =Arc= clone independent of bundle size; the
+socket transport remains responsible for serializing the selected payload.
 
 * Formal model
 

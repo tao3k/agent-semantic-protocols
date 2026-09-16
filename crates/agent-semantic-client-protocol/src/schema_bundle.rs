@@ -9,6 +9,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest;
 
 pub const SCHEMA_BUNDLE_METHOD: &str = "asp.schema.bundle";
 pub const SCHEMA_BUNDLE_REQUEST_SCHEMA_ID: &str =
@@ -83,6 +84,31 @@ pub struct SchemaBundleDocument {
     pub document: Value,
 }
 
+#[derive(Serialize)]
+struct SchemaBundleDigestEntry<'a> {
+    name: &'a str,
+    digest: &'a str,
+}
+
+/// Reproduce the SchemaManager-owned V1 bundle identity from the public,
+/// ordered entry projection.  Language clients can therefore reject a
+/// corrupted receipt without owning schema closure or filesystem state.
+pub fn schema_bundle_digest(entries: &[SchemaBundleEntry]) -> Result<String, String> {
+    let identity_entries = entries
+        .iter()
+        .map(|entry| SchemaBundleDigestEntry {
+            name: &entry.name,
+            digest: &entry.digest,
+        })
+        .collect::<Vec<_>>();
+    let bytes = serde_json::to_vec(&identity_entries)
+        .map_err(|error| format!("encode schema bundle identity: {error}"))?;
+    Ok(format!(
+        "blake3-256:{}",
+        canonical_content_digest(b"asp.language-schema-bundle.v1", &[&bytes]).as_str()
+    ))
+}
+
 impl SchemaBundleRequest {
     pub fn validate(&self) -> Result<(), String> {
         validate_schema_identity(
@@ -128,6 +154,7 @@ impl SchemaBundleResponse {
             } => {
                 validate_receipt(receipt)?;
                 validate_entries(entries)?;
+                validate_bundle_identity(receipt, entries)?;
                 if documents.is_empty() {
                     return Err("ready schema bundle must carry schema documents".to_owned());
                 }
@@ -156,6 +183,7 @@ impl SchemaBundleResponse {
             } => {
                 validate_receipt(receipt)?;
                 validate_entries(entries)?;
+                validate_bundle_identity(receipt, entries)?;
             }
             Self::Failed {
                 language_id,
@@ -176,6 +204,20 @@ impl SchemaBundleResponse {
         }
         Ok(())
     }
+}
+
+fn validate_bundle_identity(
+    receipt: &SchemaBundleReceipt,
+    entries: &[SchemaBundleEntry],
+) -> Result<(), String> {
+    let actual = schema_bundle_digest(entries)?;
+    if receipt.bundle_digest != actual {
+        return Err(format!(
+            "schema bundle receipt digest mismatch: expected={} actual={actual}",
+            receipt.bundle_digest
+        ));
+    }
+    Ok(())
 }
 
 fn validate_receipt(receipt: &SchemaBundleReceipt) -> Result<(), String> {

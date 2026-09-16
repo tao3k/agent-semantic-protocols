@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+schema_version = "asp.runtime-schema-bundle-socket-scenario.v1"
+
+[[cases]]
+id = "ready"
+language = "registered"
+root_sets = "registered"
+digest = "absent"
+expected = "ready"
+
+[[cases]]
+id = "unchanged"
+language = "registered"
+root_sets = "registered"
+digest = "current"
+expected = "unchanged"
+
+[[cases]]
+id = "stale-digest"
+language = "registered"
+root_sets = "registered"
+digest = "stale-valid"
+expected = "ready"
+
+[[cases]]
+id = "unknown-language"
+language = "unknown"
+root_sets = "registered"
+digest = "absent"
+expected = "failed"
+reason_kind = "schema-bundle-language-unregistered"
+
+[[cases]]
+id = "root-set-drift"
+language = "registered"
+root_sets = "drifted"
+digest = "absent"
+expected = "failed"
+reason_kind = "schema-bundle-profile-mismatch"
+
+[[cases]]
+id = "digest-corruption"
+language = "registered"
+root_sets = "registered"
+digest = "malformed"
+expected = "dispatch-error"
+reason_kind = "client-method-dispatch-failed"
+message_contains = "knownBundleDigest must be a canonical content digest"
