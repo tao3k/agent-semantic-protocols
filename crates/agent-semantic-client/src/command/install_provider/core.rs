@@ -164,24 +164,37 @@ impl PreparedActiveProviderReconciliation {
             abi,
             schemas,
         )?;
-        std::fs::create_dir_all(&self.staging_root).map_err(|error| {
-            format!(
-                "create Runtime execution closure staging root {}: {error}",
-                self.staging_root.display()
+        let binding = closure.binding()?;
+        let staging_root = self.staging_root.clone();
+        self.closure_members =
+            agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+                "install-provider-execution-closure",
+                move || {
+                    std::fs::create_dir_all(&staging_root).map_err(|error| {
+                        format!(
+                            "create Runtime execution closure staging root {}: {error}",
+                            staging_root.display()
+                        )
+                    })?;
+                    closure
+                        .materialized_members()?
+                        .into_iter()
+                        .map(|(name, bytes)| {
+                            let path = staging_root.join(name);
+                            std::fs::write(&path, bytes).map_err(|error| {
+                                format!(
+                                    "write Runtime execution closure member {}: {error}",
+                                    path.display()
+                                )
+                            })?;
+                            Ok((name.to_owned(), path))
+                        })
+                        .collect::<Result<Vec<_>, String>>()
+                },
             )
-        })?;
-        self.closure_members.clear();
-        for (name, bytes) in closure.materialized_members()? {
-            let path = self.staging_root.join(name);
-            std::fs::write(&path, bytes).map_err(|error| {
-                format!(
-                    "write Runtime execution closure member {}: {error}",
-                    path.display()
-                )
-            })?;
-            self.closure_members.push((name.to_owned(), path));
-        }
-        closure.binding()
+            .join()
+            .await??;
+        Ok(binding)
     }
 }
 

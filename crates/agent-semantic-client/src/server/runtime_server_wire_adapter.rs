@@ -153,22 +153,9 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
         let mut last_observation = "canonical endpoint not yet published".to_owned();
         loop {
-            tokio::select! {
+            let owner_exit = tokio::select! {
                 exit = process.wait() => {
-                    let exit = exit?;
-                    let daemon_stderr = tokio::fs::read_to_string(&owner_stderr_path)
-                        .await
-                        .unwrap_or_else(|error| format!("unavailable: {error}"));
-                    return Err(serde_json::json!({
-                        "schemaId": "agent.semantic-protocols.runtime-supervision-terminal",
-                        "schemaVersion": "1",
-                        "state": "failed",
-                        "reasonKind": "runtime-owner-exited-before-healthy",
-                        "exitStatus": exit.to_string(),
-                        "daemonStderr": daemon_stderr,
-                        "publicationNonce": event.publication_nonce,
-                        "artifactDigest": event.artifact_digest,
-                    }).to_string());
+                    Some(exit?)
                 }
                 _ = tokio::time::sleep_until(deadline) => {
                     return Err(serde_json::json!({
@@ -181,7 +168,23 @@ pub(crate) async fn reconcile_runtime_server_activation_event(
                         "artifactDigest": event.artifact_digest,
                     }).to_string());
                 }
-                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => None,
+            };
+            if let Some(exit) = owner_exit {
+                let daemon_stderr = tokio::fs::read_to_string(&owner_stderr_path)
+                    .await
+                    .unwrap_or_else(|error| format!("unavailable: {error}"));
+                return Err(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-supervision-terminal",
+                    "schemaVersion": "1",
+                    "state": "failed",
+                    "reasonKind": "runtime-owner-exited-before-healthy",
+                    "exitStatus": exit.to_string(),
+                    "daemonStderr": daemon_stderr,
+                    "publicationNonce": event.publication_nonce,
+                    "artifactDigest": event.artifact_digest,
+                })
+                .to_string());
             }
             match crate::server::runtime_server::observe_runtime_server_readiness(state_home).await
             {
