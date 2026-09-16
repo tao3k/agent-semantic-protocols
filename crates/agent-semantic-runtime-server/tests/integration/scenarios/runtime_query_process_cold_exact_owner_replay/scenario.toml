@@ -9,7 +9,7 @@ policy_ids = [
 ]
 agent_goal = "Return a usable exact-selector Query receipt on the first process-cold call when the durable source generation, Runtime bundle, workspace identity, and current owner bytes still agree."
 inputs = "One real immutable exact-projection mmap segment, its active generation pointer, one source-bound Runtime execution publication, and one Rust exact selector."
-expected = "The first call returns a ready V1 Query receipt with one owner digest task and one receipt task, starts no provider, performs no full-generation admission, tolerates an unrelated file change, and rejects replay after the requested owner changes."
+expected = "The first call returns a ready V1 Query receipt through one resource-bounded blocking pipeline, copies no complete owner snapshot during mmap preflight, starts no provider, performs no full-generation admission, tolerates an unrelated file change, and rejects replay after the requested owner changes."
 reference_repositories = ["agent-semantic-protocols"]
 reference_patterns = [
   "crates/agent-semantic-runtime-server/src/runtime_asp_client_query_playbook.rs",

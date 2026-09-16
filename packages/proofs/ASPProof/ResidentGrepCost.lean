@@ -534,8 +534,8 @@ theorem v1_digest_boundary_translation_preserves_content (payload : Nat) :
 
 /-- Work counters are the architectural process-cold performance gate. -/
 structure ProcessColdReplayWork where
-  ownerDigestTasks : Nat
-  receiptTasks : Nat
+  pipelineTasks : Nat
+  ownerSnapshotCopies : Nat
   providerStarts : Nat
   fullGenerationAdmissions : Nat
   asyncWorkerCpuTasks : Nat
@@ -547,13 +547,13 @@ structure ProcessColdReplayWork where
   deriving DecidableEq, Repr
 
 def exactOwnerReplayWork : ProcessColdReplayWork where
-  ownerDigestTasks := 1
-  receiptTasks := 1
+  pipelineTasks := 1
+  ownerSnapshotCopies := 0
   providerStarts := 0
   fullGenerationAdmissions := 0
   asyncWorkerCpuTasks := 0
-  blockingTaskCpuPermits := 2
-  blockingTaskMemoryPermits := 2
+  blockingTaskCpuPermits := 1
+  blockingTaskMemoryPermits := 1
   permitsOwnedByBlockingTasks := true
   runtimeWorkerThreads := 4
   backgroundCpuCapacity := 3
@@ -564,11 +564,16 @@ theorem exact_owner_replay_has_no_provider_generation_or_async_cpu_work :
       exactOwnerReplayWork.asyncWorkerCpuTasks = 0 := by
   rfl
 
-theorem exact_owner_replay_retains_resource_authority_inside_blocking_tasks :
-    exactOwnerReplayWork.blockingTaskCpuPermits = 2 ∧
-      exactOwnerReplayWork.blockingTaskMemoryPermits = 2 ∧
+theorem exact_owner_replay_is_one_resource_owned_blocking_pipeline :
+    exactOwnerReplayWork.pipelineTasks = 1 ∧
+      exactOwnerReplayWork.blockingTaskCpuPermits = 1 ∧
+      exactOwnerReplayWork.blockingTaskMemoryPermits = 1 ∧
       exactOwnerReplayWork.permitsOwnedByBlockingTasks = true := by
   decide
+
+theorem exact_owner_replay_preflight_copies_no_owner_snapshot :
+    exactOwnerReplayWork.ownerSnapshotCopies = 0 := by
+  rfl
 
 theorem four_thread_runtime_reserves_one_worker_from_background_cpu :
     exactOwnerReplayWork.runtimeWorkerThreads =

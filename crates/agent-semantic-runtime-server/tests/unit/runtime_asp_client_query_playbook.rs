@@ -290,28 +290,24 @@ fn process_cold_resources() -> (
     )
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn process_cold_owner_digest_runs_outside_the_async_worker_and_fails_closed_when_missing() {
+#[test]
+fn process_cold_owner_digest_streams_content_and_fails_closed_when_missing() {
     let root = tempfile::tempdir().expect("process-cold owner digest workspace");
     let owner = root.path().join("owner.rs");
     std::fs::write(&owner, b"fn owner() {}\n").expect("write process-cold owner");
-    let (resource_supervisor, task_scope) = process_cold_resources();
-
-    let digest =
-        match process_cold_owner_content_digest(owner.clone(), &resource_supervisor, &task_scope)
-            .await
-        {
-            Ok(Some(digest)) => digest,
-            Ok(None) => panic!("existing owner must produce a digest"),
-            Err(_) => panic!("existing owner digest task must succeed"),
-        };
+    let (digest, byte_len) = match process_cold_owner_content_digest(&owner) {
+        Ok(Some(metadata)) => metadata,
+        Ok(None) => panic!("existing owner must produce a digest"),
+        Err(_) => panic!("existing owner digest must succeed"),
+    };
     assert_eq!(
         digest,
         format!("blake3-256:{}", blake3::hash(b"fn owner() {}\n").to_hex())
     );
+    assert_eq!(byte_len, b"fn owner() {}\n".len());
 
     std::fs::remove_file(&owner).expect("remove process-cold owner");
-    match process_cold_owner_content_digest(owner, &resource_supervisor, &task_scope).await {
+    match process_cold_owner_content_digest(&owner) {
         Ok(None) => {}
         Ok(Some(_)) => panic!("missing owner must not produce a digest"),
         Err(_) => panic!("missing owner must be a cache rejection, not an operation failure"),
@@ -370,6 +366,24 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
     };
     let exact_generation_digest = exact.generation_digest();
     let exact_root_digest = exact.root_digest();
+    let owner_metadata = exact
+        .owner_content_metadata("src/lib.rs")
+        .expect("read exact owner metadata")
+        .expect("published exact owner metadata");
+    assert_eq!(
+        owner_metadata.content_digest,
+        format!("blake3-256:{}", blake3::hash(source).to_hex())
+    );
+    assert_eq!(owner_metadata.byte_len, source.len());
+    assert_eq!(
+        exact
+            .direct_projection_byte_len(
+                agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+                selector,
+            )
+            .expect("read direct projection byte length"),
+        Some(source.len())
+    );
     assert_eq!(exact_generation_digest, recovery.generation_digest);
     let publication_root_digest =
         agent_semantic_search::canonical_blake3_digest(&exact_root_digest)
@@ -433,12 +447,13 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
     assert_eq!(receipt["sourceGenerationDigest"], exact_generation_digest);
     assert_eq!(receipt["sourceRootDigest"], exact_root_digest);
     assert_eq!(receipt["materializations"][0]["selector"], selector);
+    const QUALIFICATION_SAMPLE_COUNT: usize = 128;
     let mut request_plane_samples = vec![
         receipt["requestPlaneElapsedMicros"]
             .as_u64()
             .expect("process-cold request-plane timing"),
     ];
-    for sample in 1..32 {
+    for sample in 1..QUALIFICATION_SAMPLE_COUNT {
         let repeated = try_process_cold_exact_owner_replay(
             &format!("request-process-cold-sample-{sample}"),
             workspace_identity,
@@ -472,7 +487,7 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
         request_plane_samples[rank.saturating_sub(1)]
     };
     println!(
-        "[scenario-benchmark] id=runtime-query-process-cold-exact-owner-replay sampleCount={} p50Micros={} p95Micros={} p99Micros={} ownerDigestTaskCount=1 receiptTaskCount=1 providerProcessCount=0 fullGenerationAdmissionCount=0",
+        "[scenario-benchmark] id=runtime-query-process-cold-exact-owner-replay sampleCount={} p50Micros={} p95Micros={} p99Micros={} pipelineTaskCount=1 ownerSnapshotCopyCount=0 providerProcessCount=0 fullGenerationAdmissionCount=0",
         request_plane_samples.len(),
         percentile(50),
         percentile(95),
@@ -522,6 +537,16 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
         .await,
         Ok(None)
     ));
+    assert_eq!(resource_supervisor.active_background_cpu(), 0);
+    assert_eq!(resource_supervisor.active_memory_bytes(), 0);
+    let lifecycle = task_scope.finish(0).expect("process-cold pipeline drained");
+    assert_eq!(
+        lifecycle.started,
+        u64::try_from(QUALIFICATION_SAMPLE_COUNT + 2).expect("qualification task count")
+    );
+    assert_eq!(lifecycle.started, lifecycle.completed);
+    assert_eq!(lifecycle.active, 0);
+    assert_eq!(lifecycle.leaked, 0);
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@ test = "runtime_asp_client::query_playbook::tests::process_cold_exact_owner_repl
 phase = "process-cold-first-query"
 target_total = "1ms"
 max_total = "10ms"
-observed_total = "396us"
+observed_total = "200us"
 regression_budget = "9ms"
 memory_budget_bytes = 8388608
 observed_memory_bytes = 1048576
@@ -15,21 +15,23 @@ route_source = "runtime-durable-exact-owner-replay"
 max_provider_process_count = 0
 max_stdout_bytes = 2048
 fallback_reason = "none"
-target_rationale = "This is not a resident-read SLO. It records the independently budgeted first process-cold exact-owner computation. The architectural gate is the work vector: one requested-owner digest task, one offloaded receipt task, zero provider processes, and zero full-generation admissions. Wall time is retained as measured Scenario evidence rather than used to hide a workload regression."
+target_rationale = "This is not a resident-read SLO. It records the independently budgeted first process-cold exact-owner computation. The architectural gate is the work vector: one fused resource-bounded blocking pipeline, zero complete owner-snapshot copies during mmap preflight, zero provider processes, and zero full-generation admissions. Timings conservatively record the worst percentile observed across four independent 128-sample qualification trials; wall time is evidence rather than a way to hide workload regression."
+sample_count = 128
+trial_count = 4
 
 [observed_timings]
-request_plane_p50 = "396us"
-request_plane_p95 = "631us"
-request_plane_p99 = "1116us"
+request_plane_p50 = "200us"
+request_plane_p95 = "287us"
+request_plane_p99 = "388us"
 
 [workload]
-owner_digest_task_count = 1
-receipt_task_count = 1
+pipeline_task_count = 1
+owner_snapshot_copy_count = 0
 provider_process_count = 0
 full_generation_admission_count = 0
 cpu_per_task = 1
-blocking_task_cpu_permit_count = 2
-blocking_task_memory_permit_count = 2
-owner_digest_memory_bytes = 65536
+blocking_task_cpu_permit_count = 1
+blocking_task_memory_permit_count = 1
+streaming_hash_buffer_bytes = 65536
 runtime_worker_threads = 4
 background_cpu_capacity = 3

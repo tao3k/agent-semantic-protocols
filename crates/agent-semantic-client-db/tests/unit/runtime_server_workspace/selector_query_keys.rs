@@ -7,6 +7,7 @@
 use super::generation;
 use super::owner;
 use super::resident_pointer;
+use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
 use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient;
@@ -63,6 +64,51 @@ async fn exact_projection_round_trip_preserves_parser_owned_selector_query_keys(
         .expect("owner exists");
     assert_eq!(absent.candidate_count, 0);
     assert!(absent.selectors.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mmap_preflight_reports_derived_projection_size_without_copying_owner_snapshot() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let selector = "rust://src/lib.rs#item/function/compare";
+    let source = b"fn compare() {}";
+    let derived =
+        crate::projection_fixture::callable_skeleton_projection_fixture(selector, "compare");
+    let derived_len = derived.bytes.len();
+    let mut published_owner = owner("src/lib.rs", selector, source);
+    published_owner.selectors[0].derived_projections = vec![derived];
+    registry
+        .publish(
+            "direct-projection-byte-length",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-direct-projection-byte-length",
+                1,
+                published_owner,
+            ),
+        )
+        .await
+        .expect("publish derived projection generation");
+
+    let pointer = resident_pointer(temporary.path(), "workspace-direct-projection-byte-length");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open exact derived projection index");
+
+    assert_eq!(
+        client
+            .direct_projection_byte_len(ExactProjectionKind::Source, selector)
+            .expect("source projection metadata"),
+        Some(source.len())
+    );
+    assert_eq!(
+        client
+            .direct_projection_byte_len(ExactProjectionKind::CallableSkeleton, selector)
+            .expect("derived projection metadata"),
+        Some(derived_len)
+    );
+    assert!(derived_len > source.len());
 }
 
 #[tokio::test(flavor = "multi_thread")]

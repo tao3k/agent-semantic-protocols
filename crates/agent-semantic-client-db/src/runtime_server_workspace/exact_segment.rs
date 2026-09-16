@@ -20,7 +20,10 @@ mod evidence_context;
 mod format;
 #[path = "exact_segment_owner_search.rs"]
 mod owner_search;
-pub use client::{WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen};
+pub use client::{
+    WorkspaceExactOwnerContentMetadata, WorkspaceExactProjectionDataPlaneClient,
+    WorkspaceExactProjectionDataPlaneOpen,
+};
 use format::{
     checked_entry_offset, decode_header, read_slice, read_text, read_usize, write_range_entry,
     write_range_header, write_u64, write_usize,
@@ -250,6 +253,47 @@ impl MappedWorkspaceExactProjection {
             root_digest: self.root_digest.clone(),
             owner: self.owner_snapshot(owner_index, &owner)?,
         })
+    }
+
+    fn direct_projection_byte_len(
+        &self,
+        projection_kind: super::model::ExactProjectionKind,
+        structural_selector: &str,
+    ) -> Result<Option<usize>, String> {
+        if let Some(selector) = self.find_selector(projection_kind, structural_selector)? {
+            let byte_len = if projection_kind == super::model::ExactProjectionKind::Source {
+                let owner = self.owner_entry(selector.owner_index)?;
+                self.owner_bytes(&owner)?
+                    .get(selector.byte_start..selector.byte_end)
+                    .ok_or_else(|| {
+                        "workspace exact projection selector range is invalid".to_owned()
+                    })?
+                    .len()
+            } else {
+                read_slice(
+                    &self.mapping,
+                    selector.projection_blob_offset,
+                    selector.projection_blob_len,
+                    "derived projection bytes",
+                )?
+                .len()
+            };
+            return Ok(Some(byte_len));
+        }
+        if projection_kind != super::model::ExactProjectionKind::Source {
+            return Ok(None);
+        }
+        let Ok(owner_path) =
+            agent_semantic_client_protocol::workspace_source_mutation::SourceOwnerPath::new(
+                structural_selector.to_owned(),
+            )
+        else {
+            return Ok(None);
+        };
+        let Some((_owner_index, owner)) = self.find_owner(owner_path.as_str())? else {
+            return Ok(None);
+        };
+        self.owner_bytes(&owner).map(|bytes| Some(bytes.len()))
     }
 
     fn project_selector(

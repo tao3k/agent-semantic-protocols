@@ -73,17 +73,23 @@ BLAKE3 content identity, then preserve each boundary's V1 representation.  A
 raw string comparison makes every valid process-cold publication miss; changing
 the segment or Query receipt representation in place would break stable V1.
 
-Current-owner acquisition and hashing, projection-byte hashing, and receipt
-assembly are CPU/blocking work.  The async Runtime route MUST submit them to a
-blocking computation lane and await one bounded result; it MUST NOT hash source
-or projection bytes while polling a Tokio async worker.  CPU and memory permits
-MUST be acquired from the Runtime query-generation resource supervisor and
-owned by the blocking operation itself, so request cancellation cannot release
-capacity while an already-started blocking operation is still executing.
+The immutable mmap preflight MUST read only owner digest, owner byte length,
+and the exact direct-projection byte length; it MUST NOT copy a complete owner
+snapshot or projection payload merely to compare identity or size the request.
+The memory permit MUST therefore cover the actual projection representation,
+including a derived projection that is larger than its source owner.
+Current-owner streaming hash, exact projection read and receipt
+assembly are CPU/blocking work.  The async Runtime route MUST fuse them into one
+request-local blocking pipeline and await one bounded result; it MUST NOT hash
+source or projection bytes while polling a Tokio async worker.  One CPU and one
+memory permit MUST be acquired from the Runtime query-generation resource
+supervisor and owned by that blocking pipeline itself, so request cancellation
+cannot release capacity while an already-started blocking operation is still
+executing.
 The Runtime Server Tokio profile has a four-worker minimum.  One worker remains
 outside the background CPU budget, so the resource supervisor exposes at most
-three background CPU permits at that floor.  Each exact-owner digest or receipt
-job requests one permit; a single Query MUST NOT reserve all four workers.
+three background CPU permits at that floor.  Each exact-owner Query pipeline
+requests one permit; a single Query MUST NOT reserve all four workers.
 
 This replay is request-local.  It MUST NOT publish the durable generation into
 the global Ready map, authorize Search, claim complete current-workspace
@@ -204,7 +210,9 @@ for the requested or uniquely relocated owner.  Cold and warm performance gates
 must report metadata lookup, byte materialization, provider invocation, and
 cache write/read separately.  The executable
 =runtime-query-process-cold-exact-owner-replay= Scenario records both elapsed
-time and the architectural work vector: one owner digest task, one receipt
-task, zero provider processes, and zero full-generation admissions.  These
-counts are the primary regression signal; the process-cold sample is not
+time and the architectural work vector: one fused blocking pipeline, zero
+complete owner-snapshot copies during mmap preflight, zero provider processes,
+and zero full-generation admissions.  These counts are the primary regression
+signal.  Percentile qualification MUST use at least 100 samples so p99 is not
+merely the maximum of a small sample; the process-cold sample is not
 misreported as a resident-read SLO.

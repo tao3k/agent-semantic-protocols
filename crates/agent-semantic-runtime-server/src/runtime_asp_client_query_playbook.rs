@@ -529,55 +529,41 @@ fn durable_exact_execution_matches_current(
         && same_content_digest(publication.source_root_digest.as_str(), exact_root_digest)
 }
 
-async fn process_cold_owner_content_digest(
-    owner_path: std::path::PathBuf,
-    resource_supervisor: &agent_semantic_workspace_scheduler::RuntimeServerResourceSupervisor,
-    task_scope: &agent_semantic_workspace_scheduler::RuntimeServerTaskScope,
-) -> Result<Option<String>, AspClientOperationError> {
+fn process_cold_owner_content_digest(
+    owner_path: &std::path::Path,
+) -> Result<Option<(String, usize)>, AspClientOperationError> {
     const HASH_BUFFER_BYTES: usize = 64 * 1024;
-    let permit = resource_supervisor
-        .acquire(
-            agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
-                cpu: 1,
-                memory_bytes: HASH_BUFFER_BYTES,
-            },
-        )
-        .await
-        .map_err(AspClientOperationError::Message)?;
-    let task = task_scope
-        .spawn_blocking("process-cold-query-owner-digest", move || {
-            let _permit = permit;
-            use std::io::Read;
-            let mut file = match std::fs::File::open(&owner_path) {
-                Ok(file) => file,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => {
-                    return Err(AspClientOperationError::Message(format!(
-                        "read exact Query owner {}: {error}",
-                        owner_path.display()
-                    )));
-                }
-            };
-            let mut hasher = blake3::Hasher::new();
-            let mut buffer = [0_u8; HASH_BUFFER_BYTES];
-            loop {
-                let count = file.read(&mut buffer).map_err(|error| {
-                    AspClientOperationError::Message(format!(
-                        "read exact Query owner {}: {error}",
-                        owner_path.display()
-                    ))
-                })?;
-                if count == 0 {
-                    break;
-                }
-                hasher.update(&buffer[..count]);
-            }
-            Ok(Some(format!("blake3-256:{}", hasher.finalize().to_hex())))
-        })
-        .map_err(AspClientOperationError::Message)?;
-    task.join()
-        .await
-        .map_err(AspClientOperationError::Message)?
+    use std::io::Read;
+    let mut file = match std::fs::File::open(owner_path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(AspClientOperationError::Message(format!(
+                "read exact Query owner {}: {error}",
+                owner_path.display()
+            )));
+        }
+    };
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0_u8; HASH_BUFFER_BYTES];
+    let mut byte_len = 0usize;
+    loop {
+        let count = file.read(&mut buffer).map_err(|error| {
+            AspClientOperationError::Message(format!(
+                "read exact Query owner {}: {error}",
+                owner_path.display()
+            ))
+        })?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+        byte_len = byte_len.saturating_add(count);
+    }
+    Ok(Some((
+        format!("blake3-256:{}", hasher.finalize().to_hex()),
+        byte_len,
+    )))
 }
 
 #[expect(
@@ -640,45 +626,29 @@ async fn try_process_cold_exact_owner_replay(
         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
             params.projection.as_str(),
         )?;
-    let mut owner_digests = std::collections::BTreeMap::new();
-    let mut projections = std::collections::VecDeque::with_capacity(params.selectors.len());
+    let mut owner_metadata = std::collections::BTreeMap::new();
+    let mut projection_bytes_upper_bound = 0usize;
     for selector in &params.selectors {
         let Some(owner_path) = selector_owner_path(selector) else {
             return Ok(None);
         };
-        let expected_digest = if let Some(digest) = owner_digests.get(owner_path) {
-            digest
-        } else {
-            let Some(owner) = exact.owner_snapshot(owner_path)? else {
+        if !owner_metadata.contains_key(owner_path) {
+            let Some(metadata) = exact.owner_content_metadata(owner_path)? else {
                 return Ok(None);
             };
-            let Some(current_digest) = process_cold_owner_content_digest(
-                initialized.project_root.join(owner_path),
-                resource_supervisor,
-                task_scope,
-            )
-            .await?
-            else {
-                return Ok(None);
-            };
-            if current_digest != owner.content_digest {
-                return Ok(None);
-            }
-            owner_digests.insert(owner_path.to_owned(), current_digest);
-            owner_digests
-                .get(owner_path)
-                .expect("inserted exact owner digest")
-        };
-        debug_assert!(!expected_digest.is_empty());
-        let read = exact.read_runtime_selector(projection, selector)?;
-        if !durable_projection_is_direct(selector, &read) {
-            return Ok(None);
+            owner_metadata.insert(owner_path.to_owned(), metadata);
         }
-        projections.push_back(read);
+        let Some(projection_byte_len) = exact.direct_projection_byte_len(projection, selector)?
+        else {
+            return Ok(None);
+        };
+        projection_bytes_upper_bound =
+            projection_bytes_upper_bound.saturating_add(projection_byte_len);
     }
 
     let template_request_id = request_id.to_owned();
     let params = params.clone();
+    let project_root = initialized.project_root.clone();
     let runtime_binding = execution_publication.runtime_execution_binding.clone();
     let execution_publication_digest = execution_publication.publication_digest.to_string();
     let runtime_bundle_digest = execution_publication.runtime_bundle_digest.to_string();
@@ -686,17 +656,10 @@ async fn try_process_cold_exact_owner_replay(
     let source_root_digest = exact.root_digest();
     let project_workspace = initialized.host_workspace.project_workspace().clone();
     let active_provider_targets = active_provider_targets.to_vec();
-    let projection_bytes = projections
-        .iter()
-        .map(|projection| match projection {
-            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => bytes.len(),
-            _ => 0,
-        })
-        .sum::<usize>();
-    let receipt_memory_bytes = projection_bytes
+    let receipt_memory_bytes = projection_bytes_upper_bound
         .saturating_mul(std::mem::size_of::<serde_json::Value>().saturating_add(2))
-        .saturating_add(256 * 1024);
-    let receipt_permit = resource_supervisor
+        .saturating_add(320 * 1024);
+    let pipeline_permit = resource_supervisor
         .acquire(
             agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                 cpu: 1,
@@ -705,9 +668,37 @@ async fn try_process_cold_exact_owner_replay(
         )
         .await
         .map_err(AspClientOperationError::Message)?;
-    let receipt_task = task_scope
-        .spawn_blocking("process-cold-query-receipt", move || {
-            let _permit = receipt_permit;
+    let pipeline_task = task_scope
+        .spawn_blocking("process-cold-query-pipeline", move || {
+            let _permit = pipeline_permit;
+            let mut current_owner_digests = std::collections::BTreeMap::new();
+            let mut projections = std::collections::VecDeque::with_capacity(params.selectors.len());
+            for selector in &params.selectors {
+                let Some(owner_path) = selector_owner_path(selector) else {
+                    return Ok(None);
+                };
+                if !current_owner_digests.contains_key(owner_path) {
+                    let Some((current_digest, current_byte_len)) =
+                        process_cold_owner_content_digest(&project_root.join(owner_path))?
+                    else {
+                        return Ok(None);
+                    };
+                    let Some(expected) = owner_metadata.get(owner_path) else {
+                        return Ok(None);
+                    };
+                    if current_digest != expected.content_digest
+                        || current_byte_len != expected.byte_len
+                    {
+                        return Ok(None);
+                    }
+                    current_owner_digests.insert(owner_path.to_owned(), current_digest);
+                }
+                let read = exact.read_runtime_selector(projection, selector)?;
+                if !durable_projection_is_direct(selector, &read) {
+                    return Ok(None);
+                }
+                projections.push_back(read);
+            }
             materialize_query_playbook_receipt(
                 &template_request_id,
                 &params,
@@ -725,12 +716,16 @@ async fn try_process_cold_exact_owner_replay(
                     })
                 },
             )
+            .map(Some)
         })
         .map_err(AspClientOperationError::Message)?;
-    let receipt = receipt_task
+    let Some(receipt) = pipeline_task
         .join()
         .await
-        .map_err(AspClientOperationError::Message)??;
+        .map_err(AspClientOperationError::Message)??
+    else {
+        return Ok(None);
+    };
     bind_query_materialization_to_request(Arc::new(receipt), request_id, "materialized", started)
         .map(Some)
 }

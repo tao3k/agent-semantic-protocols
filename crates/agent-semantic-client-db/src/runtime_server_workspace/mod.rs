@@ -56,7 +56,8 @@ pub use durability::{
     WorkspaceGenerationDurabilityState,
 };
 pub use exact_segment::{
-    WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
+    WorkspaceExactOwnerContentMetadata, WorkspaceExactProjectionDataPlaneClient,
+    WorkspaceExactProjectionDataPlaneOpen,
 };
 pub use execution_publication::RuntimeWorkspaceExecutionPublicationStore;
 pub use execution_publication_composer::{

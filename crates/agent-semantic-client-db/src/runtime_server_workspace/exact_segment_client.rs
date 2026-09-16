@@ -61,6 +61,12 @@ pub enum WorkspaceExactProjectionDataPlaneOpen {
     RecoveryRequired { reason: String },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceExactOwnerContentMetadata {
+    pub content_digest: String,
+    pub byte_len: usize,
+}
+
 impl WorkspaceExactProjectionDataPlaneClient {
     pub async fn open_state(
         pointer_path: &Path,
@@ -119,6 +125,35 @@ impl WorkspaceExactProjectionDataPlaneClient {
             .current
             .read()
             .read_runtime_selector(projection_kind, structural_selector)
+    }
+
+    /// Reads owner identity and sizing data directly from the immutable mmap
+    /// without copying owner source bytes or selector payloads.
+    pub fn owner_content_metadata(
+        &self,
+        owner_path: &str,
+    ) -> Result<Option<WorkspaceExactOwnerContentMetadata>, String> {
+        let mapped = self.inner.current.read();
+        let Some((_owner_index, owner)) = mapped.find_owner(owner_path)? else {
+            return Ok(None);
+        };
+        Ok(Some(WorkspaceExactOwnerContentMetadata {
+            content_digest: mapped.owner_digest(&owner)?.to_owned(),
+            byte_len: owner.blob_len,
+        }))
+    }
+
+    /// Returns the exact direct projection length without copying projection
+    /// bytes. Relocated, missing, and repair-only selectors return `None`.
+    pub fn direct_projection_byte_len(
+        &self,
+        projection_kind: super::super::model::ExactProjectionKind,
+        structural_selector: &str,
+    ) -> Result<Option<usize>, String> {
+        self.inner
+            .current
+            .read()
+            .direct_projection_byte_len(projection_kind, structural_selector)
     }
 
     /// Resolve a projection evidence context from the same immutable mmap.
