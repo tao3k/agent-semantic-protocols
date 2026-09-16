@@ -10,6 +10,8 @@ authority = "runtime-server-resource-supervisor"
 
 [expected]
 shared_cpu_authority = true
+bounded_wait_queue = true
+work_bytes_are_admitted_separately_from_memory = true
 retain_intermediate_memory_charge = true
 release_cpu_between_stages = true
 forbid_detached_cpu_semaphore = true

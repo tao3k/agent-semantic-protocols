@@ -9,6 +9,27 @@ use std::collections::BTreeSet;
 use crate::RuntimeQueryGeneration;
 use crate::runtime_resident_grep::RuntimeGrepMatch;
 
+pub(super) fn retrieval_work_bytes(generation: &RuntimeQueryGeneration) -> usize {
+    generation
+        .resident()
+        .resident_grep_corpus()
+        .corpus_byte_count()
+        .max(1)
+}
+
+pub(super) fn scoped_source_work_bytes(
+    generation: &RuntimeQueryGeneration,
+    owner_scope: &BTreeSet<String>,
+) -> usize {
+    let corpus = generation.resident().resident_grep_corpus();
+    owner_scope
+        .iter()
+        .filter_map(|owner| corpus.owner_bytes(owner))
+        .map(<[u8]>::len)
+        .fold(0_usize, usize::saturating_add)
+        .max(1)
+}
+
 pub(super) fn retrieval_working_memory_bytes(generation: &RuntimeQueryGeneration) -> usize {
     let corpus = generation.resident().resident_grep_corpus();
     let line_count = corpus
@@ -40,12 +61,7 @@ pub(super) fn structural_working_memory_bytes(
     owner_scope: &BTreeSet<String>,
     match_count: usize,
 ) -> usize {
-    let corpus = generation.resident().resident_grep_corpus();
-    let scoped_source_bytes = owner_scope
-        .iter()
-        .filter_map(|owner| corpus.owner_bytes(owner))
-        .map(<[u8]>::len)
-        .fold(0_usize, usize::saturating_add);
+    let scoped_source_bytes = scoped_source_work_bytes(generation, owner_scope);
     scoped_source_bytes
         .saturating_add(match_count.saturating_mul(std::mem::size_of::<RuntimeGrepMatch>()))
         .max(1)

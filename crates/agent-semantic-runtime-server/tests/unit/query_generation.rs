@@ -927,6 +927,7 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
                     resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
+                        work_bytes: 1,
                         memory_bytes: 1024 * 1024,
                     },
                     build: Box::new(move || {
@@ -942,6 +943,7 @@ async fn runtime_builder_owns_independent_non_blocking_derived_jobs() {
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Tantivy),
                     resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
+                        work_bytes: 1,
                         memory_bytes: 1024 * 1024,
                     },
                     build: Box::new(move || {
@@ -1076,6 +1078,7 @@ async fn derived_generation_terminal_waits_for_every_attachment() {
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Graph),
                     resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
+                        work_bytes: 1,
                         memory_bytes: 1024 * 1024,
                     },
                     build: Box::new(move || {
@@ -1090,6 +1093,7 @@ async fn derived_generation_terminal_waits_for_every_attachment() {
                     identity: attachment_identity(RuntimeSearchDerivedAttachmentKind::Tantivy),
                     resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                         cpu: 1,
+                        work_bytes: 1,
                         memory_bytes: 1024 * 1024,
                     },
                     build: Box::new(move || {

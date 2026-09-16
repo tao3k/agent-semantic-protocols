@@ -7,44 +7,44 @@ test = "runtime_search_resource_lifecycle_is_scenario_measured"
 snapshot = "runtime_search_tokio_resource_lifecycle_v1"
 target_total = "250us"
 max_total = "5ms"
-observed_total = "14833ns"
+observed_total = "19458ns"
 regression_budget = "250us"
 memory_budget_bytes = 2097152
 observed_memory_bytes = 2097152
-target_rationale = "Three resident CPU stages require O(1) permit operations; blocking topology owns its task permit and retained intermediate or cached memory remains charged until its real lifecycle terminal."
+target_rationale = "Three resident stages use one bounded queue and declare input work bytes separately from retained memory; blocking topology owns its CPU and memory permits until its real lifecycle terminal."
 
 [measurement]
 clock = "std::time::Instant"
 statistic = "p95"
 warmup_iterations = 16
 measure_iterations = 128
-total_p50 = "6709ns"
-total_p95 = "14833ns"
-total_p99 = "17542ns"
-total_max = "26125ns"
+total_p50 = "7250ns"
+total_p95 = "19458ns"
+total_p99 = "23917ns"
+total_max = "29292ns"
 
 [observed_timings]
-grounding_admission = "125ns"
-retrieval_admission = "167ns"
-topology_blocking = "12042ns"
+grounding_admission = "167ns"
+retrieval_admission = "292ns"
+topology_blocking = "15500ns"
 
 [phase_distributions.grounding_admission]
-p50 = "84ns"
-p95 = "125ns"
-p99 = "167ns"
-max = "250ns"
+p50 = "125ns"
+p95 = "167ns"
+p99 = "209ns"
+max = "209ns"
 
 [phase_distributions.retrieval_admission]
-p50 = "84ns"
-p95 = "167ns"
-p99 = "291ns"
-max = "667ns"
+p50 = "167ns"
+p95 = "292ns"
+p99 = "542ns"
+max = "875ns"
 
 [phase_distributions.topology_blocking]
-p50 = "5208ns"
-p95 = "12042ns"
-p99 = "14125ns"
-max = "19750ns"
+p50 = "5500ns"
+p95 = "15500ns"
+p99 = "21500ns"
+max = "21958ns"
 
 [metrics.queue_wait_micros]
 unit = "microseconds"
@@ -52,11 +52,23 @@ kind = "maximum"
 target = 5000
 observed = 0
 
+[metrics.queue_capacity]
+unit = "slots"
+kind = "exact"
+target = 1
+observed = 1
+
 [metrics.admitted_cpu]
 unit = "lanes"
 kind = "exact"
 target = 1
 observed = 1
+
+[metrics.admitted_work_bytes]
+unit = "bytes"
+kind = "exact"
+target = 1048576
+observed = 1048576
 
 [metrics.peak_admitted_memory_bytes]
 unit = "bytes"

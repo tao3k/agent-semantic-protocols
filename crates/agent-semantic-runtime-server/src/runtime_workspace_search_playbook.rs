@@ -174,6 +174,9 @@ pub(super) async fn execute_progressive_search_clauses(
         .acquire_search_resources(
             agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                 cpu: 1,
+                work_bytes: super::workspace_search_resources::retrieval_work_bytes(
+                    generation.as_ref(),
+                ),
                 memory_bytes: super::workspace_search_resources::retrieval_working_memory_bytes(
                     generation.as_ref(),
                 ),
@@ -233,6 +236,10 @@ pub(super) async fn execute_progressive_search_clauses(
             .acquire_search_resources(
                 agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: super::workspace_search_resources::scoped_source_work_bytes(
+                        generation.as_ref(),
+                        &retrieval.fused_scope,
+                    ),
                     memory_bytes:
                         super::workspace_search_resources::structural_working_memory_bytes(
                             generation.as_ref(),

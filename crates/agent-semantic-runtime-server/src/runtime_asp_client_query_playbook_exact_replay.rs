@@ -177,6 +177,7 @@ pub(super) async fn try_process_cold_exact_owner_replay(
         .acquire(
             agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                 cpu: 1,
+                work_bytes: projection_bytes_upper_bound.max(1),
                 memory_bytes: receipt_memory_bytes,
             },
         )

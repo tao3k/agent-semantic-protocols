@@ -156,6 +156,7 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
             let mut retrieval = supervisor
                 .acquire(RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: 1024 * 1024,
                     memory_bytes: 1024 * 1024,
                 })
                 .await
@@ -168,6 +169,7 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
             let mut grounding = supervisor
                 .acquire(RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: 1024 * 1024,
                     memory_bytes: 1024 * 1024,
                 })
                 .await
@@ -185,6 +187,7 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
             let topology_permit = supervisor
                 .acquire(RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: 1024 * 1024,
                     memory_bytes: 1024 * 1024,
                 })
                 .await
@@ -219,6 +222,11 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
                         .max(grounding_receipt.queue_wait_micros),
                 )
                 .with_metric("admitted_cpu", retrieval_receipt.admitted_cpu as u64)
+                .with_metric("queue_capacity", retrieval_receipt.queue_capacity as u64)
+                .with_metric(
+                    "admitted_work_bytes",
+                    retrieval_receipt.admitted_work_bytes as u64,
+                )
                 .with_metric(
                     "peak_admitted_memory_bytes",
                     peak_admitted_memory_bytes as u64,
@@ -241,6 +249,7 @@ async fn completed_cpu_work_retains_memory_without_blocking_the_next_cpu_stage()
     let mut retained = supervisor
         .acquire(RuntimeServerResourceRequest {
             cpu: 1,
+            work_bytes: 1,
             memory_bytes: 1024 * 1024,
         })
         .await
@@ -251,6 +260,7 @@ async fn completed_cpu_work_retains_memory_without_blocking_the_next_cpu_stage()
         std::time::Duration::from_millis(50),
         supervisor.acquire(RuntimeServerResourceRequest {
             cpu: 1,
+            work_bytes: 1,
             memory_bytes: 1024 * 1024,
         }),
     )
@@ -269,6 +279,7 @@ async fn memory_pressure_never_hoards_cpu_while_waiting() {
     let mut retained = supervisor
         .acquire(RuntimeServerResourceRequest {
             cpu: 1,
+            work_bytes: 1,
             memory_bytes: 1024 * 1024,
         })
         .await
@@ -281,11 +292,15 @@ async fn memory_pressure_never_hoards_cpu_while_waiting() {
         waiting_supervisor
             .acquire(RuntimeServerResourceRequest {
                 cpu: 1,
+                work_bytes: 1,
                 memory_bytes: 1024 * 1024,
             })
             .await
     });
     observe_started.await.expect("waiter started");
+    while supervisor.active_queue_depth() == 0 {
+        tokio::task::yield_now().await;
+    }
     assert_eq!(
         supervisor.active_background_cpu(),
         0,
@@ -298,12 +313,122 @@ async fn memory_pressure_never_hoards_cpu_while_waiting() {
         .expect("waiting request admits after memory release");
 }
 
+#[tokio::test]
+async fn resource_wait_queue_is_bounded_by_background_cpu() {
+    let supervisor = RuntimeServerResourceSupervisor::new(2, 1024 * 1024);
+    assert_eq!(supervisor.queue_capacity(), 1);
+    assert_eq!(supervisor.work_byte_budget(), 1024 * 1024);
+    let mut retained = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            work_bytes: 1,
+            memory_bytes: 1024 * 1024,
+        })
+        .await
+        .expect("retained stage");
+    retained.release_cpu();
+
+    let waiting_supervisor = supervisor.clone();
+    let waiting = tokio::spawn(async move {
+        waiting_supervisor
+            .acquire(RuntimeServerResourceRequest {
+                cpu: 1,
+                work_bytes: 1,
+                memory_bytes: 1024 * 1024,
+            })
+            .await
+    });
+    while supervisor.active_queue_depth() == 0 {
+        tokio::task::yield_now().await;
+    }
+    let saturated = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            work_bytes: 1,
+            memory_bytes: 1,
+        })
+        .await;
+    let Err(saturated) = saturated else {
+        panic!("a second waiter must not exceed queue authority");
+    };
+    assert!(saturated.contains("resource queue is saturated"));
+
+    drop(retained);
+    waiting
+        .await
+        .expect("bounded waiter joins")
+        .expect("bounded waiter admits after memory release");
+    assert_eq!(supervisor.active_queue_depth(), 0);
+}
+
+#[tokio::test]
+async fn work_byte_admission_rejects_zero_and_process_authority_overflow() {
+    let supervisor = RuntimeServerResourceSupervisor::new(3, 1024 * 1024);
+    assert_eq!(supervisor.work_byte_budget(), 2 * 1024 * 1024);
+    for work_bytes in [0, supervisor.work_byte_budget() + 1] {
+        let admission = supervisor
+            .acquire(RuntimeServerResourceRequest {
+                cpu: 1,
+                work_bytes,
+                memory_bytes: 1,
+            })
+            .await;
+        let Err(failure) = admission else {
+            panic!("invalid work-byte claim must fail closed");
+        };
+        assert!(failure.contains("work-byte request exceeds process authority"));
+    }
+    assert_eq!(supervisor.active_queue_depth(), 0);
+    assert_eq!(supervisor.active_background_cpu(), 0);
+    assert_eq!(supervisor.active_memory_bytes(), 0);
+}
+
+#[tokio::test]
+async fn concurrent_work_bytes_share_one_process_budget_without_hoarding_cpu() {
+    let supervisor = RuntimeServerResourceSupervisor::new(3, 2 * 1024 * 1024);
+    assert_eq!(supervisor.work_byte_budget(), 4 * 1024 * 1024);
+    let mut retained = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            work_bytes: 4 * 1024 * 1024,
+            memory_bytes: 1024 * 1024,
+        })
+        .await
+        .expect("full work-byte budget");
+    retained.release_cpu();
+    assert_eq!(supervisor.active_work_bytes(), 4 * 1024 * 1024);
+
+    let waiting_supervisor = supervisor.clone();
+    let waiting = tokio::spawn(async move {
+        waiting_supervisor
+            .acquire(RuntimeServerResourceRequest {
+                cpu: 1,
+                work_bytes: 1,
+                memory_bytes: 1024 * 1024,
+            })
+            .await
+    });
+    while supervisor.active_queue_depth() == 0 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(supervisor.active_background_cpu(), 0);
+    assert_eq!(supervisor.active_memory_bytes(), 1024 * 1024);
+
+    drop(retained);
+    waiting
+        .await
+        .expect("work-byte waiter joins")
+        .expect("work-byte waiter admits after budget release");
+    assert_eq!(supervisor.active_work_bytes(), 0);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dropped_blocking_handle_retains_task_and_memory_until_the_real_terminal() {
     let supervisor = RuntimeServerResourceSupervisor::new(4, 1024 * 1024);
     let permit = supervisor
         .acquire(RuntimeServerResourceRequest {
             cpu: 1,
+            work_bytes: 1,
             memory_bytes: 1024 * 1024,
         })
         .await

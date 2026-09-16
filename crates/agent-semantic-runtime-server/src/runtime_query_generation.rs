@@ -825,6 +825,7 @@ impl RuntimeQueryGeneration {
             .acquire_search_resources(
                 agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: source_descriptor_bytes.max(1),
                     memory_bytes: topology_memory_bytes,
                 },
             )

@@ -274,6 +274,10 @@ pub(super) async fn dispatch_resolved_route(
             .acquire_search_resources(
                 agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                     cpu: 1,
+                    work_bytes: super::workspace_search_resources::scoped_source_work_bytes(
+                        generation.as_ref(),
+                        &topology_scope,
+                    ),
                     memory_bytes: super::workspace_search_resources::graph_working_memory_bytes(
                         generation.as_ref(),
                         &topology_scope,

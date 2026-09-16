@@ -698,6 +698,18 @@ topology cache retains its memory authority until replacement or generation
 drop. The topology library's standalone executor remains available to
 non-Runtime callers, but Runtime MUST NOT use that independent semaphore.
 
+Runtime resource admission is one product over CPU lanes, input work bytes,
+retained memory, and a bounded queue slot. Every CPU stage declares non-zero
+=workBytes= separately from =memoryBytes=; the former measures the admitted
+input surface while the latter reserves live heap/result capacity. The daemon
+derives its work-byte authority from process memory authority and background
+CPU cardinality, and admits at most one queued waiter per background CPU lane.
+Queue saturation is a typed admission failure, not an unbounded Tokio waiter
+list. Runtime acquires the authorities in the fixed order queue, work bytes,
+retained memory, then CPU. A queue slot is released only after all three
+resource permits have been acquired; waiting for either byte authority never
+hoards CPU.
+
 A published Graph attachment with zero nodes or zero edges is Ready-empty, not
 invalid. Runtime MUST NOT call the relation evaluator with a zero execution
 budget; it emits a complete empty Graph fan-in bound to the attachment's real

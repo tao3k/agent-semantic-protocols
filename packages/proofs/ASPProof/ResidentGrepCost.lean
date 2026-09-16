@@ -932,6 +932,45 @@ theorem topology_blocking_terminal_releases_memory_authority
     topologyBlockingMemoryPermitHeld callerCancelled true = false := by
   rfl
 
+/-- Runtime resource admission is a product, so zero or out-of-authority byte
+work cannot hide behind a valid CPU or memory claim. -/
+structure UnifiedRuntimeResourceRequest where
+  cpu : Nat
+  workBytes : Nat
+  memoryBytes : Nat
+  deriving DecidableEq, Repr
+
+def unifiedRuntimeResourceAdmitted
+    (backgroundCpu workByteBudget memoryBudget : Nat)
+    (request : UnifiedRuntimeResourceRequest) : Prop :=
+  0 < request.cpu ∧ request.cpu ≤ backgroundCpu ∧
+  0 < request.workBytes ∧ request.workBytes ≤ workByteBudget ∧
+  0 < request.memoryBytes ∧ request.memoryBytes ≤ memoryBudget
+
+def runtimeQueueCapacity (backgroundCpu : Nat) : Nat := backgroundCpu
+
+theorem runtime_queue_is_bounded_by_background_cpu (backgroundCpu : Nat) :
+    runtimeQueueCapacity backgroundCpu = backgroundCpu := by
+  rfl
+
+theorem zero_byte_work_is_not_admitted
+    (backgroundCpu workByteBudget memoryBudget cpu memoryBytes : Nat) :
+    ¬ unifiedRuntimeResourceAdmitted backgroundCpu workByteBudget memoryBudget
+      ⟨cpu, 0, memoryBytes⟩ := by
+  simp [unifiedRuntimeResourceAdmitted]
+
+def aggregateWorkBytesAdmitted
+    (workByteBudget : Nat)
+    (requests : List UnifiedRuntimeResourceRequest) : Prop :=
+  (requests.map (fun request => request.workBytes)).sum ≤ workByteBudget
+
+theorem concurrent_work_bytes_over_budget_are_not_admitted
+    (workByteBudget : Nat)
+    (requests : List UnifiedRuntimeResourceRequest)
+    (over : workByteBudget < (requests.map (fun request => request.workBytes)).sum) :
+    ¬ aggregateWorkBytesAdmitted workByteBudget requests := by
+  simp [aggregateWorkBytesAdmitted, Nat.not_le.mpr over]
+
 /-- Completed response history has one Search and one Query slot. In-flight
 claims are task-lifetime state and are not completed-history retention. -/
 structure GenerationTerminalRetention where

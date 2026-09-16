@@ -457,6 +457,7 @@ impl RuntimeSearchGenerationBuilder {
             },
             resources: agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
                 cpu: lexical_cpu,
+                work_bytes: lexical_bytes.max(1),
                 memory_bytes: lexical_memory,
             },
             build: Box::new(move || {

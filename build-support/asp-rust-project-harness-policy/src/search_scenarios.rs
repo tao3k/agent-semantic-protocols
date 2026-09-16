@@ -490,12 +490,14 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                     max_total: "5ms",
                     regression_budget: "250us",
                     memory_budget_bytes: 2_097_152,
-                    target_rationale: "Three resident CPU stages require O(1) permit operations; blocking topology owns its task permit and retained intermediate or cached memory remains charged until its real lifecycle terminal.",
+                    target_rationale: "Three resident stages use one bounded queue and declare input work bytes separately from retained memory; blocking topology owns its CPU and memory permits until its real lifecycle terminal.",
                     warmup_iterations: 16,
                     measure_iterations: 128,
                     metrics: [
                         { name: "queue_wait_micros", unit: "microseconds", kind: Maximum, target: 5000 },
+                        { name: "queue_capacity", unit: "slots", kind: Exact, target: 1 },
                         { name: "admitted_cpu", unit: "lanes", kind: Exact, target: 1 },
+                        { name: "admitted_work_bytes", unit: "bytes", kind: Exact, target: 1_048_576 },
                         { name: "peak_admitted_memory_bytes", unit: "bytes", kind: Exact, target: 2_097_152 },
                         { name: "completed_stage_count", unit: "count", kind: Exact, target: 3 },
                         { name: "runtime_owned_blocking_stage_count", unit: "count", kind: Exact, target: 1 }
