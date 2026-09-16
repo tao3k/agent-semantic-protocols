@@ -28,6 +28,7 @@ use crate::manager_validation::validate_relative_path;
 use crate::manager_validation::validate_schema_name;
 use crate::receipt::BUNDLE_MEMBERSHIP_FILE;
 use crate::receipt::SchemaBundleMembership;
+use crate::receipt::read_public_receipt_blocking;
 use crate::receipt::read_receipt_if_present;
 use crate::receipt::schema_digest;
 use crate::receipt::tagged_content_digest;
@@ -64,6 +65,8 @@ pub struct LanguageSchemaProfile {
     pub bundle_root: String,
     pub root_sets: Vec<String>,
     pub roots: Vec<String>,
+    #[serde(default)]
+    pub bootstrap: Vec<String>,
     pub provider_owned: Vec<String>,
 }
 
@@ -301,6 +304,13 @@ impl SchemaManager {
             .into_iter()
             .next()
             .ok_or_else(|| format!("unknown language schema profile: {language_id}"))?;
+        let package_bundle_root = self.workspace_root.join(&profile.bundle_root);
+        if output_root.canonicalize().ok() == package_bundle_root.canonicalize().ok() {
+            return Err(format!(
+                "portable client bundle output cannot target a Language package: {}",
+                output_root.display()
+            ));
+        }
         let (receipt, documents) = self.expected_receipt(&registry, profile)?;
         write_bundle(profile, &receipt, &documents, output_root, &BTreeSet::new())
     }
@@ -349,8 +359,14 @@ impl SchemaManager {
             }
             ensure_unique("schema root set", &profile.root_sets)?;
             ensure_unique("schema root", &profile.roots)?;
+            ensure_unique("bootstrap schema", &profile.bootstrap)?;
             ensure_unique("provider-owned schema", &profile.provider_owned)?;
-            for name in profile.roots.iter().chain(&profile.provider_owned) {
+            for name in profile
+                .roots
+                .iter()
+                .chain(&profile.bootstrap)
+                .chain(&profile.provider_owned)
+            {
                 validate_schema_name(name)?;
             }
         }
@@ -539,12 +555,7 @@ impl SchemaManager {
                 ));
             }
         }
-        let provider_owned = profile
-            .provider_owned
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        write_bundle(profile, &receipt, &documents, &schema_root, &provider_owned)
+        write_package_projection(profile, &receipt, &documents, &schema_root)
     }
 
     fn verify_profile(
@@ -562,31 +573,132 @@ impl SchemaManager {
                 ));
             }
         }
-        for (name, bytes) in &documents {
+        for name in &profile.bootstrap {
+            let expected_bytes = documents.get(name).ok_or_else(|| {
+                format!(
+                    "bootstrap schema is outside canonical closure for {}: {name}",
+                    profile.language_id
+                )
+            })?;
             let actual = fs::read(schema_root.join(name))
-                .map_err(|error| format!("read materialized schema {name}: {error}"))?;
-            if &actual != bytes {
+                .map_err(|error| format!("read bootstrap schema {name}: {error}"))?;
+            if &actual != expected_bytes {
                 return Err(format!(
-                    "materialized schema digest drift for {}: {name}",
+                    "bootstrap schema digest drift for {}: {name}",
                     profile.language_id
                 ));
             }
         }
         let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
-        let actual = read_receipt_if_present(&receipt_path)?.ok_or_else(|| {
-            format!(
-                "schema bundle receipt is missing: {}",
-                receipt_path.display()
-            )
-        })?;
-        if actual != expected {
+        let actual = read_public_receipt_blocking(&receipt_path)?;
+        if actual.schema_digest != expected.bundle_digest {
             return Err(format!(
                 "schema bundle receipt is stale for {}: expected={} actual={}",
-                profile.language_id, expected.bundle_digest, actual.bundle_digest
+                profile.language_id, expected.bundle_digest, actual.schema_digest
             ));
+        }
+        let membership_path = schema_root.join(BUNDLE_MEMBERSHIP_FILE);
+        if membership_path.exists() {
+            return Err(format!(
+                "package-local schema membership is forbidden for {}: {}",
+                profile.language_id,
+                membership_path.display()
+            ));
+        }
+        let allowed = profile
+            .provider_owned
+            .iter()
+            .chain(&profile.bootstrap)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for entry in fs::read_dir(&schema_root)
+            .map_err(|error| format!("read schema root {}: {error}", schema_root.display()))?
+        {
+            let entry = entry.map_err(|error| format!("read schema root entry: {error}"))?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".schema.json") && !allowed.contains(&name) {
+                return Err(format!(
+                    "shared package-local schema copy is forbidden for {}: {name}",
+                    profile.language_id
+                ));
+            }
         }
         Ok(report(profile, &expected, 0, 0, receipt_path))
     }
+}
+
+fn write_package_projection(
+    profile: &LanguageSchemaProfile,
+    receipt: &LanguageSchemaBundleReceipt,
+    documents: &BTreeMap<String, Vec<u8>>,
+    schema_root: &Path,
+) -> Result<SchemaBundleReport, String> {
+    let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
+    let previous = read_receipt_if_present(&receipt_path).unwrap_or_default();
+    let protected_names = profile
+        .provider_owned
+        .iter()
+        .chain(&profile.bootstrap)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut changed_count = 0;
+    for name in &profile.bootstrap {
+        let bytes = documents.get(name).ok_or_else(|| {
+            format!(
+                "bootstrap schema is outside canonical closure for {}: {name}",
+                profile.language_id
+            )
+        })?;
+        let target = schema_root.join(name);
+        if fs::read(&target).ok().as_deref() != Some(bytes.as_slice()) {
+            atomic_write(&target, bytes)?;
+            changed_count += 1;
+        }
+    }
+    let mut removed_count = 0;
+    if let Some(previous) = previous {
+        for stale in previous
+            .schemas
+            .into_iter()
+            .map(|entry| entry.name)
+            .filter(|name| !protected_names.contains(name))
+        {
+            let stale_path = schema_root.join(&stale);
+            if stale_path.is_file() {
+                fs::remove_file(&stale_path).map_err(|error| {
+                    format!(
+                        "remove shared package schema {}: {error}",
+                        stale_path.display()
+                    )
+                })?;
+                removed_count += 1;
+            }
+        }
+    }
+    let membership_path = schema_root.join(BUNDLE_MEMBERSHIP_FILE);
+    if membership_path.is_file() {
+        fs::remove_file(&membership_path).map_err(|error| {
+            format!(
+                "remove package schema membership {}: {error}",
+                membership_path.display()
+            )
+        })?;
+        removed_count += 1;
+    }
+    let receipt_bytes = serde_json::to_vec_pretty(receipt)
+        .map_err(|error| format!("encode schema bundle receipt: {error}"))?;
+    if fs::read(&receipt_path).ok().as_deref() != Some(receipt_bytes.as_slice()) {
+        atomic_write(&receipt_path, &receipt_bytes)?;
+        changed_count += 1;
+    }
+    sync_directory(schema_root)?;
+    Ok(report(
+        profile,
+        receipt,
+        changed_count,
+        removed_count,
+        receipt_path,
+    ))
 }
 
 fn write_bundle(

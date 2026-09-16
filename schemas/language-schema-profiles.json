@@ -140,6 +140,7 @@
         "semantic-invariant-candidate.v1.schema.json",
         "semantic-compare-packet.v1.schema.json"
       ],
+      "bootstrap": ["provider-workspace-install.schema.json"],
       "providerOwned": [
         "rust-ast-patch-real-project-evidence.v1.schema.json",
         "rust-semantic-capabilities.v1.schema.json"
@@ -158,6 +159,7 @@
         "agent-reasoning"
       ],
       "roots": [],
+      "bootstrap": ["provider-workspace-install.schema.json"],
       "providerOwned": [
         "typescript-semantic-capabilities.v1.schema.json"
       ]
@@ -175,6 +177,7 @@
         "agent-reasoning"
       ],
       "roots": [],
+      "bootstrap": ["provider-workspace-install.schema.json"],
       "providerOwned": [
         "python-semantic-capabilities.v1.schema.json"
       ]
@@ -192,6 +195,7 @@
         "agent-reasoning"
       ],
       "roots": [],
+      "bootstrap": ["provider-workspace-install.schema.json"],
       "providerOwned": []
     },
     {
@@ -219,6 +223,7 @@
         "semantic-runtime-source-acquisition.v1.schema.json",
         "semantic-type-proof.v1.schema.json"
       ],
+      "bootstrap": ["provider-workspace-install.schema.json"],
       "providerOwned": [
         "semantic-asp-gerbil-scheme-info.v1.schema.json"
       ]
@@ -235,6 +240,7 @@
         "agent-reasoning"
       ],
       "roots": [],
+      "bootstrap": [],
       "providerOwned": []
     },
     {
@@ -249,6 +255,7 @@
         "agent-reasoning"
       ],
       "roots": [],
+      "bootstrap": [],
       "providerOwned": []
     }
   ],

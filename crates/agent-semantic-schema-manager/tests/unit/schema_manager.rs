@@ -56,10 +56,6 @@ fn fixture() -> (TempDir, SchemaManager) {
         &provider_schema_root.join("private.schema.json"),
         &json!({"type": "object"}),
     );
-    write_json(
-        &provider_schema_root.join("unmanaged.schema.json"),
-        &json!({"type": "boolean"}),
-    );
     let registry_path = root.path().join("profiles.json");
     write_registry(&registry_path, &["root.schema.json", "old.schema.json"]);
     let manager = SchemaManager::with_registry(root.path(), &registry_path);
@@ -90,6 +86,7 @@ fn write_registry(path: &Path, roots: &[&str]) {
                 "bundleRoot": "languages/fixture/schemas",
                 "rootSets": ["contract"],
                 "roots": [],
+                "bootstrap": ["root.schema.json"],
                 "providerOwned": ["private.schema.json"]
             }]
         }),
@@ -121,23 +118,24 @@ fn registered_profiles_own_search_producer_axes() {
 }
 
 #[tokio::test]
-async fn materialize_resolves_closure_and_verify_is_read_only() {
+async fn materialize_projects_only_bootstrap_and_verify_is_read_only() {
     let (root, manager) = fixture();
     let reports = manager.materialize(&[]).await.expect("materialize");
     assert_eq!(reports.len(), 1);
     assert_eq!(reports[0].schema_count, 3);
     let schema_root = root.path().join("languages/fixture/schemas");
     assert!(schema_root.join("root.schema.json").is_file());
-    assert!(schema_root.join("dependency.schema.json").is_file());
+    assert!(!schema_root.join("dependency.schema.json").exists());
     assert!(schema_root.join(BUNDLE_RECEIPT_FILE).is_file());
+    assert!(
+        !schema_root
+            .join(".asp-schema-manager-membership.json")
+            .exists()
+    );
 
     let verified = manager.verify(&[]).await.expect("verify");
     assert_eq!(verified[0].changed_count, 0);
     assert_eq!(verified[0].bundle_digest, reports[0].bundle_digest);
-    let portable = verify_bundle_receipt(schema_root.join(BUNDLE_RECEIPT_FILE))
-        .await
-        .expect("portable receipt verification");
-    assert_eq!(portable.language_id, "fixture");
 }
 
 #[tokio::test]
@@ -298,7 +296,7 @@ async fn materialize_replaces_a_stale_package_copy_from_the_canonical_root() {
     );
 
     let reports = manager.materialize(&[]).await.expect("refresh materialize");
-    assert_eq!(reports[0].changed_count, 3);
+    assert_eq!(reports[0].changed_count, 2);
     assert_eq!(
         fs::read(&package_path).expect("read package projection"),
         fs::read(&canonical_path).expect("read canonical root")
@@ -334,17 +332,20 @@ async fn verify_rejects_legacy_bundle_receipt_shape() {
 }
 
 #[tokio::test]
-async fn manager_never_removes_provider_owned_or_unmanaged_schemas() {
+async fn verify_rejects_unmanaged_package_local_schema_copies() {
     let (root, manager) = fixture();
     manager.materialize(&[]).await.expect("initial materialize");
-    write_registry(&root.path().join("profiles.json"), &["root.schema.json"]);
-
-    let reports = manager.materialize(&[]).await.expect("second materialize");
     let schema_root = root.path().join("languages/fixture/schemas");
-    assert_eq!(reports[0].removed_count, 1);
-    assert!(!schema_root.join("old.schema.json").exists());
+    write_json(
+        &schema_root.join("unmanaged.schema.json"),
+        &json!({"type": "boolean"}),
+    );
     assert!(schema_root.join("private.schema.json").is_file());
-    assert!(schema_root.join("unmanaged.schema.json").is_file());
+    let error = manager
+        .verify(&[])
+        .await
+        .expect_err("unmanaged schema copy must fail closed");
+    assert!(error.contains("shared package-local schema copy is forbidden"));
 }
 
 #[tokio::test]
@@ -359,10 +360,7 @@ async fn verify_fails_closed_on_materialized_schema_drift() {
     .expect("drift materialized schema");
 
     let error = manager.verify(&[]).await.expect_err("drift must fail");
-    assert!(
-        error.contains("materialized schema digest drift"),
-        "{error}"
-    );
+    assert!(error.contains("bootstrap schema digest drift"), "{error}");
 }
 
 #[tokio::test]
@@ -384,6 +382,22 @@ async fn publishes_portable_client_bundle_outside_language_package() {
         .expect("verify downstream receipt");
     assert_eq!(receipt.language_id, "fixture");
     assert_eq!(receipt.bundle_digest, report.bundle_digest);
+}
+
+#[tokio::test]
+async fn portable_client_bundle_cannot_repopulate_a_language_package() {
+    let (root, manager) = fixture();
+    let package_schema_root = root.path().join("languages/fixture/schemas");
+
+    let error = manager
+        .publish_client_bundle("fixture".to_owned(), package_schema_root)
+        .await
+        .expect_err("portable bundle must not target a Language package");
+
+    assert!(
+        error.contains("cannot target a Language package"),
+        "{error}"
+    );
 }
 
 #[tokio::test]

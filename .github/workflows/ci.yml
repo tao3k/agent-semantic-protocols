@@ -410,10 +410,6 @@ jobs:
         run: |
           .ci/bin/asp schema materialize --workspace . --language rust
           .ci/bin/asp schema verify --workspace . --language rust
-          .ci/bin/asp schema publish-client \
-            --workspace . \
-            --language rust \
-            --output languages/asp-rust/schemas
           cargo test --manifest-path languages/asp-rust/Cargo.toml schema --features provider-server --quiet
 
   tree-sitter-query-contract-gates:

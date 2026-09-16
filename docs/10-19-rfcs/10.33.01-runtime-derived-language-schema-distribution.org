@@ -99,9 +99,10 @@ the Runtime depend on a source checkout at startup.
    membership or shared dependency documents to installer admission.
    Runtime source-mode qualification now uses the same read-only canonical
    resolver; it cannot recreate Language copies as a test side effect.
-3. Make =verify= reject shared package copies and retain only provider-owned and
-   bootstrap files.
-4. Remove generated shared copies from Language trees and CI materialization.
+3. [X] Make =verify= reject shared package copies and retain only provider-owned
+   and explicitly declared bootstrap files.
+4. [X] Remove generated shared copies from Language trees and stop CI from
+   publishing a portable client bundle back into a Language source directory.
 5. Qualify =Ready=, =Unchanged=, unknown-language, root-set drift, and digest
    corruption through the real Runtime socket.
 

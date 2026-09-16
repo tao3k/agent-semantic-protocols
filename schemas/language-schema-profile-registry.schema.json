@@ -46,6 +46,7 @@
           "bundleRoot": { "type": "string", "minLength": 1 },
           "rootSets": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "roots": { "$ref": "#/$defs/schemaNames" },
+          "bootstrap": { "$ref": "#/$defs/schemaNames" },
           "providerOwned": { "$ref": "#/$defs/schemaNames" }
         }
       }

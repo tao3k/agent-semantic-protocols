@@ -484,8 +484,8 @@ provider-gate-typescript:
 
 provider-gate-python:
     uv run --project {{asp_python_project}} --frozen python -m pytest \
-      {{asp_python_project}}/tests/unit/asp_python/test_semantic_cli_query_set.py \
-      {{asp_python_project}}/tests/unit/asp_python/test_semantic_schema_registry.py
+      {{asp_python_project}}/tests/unit/asp_python/test_semantic_cli.py \
+      {{asp_python_project}}/tests/unit/asp_python/test_semantic_language_schemas.py
 
 provider-gate-julia:
 	julia --project={{asp_julia_project}} -e 'using Pkg; Pkg.test()'
