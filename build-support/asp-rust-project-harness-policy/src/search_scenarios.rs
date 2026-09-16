@@ -70,6 +70,10 @@ pub const RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID: &str =
 /// Resident GREP semantic matrix and explicit external-rg qualification lane.
 pub const RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID: &str = "runtime-resident-grep-semantics";
 
+/// Human Query must render callable skeletons without copying the complete wire envelope.
+pub const QUERY_CALLABLE_SKELETON_COMPACT_PRESENTATION_SCENARIO_ID: &str =
+    "query-callable-skeleton-compact-presentation";
+
 /// Builds the ASP-owned search scenario package consumed by Rust harness policy.
 #[must_use]
 pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
@@ -537,6 +541,45 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "runtime_resident_grep::tests::admitted_grep_matches_rg_reference_corpus",
                             "--",
                             "--ignored",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: QUERY_CALLABLE_SKELETON_COMPACT_PRESENTATION_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Human Query dispatches stable V1 source and callable-skeleton projections to distinct renderers; compact skeleton output omits wire authority copies while machine JSON remains complete.",
+                fixture_root: "crates/agent-semantic-client/tests/unit/scenarios/query_callable_skeleton_compact_presentation",
+                tags: ["search", "query", "projection", "callable-skeleton", "result-quality"],
+                commands: [
+                    {
+                        label: "compact-human-presentation",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client",
+                            "--test",
+                            "query_playbook",
+                            "projection_presentation::query_callable_skeleton_uses_compact_text_babel_presentation",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "mixed-projection-rejection",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client",
+                            "--test",
+                            "query_playbook",
+                            "projection_presentation::query_human_presentation_rejects_mixed_projection_receipt",
+                            "--",
                             "--exact",
                             "--nocapture",
                         ]

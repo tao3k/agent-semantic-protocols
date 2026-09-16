@@ -16,6 +16,22 @@ inductive ExactProjectionMode where
   | verbatim
   deriving DecidableEq
 
+inductive Presentation where
+  | human
+  | machine
+  deriving DecidableEq
+
+inductive PresentedPayload where
+  | nativeSource
+  | compactSkeleton
+  | completeWireFrame
+  deriving DecidableEq
+
+def presentedPayload : Presentation -> ProjectionKind -> PresentedPayload
+  | .machine, _ => .completeWireFrame
+  | .human, .source => .nativeSource
+  | .human, .callableSkeleton => .compactSkeleton
+
 def publicKindFor : ExactProjectionMode → Option ProjectionKind
   | .code => some .source
   | .skeleton => some .callableSkeleton
@@ -88,5 +104,18 @@ theorem skeleton_cache_mode_maps_to_callable_skeleton :
 theorem code_cache_mode_is_not_callable_skeleton :
     publicKindFor .code ≠ some .callableSkeleton := by
   decide
+
+theorem human_callable_skeleton_never_presents_complete_wire_frame :
+    presentedPayload .human .callableSkeleton ≠ .completeWireFrame := by
+  decide
+
+theorem human_source_and_skeleton_presentations_are_distinct :
+    presentedPayload .human .source ≠
+      presentedPayload .human .callableSkeleton := by
+  decide
+
+theorem machine_presentation_preserves_callable_wire_frame :
+    presentedPayload .machine .callableSkeleton = .completeWireFrame :=
+  rfl
 
 end ASPProof.CallableSkeletonGenerationAdmission

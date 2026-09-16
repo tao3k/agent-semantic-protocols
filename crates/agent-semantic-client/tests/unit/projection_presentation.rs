@@ -196,6 +196,7 @@ fn query_success_is_only_native_result_blocks_in_request_order() {
     let frame = response(json!({
         "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
         "schemaVersion": "1",
+        "projection": "source",
         "requestedSelectors": [rust_selector, json_selector],
         "materializations": [
         {
@@ -228,6 +229,100 @@ fn query_success_is_only_native_result_blocks_in_request_order() {
     assert_eq!(parsed.document().children.len(), 2);
     assert_eq!(parsed.document().source_block_records().len(), 2);
     assert!(!rendered.to_ascii_lowercase().contains("gql"));
+}
+
+#[test]
+fn query_callable_skeleton_uses_compact_text_babel_presentation() {
+    let selector = "rust://src/lib.rs#item/function/run";
+    let projection = json!({
+        "schemaId": "agent.semantic-protocols.semantic-projection",
+        "schemaVersion": "1",
+        "projectionKind": "callable-skeleton",
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "rootSelector": selector,
+        "evidenceContextRef": format!("blake3-256:{}", "e".repeat(64)),
+        "payloadSchemaId": "agent.semantic-protocols.callable-skeleton",
+        "payloadDigest": format!("blake3-256:{}", "d".repeat(64)),
+        "payload": {
+            "rootSelector": {"selector": selector},
+            "callable": {"displayName": "run"},
+            "nodes": [
+                {"nodeId": "callable:root", "kind": "callable", "label": "run", "order": 0},
+                {
+                    "nodeId": "branch:1",
+                    "kind": "branch",
+                    "label": "if ready",
+                    "order": 1,
+                    "selectorRef": "$root/segment/branch/ordinal-1"
+                }
+            ],
+            "cost": {"sourceBytes": 4096}
+        }
+    });
+    let wire_bytes = serde_json::to_vec(&projection).expect("encode callable projection");
+    let wire_byte_len = wire_bytes.len();
+    let frame = response(json!({
+        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
+        "schemaVersion": "1",
+        "projection": "callable-skeleton",
+        "requestedSelectors": [selector],
+        "materializations": [{
+            "selector": selector,
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/lib.rs",
+            "projection": "callable-skeleton",
+            "sourceContentDigest": "d".repeat(64),
+            "bytes": wire_bytes
+        }],
+        "terminal": {"state": "ready", "terminalCount": 1}
+    }));
+
+    let rendered =
+        render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text).unwrap();
+    assert!(rendered.starts_with("#+begin_src text "));
+    assert!(rendered.contains(":language \"rust\""));
+    assert!(rendered.contains(":projection \"callable-skeleton\""));
+    assert!(rendered.contains("[callable-skeleton] language=rust callable=\"run\" nodes=2"));
+    assert!(rendered.contains("selector=R/segment/branch/ordinal-1"));
+    assert!(!rendered.contains("evidenceContextRef"));
+    assert!(!rendered.contains("payloadDigest"));
+    assert!(rendered.len() < wire_byte_len);
+    assert_eq!(
+        Org::parse(&rendered)
+            .document()
+            .source_block_records()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn query_human_presentation_rejects_mixed_projection_receipt() {
+    let selector = "rust://src/lib.rs#item/function/run";
+    let frame = response(json!({
+        "schemaId": "agent.semantic-protocols.query-playbook-materialization-receipt",
+        "schemaVersion": "1",
+        "projection": "callable-skeleton",
+        "requestedSelectors": [selector],
+        "materializations": [{
+            "selector": selector,
+            "languageId": "rust",
+            "providerId": "asp-rust",
+            "ownerPath": "src/lib.rs",
+            "projection": "source",
+            "sourceContentDigest": "d".repeat(64),
+            "bytes": [102, 110, 32, 114, 117, 110, 40, 41, 32, 123, 125]
+        }],
+        "terminal": {"state": "ready", "terminalCount": 1}
+    }));
+
+    assert!(
+        render_workspace_query_playbook_response(&frame, ProjectionPresentation::Text)
+            .unwrap_err()
+            .contains("projection differs from its receipt")
+    );
 }
 
 #[test]

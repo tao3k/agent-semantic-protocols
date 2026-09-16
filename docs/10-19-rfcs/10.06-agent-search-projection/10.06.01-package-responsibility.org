@@ -19,6 +19,17 @@ belong to =agent-semantic-search=.  Human-readable source or callable-skeleton
 presentation belongs to =agent-semantic-client=.  Explicit machine mode alone
 renders the complete typed JSON frame.
 
+Human Query presentation MUST dispatch on the receipt-bound V1 projection.
+=source= bytes become a native-language Org Babel block.  A
+=callable-skeleton= envelope MUST be admitted by the shared V1 schema and then
+rendered through the compact Client-owned skeleton grammar in a =text= Babel
+block whose =language= header preserves its provider language.  It MUST NOT be
+printed as the complete semantic-projection JSON envelope or mislabeled as
+native source.  Every materialization projection MUST equal the enclosing
+receipt projection; mixed projection receipts fail closed.  Machine JSON mode
+continues to preserve the complete typed frame.  This is a presentation-path
+correction inside stable V1 and changes no schema or Runtime authority.
+
 HTTP/gRPC admission and the server-owned query lifecycle belong to
 =agent-semantic-runtime-server=.  The public =asp= binary belongs to the
 =agent-semantic-client= package.  It may parse arguments, select a V1 client request,

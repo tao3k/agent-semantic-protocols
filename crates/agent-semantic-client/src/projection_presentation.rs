@@ -125,16 +125,23 @@ pub fn render_workspace_query_playbook_response(
             "Query Playbook materializations do not preserve the complete request order".to_owned(),
         );
     }
+    let projection = receipt
+        .get("projection")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Query Playbook receipt has no projection".to_owned())?;
     let blocks = materializations
         .iter()
-        .map(render_query_materialization)
+        .map(|materialization| render_query_materialization(materialization, projection))
         .collect::<Result<Vec<_>, _>>()?;
     OrgSourceBlockDocument::new(blocks)
         .and_then(|document| document.render())
         .map_err(|error| format!("render Query Org source-block document: {error}"))
 }
 
-fn render_query_materialization(materialization: &Value) -> Result<OrgSourceBlock, String> {
+fn render_query_materialization(
+    materialization: &Value,
+    receipt_projection: &str,
+) -> Result<OrgSourceBlock, String> {
     let selector = materialization
         .get("selector")
         .and_then(Value::as_str)
@@ -147,6 +154,13 @@ fn render_query_materialization(materialization: &Value) -> Result<OrgSourceBloc
         .get("ownerPath")
         .and_then(Value::as_str)
         .ok_or_else(|| "Query materialization has no ownerPath".to_owned())?;
+    let materialization_projection = materialization
+        .get("projection")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Query materialization has no projection".to_owned())?;
+    if materialization_projection != receipt_projection {
+        return Err("Query materialization projection differs from its receipt".to_owned());
+    }
     let bytes = materialization
         .get("bytes")
         .and_then(Value::as_array)
@@ -159,18 +173,34 @@ fn render_query_materialization(materialization: &Value) -> Result<OrgSourceBloc
                 .ok_or_else(|| "Query materialization contains a non-octet byte".to_owned())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let source = String::from_utf8(bytes)
-        .map_err(|_| "Query materialization source is not UTF-8".to_owned())?;
-    OrgSourceBlock::new(
-        language,
-        vec![
-            org_text_header("query", selector)?,
-            org_text_header("filename", owner_path)?,
-        ],
-        Vec::new(),
-        source,
-    )
-    .map_err(|error| format!("construct Query Org source block: {error}"))
+    let (block_language, headers, source) = match receipt_projection {
+        "source" => (
+            language,
+            vec![
+                org_text_header("query", selector)?,
+                org_text_header("filename", owner_path)?,
+            ],
+            String::from_utf8(bytes)
+                .map_err(|_| "Query materialization source is not UTF-8".to_owned())?,
+        ),
+        "callable-skeleton" => {
+            let projection: Value = serde_json::from_slice(&bytes)
+                .map_err(|error| format!("decode callable-skeleton projection: {error}"))?;
+            (
+                "text",
+                vec![
+                    org_text_header("query", selector)?,
+                    org_text_header("filename", owner_path)?,
+                    org_text_header("language", language)?,
+                    org_text_header("projection", "callable-skeleton")?,
+                ],
+                crate::exact_projection::render_callable_skeleton(&projection)?,
+            )
+        }
+        _ => return Err("Query Playbook receipt has an unsupported projection".to_owned()),
+    };
+    OrgSourceBlock::new(block_language, headers, Vec::new(), source)
+        .map_err(|error| format!("construct Query Org source block: {error}"))
 }
 
 fn org_text_header(key: &str, value: &str) -> Result<OrgSourceBlockHeader, String> {
