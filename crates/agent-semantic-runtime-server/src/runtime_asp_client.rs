@@ -58,7 +58,7 @@ mod search_materialization;
 mod workspace_search_playbook;
 
 #[path = "runtime_workspace_search_resources.rs"]
-mod workspace_search_resources;
+pub(crate) mod workspace_search_resources;
 
 #[path = "runtime_workspace_search_projection.rs"]
 mod workspace_search_projection;

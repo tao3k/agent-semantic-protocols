@@ -802,6 +802,7 @@ fn project_topology_cache_identity_requires_source_generation_and_owner_scope() 
         "overlay-generation-a".to_owned(),
         std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
         Err(std::sync::Arc::from("fixture")),
+        None,
     );
     assert!(first.matches(
         "overlay-generation-a",

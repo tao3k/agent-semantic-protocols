@@ -50,6 +50,7 @@ pub(super) struct RuntimeProjectTopologyCacheEntry {
     topology_source_generation_digest: String,
     owner_scope: BTreeSet<String>,
     attachment: Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, Arc<str>>,
+    _memory_permit: Option<Arc<agent_semantic_workspace_scheduler::RuntimeServerResourcePermit>>,
 }
 
 impl RuntimeProjectTopologyCacheEntry {
@@ -60,11 +61,13 @@ impl RuntimeProjectTopologyCacheEntry {
             Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
             Arc<str>,
         >,
+        memory_permit: Option<agent_semantic_workspace_scheduler::RuntimeServerResourcePermit>,
     ) -> Self {
         Self {
             topology_source_generation_digest,
             owner_scope,
             attachment,
+            _memory_permit: memory_permit.map(Arc::new),
         }
     }
 
@@ -524,11 +527,13 @@ impl RuntimeQueryGeneration {
         {
             return stored.attachment.map_err(|error| error.to_string());
         }
-        let stored = self
+        let built = self
             .build_project_topology(project_root, resident, owner_scope)
-            .await
-            .map(Arc::new)
-            .map_err(Arc::<str>::from);
+            .await;
+        let (stored, memory_permit) = match built {
+            Ok((attachment, permit)) => (Ok(Arc::new(attachment)), Some(permit)),
+            Err(error) => (Err(Arc::<str>::from(error)), None),
+        };
         let returned = stored
             .as_ref()
             .map(Arc::clone)
@@ -540,6 +545,7 @@ impl RuntimeQueryGeneration {
                 topology_source_generation_digest,
                 owner_scope.clone(),
                 stored,
+                memory_permit,
             ));
         returned
     }
@@ -585,7 +591,13 @@ impl RuntimeQueryGeneration {
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
         owner_scope: &BTreeSet<String>,
-    ) -> Result<agent_semantic_topology::RuntimeProjectTopologyAttachment, String> {
+    ) -> Result<
+        (
+            agent_semantic_topology::RuntimeProjectTopologyAttachment,
+            agent_semantic_workspace_scheduler::RuntimeServerResourcePermit,
+        ),
+        String,
+    > {
         let execution_publication = self.execution_publication.as_deref().ok_or_else(|| {
             "reasonKind=runtime-project-topology-execution-publication-missing".to_owned()
         })?;
@@ -621,7 +633,12 @@ impl RuntimeQueryGeneration {
         let mut topology_segments = Vec::with_capacity(source.len());
         let mut input_edge_count = 0usize;
         let mut node_count = 0usize;
+        let mut source_descriptor_bytes = 0usize;
         for segment in source {
+            source_descriptor_bytes = source_descriptor_bytes
+                .saturating_add(segment.owner_path.len())
+                .saturating_add(segment.content_digest.len())
+                .saturating_add(segment.selectors.iter().map(String::len).sum::<usize>());
             let language_id = segment
                 .authority
                 .as_ref()
@@ -674,6 +691,11 @@ impl RuntimeQueryGeneration {
             }
             for owned in &segment.relations {
                 let relation = &owned.relation;
+                source_descriptor_bytes = source_descriptor_bytes
+                    .saturating_add(owned.owner_path.as_str().len())
+                    .saturating_add(relation.from.id.len())
+                    .saturating_add(relation.kind.as_str().len())
+                    .saturating_add(relation.to.id.len());
                 if relation.from.kind
                     == agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner
                     && relation.from.id == segment.owner_path
@@ -792,12 +814,31 @@ impl RuntimeQueryGeneration {
         .map_err(|error| error.to_string())?;
         let builder =
             agent_semantic_topology::ProjectTopologyGenerationBuilder::new(identity, limits);
-        let candidate = if topology_segments.is_empty() {
-            builder.build_empty_request_scope().await
-        } else {
-            builder.build_from_scratch(topology_segments).await
-        }
-        .map_err(|error| error.to_string())?;
+        let topology_memory_bytes =
+            crate::runtime_asp_client::workspace_search_resources::project_topology_working_memory_bytes(
+                source_descriptor_bytes,
+                node_count,
+                input_edge_count,
+                closure_limit,
+            );
+        let topology_permit = self
+            .acquire_search_resources(
+                agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: topology_memory_bytes,
+                },
+            )
+            .await?;
+        let topology_task =
+            self.spawn_search_blocking("runtime-project-topology-build", move || {
+                let mut topology_permit = topology_permit;
+                let candidate = builder
+                    .build_from_scratch_on_blocking_lane(topology_segments)
+                    .map_err(|error| error.to_string());
+                topology_permit.release_cpu();
+                candidate.map(|candidate| (candidate, topology_permit))
+            })?;
+        let (candidate, topology_permit) = topology_task.join().await??;
         let topology_receipts = BTreeMap::from([(
             candidate.rebuild_receipt_id().to_owned(),
             candidate.rebuild_receipt().clone(),
@@ -819,9 +860,10 @@ impl RuntimeQueryGeneration {
             attachment_candidate.receipt_digest().to_owned(),
             attachment_candidate.inference_receipt().clone(),
         )]);
-        attachment_candidate
+        let attachment = attachment_candidate
             .admit(&attachment_receipts)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        Ok((attachment, topology_permit))
     }
 
     /// Returns the exact resident-generation digest.

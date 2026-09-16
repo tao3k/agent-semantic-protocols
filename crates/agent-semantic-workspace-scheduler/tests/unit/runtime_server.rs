@@ -181,10 +181,37 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
             assert_eq!(supervisor.active_background_cpu(), 0);
             assert_eq!(supervisor.active_memory_bytes(), 0);
 
+            let topology_started = std::time::Instant::now();
+            let topology_permit = supervisor
+                .acquire(RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: 1024 * 1024,
+                })
+                .await
+                .expect("topology admission");
+            let topology_scope = RuntimeServerTaskScope::new("scenario-topology-blocking");
+            let retained_topology_memory = topology_scope
+                .spawn_blocking("scenario-topology-closure", move || {
+                    let mut topology_permit = topology_permit;
+                    topology_permit.release_cpu();
+                    topology_permit
+                })
+                .expect("spawn topology closure")
+                .join()
+                .await
+                .expect("join topology closure");
+            let topology_admission = topology_started.elapsed();
+            assert_eq!(topology_scope.receipt(0).completed, 1);
+            assert_eq!(supervisor.active_background_cpu(), 0);
+            assert_eq!(supervisor.active_memory_bytes(), 1024 * 1024);
+            drop(retained_topology_memory);
+            assert_eq!(supervisor.active_memory_bytes(), 0);
+
             AspRustProjectHarnessScenarioObservation::default()
                 .with_memory_bytes(peak_admitted_memory_bytes as u64)
                 .with_timing("retrieval_admission", retrieval_admission)
                 .with_timing("grounding_admission", grounding_admission)
+                .with_timing("topology_blocking", topology_admission)
                 .with_metric(
                     "queue_wait_micros",
                     retrieval_receipt
@@ -196,7 +223,8 @@ fn runtime_search_resource_lifecycle_is_scenario_measured() {
                     "peak_admitted_memory_bytes",
                     peak_admitted_memory_bytes as u64,
                 )
-                .with_metric("completed_stage_count", 2)
+                .with_metric("completed_stage_count", 3)
+                .with_metric("runtime_owned_blocking_stage_count", 1)
         })
     })
     .expect("measure Runtime Search resource Scenario");
@@ -268,4 +296,62 @@ async fn memory_pressure_never_hoards_cpu_while_waiting() {
         .await
         .expect("waiting task joins")
         .expect("waiting request admits after memory release");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dropped_blocking_handle_retains_task_and_memory_until_the_real_terminal() {
+    let supervisor = RuntimeServerResourceSupervisor::new(4, 1024 * 1024);
+    let permit = supervisor
+        .acquire(RuntimeServerResourceRequest {
+            cpu: 1,
+            memory_bytes: 1024 * 1024,
+        })
+        .await
+        .expect("blocking resources");
+    let scope = RuntimeServerTaskScope::new("blocking-resource-lifecycle");
+    let (started, observe_started) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let task = scope
+        .spawn_blocking("blocking-resource-owner", move || {
+            started.send(()).expect("publish blocking start");
+            released.recv().expect("release blocking work");
+            drop(permit);
+        })
+        .expect("spawn owned blocking task");
+    observe_started.await.expect("blocking task started");
+
+    drop(task);
+    let active = scope.receipt(0);
+    assert_eq!(active.active, 1);
+    assert_eq!(active.completed, 0);
+    assert_eq!(active.cancelled, 0);
+    assert_eq!(supervisor.active_memory_bytes(), 1024 * 1024);
+
+    release.send(()).expect("release blocking task");
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while scope.receipt(0).active != 0 || supervisor.active_memory_bytes() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("blocking task reaches its real terminal");
+    let terminal = scope.receipt(0);
+    assert_eq!(terminal.completed, 1);
+    assert_eq!(terminal.cancelled, 0);
+    assert_eq!(terminal.leaked, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn blocking_panic_is_recorded_once_as_failed() {
+    let scope = RuntimeServerTaskScope::new("blocking-panic-lifecycle");
+    let task = scope
+        .spawn_blocking("blocking-panic", || -> () { panic!("fixture panic") })
+        .expect("spawn blocking panic");
+    assert!(task.join().await.is_err());
+    let receipt = scope.receipt(0);
+    assert_eq!(receipt.started, 1);
+    assert_eq!(receipt.completed, 0);
+    assert_eq!(receipt.cancelled, 0);
+    assert_eq!(receipt.failed, 1);
+    assert_eq!(receipt.active, 0);
 }

@@ -23,7 +23,10 @@ fn manifest() -> ProjectTopologyManifest {
     .expect("Project Topology manifest")
 }
 
-async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandidate {
+fn candidate_input() -> (
+    ProjectTopologyGenerationBuilder,
+    Vec<ProjectTopologySourceSegment>,
+) {
     let rust = ProjectTopologySourceSegment::new(
         "src/registry.rs",
         digest('1'),
@@ -66,7 +69,7 @@ async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandid
         ],
     )
     .expect("Org source segment");
-    ProjectTopologyGenerationBuilder::new(
+    let builder = ProjectTopologyGenerationBuilder::new(
         ProjectTopologyGenerationIdentity::new(
             manifest().project_workspace().clone(),
             digest('3'),
@@ -91,10 +94,16 @@ async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandid
         )
         .expect("expected relation"),
     ])
-    .expect("unique expectations")
-    .build_from_scratch(vec![rust, org])
-    .await
-    .expect("from-scratch topology candidate")
+    .expect("unique expectations");
+    (builder, vec![rust, org])
+}
+
+async fn candidate() -> agent_semantic_topology::ProjectTopologyGenerationCandidate {
+    let (builder, segments) = candidate_input();
+    builder
+        .build_from_scratch(segments)
+        .await
+        .expect("from-scratch topology candidate")
 }
 
 #[tokio::test]
@@ -165,6 +174,21 @@ async fn generation_builder_is_content_deterministic() {
     let second = candidate().await;
     assert_eq!(first.packet(), second.packet());
     assert_eq!(first.rebuild_receipt(), second.rebuild_receipt());
+}
+
+#[test]
+fn caller_owned_blocking_lane_preserves_the_topology_product() {
+    let (builder, segments) = candidate_input();
+    let blocking = builder
+        .build_from_scratch_on_blocking_lane(segments)
+        .expect("caller-owned blocking topology candidate");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("comparison runtime");
+    let asynchronous = runtime.block_on(candidate());
+    assert_eq!(blocking.packet(), asynchronous.packet());
+    assert_eq!(blocking.rebuild_receipt(), asynchronous.rebuild_receipt());
 }
 
 #[tokio::test]

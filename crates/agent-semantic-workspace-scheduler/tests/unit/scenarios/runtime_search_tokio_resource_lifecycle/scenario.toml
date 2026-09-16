@@ -5,7 +5,7 @@
 id = "runtime-search-tokio-resource-lifecycle"
 policy = "SEARCH-RUNTIME-TOKIO-RESOURCE-LIFECYCLE-001"
 phase = "resident"
-route = "retrieval-to-parser-grounding"
+route = "retrieval-to-parser-grounding-to-topology"
 authority = "runtime-server-resource-supervisor"
 
 [expected]
@@ -13,4 +13,6 @@ shared_cpu_authority = true
 retain_intermediate_memory_charge = true
 release_cpu_between_stages = true
 forbid_detached_cpu_semaphore = true
+blocking_terminal_owns_resource_release = true
+retained_topology_cache_memory_is_charged = true
 require_zero_resources_after_settlement = true

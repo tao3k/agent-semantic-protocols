@@ -270,20 +270,53 @@ pub(super) async fn dispatch_resolved_route(
                 )
                 .await?;
         }
-        let graph_generation = resident
-            .build_graph_generation_for_owner_scope(&topology_scope)
+        let graph_permit = generation
+            .acquire_search_resources(
+                agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: super::workspace_search_resources::graph_working_memory_bytes(
+                        generation.as_ref(),
+                        &topology_scope,
+                    ),
+                },
+            )
+            .await
             .map_err(AspClientOperationError::Message)?;
-        let result = crate::runtime_search_graph::evaluate_resident_search_graph(
-            request.request_id.as_str(),
-            request.workspace_id.as_str(),
-            language_id,
-            provider_id,
-            generation.generation_digest(),
-            &resident,
-            &graph_generation,
-            validated_params.as_value(),
-        )
-        .map_err(map_graph_failure)?;
+        let graph_resident = std::sync::Arc::new(resident);
+        let graph_scope = topology_scope;
+        let graph_request_id = request.request_id.as_str().to_owned();
+        let graph_workspace_id = request.workspace_id.as_str().to_owned();
+        let graph_language_id = language_id.to_owned();
+        let graph_provider_id = provider_id.to_owned();
+        let graph_generation_digest = generation.generation_digest().to_owned();
+        let graph_params = validated_params.as_value().clone();
+        let graph_task = generation
+            .spawn_search_blocking("runtime-resident-graph-evaluation", move || {
+                let mut graph_permit = graph_permit;
+                let evaluated = (|| {
+                    let graph_generation = graph_resident
+                        .build_graph_generation_for_owner_scope(&graph_scope)
+                        .map_err(crate::runtime_search_graph::RuntimeSearchGraphFailure::invalid)?;
+                    crate::runtime_search_graph::evaluate_resident_search_graph(
+                        &graph_request_id,
+                        &graph_workspace_id,
+                        &graph_language_id,
+                        &graph_provider_id,
+                        &graph_generation_digest,
+                        &graph_resident,
+                        &graph_generation,
+                        &graph_params,
+                    )
+                })();
+                graph_permit.release_cpu();
+                evaluated.map(|result| (result, graph_permit))
+            })
+            .map_err(AspClientOperationError::Message)?;
+        let graph_terminal = graph_task
+            .join()
+            .await
+            .map_err(AspClientOperationError::Message)?;
+        let (result, _graph_memory_permit) = graph_terminal.map_err(map_graph_failure)?;
         record_runtime_route_performance(
             &telemetry_sender,
             request.workspace_id.as_str(),

@@ -7,37 +7,44 @@ test = "runtime_search_resource_lifecycle_is_scenario_measured"
 snapshot = "runtime_search_tokio_resource_lifecycle_v1"
 target_total = "250us"
 max_total = "5ms"
-observed_total = "958ns"
+observed_total = "14833ns"
 regression_budget = "250us"
 memory_budget_bytes = 2097152
 observed_memory_bytes = 2097152
-target_rationale = "Two resident CPU stages require O(1) permit operations; retained intermediate memory is charged until Search projection completes."
+target_rationale = "Three resident CPU stages require O(1) permit operations; blocking topology owns its task permit and retained intermediate or cached memory remains charged until its real lifecycle terminal."
 
 [measurement]
 clock = "std::time::Instant"
 statistic = "p95"
 warmup_iterations = 16
 measure_iterations = 128
-total_p50 = "834ns"
-total_p95 = "958ns"
-total_p99 = "1us"
-total_max = "1041ns"
+total_p50 = "6709ns"
+total_p95 = "14833ns"
+total_p99 = "17542ns"
+total_max = "26125ns"
 
 [observed_timings]
 grounding_admission = "125ns"
-retrieval_admission = "125ns"
+retrieval_admission = "167ns"
+topology_blocking = "12042ns"
 
 [phase_distributions.grounding_admission]
 p50 = "84ns"
 p95 = "125ns"
 p99 = "167ns"
-max = "208ns"
+max = "250ns"
 
 [phase_distributions.retrieval_admission]
 p50 = "84ns"
-p95 = "125ns"
-p99 = "125ns"
-max = "125ns"
+p95 = "167ns"
+p99 = "291ns"
+max = "667ns"
+
+[phase_distributions.topology_blocking]
+p50 = "5208ns"
+p95 = "12042ns"
+p99 = "14125ns"
+max = "19750ns"
 
 [metrics.queue_wait_micros]
 unit = "microseconds"
@@ -60,5 +67,11 @@ observed = 2097152
 [metrics.completed_stage_count]
 unit = "count"
 kind = "exact"
-target = 2
-observed = 2
+target = 3
+observed = 3
+
+[metrics.runtime_owned_blocking_stage_count]
+unit = "count"
+kind = "exact"
+target = 1
+observed = 1

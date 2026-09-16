@@ -688,8 +688,15 @@ ownership from relation endpoints. Owner and item =entryNodeIds= resolve through
 a generation-admitted node-to-owner reverse index. Request execution performs
 one indexed lookup per supplied entry node and MUST NOT enumerate workspace
 owners or topology segments to rediscover that ownership.
-The MRR closure kernel crosses a bounded =spawn_blocking= boundary; it does not
-occupy a Tokio worker or create an unowned detached publication task.
+The MRR closure kernel crosses a Runtime-owned bounded =spawn_blocking=
+boundary; it does not occupy a Tokio worker or create an unowned detached
+publication task. Runtime acquires CPU and memory authority before spawning and
+moves that permit into the blocking task. Caller cancellation therefore cannot
+release accounting while non-cancellable blocking work is still running. CPU
+authority is released at the blocking terminal; the successful one-slot
+topology cache retains its memory authority until replacement or generation
+drop. The topology library's standalone executor remains available to
+non-Runtime callers, but Runtime MUST NOT use that independent semaphore.
 
 A published Graph attachment with zero nodes or zero edges is Ready-empty, not
 invalid. Runtime MUST NOT call the relation evaluator with a zero execution

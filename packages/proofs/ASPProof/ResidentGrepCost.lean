@@ -916,6 +916,22 @@ theorem graph_entry_grounding_has_zero_request_workspace_scans
       work.indexedLookups = requestedEntryNodes := by
   exact ⟨rfl, rfl⟩
 
+/-- Blocking topology work owns its resource permit independently from the
+request future. Tokio cannot cancel a running blocking closure, so request
+cancellation is not a resource terminal. -/
+def topologyBlockingMemoryPermitHeld
+    (_callerCancelled blockingTerminal : Bool) : Bool :=
+  !blockingTerminal
+
+theorem cancelled_topology_caller_retains_blocking_memory_authority :
+    topologyBlockingMemoryPermitHeld true false = true := by
+  rfl
+
+theorem topology_blocking_terminal_releases_memory_authority
+    (callerCancelled : Bool) :
+    topologyBlockingMemoryPermitHeld callerCancelled true = false := by
+  rfl
+
 /-- Completed response history has one Search and one Query slot. In-flight
 claims are task-lifetime state and are not completed-history retention. -/
 structure GenerationTerminalRetention where

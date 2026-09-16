@@ -269,6 +269,35 @@ impl ProjectTopologyGenerationBuilder {
         self.build_initial(segments, false).await
     }
 
+    /// Build on a caller-owned blocking lane.
+    ///
+    /// Runtime Server uses this entry so its daemon-wide CPU, memory, task,
+    /// and cancellation authorities remain attached to the actual blocking
+    /// closure. Standalone callers should normally use the async API above.
+    pub fn build_from_scratch_on_blocking_lane(
+        &self,
+        segments: Vec<ProjectTopologySourceSegment>,
+    ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
+        let rebuilt_owner_paths = segments
+            .iter()
+            .map(|segment| segment.owner_path.clone())
+            .collect::<BTreeSet<_>>();
+        build_candidate_blocking(
+            self.identity.clone(),
+            self.limits,
+            segments,
+            self.expected_relations.clone(),
+            ProjectTopologyGenerationTransition {
+                parent_generation_digest: None,
+                rebuilt_owner_paths,
+                previous_node_ids: BTreeSet::new(),
+                previous_edge_ids: BTreeSet::new(),
+                change_set_digest: None,
+            },
+            false,
+        )
+    }
+
     /// Builds an identity-bound empty request cut; full generations remain non-empty.
     pub async fn build_empty_request_scope(
         &self,
@@ -380,7 +409,7 @@ impl ProjectTopologyGenerationBuilder {
         let expected_relations = self.expected_relations.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            build_from_scratch_blocking(
+            build_candidate_blocking(
                 identity,
                 limits,
                 segments,
@@ -408,7 +437,7 @@ struct ProjectTopologyGenerationTransition {
     change_set_digest: Option<String>,
 }
 
-fn build_from_scratch_blocking(
+fn build_candidate_blocking(
     identity: ProjectTopologyGenerationIdentity,
     limits: ProjectTopologyClosureLimits,
     mut segments: Vec<ProjectTopologySourceSegment>,

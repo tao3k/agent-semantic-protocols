@@ -308,7 +308,7 @@ pub(crate) fn evaluate_resident_search_graph(
 }
 
 impl RuntimeSearchGraphFailure {
-    fn invalid(message: impl Into<String>) -> Self {
+    pub(crate) fn invalid(message: impl Into<String>) -> Self {
         Self {
             reason_kind: "graph-search-invalid",
             message: message.into(),

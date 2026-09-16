@@ -102,11 +102,29 @@ impl RuntimeServerTaskScope {
         F: FnOnce() -> T + Send + 'static,
     {
         self.admit(name)?;
-        Ok(RuntimeServerOwnedTask {
-            name,
-            handle: Some(tokio::task::spawn_blocking(operation)),
+        let permit = RuntimeServerTaskPermit {
             lifecycle: std::sync::Arc::clone(&self.lifecycle),
             terminal_recorded: false,
+        };
+        Ok(RuntimeServerOwnedTask {
+            name,
+            handle: Some(tokio::task::spawn_blocking(move || {
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+                match outcome {
+                    Ok(value) => {
+                        permit.complete();
+                        value
+                    }
+                    Err(payload) => {
+                        permit.fail();
+                        std::panic::resume_unwind(payload)
+                    }
+                }
+            })),
+            lifecycle: std::sync::Arc::clone(&self.lifecycle),
+            // The blocking closure owns the lifecycle permit because aborting
+            // its JoinHandle cannot cancel work that has already started.
+            terminal_recorded: true,
         })
     }
 

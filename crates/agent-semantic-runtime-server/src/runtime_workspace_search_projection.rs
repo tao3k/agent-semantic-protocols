@@ -4,6 +4,8 @@
 
 //! Graph fan-in and Project Topology settlement for progressive Search evidence.
 
+use std::sync::Arc;
+
 use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
 use crate::runtime_asp_client::workspace_search_playbook::{
@@ -35,7 +37,7 @@ pub(super) async fn synthesize_progressive_search_projection(
         structural_micros,
         retrieval_resource_receipt,
         structural_resource_receipt,
-        resource_permits,
+        mut resource_permits,
     } = evidence;
     execution_budget
         .validate_for_generation(generation.generation_digest())
@@ -48,41 +50,78 @@ pub(super) async fn synthesize_progressive_search_projection(
     } else {
         let (candidate_owners, candidate_frontier_truncated) =
             bounded_graph_seed_scope(&graph_seed_scope, graph_candidate_owner_limit);
-        let graph_generation = resident
-            .build_graph_generation_for_owner_scope(&topology_scope)
-            .map_err(AspClientOperationError::Message)?;
-        let graph_evaluation_budget =
-            execution_budget.graph_evaluation_budget_for(&graph_generation);
-        let graph = crate::runtime_search_graph::evaluate_resident_workspace_playbook_graph(
-            request_id,
-            language_id,
-            &graph_query_clauses,
-            &graph_relation_patterns,
-            &candidate_owners,
-            graph_evaluation_budget,
-            &resident,
-            &graph_generation,
-        )
-        .map_err(|error| {
-            AspClientOperationError::Terminal(
-                agent_semantic_client_server::AspClientDispatchError {
-                    reason_kind: error.reason_kind.to_owned(),
-                    message: error.message,
-                    details: error.details,
+        let graph_permit = generation
+            .acquire_search_resources(
+                agent_semantic_workspace_scheduler::RuntimeServerResourceRequest {
+                    cpu: 1,
+                    memory_bytes: super::workspace_search_resources::graph_working_memory_bytes(
+                        generation,
+                        &topology_scope,
+                    ),
                 },
             )
-        })?;
-        let truncated = candidate_frontier_truncated
-            || graph_evaluation_budget.is_some_and(|budget| {
-                candidate_owners.len() > budget.max_results
-                    && graph.candidate_owner_ids.len() == budget.max_results
-            });
-        Some(agent_semantic_search::WorkspaceSearchGraphFanIn {
-            ranked_candidate_owners: graph.candidate_owner_ids,
-            applied_clause_count: graph_query_clauses.len(),
-            complete: true,
-            truncated,
-        })
+            .await
+            .map_err(AspClientOperationError::Message)?;
+        let graph_resident = Arc::clone(&resident);
+        let graph_scope = topology_scope.clone();
+        let graph_budget = execution_budget.clone();
+        let graph_request_id = request_id.to_owned();
+        let graph_language_id = language_id.to_owned();
+        let graph_clauses = graph_query_clauses.clone();
+        let graph_patterns = graph_relation_patterns.clone();
+        let graph_task = generation
+            .spawn_search_blocking("runtime-search-graph-evaluation", move || {
+                let mut graph_permit = graph_permit;
+                let evaluated = (|| {
+                    let graph_generation = graph_resident
+                        .build_graph_generation_for_owner_scope(&graph_scope)
+                        .map_err(AspClientOperationError::Message)?;
+                    let evaluation_budget =
+                        graph_budget.graph_evaluation_budget_for(&graph_generation);
+                    let graph =
+                        crate::runtime_search_graph::evaluate_resident_workspace_playbook_graph(
+                            &graph_request_id,
+                            &graph_language_id,
+                            &graph_clauses,
+                            &graph_patterns,
+                            &candidate_owners,
+                            evaluation_budget,
+                            &graph_resident,
+                            &graph_generation,
+                        )
+                        .map_err(|error| {
+                            AspClientOperationError::Terminal(
+                                agent_semantic_client_server::AspClientDispatchError {
+                                    reason_kind: error.reason_kind.to_owned(),
+                                    message: error.message,
+                                    details: error.details,
+                                },
+                            )
+                        })?;
+                    let truncated = candidate_frontier_truncated
+                        || evaluation_budget.is_some_and(|budget| {
+                            candidate_owners.len() > budget.max_results
+                                && graph.candidate_owner_ids.len() == budget.max_results
+                        });
+                    Ok::<_, AspClientOperationError>(
+                        agent_semantic_search::WorkspaceSearchGraphFanIn {
+                            ranked_candidate_owners: graph.candidate_owner_ids,
+                            applied_clause_count: graph_clauses.len(),
+                            complete: true,
+                            truncated,
+                        },
+                    )
+                })();
+                graph_permit.release_cpu();
+                evaluated.map(|fan_in| (fan_in, graph_permit))
+            })
+            .map_err(AspClientOperationError::Message)?;
+        let (fan_in, graph_permit) = graph_task
+            .join()
+            .await
+            .map_err(AspClientOperationError::Message)??;
+        resource_permits.push(graph_permit);
+        Some(fan_in)
     };
     let graph_micros = graph_started.elapsed().as_micros();
     let result_started = std::time::Instant::now();

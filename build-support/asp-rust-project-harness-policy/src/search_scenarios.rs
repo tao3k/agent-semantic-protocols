@@ -465,7 +465,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
             crate::asp_rust_project_harness_scenario!(
                 name: RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID,
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
-                description: "Resident retrieval and parser grounding share the Runtime daemon resource supervisor while retaining intermediate-result memory reservations.",
+                description: "Resident retrieval, parser grounding, and blocking topology closure share the Runtime daemon resource supervisor while retaining intermediate-result and cached-topology memory reservations.",
                 fixture_root: "crates/agent-semantic-workspace-scheduler/tests/unit/scenarios/runtime_search_tokio_resource_lifecycle",
                 tags: ["search", "runtime", "tokio", "performance", "resource-budget"],
                 commands: [
@@ -490,14 +490,15 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                     max_total: "5ms",
                     regression_budget: "250us",
                     memory_budget_bytes: 2_097_152,
-                    target_rationale: "Two resident CPU stages require O(1) permit operations; retained intermediate memory is charged until Search projection completes.",
+                    target_rationale: "Three resident CPU stages require O(1) permit operations; blocking topology owns its task permit and retained intermediate or cached memory remains charged until its real lifecycle terminal.",
                     warmup_iterations: 16,
                     measure_iterations: 128,
                     metrics: [
                         { name: "queue_wait_micros", unit: "microseconds", kind: Maximum, target: 5000 },
                         { name: "admitted_cpu", unit: "lanes", kind: Exact, target: 1 },
                         { name: "peak_admitted_memory_bytes", unit: "bytes", kind: Exact, target: 2_097_152 },
-                        { name: "completed_stage_count", unit: "count", kind: Exact, target: 2 }
+                        { name: "completed_stage_count", unit: "count", kind: Exact, target: 3 },
+                        { name: "runtime_owned_blocking_stage_count", unit: "count", kind: Exact, target: 1 }
                     ]
                 }
             ),
