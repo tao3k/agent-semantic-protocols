@@ -200,6 +200,13 @@ so the serialized form multiplies that work by the producer count.  A
 single-producer Query may retain its language-scoped build.  This batching is
 an internal V1 execution rule and changes no Scheme or receipt field.
 
+Before requesting a cold generation, Query probes the immutable exact segment
+named by the durable pointer.  It may return directly only when every requested
+canonical owner still hashes to the segment owner digest and every selector is
+an exact, non-relocated projection hit.  This request-local replay publishes no
+workspace Ready authority.  Any mismatch or relocation requirement falls
+through to complete-generation admission and its global identity proof.
+
 The V1 Query Playbook receipt also carries =sourceGenerationDigest= and
 =sourceRootDigest= from the immutable exact segment that supplied every
 materialization.  These are content-identity witnesses, not timing fields.  A

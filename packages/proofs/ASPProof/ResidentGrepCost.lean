@@ -501,6 +501,40 @@ theorem one_generation_barrier_removes_duplicate_inventory
   unfold serialGenerationSuccessorWork
   exact Nat.le_add_right _ _
 
+/-- Process-cold exact replay is a request-local proof over the immutable
+segment and the current owner bytes.  It cannot mint workspace Ready. -/
+structure ProcessColdExactReplay where
+  durableExecutionBound : Bool
+  currentOwnerDigestMatches : Bool
+  exactSelectorHit : Bool
+  relocationRequired : Bool
+  deriving DecidableEq, Repr
+
+def processColdExactReplayAdmitted (replay : ProcessColdExactReplay) : Bool :=
+  replay.durableExecutionBound &&
+    replay.currentOwnerDigestMatches &&
+    replay.exactSelectorHit &&
+    !replay.relocationRequired
+
+def processColdExactReplayPublishesWorkspaceReady
+    (_replay : ProcessColdExactReplay) : Bool := false
+
+theorem process_cold_exact_replay_never_publishes_workspace_ready
+    (replay : ProcessColdExactReplay) :
+    processColdExactReplayPublishesWorkspaceReady replay = false := rfl
+
+theorem changed_owner_rejects_process_cold_exact_replay
+    (replay : ProcessColdExactReplay)
+    (changed : replay.currentOwnerDigestMatches = false) :
+    processColdExactReplayAdmitted replay = false := by
+  simp [processColdExactReplayAdmitted, changed]
+
+theorem relocation_rejects_process_cold_exact_replay
+    (replay : ProcessColdExactReplay)
+    (relocation : replay.relocationRequired = true) :
+    processColdExactReplayAdmitted replay = false := by
+  simp [processColdExactReplayAdmitted, relocation]
+
 /-- Request graph construction is proportional to the bounded materialized
 owner cut, never implicitly to every workspace owner. -/
 def requestGraphWork (owners workPerOwner : Nat) : Nat := owners * workPerOwner

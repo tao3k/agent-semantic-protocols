@@ -4,11 +4,11 @@
 
 use super::{
     AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
-    bind_query_materialization_to_request, emit_runtime_search_trace_observation,
-    materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
-    read_query_projection_handoff, record_settled_client_timing_observations,
-    resident_exact_query_projections, runtime_search_trace_budget_micros,
-    workspace_query_materialization_key,
+    bind_query_materialization_to_request, durable_projection_is_direct,
+    emit_runtime_search_trace_observation, materialize_query_playbook_receipt,
+    query_playbook_generation_provider_targets, read_query_projection_handoff,
+    record_settled_client_timing_observations, resident_exact_query_projections,
+    runtime_search_trace_budget_micros, workspace_query_materialization_key,
 };
 use agent_semantic_content_identity::content_binding::{
     AuthorityStamp, ContentBinding, ContentIdentity, ContentPublicationCommit,
@@ -249,6 +249,36 @@ fn resident_exact_query_skips_owner_materialization_only_when_every_projection_r
         .unwrap_or_else(|_| panic!("missing projection routes to owner materialization"))
         .is_none()
     );
+}
+
+#[test]
+fn process_cold_replay_accepts_only_the_requested_owner_selector() {
+    use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
+
+    let selector = &params().selectors[0];
+    let direct = WorkspaceRuntimeSelectorRead::Projection {
+        generation_digest: digest('1'),
+        root_digest: digest('2'),
+        resolved_selector: selector.clone(),
+        bytes: b"direct".to_vec(),
+    };
+    assert!(durable_projection_is_direct(selector, &direct));
+
+    let relocated = WorkspaceRuntimeSelectorRead::Projection {
+        generation_digest: digest('1'),
+        root_digest: digest('2'),
+        resolved_selector: selector.replace("publication.org", "relocated.org"),
+        bytes: b"relocated".to_vec(),
+    };
+    assert!(!durable_projection_is_direct(selector, &relocated));
+    assert!(!durable_projection_is_direct(
+        selector,
+        &WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            generation_digest: digest('1'),
+            root_digest: digest('2'),
+            resolved_selector: selector.clone(),
+        }
+    ));
 }
 
 #[test]

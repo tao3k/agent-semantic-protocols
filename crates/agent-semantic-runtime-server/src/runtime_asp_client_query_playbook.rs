@@ -497,6 +497,129 @@ fn materialize_generation_bound_query_playbook(
     )
 }
 
+fn durable_projection_is_direct(
+    requested_selector: &str,
+    read: &agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+) -> bool {
+    matches!(
+        read,
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
+            resolved_selector,
+            ..
+        } if resolved_selector == requested_selector
+    )
+}
+
+async fn try_process_cold_exact_owner_replay(
+    request_id: &str,
+    workspace_id: &str,
+    params: &AspClientWorkspaceQueryPlaybookRequest,
+    initialized: &InitializedWorkspace,
+    workspace_store_root: &std::path::Path,
+    active_provider_targets: &[(String, String)],
+    started: tokio::time::Instant,
+) -> Result<Option<agent_semantic_client_protocol::ClientResponsePayload>, AspClientOperationError>
+{
+    use agent_semantic_client_db::runtime_server_workspace::{
+        WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
+    };
+
+    let pointer_path =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            workspace_store_root,
+            workspace_id,
+            &initialized.project_root,
+        )?;
+    let exact = match WorkspaceExactProjectionDataPlaneClient::open_state(&pointer_path).await? {
+        WorkspaceExactProjectionDataPlaneOpen::Ready(exact) => exact,
+        WorkspaceExactProjectionDataPlaneOpen::Missing
+        | WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { .. } => return Ok(None),
+    };
+    let Some(execution_root) = pointer_path.parent() else {
+        return Ok(None);
+    };
+    let Some(execution_publication) = agent_semantic_client_db::runtime_server_workspace::
+        RuntimeWorkspaceExecutionPublicationStore::read_active_optional(execution_root)
+        .await?
+    else {
+        return Ok(None);
+    };
+    execution_publication.validate().map_err(|error| {
+        AspClientOperationError::Message(format!(
+            "validate durable exact-owner execution publication: {error:?}"
+        ))
+    })?;
+    if execution_publication.workspace_identity != workspace_id
+        || execution_publication.generation_digest.as_str() != exact.generation_digest()
+        || execution_publication.source_root_digest.as_str() != exact.root_digest()
+    {
+        return Ok(None);
+    }
+
+    let projection =
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
+            params.projection.as_str(),
+        )?;
+    let mut owner_digests = std::collections::BTreeMap::new();
+    let mut projections = std::collections::VecDeque::with_capacity(params.selectors.len());
+    for selector in &params.selectors {
+        let Some(owner_path) = selector_owner_path(selector) else {
+            return Ok(None);
+        };
+        let expected_digest = if let Some(digest) = owner_digests.get(owner_path) {
+            digest
+        } else {
+            let Some(owner) = exact.owner_snapshot(owner_path)? else {
+                return Ok(None);
+            };
+            let current_bytes =
+                match tokio::fs::read(initialized.project_root.join(owner_path)).await {
+                    Ok(bytes) => bytes,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                    Err(error) => {
+                        return Err(AspClientOperationError::Message(format!(
+                            "read exact Query owner {owner_path}: {error}"
+                        )));
+                    }
+                };
+            let current_digest = format!("blake3-256:{}", blake3::hash(&current_bytes).to_hex());
+            if current_digest != owner.content_digest {
+                return Ok(None);
+            }
+            owner_digests.insert(owner_path.to_owned(), current_digest);
+            owner_digests
+                .get(owner_path)
+                .expect("inserted exact owner digest")
+        };
+        debug_assert!(!expected_digest.is_empty());
+        let read = exact.read_runtime_selector(projection, selector)?;
+        if !durable_projection_is_direct(selector, &read) {
+            return Ok(None);
+        }
+        projections.push_back(read);
+    }
+
+    let receipt = materialize_query_playbook_receipt(
+        request_id,
+        params,
+        &execution_publication.runtime_execution_binding,
+        execution_publication.publication_digest.as_str(),
+        execution_publication.runtime_bundle_digest.as_str(),
+        execution_publication.generation_digest.as_str(),
+        execution_publication.source_root_digest.as_str(),
+        initialized.host_workspace.project_workspace(),
+        active_provider_targets,
+        None,
+        |_projection, _selector| {
+            projections.pop_front().ok_or_else(|| {
+                "durable exact-owner replay ended before the requested selector".to_owned()
+            })
+        },
+    )?;
+    bind_query_materialization_to_request(Arc::new(receipt), request_id, "materialized", started)
+        .map(Some)
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "Query dispatch keeps route, generation, deadline, and telemetry authorities explicit"
@@ -565,11 +688,34 @@ pub(super) async fn dispatch_workspace_query_playbook(
                 &params.selectors,
                 active_provider_targets,
             )?;
-            // An exact Query has a directly addressable owner.  Reject an
-            // impossible cold request before admitting any repository-wide
-            // generation work; a ready resident generation remains the sole
-            // authority for retained content after source changes.
             admit_cold_query_owner_paths(&initialized.project_root, &params.selectors).await?;
+            if let Some(result) = try_process_cold_exact_owner_replay(
+                request.request_id.as_str(),
+                request.workspace_id.as_str(),
+                &params,
+                &initialized,
+                parser_artifact_root,
+                active_provider_targets,
+                wait_started,
+            )
+            .await?
+            {
+                eprintln!(
+                    "[runtime-query-cold-exact-owner-replay] requestId={} elapsedMicros={} selectorCount={} filesystemOwnerReadCount={} state=ready",
+                    request.request_id.as_str(),
+                    wait_started.elapsed().as_micros(),
+                    params.selectors.len(),
+                    params
+                        .selectors
+                        .iter()
+                        .filter_map(|selector| selector_owner_path(selector))
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len(),
+                );
+                return Ok(result);
+            }
+            // A durable exact-owner miss cannot authorize relocation or
+            // repair. Escalate to the sole complete-generation authority.
             let generation =
                 super::query_generation_support::request_and_await_runtime_query_generation_ready(
                     generation_admission,

@@ -2,8 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#+title: Exact Selector Provider Generation Authority
-#+startup: overview
+#+TITLE: Exact Selector Provider Generation Authority
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05.12-exact-selector-provider-generation-authority
 
 Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
@@ -51,6 +52,28 @@ remain typed failures.
 
 No warning, legacy selector adapter, owner-local compatibility envelope, or
 filesystem fallback is permitted.
+
+** Process-cold exact-owner replay
+
+A durable complete generation MAY satisfy a process-cold Query without first
+republishing that generation as the workspace's current resident authority,
+but only through an exact-owner replay cut.  Runtime MUST read the requested
+owner from the immutable exact segment, hash the current file at the selector's
+canonical owner path, and require equality with the segment owner digest.  It
+MUST also require an exact selector hit; owner-independent relocation,
+projection repair, an absent owner, or any content mismatch escalates to normal
+complete-generation admission.
+
+This replay is request-local.  It MUST NOT publish the durable generation into
+the global Ready map, authorize Search, claim complete current-workspace
+coverage, or mutate the durable pointer.  The admitted V1 receipt retains the
+durable execution publication and exact materialization content digest.  Thus
+the optimization removes unrelated-workspace discovery from a known-path
+Query without reviving the forbidden owner-only complete-generation model.
+
+This requirement is named:
+
+- =ASP-RFC-10.05-ESGA-PROCESS-COLD-EXACT-OWNER-REPLAY=
 
 * Resident projection repair
 
