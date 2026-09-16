@@ -9,6 +9,21 @@ use agent_semantic_content_identity::WorkspaceSnapshot;
 
 use crate::server_source_index::generation_commit::PreparedSourceIndexGeneration;
 
+fn partition_affected_owner_membership(
+    affected_owner_paths: &BTreeSet<String>,
+    present_owner_paths: &BTreeSet<String>,
+) -> (BTreeSet<String>, BTreeSet<String>) {
+    let upsert_owner_paths = affected_owner_paths
+        .intersection(present_owner_paths)
+        .cloned()
+        .collect();
+    let removed_owner_paths = affected_owner_paths
+        .difference(present_owner_paths)
+        .cloned()
+        .collect();
+    (upsert_owner_paths, removed_owner_paths)
+}
+
 pub(super) async fn complete_generation_from_optional_active_base(
     db_path: &Path,
     prepared: PreparedSourceIndexGeneration,
@@ -94,15 +109,13 @@ pub(super) async fn complete_generation_from_optional_active_base(
         .iter()
         .map(|owner| owner.owner_path.as_str().to_string())
         .collect::<BTreeSet<_>>();
-    let removed_owner_paths = changed_owner_paths
-        .difference(&present_changed_owners)
-        .cloned()
-        .collect::<BTreeSet<_>>();
+    let (upsert_owner_paths, removed_owner_paths) =
+        partition_affected_owner_membership(&changed_owner_paths, &present_changed_owners);
     let full_import = crate::overlay_active_source_index_import(
         &active.snapshot,
         &active.source_blobs,
         &prepared.refresh_request().import,
-        &changed_owner_paths,
+        &upsert_owner_paths,
         &removed_owner_paths,
     )?;
     let workspace_snapshot = WorkspaceSnapshot::from_file_bytes(full_import.source_blobs.iter());
@@ -112,7 +125,7 @@ pub(super) async fn complete_generation_from_optional_active_base(
         partial_source_snapshot.provider_digest,
         active.snapshot.source_snapshot.root_digest,
         agent_semantic_content_identity::WorkspaceOverlayPaths::new(
-            present_changed_owners.iter().cloned(),
+            upsert_owner_paths.iter().cloned(),
             removed_owner_paths.iter().cloned(),
         ),
     )?;
@@ -178,3 +191,7 @@ fn merge_target_project_resolutions(
     }
     Ok(active)
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/server_source_index_generation_overlay.rs"]
+mod tests;

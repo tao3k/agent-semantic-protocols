@@ -57,6 +57,26 @@ def targets : List Target :=
         `ASPProof.RuntimeServerSearchGeneration.server_warm_cost_dominates_cli_rebuild
       theoremFamily := "warm-path-cost-dominance"
       rfcClauseIds := ["ASP-RFC-10.05-SRSG-COST"] }
+  , { name :=
+        `ASPProof.RuntimeServerSearchGeneration.global_daemon_bootstrap_requires_no_workspace
+      theoremFamily := "global-bootstrap-no-workspace"
+      rfcClauseIds := ["ASP-RFC-10.05-SRSG-GLOBAL-READINESS"] }
+  , { name :=
+        `ASPProof.RuntimeServerSearchGeneration.global_health_is_independent_of_catalog_cardinality
+      theoremFamily := "global-health-catalog-cardinality-independence"
+      rfcClauseIds := ["ASP-RFC-10.05-SRSG-GLOBAL-READINESS"] }
+  , { name :=
+        `ASPProof.RuntimeServerSearchGeneration.failed_workspace_cannot_block_global_health
+      theoremFamily := "failed-workspace-global-health-isolation"
+      rfcClauseIds := ["ASP-RFC-10.05-SRSG-GLOBAL-READINESS"] }
+  , { name :=
+        `ASPProof.RuntimeServerSearchGeneration.request_readiness_requires_target_workspace
+      theoremFamily := "request-target-workspace-readiness"
+      rfcClauseIds := ["ASP-RFC-10.05-SRSG-WORKSPACE-READINESS"] }
+  , { name :=
+        `ASPProof.RuntimeServerSearchGeneration.unrelated_workspace_failure_preserves_ready_target
+      theoremFamily := "workspace-recovery-isolation"
+      rfcClauseIds := ["ASP-RFC-10.05-SRSG-WORKSPACE-READINESS"] }
   ]
 
 def auditJson : TermElabM Json :=

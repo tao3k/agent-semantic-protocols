@@ -508,6 +508,23 @@ selector list, materialization set, command plan, or hidden handoff object. The
 Agent reads the graph and explicitly chooses the smallest useful selector set
 for a later Query request.
 
+The admitted settlement MAY retain an internal result-support owner and one
+=CONTAINS= edge when a request result is joined to its generation-owned source
+owner.  A newly grounded result uses the =search-result-grounding= witness; an
+item already present in reusable Project Topology uses its parser-owned edge
+witness.  In both cases an unranked owner whose only incident edges are
+containment links to ranked results proves selector membership but is not
+additional Agent-facing evidence, because each canonical selector already
+carries its owner path.  The default Org/GQL renderer MUST therefore apply a
+structural visibility cut: it emits every ranked result node and every node or
+edge participating in an independent semantic/topology relation, but it omits
+a result-support-only owner and its containment edges.  A =CONTAINS= edge with
+two ranked endpoints remains visible, as does an owner participating in another
+relation or frontier.  Machine settlement admission continues to validate the
+complete internal graph.  Thus removing result-support presentation noise
+cannot weaken selector ownership, relation closure, frontier coverage, or Query
+admission authority.
+
 Public Search output has no =queryGrammar=, =next=, =nextAction=,
 =recommendedNext=, command plan, or equivalent planner field. Query capability
 is part of the CLI contract and is not repeated beside the GQL graph. A

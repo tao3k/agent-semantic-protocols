@@ -59,6 +59,12 @@ def targets : List Target := [
     "progressive-stale-continuation" ["ASP-RFC-SPRI-CONTINUATION", "ASP-RFC-SPRI-PROGRESSIVE"],
   Target.mk ``internal_json_is_not_an_agent_encoding
     "json-not-agent-surface" ["ASP-RFC-SPRI-POLYGLOT", "ASP-RFC-SPRI-JSON"],
+  Target.mk ``ranked_result_remains_public_when_grounding_noise_is_hidden
+    "grounding-owner-visibility-cut" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-GROUNDING"],
+  Target.mk ``generation_grounding_edge_is_not_agent_facing_evidence
+    "grounding-edge-not-agent-evidence" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-EVIDENCE"],
+  Target.mk ``unranked_owner_membership_is_not_agent_facing_evidence
+    "owner-membership-not-agent-evidence" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-OWNER"],
   Target.mk ``bounded_typed_polyglot_projection_is_admitted
     "bounded-polyglot-positive" ["ASP-RFC-SPRI-POLYGLOT", "ASP-RFC-SPRI-BOUND"],
   Target.mk ``projection_over_token_budget_is_rejected

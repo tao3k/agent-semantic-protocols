@@ -21,6 +21,54 @@ def overlay
   | .rebuilt digest => some digest
   | .tombstone => none
 
+/-- Replacement is a total per-owner classification. The affected set is not
+itself an upsert set: presence in the new provider product decides whether the
+affected owner is rebuilt or tombstoned. -/
+def classifyReplacement
+    (affected present : Bool) (digest : Digest) : OwnerChange Digest :=
+  if affected then
+    if present then .rebuilt digest else .tombstone
+  else
+    .unchanged
+
+def isUpsert : OwnerChange Digest → Bool
+  | .rebuilt _ => true
+  | _ => false
+
+def isTombstone : OwnerChange Digest → Bool
+  | .tombstone => true
+  | _ => false
+
+theorem replacement_partition_is_disjoint
+    (affected present : Bool) (digest : Digest) :
+    ¬ (isUpsert (classifyReplacement affected present digest) = true ∧
+       isTombstone (classifyReplacement affected present digest) = true) := by
+  cases affected <;> cases present <;>
+    simp [classifyReplacement, isUpsert, isTombstone]
+
+theorem affected_absent_owner_is_tombstoned (digest : Digest) :
+    classifyReplacement true false digest = .tombstone := by
+  rfl
+
+theorem affected_present_owner_is_rebuilt (digest : Digest) :
+    classifyReplacement true true digest = .rebuilt digest := by
+  rfl
+
+/-- File-hash membership follows immutable blob membership. Syntax ownership is
+a projection and cannot remove the hash of a parser auxiliary blob. -/
+def fileHashAdmitted (sourceBlob scopeEvidence : Bool) : Bool :=
+  sourceBlob || scopeEvidence
+
+theorem parser_auxiliary_blob_has_admitted_hash (scopeEvidence : Bool) :
+    fileHashAdmitted true scopeEvidence = true := by
+  simp [fileHashAdmitted]
+
+theorem non_scope_hash_requires_source_blob
+    (sourceBlob : Bool)
+    (admitted : fileHashAdmitted sourceBlob false = true) :
+    sourceBlob = true := by
+  simpa [fileHashAdmitted] using admitted
+
 theorem unchanged_owner_is_preserved
     (active : Owner → Option Digest)
     (delta : Owner → OwnerChange Digest)

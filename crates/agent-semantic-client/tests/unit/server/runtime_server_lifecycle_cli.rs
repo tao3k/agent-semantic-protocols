@@ -38,6 +38,34 @@ fn public_server_lifecycle_rejects_workspace_identity() {
 }
 
 #[test]
+fn global_readiness_does_not_enumerate_or_warm_workspace_catalog() {
+    let daemon = include_str!("../../../src/server/runtime_server_daemon.rs");
+
+    for forbidden in [
+        "startup_admission_snapshot",
+        "recover_startup_workspace_generation",
+        "warm_startup_workspace_providers",
+        "admission_catalog.snapshot()",
+    ] {
+        assert!(
+            !daemon.contains(forbidden),
+            "global Runtime readiness regained workspace-wide startup work: {forbidden}"
+        );
+    }
+
+    let activation = daemon
+        .find("activation_ready_sender.send_replace(true)")
+        .expect("activation commit must release the query-generation observer");
+    let global_ready = daemon
+        .find("startup_readiness_sender.send_replace(true)")
+        .expect("global activation must release the Runtime readiness barrier");
+    assert!(
+        activation < global_ready,
+        "global health must follow the content-bound activation commit"
+    );
+}
+
+#[test]
 fn status_transport_failure_never_fabricates_stopped_lifecycle() {
     let failure = super::status_observation_failure(
         "Runtime Server control listener is unreachable: Operation not permitted (os error 1)",

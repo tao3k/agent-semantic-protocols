@@ -108,6 +108,36 @@ async fn production_publication_atomically_switches_active_and_retains_previous_
 }
 
 #[tokio::test]
+async fn runtime_owned_launcher_points_directly_to_its_own_active_bundle() {
+    let temporary = tempfile::tempdir().expect("launcher direction fixture");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("asp");
+    let public_target = temporary.path().join("home/.local/bin/asp");
+    write_executable(&source, "#!/bin/sh\nexit 0\n");
+
+    publish_runtime_artifact(&state_home, &source, &public_target, "release")
+        .await
+        .expect("publish Runtime client through an external PATH entry");
+
+    let runtime_target = state_home.join("runtime/bin/asp");
+    let active_member = state_home.join("runtime/artifacts/active/asp");
+    assert_eq!(
+        std::fs::read_link(&runtime_target).expect("Runtime-owned launcher target"),
+        active_member,
+        "Runtime launcher must not reverse-link through the user PATH entry"
+    );
+    assert_ne!(
+        std::fs::read_link(&runtime_target).unwrap(),
+        public_target,
+        "Runtime ownership cannot depend on an external launcher"
+    );
+    assert_eq!(
+        std::fs::canonicalize(&runtime_target).unwrap(),
+        std::fs::canonicalize(state_home.join("runtime/artifacts/active/asp")).unwrap()
+    );
+}
+
+#[tokio::test]
 async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
     let temporary = tempfile::tempdir().expect("bundle publication fixture");
     let state_home = temporary.path().join("state");

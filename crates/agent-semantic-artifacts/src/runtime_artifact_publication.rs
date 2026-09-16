@@ -811,19 +811,22 @@ where
         .collect::<Result<Vec<_>, String>>()?;
     let runtime_launcher_directory = state_home.join("runtime/bin");
     let runtime_primary_alias = runtime_launcher_directory.join(binary_name);
-    let runtime_compatibility_aliases = if runtime_primary_alias != target {
-        std::iter::once((runtime_primary_alias, target.to_path_buf()))
-            .chain(stable_member_launchers.iter().map(|member| {
-                (
-                    runtime_launcher_directory.join(member),
-                    launcher_directory.join(member),
-                )
-            }))
-            .collect::<Vec<_>>()
+    let runtime_owned_launchers = if runtime_primary_alias != target {
+        std::iter::once((
+            runtime_primary_alias,
+            layout.active_slot().join(binary_name),
+        ))
+        .chain(stable_member_launchers.iter().map(|member| {
+            (
+                runtime_launcher_directory.join(member),
+                layout.active_slot().join(member),
+            )
+        }))
+        .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
-    let runtime_compatibility_before = runtime_compatibility_aliases
+    let runtime_owned_launcher_before = runtime_owned_launchers
         .iter()
         .map(|(alias, _)| read_optional_symlink(alias).map(|previous| (alias.clone(), previous)))
         .collect::<Result<Vec<_>, String>>()?;
@@ -898,14 +901,14 @@ where
             )?;
             validate_runtime_bundle_launcher(&launcher, &candidate_dir.join(member))?;
         }
-        for (alias, public_entry) in &runtime_compatibility_aliases {
+        for (alias, active_member) in &runtime_owned_launchers {
             let artifact_kind = alias
                 .file_name()
                 .and_then(|name| name.to_str())
-                .ok_or_else(|| "Runtime compatibility alias has no binary name".to_owned())?;
+                .ok_or_else(|| "Runtime-owned launcher has no binary name".to_owned())?;
             publish_runtime_bundle_member_launcher(
                 alias,
-                public_entry,
+                active_member,
                 &event.publication_nonce,
                 artifact_kind,
             )?;
@@ -929,11 +932,10 @@ where
                     active_before.as_deref(),
                     healthy_before.as_deref(),
                 ));
-            // Restore compatibility aliases before the public entry. A legacy
-            // predecessor may have pointed the public entry back at the
-            // Runtime namespace; reversing this order would transiently
-            // recreate a two-node loop during rollback.
-            for (alias, previous) in &runtime_compatibility_before {
+            // Restore Runtime-owned launchers before the public entry. A
+            // retired predecessor may have reversed this authority edge;
+            // restoring the internal namespace first avoids a transient loop.
+            for (alias, previous) in &runtime_owned_launcher_before {
                 rollback = rollback.and(restore_runtime_artifact_symlink(
                     alias,
                     previous.as_deref(),

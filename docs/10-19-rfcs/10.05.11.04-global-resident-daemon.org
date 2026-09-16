@@ -131,6 +131,20 @@ The daemon performs one workspace-key lookup.  The admitted workspace entry
 reuses its canonical root, Turso database handle, read pool, writer lane,
 provider generation, and Memory Search state.
 
+Global =Healthy= is a constant-scope lifecycle predicate over the bound control,
+data, and provider planes, the admitted catalog header, and the applied Runtime
+activation.  It is not a fold over workspace entries.  Daemon bootstrap MUST NOT
+restore or warm every historical workspace: that makes startup work
+=O(|catalog|)=, lets one stale entry block unrelated clients, and turns a global
+transport fact into a cross-workspace content conjunction.
+
+Workspace content is admitted lazily by exact workspace identity.  The first
+request joins one keyed single-flight recovery/build lane and awaits that lane's
+typed terminal under the request's first-computation deadline.  A failure is
+stored on that workspace entry only.  Resident reads bypass admission work, and
+two different workspaces never wait for each other's generation or provider
+state.
+
 The data transport supports multiple in-flight requests on a long-lived
 connection.  Request identity, rather than connection order, owns correlation.
 Slow work in one workspace cannot block another workspace.
@@ -262,6 +276,8 @@ after their callers have moved to the Global control and data contracts.
 ** Performance
 
 - warm control transport is sub-millisecond at the protocol layer;
+- global startup work is independent of workspace catalog cardinality and does
+  not open a workspace database or start a provider;
 - warm exact selector lookup is sub-millisecond after workspace admission;
 - Hook endpoint validation and routing are millisecond-class with no subprocess,
   DB open, manifest write, artifact byte read, election probe, or retry;

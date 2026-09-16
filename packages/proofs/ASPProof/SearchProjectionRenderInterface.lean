@@ -444,6 +444,45 @@ theorem internal_json_is_not_an_agent_encoding :
     agentEncodingAdmitted .internalJsonReceipt = false := by
   decide
 
+inductive SettlementNodeRole where
+  | rankedResult
+  | semanticContext
+  | groundingOnlyOwner
+  | resultSupportOnlyOwner
+  deriving Repr, DecidableEq, BEq
+
+inductive SettlementEdgeRole where
+  | semanticRelation
+  | topologyFrontier
+  | searchResultGrounding
+  | unrankedOwnerContainment
+  deriving Repr, DecidableEq, BEq
+
+def publicNodeVisible : SettlementNodeRole → Bool
+  | .rankedResult | .semanticContext => true
+  | .groundingOnlyOwner | .resultSupportOnlyOwner => false
+
+def publicEdgeVisible : SettlementEdgeRole → Bool
+  | .semanticRelation | .topologyFrontier => true
+  | .searchResultGrounding | .unrankedOwnerContainment => false
+
+theorem ranked_result_remains_public_when_grounding_noise_is_hidden :
+    publicNodeVisible .rankedResult = true ∧
+      publicNodeVisible .groundingOnlyOwner = false := by
+  decide
+
+theorem generation_grounding_edge_is_not_agent_facing_evidence :
+    publicEdgeVisible .searchResultGrounding = false ∧
+      publicEdgeVisible .semanticRelation = true ∧
+      publicEdgeVisible .topologyFrontier = true := by
+  decide
+
+theorem unranked_owner_membership_is_not_agent_facing_evidence :
+    publicNodeVisible .resultSupportOnlyOwner = false ∧
+      publicEdgeVisible .unrankedOwnerContainment = false ∧
+      publicNodeVisible .rankedResult = true := by
+  decide
+
 structure EncoderIdentity where
   encoderId : String
   encoderVersion : String

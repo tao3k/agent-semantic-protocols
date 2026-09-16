@@ -805,8 +805,54 @@ impl SearchTopologySettlement {
         let mut result_nodes = BTreeMap::<String, Vec<String>>::new();
         let mut standalone_nodes = Vec::new();
 
-        for node in required_array(packet, "nodes")? {
+        let nodes = required_array(packet, "nodes")?;
+        let ranked_node_ids = nodes
+            .iter()
+            .filter_map(|node| {
+                let node = node.as_object()?;
+                node.contains_key("projection")
+                    .then(|| node.get("id").and_then(Value::as_str))
+                    .flatten()
+            })
+            .collect::<FxHashSet<_>>();
+
+        // The complete settlement retains owner-membership edges so machine
+        // admission can prove that a result belongs to the immutable topology
+        // generation. Those edges are not additional Agent-facing evidence:
+        // every selector already carries its owner path. Keep owners that
+        // participate in an independent relation or frontier, and hide owners
+        // whose only purpose is supporting ranked results.
+        let edges = required_array(packet, "edges")?;
+        let mut result_support_only_owner_ids = FxHashSet::default();
+        let mut independently_visible_node_ids = FxHashSet::default();
+        for edge in edges {
+            let edge = required_object(edge, "edges[]")?;
+            if is_search_result_support_edge(edge, &ranked_node_ids) {
+                result_support_only_owner_ids.insert(required_text(edge, "from")?);
+            } else {
+                independently_visible_node_ids.insert(required_text(edge, "from")?);
+                independently_visible_node_ids.insert(required_text(edge, "to")?);
+            }
+        }
+        for frontier in required_array(packet, "frontiers")? {
+            let frontier = required_object(frontier, "frontiers[]")?;
+            independently_visible_node_ids.insert(required_text(frontier, "anchor")?);
+            independently_visible_node_ids.insert(required_text(frontier, "target")?);
+        }
+        let mut visible_node_ids = FxHashSet::default();
+
+        for node in nodes {
             let node = required_object(node, "nodes[]")?;
+            let node_id = required_text(node, "id")?;
+            let visible = node.contains_key("projection")
+                || node.contains_key("annotation")
+                || node.contains_key("excerpt")
+                || !result_support_only_owner_ids.contains(node_id)
+                || independently_visible_node_ids.contains(node_id);
+            if !visible {
+                continue;
+            }
+            visible_node_ids.insert(node_id);
             if node.contains_key("annotation") || node.contains_key("excerpt") {
                 standalone_nodes.push(render_node(node)?);
             } else {
@@ -822,8 +868,16 @@ impl SearchTopologySettlement {
             ));
         }
         lines.extend(standalone_nodes);
-        for edge in required_array(packet, "edges")? {
-            lines.push(render_edge(required_object(edge, "edges[]")?)?);
+        for edge in edges {
+            let edge = required_object(edge, "edges[]")?;
+            if is_search_result_support_edge(edge, &ranked_node_ids) {
+                continue;
+            }
+            let from = required_text(edge, "from")?;
+            let to = required_text(edge, "to")?;
+            if visible_node_ids.contains(from) && visible_node_ids.contains(to) {
+                lines.push(render_edge(edge)?);
+            }
         }
         for certificate in required_array(packet, "coverageCertificates")? {
             let certificate = required_object(certificate, "coverageCertificates[]")?;
@@ -875,6 +929,30 @@ impl SearchTopologySettlement {
             .and_then(|document| document.render())
             .map_err(org_render_error)
     }
+}
+
+fn is_search_result_support_edge(
+    edge: &serde_json::Map<String, Value>,
+    ranked_node_ids: &FxHashSet<&str>,
+) -> bool {
+    let explicit_grounding =
+        edge.get("witnesses")
+            .and_then(Value::as_array)
+            .is_some_and(|witnesses| {
+                witnesses.len() == 1 && witnesses[0].as_str() == Some("search-result-grounding")
+            });
+    if explicit_grounding {
+        return true;
+    }
+    edge.get("relation").and_then(Value::as_str) == Some("CONTAINS")
+        && edge
+            .get("to")
+            .and_then(Value::as_str)
+            .is_some_and(|to| ranked_node_ids.contains(to))
+        && edge
+            .get("from")
+            .and_then(Value::as_str)
+            .is_some_and(|from| !ranked_node_ids.contains(from))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

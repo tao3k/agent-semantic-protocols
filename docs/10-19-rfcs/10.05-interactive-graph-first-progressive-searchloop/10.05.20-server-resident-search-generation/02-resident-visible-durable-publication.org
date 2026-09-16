@@ -51,6 +51,15 @@ materialization.  The Turso generation loader validates once before publication;
 the registry must not repeat owner, snapshot, or generation-evidence validation
 on replay.  A raw materialization cannot enter the writer lane.
 
+The complete byte membership is the set of content-addressed source blobs, not
+only the set of syntax owners.  Parser auxiliary inputs such as =Cargo.toml=
+participate in the workspace snapshot and parser-artifact identity even though
+they do not produce a callable owner.  Every persisted blob therefore MUST have
+one admitted file-hash record, and every non-scope file-hash record MUST name a
+blob in the same generation.  Syntax owners remain a subset of blob membership.
+Dropping an auxiliary hash while retaining its bytes is an invalid resident-only
+generation and durable publication MUST reject it.
+
 Runtime Server lifecycle prepares the keyed resident workspace scope before a
 search or exact query is timed or dispatched.  Scope preparation owns durable
 checkpoint discovery and session-entry creation.  A cold generation means no
@@ -86,24 +95,39 @@ states.  The daemon may bind and serve its control transport in =Starting= so
 that artifact activation can commit, but it MUST NOT publish =Healthy= merely
 because the listener accepts connections.
 
-After activation is applied, the daemon restores every scope in the durable V1
-workspace-admission catalog in deterministic order, using the applied bundle's
-active provider targets rather than demanding capabilities absent from that
-bundle.  One scope must reach a terminal complete-generation admission,
-query-generation publication, and lexical-attachment terminal before the next
-scope starts.  This single-writer ordering is normative while generation
-handoff uses one retained publication slot: concurrent startup admissions could
-otherwise overwrite an unobserved handoff.
+After activation is applied, global =Healthy= requires only the bound control,
+data, and provider planes, the admitted catalog header, and the content-bound
+activation commit.  It MUST NOT enumerate catalog entries, restore a workspace
+generation, attach a lexical index, start a language provider, or wait for a
+workspace terminal.  Global readiness work is therefore independent of both
+catalog cardinality and the state of every historical workspace.
 
-Only after every catalog scope has produced a startup terminal may the daemon
-publish global =Healthy=.  A changed scope is rebuilt by the admission owner.
-A corrupt, identity-drifted, or provider-closure-incompatible scope publishes a
-workspace-keyed failed terminal and remains unavailable; it MUST NOT prevent
-independent valid scopes from recovering or turn global transport health into a
-cross-workspace conjunction.  Startup recovery is lifecycle work and is not
-charged to Search or Query dispatch latency.  Once =Healthy= is visible, a first
-request for an admitted successfully recovered scope consumes only resident
-state.
+Workspace recovery is keyed and demand-driven.  The first Search or Query for
+one exact workspace enters that workspace's existing single-flight admission
+lane.  The lane may restore only a content-bound =durable-ready= generation;
+missing, corrupt, identity-drifted, or provider-closure-incompatible state
+publishes a failure for that workspace alone.  No such failure may change the
+global daemon health or delay admission of another workspace.
+
+The first request waits, under its existing first-computation deadline, for its
+own workspace's complete-generation publication and required lexical terminal.
+It neither returns =materializing= as success nor requires a second invocation.
+An unchanged durable workspace reuses its committed parser and generation
+products; demand-driven does not authorize a full checkout reparse.  A ready
+resident request remains a direct in-process read and never enters recovery.
+
+This separation removes the invalid cross-workspace conjunction:
+
+#+begin_src typst
+#let global-healthy(control, data, provider, catalog-header, activation) =
+  control and data and provider and catalog-header and activation
+
+#let request-ready(global, workspace-generation, lexical-terminal) =
+  global and workspace-generation and lexical-terminal
+
+// |catalog entries| and every non-target workspace are absent from both
+// global-healthy and the target request's readiness predicate.
+#+end_src
 
 * Performance qualification
 

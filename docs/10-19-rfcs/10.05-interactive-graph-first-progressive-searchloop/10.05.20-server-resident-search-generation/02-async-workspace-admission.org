@@ -124,6 +124,21 @@ test owner is new while its implementation owner is old, or owner bytes are new
 while their selector set is old. A stale base digest rejects the complete delta;
 it never partially applies the non-conflicting owners.
 
+The generation owner computes one total, disjoint partition for every affected
+owner.  Given affected membership =A= and owners present in the replacement
+product =P=, the upsert set is =A intersect P= and the tombstone set is =A minus
+P=.  The raw affected set is never passed as the upsert set: doing so makes every
+tombstone simultaneously changed and causes the canonical overlay to reject its
+own valid provider replacement.  Owners outside =A= are unchanged and are reused
+from the active generation.
+
+#+begin_src typst
+#let upsert(A, P) = calc.intersection(A, P)
+#let tombstone(A, P) = calc.difference(A, P)
+
+$ upsert(A, P) intersection tombstone(A, P) = emptyset $
+#+end_src
+
 A mutation admission request MUST carry normalized changed paths, not only a
 =workspaceMutated= boolean or the hook cwd. The Runtime Server resolves every
 changed path through the resident workspace catalog, groups changes by

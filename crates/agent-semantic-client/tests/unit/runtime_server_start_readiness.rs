@@ -235,6 +235,25 @@ async fn explicit_activation_waits_for_one_bound_resident_transaction_without_po
     let state_home = temporary.path().to_path_buf();
     publish_pending_runtime(&state_home).await;
 
+    let historical_root = state_home.join("deleted-historical-workspace");
+    let catalog = agent_semantic_client_db::runtime_server_admission_catalog::
+        RuntimeWorkspaceAdmissionCatalog::load(
+            runtime_serving(&state_home).workspace_admission_catalog(),
+        )
+        .await
+        .expect("load isolated workspace catalog");
+    catalog
+        .record(
+            agent_semantic_client_db::runtime_server_admission_catalog::
+                RuntimeWorkspaceAdmissionCatalogEntry {
+                    project_id: "historical-project".to_owned(),
+                    workspace_identity: "historical-workspace".to_owned(),
+                    project_root: historical_root,
+                },
+        )
+        .await
+        .expect("record historical workspace without materialization");
+
     let start = run_asp(&state_home, &["server", "start"]);
     assert_success(&start, "supervised Runtime activation");
     let transaction =
@@ -272,6 +291,17 @@ async fn explicit_activation_waits_for_one_bound_resident_transaction_without_po
         .validate()
         .expect("typed loopback provider endpoint");
     assert_eq!(transaction.previous_drain_state, "not-required");
+
+    let daemon_stderr = std::fs::read_to_string(runtime_serving(&state_home).owner_stderr_log())
+        .expect("read daemon stderr");
+    assert!(
+        !daemon_stderr.contains("runtime-server-startup-generation-"),
+        "global startup attempted historical workspace recovery: {daemon_stderr}"
+    );
+    assert!(
+        !daemon_stderr.contains("runtime-server-startup-providers-"),
+        "global startup attempted historical provider warmup: {daemon_stderr}"
+    );
 
     stop_isolated_runtime(&state_home);
 }

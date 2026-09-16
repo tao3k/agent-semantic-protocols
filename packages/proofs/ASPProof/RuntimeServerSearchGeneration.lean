@@ -143,6 +143,45 @@ def orderedSupervisorReconcile
 def daemonBootstrap (catalogReady : Bool) (_workspace : Option WorkspaceId) : Bool :=
   catalogReady
 
+/-- Global health contains only process-global, bounded startup facts. -/
+structure GlobalStartupFacts where
+  controlBound : Bool
+  dataBound : Bool
+  providerBound : Bool
+  catalogHeaderAdmitted : Bool
+  activationCommitted : Bool
+deriving DecidableEq, Repr
+
+def globalDaemonHealthy (facts : GlobalStartupFacts) : Bool :=
+  facts.controlBound && facts.dataBound && facts.providerBound &&
+    facts.catalogHeaderAdmitted && facts.activationCommitted
+
+/-- Five bounded global facts are evaluated; workspace cardinality is not work. -/
+def globalReadinessWork (_catalogCardinality : Nat) : Nat := 5
+
+inductive WorkspaceRecoveryState where
+  | absent
+  | recovering
+  | ready
+  | failed
+deriving DecidableEq, Repr
+
+structure RuntimeReadiness where
+  global : GlobalStartupFacts
+  workspace : WorkspaceId → WorkspaceRecoveryState
+
+def markWorkspaceFailed
+    (runtime : RuntimeReadiness) (failedWorkspace : WorkspaceId) : RuntimeReadiness :=
+  { runtime with workspace := fun candidate =>
+      if candidate = failedWorkspace then .failed else runtime.workspace candidate }
+
+def runtimeGlobalHealthy (runtime : RuntimeReadiness) : Bool :=
+  globalDaemonHealthy runtime.global
+
+def workspaceRequestReady
+    (globalHealthy : Bool) (target : WorkspaceRecoveryState) : Bool :=
+  globalHealthy && decide (target = .ready)
+
 def resolveRelocation
     (identityIndex : ItemIdentity → List Selector)
     (identity : ItemIdentity) : List Selector :=
@@ -370,6 +409,30 @@ theorem drain_before_definition_can_restart_stale
 theorem global_daemon_bootstrap_requires_no_workspace :
     daemonBootstrap true none = true := by
   rfl
+
+theorem global_health_is_independent_of_catalog_cardinality
+    (leftCount rightCount : Nat) :
+    globalReadinessWork leftCount = globalReadinessWork rightCount := by
+  rfl
+
+theorem failed_workspace_cannot_block_global_health
+    (runtime : RuntimeReadiness) (failedWorkspace : WorkspaceId) :
+    runtimeGlobalHealthy (markWorkspaceFailed runtime failedWorkspace) =
+      runtimeGlobalHealthy runtime := by
+  rfl
+
+theorem request_readiness_requires_target_workspace
+    (globalHealthy : Bool) (target : WorkspaceRecoveryState)
+    (ready : workspaceRequestReady globalHealthy target = true) :
+    globalHealthy = true ∧ target = .ready := by
+  simp [workspaceRequestReady] at ready
+  exact ready
+
+theorem unrelated_workspace_failure_preserves_ready_target
+    (globalHealthy : Bool) (_unrelated : WorkspaceRecoveryState)
+    (healthy : globalHealthy = true) :
+    workspaceRequestReady globalHealthy .ready = true := by
+  simp [workspaceRequestReady, healthy]
 
 theorem relocation_is_projection_independent
     (identityIndex : ItemIdentity → List Selector)

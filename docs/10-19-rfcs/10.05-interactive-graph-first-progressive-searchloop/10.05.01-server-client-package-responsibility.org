@@ -39,6 +39,17 @@ Package responsibilities are exclusive.  A dependency may consume another
 package's typed API; it MUST NOT reproduce that package's policy, state machine,
 schema list, transport loop, or fallback.
 
+Runtime executable launchers form a one-way authority graph.  The user-visible
+=~/.local/bin/asp= entry and the Runtime-owned =runtime/bin/asp= entry each
+resolve directly through the same State Home's =runtime/artifacts/active/asp=
+selector.  The Runtime-owned entry MUST NOT point to the user-visible entry,
+another State Home, a build checkout, or a temporary directory.  Publication
+repairs a retired reverse link inside the same guarded activation transaction;
+it does not retain that link as a compatibility path.  Consequently deleting
+or replacing a user PATH entry cannot invalidate the Runtime-owned launcher,
+and deleting a temporary qualification State Home cannot strand the installed
+client.
+
 | Package | Normative responsibility |
 |-
 | =agent-semantic-client-protocol= | Version-neutral wire types, stream envelopes, generation identity, typed terminal states, and schema identity.  No transport loop, provider process, search implementation, artifact publication, or CLI policy. |

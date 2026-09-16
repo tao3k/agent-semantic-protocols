@@ -83,6 +83,27 @@ theorem pending_client_breaks_the_legacy_cycle
     clientCanExecuteRecovery (publishPending state generation) generation = true := by
   simp [clientCanExecuteRecovery, publishPending]
 
+inductive RuntimeLauncherTarget where
+  | sameStateHomeActiveMember
+  | userPathEntry
+  | foreignStateHome
+  | temporaryStateHome
+  deriving Repr, DecidableEq, BEq
+
+def runtimeOwnedLauncherAdmitted : RuntimeLauncherTarget → Bool
+  | .sameStateHomeActiveMember => true
+  | .userPathEntry | .foreignStateHome | .temporaryStateHome => false
+
+theorem runtime_launcher_must_not_reverse_link_through_user_path :
+    runtimeOwnedLauncherAdmitted .sameStateHomeActiveMember = true ∧
+      runtimeOwnedLauncherAdmitted .userPathEntry = false := by
+  decide
+
+theorem temporary_or_foreign_state_home_cannot_own_runtime_launcher :
+    runtimeOwnedLauncherAdmitted .temporaryStateHome = false ∧
+      runtimeOwnedLauncherAdmitted .foreignStateHome = false := by
+  decide
+
 /-- Actor commit is admitted only for the currently pending generation. -/
 def actorCommit (state : RuntimeAuthority) (generation : Nat) : RuntimeAuthority :=
   if state.pendingGeneration = some generation ∧

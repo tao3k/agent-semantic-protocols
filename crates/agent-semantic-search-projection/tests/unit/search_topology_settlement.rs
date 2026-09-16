@@ -360,6 +360,46 @@ fn topology_settlement_groups_same_language_nodes_in_one_results_list() {
 }
 
 #[test]
+fn unranked_owner_membership_is_retained_internally_but_not_rendered() {
+    let mut packet = valid_settlement();
+    packet["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id": "registry-owner",
+            "language": "rust",
+            "kind": "owner",
+            "name": "src/registry.rs",
+            "ownerLocator": "rust://src/registry.rs"
+        }));
+    packet["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "from": "registry-owner",
+            "to": "refresh",
+            "relation": "CONTAINS",
+            "modality": "parser-direct",
+            "producerAuthority": "provider-parser",
+            "evidenceAuthority": "provider-witness",
+            "witnesses": ["edge-owner-refresh"]
+        }));
+
+    let settlement = SearchTopologySettlement::admit(packet).unwrap();
+    assert!(
+        settlement.as_json()["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["id"] == "registry-owner")
+    );
+    let rendered = settlement.render_org_gql().unwrap();
+    assert!(!rendered.contains("registry-owner"));
+    assert!(!rendered.contains("edge-owner-refresh"));
+    assert!(rendered.contains("refresh:RustMethod"));
+}
+
+#[test]
 fn executed_workspace_result_is_joined_to_topology_before_rendering() {
     let library = valid_library();
     let workspace_result = serde_json::json!({
@@ -578,4 +618,13 @@ async fn request_grounded_selector_joins_its_generation_owned_base_owner() {
             .any(|edge| edge["relation"] == "CONTAINS"
                 && edge["witnesses"] == serde_json::json!(["search-result-grounding"]))
     );
+
+    let rendered = settlement
+        .render_org_gql()
+        .expect("grounded result has a compact public projection");
+    assert!(rendered.contains("new_runtime_selector"));
+    assert!(!rendered.contains("registry-owner"));
+    assert!(!rendered.contains("owner_locator"));
+    assert!(!rendered.contains("search-result-grounding"));
+    assert!(!rendered.contains("[:CONTAINS"));
 }

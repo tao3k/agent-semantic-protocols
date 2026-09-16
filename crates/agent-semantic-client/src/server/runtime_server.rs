@@ -27,8 +27,6 @@ mod runtime_server_identity_handoff;
 mod runtime_server_query_generation_observer;
 #[path = "runtime_server_search_service.rs"]
 mod runtime_server_search_service;
-#[path = "runtime_server_startup_recovery.rs"]
-mod runtime_server_startup_recovery;
 #[path = "runtime_server_stop.rs"]
 mod runtime_server_stop;
 #[path = "runtime_server_telemetry_command.rs"]

@@ -14,8 +14,11 @@ use super::{
 };
 use crate::{ClientDbActiveGenerationSourceBlobs, ClientDbSourceIndexGenerationSnapshot};
 
-fn file_hash_belongs_to_complete_generation(path: &str, owner_paths: &BTreeSet<String>) -> bool {
-    path.starts_with("@scope/") || owner_paths.contains(path)
+fn file_hash_belongs_to_complete_generation(
+    path: &str,
+    source_blob_paths: &BTreeSet<String>,
+) -> bool {
+    path.starts_with("@scope/") || source_blob_paths.contains(path)
 }
 
 fn validate_overlay_membership(
@@ -237,13 +240,6 @@ pub fn overlay_active_source_index_import(
         .iter()
         .map(|owner| owner.owner_path.as_str().to_owned())
         .collect::<BTreeSet<_>>();
-    let file_hashes = overlay_file_hashes(
-        active,
-        partial,
-        changed_owner_paths,
-        removed_owner_paths,
-        &owner_paths,
-    );
     let relations = overlay_relations(active, partial, changed_owner_paths, removed_owner_paths);
     let source_blobs = overlay_source_blobs(
         active_blobs,
@@ -251,18 +247,34 @@ pub fn overlay_active_source_index_import(
         changed_owner_paths,
         removed_owner_paths,
     );
+    let source_blob_paths = source_blobs
+        .iter()
+        .map(|(path, _)| path.to_string())
+        .collect::<BTreeSet<_>>();
+    let file_hashes = overlay_file_hashes(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+        &source_blob_paths,
+    );
     let source_membership = file_hashes
         .iter()
         .filter(|record| !record.path.starts_with("@scope/"))
         .map(|record| record.path.as_str())
         .collect::<BTreeSet<_>>();
-    let expected_membership = owner_paths
+    let expected_membership = source_blob_paths
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
     if source_membership != expected_membership {
         return Err(format!(
-            "complete source-index successor membership drift: sourceMembership={source_membership:?} ownerMembership={expected_membership:?}"
+            "complete source-index successor membership drift: hashMembership={source_membership:?} blobMembership={expected_membership:?}"
+        ));
+    }
+    if !owner_paths.is_subset(&source_blob_paths) {
+        return Err(format!(
+            "complete source-index successor owner bytes are incomplete: ownerMembership={owner_paths:?} blobMembership={source_blob_paths:?}"
         ));
     }
 
@@ -284,7 +296,7 @@ fn overlay_file_hashes(
     partial: &ClientDbSourceIndexImport,
     changed_owner_paths: &BTreeSet<String>,
     removed_owner_paths: &BTreeSet<String>,
-    owner_paths: &BTreeSet<String>,
+    source_blob_paths: &BTreeSet<String>,
 ) -> Vec<ClientCacheFileHash> {
     let retired_selector_evidence_paths = changed_owner_paths
         .iter()
@@ -298,13 +310,13 @@ fn overlay_file_hashes(
             !changed_owner_paths.contains(record.path.as_str())
                 && !removed_owner_paths.contains(record.path.as_str())
                 && !retired_selector_evidence_paths.contains(record.path.as_str())
-                && file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths)
+                && file_hash_belongs_to_complete_generation(record.path.as_str(), source_blob_paths)
         })
         .cloned()
         .map(|record| (record.path.clone(), record))
         .collect::<BTreeMap<_, _>>();
     for record in &partial.file_hashes {
-        if file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths) {
+        if file_hash_belongs_to_complete_generation(record.path.as_str(), source_blob_paths) {
             file_hashes.insert(record.path.clone(), record.clone());
         }
     }
