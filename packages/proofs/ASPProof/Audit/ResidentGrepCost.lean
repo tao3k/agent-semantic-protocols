@@ -47,6 +47,8 @@ open ASPProof.ResidentGrepCost
 #check source_acquisition_has_byte_lower_bound
 #check generation_rebind_preserves_parser_artifact
 #check changed_owner_content_rejects_parser_artifact
+#check unrelated_auxiliary_is_outside_owner_cut
+#check applicable_auxiliary_enters_owner_cut
 #check failed_durability_preserves_resident_read
 #check resident_is_not_restart_restorable
 #check candidate_projection_work_is_bounded

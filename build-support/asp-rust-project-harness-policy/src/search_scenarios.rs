@@ -33,6 +33,10 @@ pub const SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID: &str =
 pub const SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID: &str =
     "search-source-index-read-only-client-db-zero-write";
 
+/// Content-addressed parser products survive generation rebinding while
+/// retaining owner-local invalidation.
+pub const PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID: &str = "parser-artifact-content-reuse";
+
 /// Merkle-qualified live-memory code search must never open Turso on the warm path.
 pub const CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID: &str =
     "code-search-merkle-memory-warm-path";
@@ -194,6 +198,61 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                         ]
                     },
                 ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Parser artifacts bind owner content and applicable auxiliary cuts independently from generation proof.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/parser_artifact_content_reuse",
+                tags: ["search", "parser-artifact", "content-addressed", "incremental", "performance"],
+                commands: [
+                    {
+                        label: "content-reuse-work-metrics",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--lib",
+                            "server_source_index::projection::tests::parser_artifact_content_reuse_is_scenario_measured",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "provider-free-generation-rebind",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--lib",
+                            "server_source_index::async_rebuild::tests::unchanged_owner_reuses_parser_artifact_without_provider_runtime",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+                benchmark: {
+                    harness: "libtest",
+                    test: "parser_artifact_content_reuse_is_scenario_measured",
+                    snapshot: "parser_artifact_content_reuse_v1",
+                    target_total: "50us",
+                    max_total: "5ms",
+                    regression_budget: "50us",
+                    memory_budget_bytes: 65_536,
+                    target_rationale: "Two auxiliary owners are hashed once, then owner-local cuts are derived without provider startup or generation-wide invalidation.",
+                    warmup_iterations: 16,
+                    measure_iterations: 128,
+                    metrics: [
+                        { name: "auxiliary_owner_hash_count", unit: "owners", kind: Exact, target: 2 },
+                        { name: "affected_owner_count", unit: "owners", kind: Exact, target: 1 },
+                        { name: "unrelated_owner_invalidation_count", unit: "owners", kind: Exact, target: 0 },
+                        { name: "provider_process_count", unit: "processes", kind: Exact, target: 0 }
+                    ]
+                }
             ),
             crate::asp_rust_project_harness_scenario!(
                 name: CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID,

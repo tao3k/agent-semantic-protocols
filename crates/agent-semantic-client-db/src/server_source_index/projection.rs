@@ -178,7 +178,7 @@ async fn project_provider(
         .get(provider.provider_id.as_str())
         .cloned()
         .unwrap_or_default();
-    let auxiliary_input_digest = parser_auxiliary_input_digest(&auxiliary_owners)?;
+    let auxiliary_input_identities = parser_auxiliary_input_identities(&auxiliary_owners)?;
     let artifact_identities = owner_indexes
         .iter()
         .map(|index| {
@@ -186,13 +186,15 @@ async fn project_provider(
             let source_leaf_digest = tree.source_blob_digest(&owner_path).ok_or_else(|| {
                 format!("projection owner is absent from Merkle tree: {owner_path}")
             })?;
+            let auxiliary_input_digest =
+                parser_auxiliary_input_digest_for_owner(&auxiliary_input_identities, &owner_path)?;
             Ok((
                 *index,
                 super::parser_artifact_store::ParserArtifactIdentity {
                     provider_id: provider.provider_id.as_str().to_owned(),
                     parser_identity_digest: parser_identity_digest.as_str().to_owned(),
                     query_pack_digest: query_pack_digest.as_str().to_owned(),
-                    auxiliary_input_digest: auxiliary_input_digest.clone(),
+                    auxiliary_input_digest,
                     owner_path,
                     owner_content_digest: source_leaf_digest.as_str().to_owned(),
                 },
@@ -474,18 +476,33 @@ async fn project_provider(
     Ok(())
 }
 
-fn parser_auxiliary_input_digest(owners: &[ProviderProjectionOwner]) -> Result<String, String> {
-    let mut inputs = owners
+fn parser_auxiliary_input_identities(
+    owners: &[ProviderProjectionOwner],
+) -> Result<Vec<(String, String)>, String> {
+    let mut inputs = BTreeMap::new();
+    for owner in owners {
+        let digest = format!("blake3-256:{}", blake3::hash(&owner.source_bytes).to_hex());
+        if let Some(existing) = inputs.insert(owner.owner_path.clone(), digest.clone())
+            && existing != digest
+        {
+            return Err(format!(
+                "parser auxiliary input path has conflicting immutable bytes: {}",
+                owner.owner_path
+            ));
+        }
+    }
+    Ok(inputs.into_iter().collect())
+}
+
+fn parser_auxiliary_input_digest_for_owner(
+    inputs: &[(String, String)],
+    owner_path: &str,
+) -> Result<String, String> {
+    let applicable = inputs
         .iter()
-        .map(|owner| {
-            (
-                owner.owner_path.as_str(),
-                format!("blake3-256:{}", blake3::hash(&owner.source_bytes).to_hex()),
-            )
-        })
+        .filter(|(auxiliary_path, _)| auxiliary_owner_applies_to_source(auxiliary_path, owner_path))
         .collect::<Vec<_>>();
-    inputs.sort_unstable();
-    let bytes = serde_json::to_vec(&inputs)
+    let bytes = serde_json::to_vec(&applicable)
         .map_err(|error| format!("encode parser auxiliary input identity: {error}"))?;
     Ok(format!("blake3-256:{}", blake3::hash(&bytes).to_hex()))
 }

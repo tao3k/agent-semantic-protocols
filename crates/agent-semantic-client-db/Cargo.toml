@@ -98,6 +98,7 @@ required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]
+asp-rust-project-harness-policy.workspace = true
 criterion = { workspace = true }
 gix = { workspace = true }
 tempfile.workspace = true

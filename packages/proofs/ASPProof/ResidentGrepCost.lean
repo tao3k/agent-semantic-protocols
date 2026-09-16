@@ -457,6 +457,35 @@ theorem changed_owner_content_rejects_parser_artifact
   intro reusable
   exact changed (congrArg (fun binding => binding.ownerContent) reusable)
 
+/-- An owner binds only auxiliary inputs in its semantic ancestor cut.  An
+unrelated nested configuration therefore cannot invalidate its parser
+artifact. -/
+def applicableAuxiliaryInputs
+    (applies : Nat → Nat → Bool)
+    (ownerPath : Nat)
+    (inputs : List (Nat × Nat)) : List (Nat × Nat) :=
+  inputs.filter fun input => applies input.1 ownerPath
+
+theorem unrelated_auxiliary_is_outside_owner_cut
+    (applies : Nat → Nat → Bool)
+    (ownerPath : Nat)
+    (inputs : List (Nat × Nat))
+    (unrelated : Nat × Nat)
+    (outside : applies unrelated.1 ownerPath = false) :
+    applicableAuxiliaryInputs applies ownerPath (unrelated :: inputs) =
+      applicableAuxiliaryInputs applies ownerPath inputs := by
+  simp [applicableAuxiliaryInputs, outside]
+
+theorem applicable_auxiliary_enters_owner_cut
+    (applies : Nat → Nat → Bool)
+    (ownerPath : Nat)
+    (inputs : List (Nat × Nat))
+    (related : Nat × Nat)
+    (inside : applies related.1 ownerPath = true) :
+    applicableAuxiliaryInputs applies ownerPath (related :: inputs) =
+      related :: applicableAuxiliaryInputs applies ownerPath inputs := by
+  simp [applicableAuxiliaryInputs, inside]
+
 /-- Resident readability and restart restoration are deliberately different
 states.  A durability error cannot retroactively invalidate admitted memory. -/
 inductive InternalGenerationReadiness where

@@ -851,7 +851,7 @@ the 1ms budget.  These equations count logical work, not elapsed time.
 | Ready reads never inherit first-computation allowance | ready_phase_keeps_resident_budget; first_phase_is_monotone | Request-scoped phase changes only on generation/result miss; absolute deadline tests |
 | First Search excludes unrelated attachments | first_search_work_excludes_attachments; split_critical_path_never_adds_work | SearchCoreReady publishes before segment durability, graph and full parser projection |
 | Empty-cache acquisition cannot be constant work | source_acquisition_has_byte_lower_bound | Performance qualification reports source bytes and distinguishes empty-cache, process-cold and resident |
-| Parser product identity is not generation proof identity | generation_rebind_preserves_parser_artifact; changed_owner_content_rejects_parser_artifact | unchanged_owner_reuses_parser_artifact_without_provider_runtime first publishes through a live in-process provider, then rebinds unchanged bytes to another generation without a provider; changed bytes miss fail-closed |
+| Parser product identity is not generation proof identity | generation_rebind_preserves_parser_artifact; changed_owner_content_rejects_parser_artifact; unrelated_auxiliary_is_outside_owner_cut; applicable_auxiliary_enters_owner_cut | unchanged_owner_reuses_parser_artifact_without_provider_runtime first publishes through a live in-process provider, then rebinds unchanged source and auxiliary bytes to another generation without a provider; changed source or applicable auxiliary bytes miss fail-closed. parser_artifact_content_reuse_is_scenario_measured records exact affected/unrelated owner and provider-process work metrics |
 | Durability failure does not revoke resident reads | failed_durability_preserves_resident_read; resident_is_not_restart_restorable | Failed attachment rejects restart restore while the validated in-process generation remains readable |
 | Candidate-scoped parser work is bounded by full projection | candidate_projection_work_is_bounded | Exact verifier selects owners before parser/Relation materialization |
 | Provider-group batching removes repeated setup | provider_group_batch_never_exceeds_serial_owner_rpc | Materializer groups misses by language/provider; one service batch reuses cache lookup, lifecycle and bounded projection frames |
@@ -1055,6 +1055,39 @@ generation-bound auxiliary owners by canonical ancestor path and registered
 and reports zero query-time source and auxiliary filesystem reads.  A missing,
 changed, or corrupt resident auxiliary input is an identity failure; Runtime
 must not fall back to the live filesystem.
+
+Parser artifact identity MUST bind the per-owner applicable auxiliary cut, not
+the complete provider auxiliary inventory. For owner =o=, let =A(o)= be the
+canonically ordered set of registered configuration owners whose directory is
+an ancestor of =o=. The artifact key binds =digest(A(o))=. An auxiliary input
+outside =A(o)= cannot invalidate =o=; an input inside =A(o)= must invalidate it
+when its content changes. Runtime hashes every immutable auxiliary owner once,
+then derives owner cuts from the resulting path/digest pairs. Rehashing the
+same configuration bytes for every source owner is forbidden.
+
+#+begin_src lean
+def applicableAuxiliaryInputs
+    (applies : Nat → Nat → Bool)
+    (ownerPath : Nat)
+    (inputs : List (Nat × Nat)) : List (Nat × Nat) :=
+  inputs.filter fun input => applies input.1 ownerPath
+
+theorem unrelated_auxiliary_is_outside_owner_cut
+    (applies : Nat → Nat → Bool)
+    (ownerPath : Nat)
+    (inputs : List (Nat × Nat))
+    (unrelated : Nat × Nat)
+    (outside : applies unrelated.1 ownerPath = false) :
+    applicableAuxiliaryInputs applies ownerPath (unrelated :: inputs) =
+      applicableAuxiliaryInputs applies ownerPath inputs := by
+  simp [applicableAuxiliaryInputs, outside]
+#+end_src
+
+#+begin_src typst
+$ A(o) = sort({(p, h(b)) | p in ancestors(o) and p in config-files}) $
+$ K(o) = h(provider, parser, query-pack, o, h(bytes(o)), h(A(o))) $
+$ p notin A(o) => K(o) = K(o)_(after-change-at-p) $
+#+end_src
 
 A focused 2026-09-12 resident-input counterexample removed both the source file
 and its =Cargo.toml= from the worktree before projection.  The request reached

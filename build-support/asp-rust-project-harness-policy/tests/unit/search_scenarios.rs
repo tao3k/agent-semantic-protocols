@@ -4,6 +4,7 @@
 
 use asp_rust_project_harness_policy::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
 use asp_rust_project_harness_policy::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;
+use asp_rust_project_harness_policy::PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID;
 use asp_rust_project_harness_policy::SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID;
 use asp_rust_project_harness_policy::SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID;
 use asp_rust_project_harness_policy::SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID;
@@ -33,6 +34,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID
     ));
+    assert!(names.contains(&PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID));
     assert!(names.contains(&SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID));
     assert!(names.contains(
@@ -42,6 +44,24 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
         &asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
     ));
     assert!(names.contains(&"tree-sitter-querycursor-native-hot-path"));
+
+    let parser_reuse = package
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.name == PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID)
+        .expect("parser artifact content reuse Scenario is registered");
+    assert_eq!(parser_reuse.commands.len(), 2);
+    let benchmark = parser_reuse
+        .benchmark
+        .as_ref()
+        .expect("parser artifact reuse owns benchmark work metrics");
+    assert_eq!(benchmark.measure_iterations, 128);
+    assert!(
+        benchmark
+            .metrics
+            .iter()
+            .any(|metric| metric.name == "unrelated_owner_invalidation_count")
+    );
 
     let runtime_resources = package
         .scenarios

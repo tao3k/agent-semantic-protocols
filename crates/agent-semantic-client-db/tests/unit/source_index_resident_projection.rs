@@ -86,6 +86,16 @@ fn owner_snapshot(source: &[u8]) -> crate::runtime_server_workspace::WorkspaceOw
     }
 }
 
+fn auxiliary_snapshot(
+    source: &[u8],
+) -> crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot {
+    crate::runtime_server_workspace::WorkspaceAuxiliaryOwnerSnapshot {
+        owner_path: "Cargo.toml".to_owned(),
+        content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
+        bytes: source.to_vec(),
+    }
+}
+
 #[tokio::test]
 async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
     use std::sync::Arc;
@@ -162,12 +172,13 @@ async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
     ));
     let artifact_root = tempfile::tempdir().expect("parser artifact root");
     let source = b"pub fn resident() {}\n";
+    let auxiliary = b"[package]\nname = 'resident'\n";
     let first = super::prepare_runtime_server_resident_owner_projections_async(
         Some(runtime),
         project_root.clone(),
         "workspace-resident-projection".to_owned(),
         vec![owner_snapshot(source)],
-        Vec::new(),
+        vec![auxiliary_snapshot(auxiliary)],
         provider_projection(),
         artifact_root.path().to_path_buf(),
     )
@@ -185,7 +196,7 @@ async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
         project_root.clone(),
         "workspace-resident-projection-rebound".to_owned(),
         vec![owner_snapshot(source)],
-        Vec::new(),
+        vec![auxiliary_snapshot(auxiliary)],
         provider_projection(),
         artifact_root.path().to_path_buf(),
     )
@@ -201,12 +212,27 @@ async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
             project_root,
             "workspace-resident-projection-changed".to_owned(),
             vec![owner_snapshot(changed)],
-            Vec::new(),
+            vec![auxiliary_snapshot(auxiliary)],
             provider_projection(),
             artifact_root.path().to_path_buf(),
         )
         .await
         .expect_err("changed content must not reuse parser artifact"),
+        "state=cache-miss reasonKind=provider-parser-runtime-required"
+    );
+
+    assert_eq!(
+        super::prepare_runtime_server_resident_owner_projections_async(
+            None,
+            std::env::temp_dir().join("asp-resident-projection-auxiliary-change"),
+            "workspace-resident-projection-auxiliary-change".to_owned(),
+            vec![owner_snapshot(source)],
+            vec![auxiliary_snapshot(b"[package]\nname = 'changed'\n")],
+            provider_projection(),
+            artifact_root.path().to_path_buf(),
+        )
+        .await
+        .expect_err("changed applicable auxiliary content must not reuse parser artifact"),
         "state=cache-miss reasonKind=provider-parser-runtime-required"
     );
 }
