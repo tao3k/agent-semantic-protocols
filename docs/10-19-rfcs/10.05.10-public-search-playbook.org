@@ -219,10 +219,13 @@ qualification accidentally conflated:
 Counting topology coverage certificates by the number of rg, Tantivy, or
 Syntax leaves is invalid.  A relation-frontier certificate cannot authorize an
 =intersect=.  In particular, ordinary Tantivy top-K is ranked evidence and not
-a complete set.  Until Runtime publishes distinct generation-bound
-acquisition-set receipts, Live Corpus V1 qualifies rg, Tantivy, and structural
-Syntax independently and rejects scenarios that claim a successful
-multi-engine set intersection.
+a complete set. Runtime executes all acquisition branches inside one admitted
+generation and owner universe, constructs a distinct receipt for every clause,
+and rejects the whole intersection when any branch is incomplete or truncated.
+Live Corpus V1 therefore qualifies rg, Tantivy, and structural Syntax
+independently, and retains explicit-intersection scenarios only as end-to-end
+tests of that Runtime admission rule. It never derives clause completeness
+from the topology projection's certificate count.
 
 #+name: search-acquisition-intersection-law
 #+begin_src typst :runtime typst :lint "typst eval --in - 'none'"

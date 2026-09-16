@@ -178,6 +178,7 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
                 "regex-truth",
                 "ranked-text",
                 "structural-syntax",
+                "explicit-conjunction",
             ]))
             .copied()
             .collect::<Vec<_>>();
@@ -207,8 +208,12 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
         }
         covered_route_classes.insert(route_class);
     }
-    let required_route_classes =
-        BTreeSet::from(["regex-truth", "ranked-text", "structural-syntax"]);
+    let required_route_classes = BTreeSet::from([
+        "regex-truth",
+        "ranked-text",
+        "structural-syntax",
+        "explicit-conjunction",
+    ]);
     if covered_route_classes != required_route_classes {
         return Err(format!(
             "Live Corpus must cover every predicate-directed Search route: observed={covered_route_classes:?} required={required_route_classes:?}"
@@ -256,6 +261,16 @@ fn validate_predicate_route(case: &QualificationCase, route_class: &str) -> Resu
                 && request.syntax.len() == 1
                 && request.syntax[0].producer == case.language_id
                 && request.native_syntax.is_empty()
+        }
+        "explicit-conjunction" => {
+            request.rg.len() == 1
+                && request.tantivy.len() == 1
+                && request.syntax.is_empty()
+                && request.native_syntax.is_empty()
+                && matches!(
+                    request.normalized_composition,
+                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
+                )
         }
         _ => false,
     };

@@ -319,6 +319,7 @@ pub(super) fn validate_topology_scenarios(
         "regex-truth".to_owned(),
         "ranked-text".to_owned(),
         "structural-syntax".to_owned(),
+        "explicit-conjunction".to_owned(),
     ]);
     if covered_route_classes != required_route_classes {
         return Err(format!(
@@ -376,11 +377,17 @@ fn validate_topology_search_route(
                 && parsed.native_syntax.is_empty()
                 && parsed.graph.is_empty()
         }
-        // A topology coverage certificate proves relation-frontier coverage. It
-        // does not prove that two acquisition result sets are complete over one
-        // generation and owner universe. Until Search exposes that distinct
-        // clause receipt, Live Corpus must not certify an intersection.
-        "explicit-conjunction" => false,
+        "explicit-conjunction" => {
+            parsed.rg.len() == 1
+                && parsed.tantivy.len() == 1
+                && parsed.syntax.is_empty()
+                && parsed.native_syntax.is_empty()
+                && parsed.graph.is_empty()
+                && matches!(
+                    parsed.normalized_composition,
+                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
+                )
+        }
         _ => false,
     };
     if !route_matches {

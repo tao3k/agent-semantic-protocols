@@ -129,11 +129,11 @@ multi_callable_skeleton_query = '''(query (producers (language rust)) (select (s
 [[cases]]
 case_id = "rust.ripgrep.core"
 resource_id = "rust.ripgrep"
-route_class = "regex-truth"
+route_class = "explicit-conjunction"
 reasoning_focus = "Explain the selected ripgrep callable's matching or traversal role."
 required_relation_kinds = ["calls", "searches-with"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (rg "-n" "-F" "RegexMatcher"))'''
+composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "RegexMatcher") (tantivy "body:search OR title:matcher^2")))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 

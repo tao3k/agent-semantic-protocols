@@ -154,7 +154,7 @@ fn every_live_corpus_case_admits_its_complex_scheme_intent() {
 }
 
 #[test]
-fn topology_intersection_cannot_reuse_relation_coverage_as_set_completeness() {
+fn topology_explicit_conjunction_must_match_the_scheme_operator_tree() {
     let plan: QualificationPlan = toml::from_str(include_str!(
         "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
     ))
@@ -166,8 +166,8 @@ fn topology_intersection_cannot_reuse_relation_coverage_as_set_completeness() {
     let scenario = suite
         .cases
         .iter_mut()
-        .find(|scenario| scenario.route_class == "ranked-text")
-        .expect("ranked scenario");
+        .find(|scenario| scenario.route_class == "explicit-conjunction")
+        .expect("explicit conjunction scenario");
     let language = plan
         .cases
         .iter()
@@ -175,13 +175,11 @@ fn topology_intersection_cannot_reuse_relation_coverage_as_set_completeness() {
         .expect("matching baseline case")
         .language_id
         .clone();
-    scenario.route_class = "explicit-conjunction".to_owned();
-    scenario.composed_search = format!(
-        "(search (producers (language {language})) (intersect (rg \"-n\" \"owner\") (tantivy \"title:\\\"owner identity\\\"^2 OR body:owner\")))"
-    );
+    scenario.composed_search =
+        format!("(search (producers (language {language})) (rg \"-n\" \"owner\"))");
 
     let error = validate_topology_scenarios(&plan.cases, suite)
-        .expect_err("an intersection without acquisition-set receipts must fail closed");
+        .expect_err("route declaration and Scheme operator tree must agree");
     assert!(error.contains("predicate-directed route"), "error={error}");
 }
 
@@ -215,18 +213,17 @@ fn topology_route_class_must_match_the_scheme_ast() {
 }
 
 #[test]
-fn topology_suite_does_not_claim_acquisition_completeness_from_frontier_coverage() {
+fn topology_suite_keeps_explicit_conjunction_without_a_frontier_count_proxy() {
     let suite: AgentOrgTopologyScenarioSuite = toml::from_str(include_str!(
         "../../../../../benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
     ))
     .expect("topology Scheme suite");
-    assert!(
-        suite
-            .cases
-            .iter()
-            .all(|scenario| scenario.route_class != "explicit-conjunction"
-                && !scenario.composed_search.contains("(intersect "))
-    );
+    let scenario = suite
+        .cases
+        .iter()
+        .find(|scenario| scenario.route_class == "explicit-conjunction")
+        .expect("runtime-qualified explicit conjunction");
+    assert!(scenario.composed_search.contains("(intersect "));
 }
 
 fn error_frame(
