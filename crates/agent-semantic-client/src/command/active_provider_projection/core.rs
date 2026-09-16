@@ -4,8 +4,9 @@
 
 //! Runtime provider executables derived from the verified active bundle.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use sha2::Digest;
@@ -340,35 +341,43 @@ fn workspace_required_provider_languages_for_paths<'a>(
     paths: impl IntoIterator<Item = &'a Path>,
 ) -> Result<BTreeSet<String>, String> {
     let paths = paths.into_iter().collect::<Vec<_>>();
-    let mut required = BTreeSet::new();
+    let mut marker_languages = BTreeMap::<PathBuf, BTreeSet<String>>::new();
+    let mut extension_languages = BTreeMap::<String, BTreeSet<String>>::new();
     for registration in register.installed_capabilities() {
         let inventory = registration.source_inventory()?;
-        let has_entry_marker = inventory
-            .project_resolution
-            .as_ref()
-            .is_some_and(|project| {
-                project
-                    .entry_markers
-                    .iter()
-                    .any(|marker| paths.iter().any(|path| *path == Path::new(marker)))
-            });
-        let has_source = paths.iter().any(|path| {
-            let path = path.to_string_lossy();
-            inventory
-                .source_extensions
-                .iter()
-                .any(|extension| path.ends_with(extension))
-        });
-        if has_entry_marker || has_source {
-            required.insert(registration.language_id);
+        if let Some(project) = inventory.project_resolution {
+            for marker in project.entry_markers {
+                marker_languages
+                    .entry(PathBuf::from(marker))
+                    .or_default()
+                    .insert(registration.language_id.clone());
+            }
+        }
+        for extension in inventory.source_extensions {
+            extension_languages
+                .entry(extension)
+                .or_default()
+                .insert(registration.language_id.clone());
         }
     }
     for document_language in orgize::agent::DocumentLanguage::ALL {
-        if paths
-            .iter()
-            .any(|path| document_language.matches_path(path))
-        {
-            required.insert(document_language.id().to_owned());
+        for extension in document_language.source_extensions() {
+            extension_languages
+                .entry((*extension).to_owned())
+                .or_default()
+                .insert(document_language.id().to_owned());
+        }
+    }
+    let mut required = BTreeSet::new();
+    for path in paths {
+        if let Some(languages) = marker_languages.get(path) {
+            required.extend(languages.iter().cloned());
+        }
+        if let Some(extension) = path.extension() {
+            let extension = format!(".{}", extension.to_string_lossy());
+            if let Some(languages) = extension_languages.get(&extension) {
+                required.extend(languages.iter().cloned());
+            }
         }
     }
     Ok(required)

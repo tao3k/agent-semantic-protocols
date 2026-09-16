@@ -67,12 +67,13 @@ impl ProjectTopologyInferenceProgram {
         bundle
             .validate()
             .map_err(|cause| error("topology-mrr-bundle-invalid", format!("{cause:?}")))?;
+        let relation_ids = bundle
+            .relations()
+            .iter()
+            .map(|schema| schema.id())
+            .collect::<BTreeSet<_>>();
         for relation in [direct_relation, reachable_relation] {
-            if !bundle
-                .relations()
-                .iter()
-                .any(|schema| schema.id() == relation)
-            {
+            if !relation_ids.contains(&relation) {
                 return Err(error(
                     "topology-mrr-program-relation-missing",
                     "topology MRR program omits a required relation",
@@ -90,8 +91,13 @@ impl ProjectTopologyInferenceProgram {
                     "topology MRR program omits the selected rule pack",
                 )
             })?;
+        let rule_ids = pack
+            .rules()
+            .iter()
+            .map(|candidate| candidate.id())
+            .collect::<BTreeSet<_>>();
         for rule in [base_rule, transitive_rule] {
-            if !pack.rules().iter().any(|candidate| candidate.id() == rule) {
+            if !rule_ids.contains(&rule) {
                 return Err(error(
                     "topology-mrr-program-rule-missing",
                     "topology MRR program omits a required closure rule",

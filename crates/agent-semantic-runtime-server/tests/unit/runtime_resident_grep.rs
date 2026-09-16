@@ -6,6 +6,20 @@ use grep_matcher::Matcher;
 
 use super::execute_runtime_resident_grep_blocks as execute_runtime_resident_grep_blocks_impl;
 
+#[test]
+fn resident_root_index_admits_only_exact_roots_and_descendants() {
+    let index = super::ResidentGrepRootIndex::new(["src/runtime/", "tests"]);
+
+    assert!(index.contains("src/runtime"));
+    assert!(index.contains("src/runtime/server.rs"));
+    assert!(index.contains("tests/unit.rs"));
+    assert!(!index.contains("src/runtime-old/server.rs"));
+    assert!(!index.contains("examples/runtime.rs"));
+
+    let universal = super::ResidentGrepRootIndex::new(["."]);
+    assert!(universal.contains("any/owner.rs"));
+}
+
 fn execute_runtime_resident_grep_blocks(
     corpus: &agent_semantic_search::ResidentGrepCorpusArtifact,
     blocks: &[Vec<String>],

@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use orgize::Org;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -44,11 +46,12 @@ impl AgentInteractiveChoice {
             if record.language.as_deref() != Some("org-contract") {
                 continue;
             }
-            let block_type = record
+            let header_args = record
                 .header_args
                 .iter()
-                .find(|arg| arg.key == "type")
-                .and_then(|arg| arg.value.as_deref());
+                .map(|arg| (arg.key.as_str(), arg.value.as_deref()))
+                .collect::<BTreeMap<_, _>>();
+            let block_type = header_args.get("type").copied().flatten();
             if block_type != Some("agent-interactive") {
                 continue;
             }
@@ -143,6 +146,11 @@ impl AgentInteractiveChoice {
 
     fn validate_categories(&self) -> Result<(), String> {
         let mut has_detail = false;
+        let entry_index = self
+            .entries
+            .iter()
+            .map(|entry| (entry.number.as_str(), entry.id.as_str()))
+            .collect::<BTreeSet<_>>();
         for part in self.categories.split(',') {
             let (key, value) = part.split_once('=').ok_or_else(|| {
                 format!(
@@ -156,11 +164,7 @@ impl AgentInteractiveChoice {
                 has_detail = true;
                 continue;
             }
-            if !self
-                .entries
-                .iter()
-                .any(|entry| entry.number == key && entry.id == value)
-            {
+            if !entry_index.contains(&(key, value)) {
                 return Err(format!(
                     "agent-interactive `{}` category `{key}={value}` must match a detail row",
                     self.id

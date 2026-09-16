@@ -369,6 +369,7 @@ impl ProjectTopologyLibrary {
                 "derived closure does not have one dependency record per derived edge",
             );
         }
+        let active_edge_ids = edges.keys().cloned().collect::<BTreeSet<_>>();
         for premises in dependencies.values() {
             if !premises.is_disjoint(&removed_edges) {
                 return invalid(
@@ -376,7 +377,7 @@ impl ProjectTopologyLibrary {
                     "derived closure retains a dependency on a removed premise",
                 );
             }
-            if premises.iter().any(|premise| !edges.contains_key(premise)) {
+            if !premises.is_subset(&active_edge_ids) {
                 return invalid(
                     "topology-derived-dependency-unresolved",
                     "derived closure references an unavailable premise",

@@ -635,6 +635,7 @@ impl RuntimeQueryGeneration {
         let mut node_count = 0usize;
         let mut source_descriptor_bytes = 0usize;
         for segment in source {
+            let segment_selector_ids = segment.selectors.iter().cloned().collect::<BTreeSet<_>>();
             source_descriptor_bytes = source_descriptor_bytes
                 .saturating_add(segment.owner_path.len())
                 .saturating_add(segment.content_digest.len())
@@ -702,14 +703,15 @@ impl RuntimeQueryGeneration {
                     && relation.kind.as_str().eq_ignore_ascii_case("CONTAINS")
                     && relation.to.kind
                         == agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item
-                    && segment.selectors.contains(&relation.to.id)
+                    && segment_selector_ids.contains(&relation.to.id)
                 {
                     continue;
                 }
-                if [&relation.from, &relation.to]
-                    .into_iter()
-                    .any(|endpoint| !admitted_nodes.contains(&(endpoint.kind, endpoint.id.clone())))
-                {
+                let from_admitted =
+                    admitted_nodes.contains(&(relation.from.kind, relation.from.id.clone()));
+                let to_admitted =
+                    admitted_nodes.contains(&(relation.to.kind, relation.to.id.clone()));
+                if !from_admitted || !to_admitted {
                     // This is a request-local topology cut. Cross-frontier
                     // relations are intentionally excluded rather than making
                     // an unrelated owner a first-Search parser dependency.

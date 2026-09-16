@@ -204,7 +204,7 @@ fn remove_stale_state_profiles<'a>(
 ) -> Result<Vec<String>, String> {
     let suffixes = matchers
         .map(|matcher| matcher.strip_prefix('*').unwrap_or(matcher).to_owned())
-        .collect::<Vec<_>>();
+        .collect::<BTreeSet<_>>();
     let mut removed = Vec::new();
     for entry in std::fs::read_dir(state_agents).map_err(|error| {
         format!(
@@ -217,9 +217,7 @@ fn remove_stale_state_profiles<'a>(
         let file_name_text = file_name.to_string_lossy();
         if !entry.path().is_file()
             || expected.contains(&file_name)
-            || !suffixes
-                .iter()
-                .any(|suffix| file_name_text.ends_with(suffix))
+            || !registered_profile_suffix(&file_name_text, &suffixes)
         {
             continue;
         }
@@ -233,6 +231,13 @@ fn remove_stale_state_profiles<'a>(
     }
     removed.sort();
     Ok(removed)
+}
+
+fn registered_profile_suffix(file_name: &str, suffixes: &BTreeSet<String>) -> bool {
+    file_name
+        .char_indices()
+        .filter(|(_, character)| *character == '.')
+        .any(|(index, _)| suffixes.contains(&file_name[index..]))
 }
 
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {

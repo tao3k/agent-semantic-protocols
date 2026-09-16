@@ -251,6 +251,8 @@ pub(super) fn validate_topology_scenarios(
                     scenario.case_id
                 )
             })?;
+        let relation_kinds_are_valid =
+            normalize_relation_kinds(&mut scenario.required_relation_kinds);
         if scenario.case_id.is_empty()
             || scenario.resource_id.is_empty()
             || scenario.route_class.is_empty()
@@ -264,15 +266,10 @@ pub(super) fn validate_topology_scenarios(
                 .matches("{{selectors}}")
                 .count()
                 != 1
-            || scenario
-                .required_relation_kinds
-                .iter()
-                .any(|relation| relation.is_empty())
+            || !relation_kinds_are_valid
         {
             return Err("Live Corpus Agent Org topology scenario is incomplete".to_owned());
         }
-        scenario.required_relation_kinds.sort();
-        scenario.required_relation_kinds.dedup();
         let parsed = agent_semantic_search::parse_progressive_search_playbook_args(&[
             "search".to_owned(),
             "playbook".to_owned(),
@@ -344,6 +341,15 @@ pub(super) fn validate_topology_scenarios(
         }
     }
     Ok((suite.prompt_contract, scenarios))
+}
+
+fn normalize_relation_kinds(relation_kinds: &mut Vec<String>) -> bool {
+    if relation_kinds.iter().any(String::is_empty) {
+        return false;
+    }
+    relation_kinds.sort();
+    relation_kinds.dedup();
+    true
 }
 
 fn validate_topology_search_route(

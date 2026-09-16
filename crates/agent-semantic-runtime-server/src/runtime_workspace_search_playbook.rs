@@ -421,12 +421,12 @@ pub(super) async fn execute_progressive_search_clauses(
                         diagnostic.reason_kind, diagnostic.owner_path
                     )));
                 }
-                let admitted = projections.iter().any(|projection| {
-                    projection
-                        .selectors
-                        .iter()
-                        .any(|candidate| candidate.selector == *selector)
-                });
+                let admitted_selectors = projections
+                    .iter()
+                    .flat_map(|projection| projection.selectors.iter())
+                    .map(|candidate| candidate.selector.as_str())
+                    .collect::<BTreeSet<_>>();
+                let admitted = admitted_selectors.contains(selector.as_str());
                 if !admitted {
                     return Err(AspClientOperationError::Message(format!(
                         "native-syntax selector is not present in the admitted generation: {selector}"

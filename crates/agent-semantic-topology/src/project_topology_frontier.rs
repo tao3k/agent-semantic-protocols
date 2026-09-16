@@ -4,6 +4,8 @@
 
 //! Source-owned relation expectations and their frontier classification.
 
+use std::collections::BTreeSet;
+
 use serde_json::{Value, json};
 
 use crate::project_topology_generation_error::{
@@ -100,15 +102,25 @@ pub(crate) fn project_topology_frontier_projection(
         })
         .collect::<Vec<_>>();
     let expectation_digest = digest_json(&Value::Array(expectation_records.clone()));
+    let positive_edges = edge_records
+        .iter()
+        .filter(|edge| edge["modality"] != "proposed")
+        .filter_map(|edge| {
+            Some((
+                edge["from"].as_str()?.to_owned(),
+                edge["to"].as_str()?.to_owned(),
+                edge["relation"].as_str()?.to_owned(),
+            ))
+        })
+        .collect::<BTreeSet<_>>();
     let mut coverage_certificates = Vec::new();
     let mut frontiers = Vec::new();
     for expected in expected_relations {
-        let has_positive = edge_records.iter().any(|edge| {
-            edge["from"] == expected.anchor
-                && edge["to"] == expected.target
-                && edge["relation"] == expected.relation
-                && edge["modality"] != "proposed"
-        });
+        let has_positive = positive_edges.contains(&(
+            expected.anchor.clone(),
+            expected.target.clone(),
+            expected.relation.clone(),
+        ));
         if has_positive {
             continue;
         }

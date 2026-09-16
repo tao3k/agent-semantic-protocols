@@ -77,11 +77,9 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         }
         validate_resident_options(&analysis, block_index)?;
         let matcher = compile_resident_matcher(&analysis, block_index)?;
-        let roots = analysis
-            .search_roots
-            .iter()
-            .map(|root| root.value.trim_end_matches('/'))
-            .collect::<Vec<_>>();
+        let roots = ResidentGrepRootIndex::new(
+            analysis.search_roots.iter().map(|root| root.value.as_str()),
+        );
         let line_attribution = matches!(
             analysis.output_attribution,
             agent_semantic_shell_parser::NativeRgOutputAttribution::JsonPathLine
@@ -103,11 +101,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>();
         'owners: for owner_path in candidate_owners {
-            if !roots
-                .iter()
-                .any(|root| owner_is_within_root(&owner_path, root))
-                || !matcher.path_matches(&owner_path)
-            {
+            if !roots.contains(&owner_path) || !matcher.path_matches(&owner_path) {
                 continue;
             }
             let bytes = corpus.owner_bytes(&owner_path).ok_or_else(|| {
@@ -407,13 +401,32 @@ fn has_option(
         .any(|option| names.contains(&option.option.as_str()))
 }
 
-fn owner_is_within_root(owner_path: &str, root: &str) -> bool {
-    root.is_empty()
-        || root == "."
-        || owner_path == root
-        || owner_path
-            .strip_prefix(root)
-            .is_some_and(|suffix| suffix.starts_with('/'))
+struct ResidentGrepRootIndex {
+    universal: bool,
+    roots: std::collections::BTreeSet<String>,
+}
+
+impl ResidentGrepRootIndex {
+    fn new<'a>(roots: impl IntoIterator<Item = &'a str>) -> Self {
+        let roots = roots
+            .into_iter()
+            .map(|root| root.trim_end_matches('/'))
+            .collect::<std::collections::BTreeSet<_>>();
+        let universal = roots.contains("") || roots.contains(".");
+        Self {
+            universal,
+            roots: roots.into_iter().map(str::to_owned).collect(),
+        }
+    }
+
+    fn contains(&self, owner_path: &str) -> bool {
+        if self.universal || self.roots.contains(owner_path) {
+            return true;
+        }
+        owner_path
+            .match_indices('/')
+            .any(|(index, _)| self.roots.contains(&owner_path[..index]))
+    }
 }
 
 fn digest(bytes: &[u8]) -> String {
