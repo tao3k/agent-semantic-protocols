@@ -27,12 +27,23 @@ pub(crate) use super::runtime_query_generation_model::{
 /// attachments. Request-local parser and Relation enrichment remains a lazy
 /// overlay; none of its failures can revoke exact native Query reads from the base.
 impl RuntimeQueryGeneration {
-    pub(super) fn inherit_materialization_authorities(&mut self, previous: &Self) {
+    pub(super) fn inherit_generation_local_authorities(
+        &mut self,
+        previous: &Self,
+    ) -> Result<(), String> {
         if previous.generation_digest == self.generation_digest {
             self.search_materializations = Arc::clone(&previous.search_materializations);
             self.query_materializations = Arc::clone(&previous.query_materializations);
             self.materialization_tasks = Arc::clone(&previous.materialization_tasks);
+            self.project_topology_attachment = Mutex::new(
+                previous
+                    .project_topology_attachment
+                    .lock()
+                    .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
+                    .clone(),
+            );
         }
+        Ok(())
     }
 
     pub(crate) fn contains_provider_targets(
@@ -187,16 +198,15 @@ impl RuntimeQueryGeneration {
         resident: &RuntimeResidentReadClient,
         owner_scope: &BTreeSet<String>,
     ) -> Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, String> {
-        if owner_scope.is_empty() {
-            return Err("reasonKind=runtime-project-topology-owner-scope-empty".to_owned());
-        }
         let topology_source_generation_digest = resident.topology_source_generation_digest()?;
         if let Some(stored) = self
             .project_topology_attachment
             .lock()
             .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
             .as_ref()
-            .filter(|stored| stored.matches(&topology_source_generation_digest, owner_scope))
+            .filter(|stored| {
+                stored.matches_request(&topology_source_generation_digest, owner_scope)
+            })
             .cloned()
         {
             return stored.attachment.map_err(|error| error.to_string());
@@ -207,7 +217,9 @@ impl RuntimeQueryGeneration {
             .lock()
             .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
             .as_ref()
-            .filter(|stored| stored.matches(&topology_source_generation_digest, owner_scope))
+            .filter(|stored| {
+                stored.matches_request(&topology_source_generation_digest, owner_scope)
+            })
             .cloned()
         {
             return stored.attachment.map_err(|error| error.to_string());
@@ -295,7 +307,7 @@ impl RuntimeQueryGeneration {
         }
 
         let source = resident.topology_source_segments_for_owner_scope(owner_scope)?;
-        if source.is_empty() {
+        if source.is_empty() && !owner_scope.is_empty() {
             return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
         }
         let mut admitted_nodes = BTreeSet::<(
@@ -520,9 +532,12 @@ impl RuntimeQueryGeneration {
         let topology_task =
             self.spawn_search_blocking("runtime-project-topology-build", move || {
                 let mut topology_permit = topology_permit;
-                let candidate = builder
-                    .build_from_scratch_on_blocking_lane(topology_segments)
-                    .map_err(|error| error.to_string());
+                let candidate = if topology_segments.is_empty() {
+                    builder.build_empty_request_scope_on_blocking_lane()
+                } else {
+                    builder.build_from_scratch_on_blocking_lane(topology_segments)
+                }
+                .map_err(|error| error.to_string());
                 topology_permit.release_cpu();
                 candidate.map(|candidate| (candidate, topology_permit))
             })?;

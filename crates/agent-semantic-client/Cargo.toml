@@ -13,7 +13,7 @@ license.workspace = true
 [features]
 default = ["asp-bin"]
 asp-bin = []
-live-corpus-test = []
+live-corpus-test = ["dep:tempfile"]
 
 [lib]
 doctest = false
@@ -61,12 +61,19 @@ libc.workspace = true
 globset.workspace = true
 base64 = "0.22"
 tracing = "0.1.44"
+tempfile = { workspace = true, optional = true }
 
 [[bin]]
 name = "asp"
 path = "src/main.rs"
 test = false
 required-features = ["asp-bin"]
+
+[[bin]]
+name = "asp-live-corpus-test"
+path = "src/bin/asp_live_corpus_test.rs"
+test = false
+required-features = ["live-corpus-test"]
 
 [dev-dependencies]
 jsonschema = { workspace = true }
@@ -89,12 +96,6 @@ path = "tests/unit/query_playbook_harness.rs"
 [[test]]
 name = "scenario_performance_gate"
 path = "tests/unit/scenario_performance_gate.rs"
-
-[[test]]
-name = "live_corpus"
-path = "tests/integration/live_corpus.rs"
-harness = false
-required-features = ["live-corpus-test"]
 
 [[bench]]
 name = "client_microbench"

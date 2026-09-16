@@ -296,10 +296,8 @@ build-live-corpus-test-runtime:
     set -euo pipefail
     artifact_dir="$PWD/.cache/live-corpus-test/bin"
     mkdir -p "${artifact_dir}"
-    cargo build --release -p agent-semantic-client --features live-corpus-test --bin asp
-    runner="$({ cargo test --release -p agent-semantic-client --no-default-features --features live-corpus-test --test live_corpus --no-run --message-format=json; } | jq -r 'select(.reason == "compiler-artifact" and .target.name == "live_corpus") | .executable // empty' | tail -n 1)"
-    test -n "${runner}"
-    cp "${runner}" "${artifact_dir}/live-corpus"
+    cargo build --release -p agent-semantic-client --features live-corpus-test --bin asp --bin asp-live-corpus-test
+    cp "$PWD/target/release/asp-live-corpus-test" "${artifact_dir}/live-corpus"
     chmod 755 "${artifact_dir}/live-corpus"
     echo "[live-corpus-build] server=$PWD/target/release/asp runner=${artifact_dir}/live-corpus state=ready"
 

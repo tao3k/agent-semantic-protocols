@@ -24,6 +24,27 @@ pub(super) fn workspace_search_qualification_receipt(
     elapsed_micros: u64,
     response_decode_elapsed_micros: u64,
 ) -> Result<WorkspaceSearchQualificationReceipt, String> {
+    let result_state = required_text(settlement, "resultState")?;
+    let inference = settlement
+        .get("inference")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "Search settlement has no inference object".to_owned())?;
+    let inference_state = inference
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Search settlement inference has no state".to_owned())?;
+    let terminal = settlement
+        .get("terminal")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "Search settlement has no terminal object".to_owned())?;
+    let terminal_state = terminal
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Search settlement terminal has no state".to_owned())?;
+    let terminal_count = terminal
+        .get("terminalCount")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Search settlement terminal has no terminalCount".to_owned())?;
     let binding = settlement
         .get("binding")
         .and_then(serde_json::Value::as_object)
@@ -72,6 +93,21 @@ pub(super) fn workspace_search_qualification_receipt(
             },
         )
         .1;
+    let state_matches_payload = match result_state {
+        "queryable" => !selectors.is_empty(),
+        "empty" => selectors.is_empty(),
+        _ => false,
+    };
+    if inference_state != "complete"
+        || terminal_state != "ready"
+        || terminal_count != 1
+        || !state_matches_payload
+    {
+        return Err(format!(
+            "reasonKind=live-corpus-search-settlement-not-complete resultState={result_state} inferenceState={inference_state} terminalState={terminal_state} terminalCount={terminal_count} selectorCount={}",
+            selectors.len()
+        ));
+    }
     Ok(WorkspaceSearchQualificationReceipt {
         operation_id,
         source_generation_digest: binding_digest("sourceGenerationDigest")?,
@@ -89,6 +125,14 @@ pub(super) fn workspace_search_qualification_receipt(
         frontier_count: settlement_array_len(settlement, "frontiers")?,
         coverage_certificate_count: settlement_array_len(settlement, "coverageCertificates")?,
     })
+}
+
+fn required_text<'a>(value: &'a serde_json::Value, field: &str) -> Result<&'a str, String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("Search settlement has no {field}"))
 }
 
 fn settlement_array_len(settlement: &serde_json::Value, field: &str) -> Result<usize, String> {

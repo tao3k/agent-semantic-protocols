@@ -81,9 +81,7 @@ pub(super) async fn settled_search_materialization(
 ) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     use crate::runtime_query_generation::RuntimeSearchTerminalState;
     match generation.await_search_materialization(key).await? {
-        RuntimeSearchTerminalState::Ready(result) => {
-            Ok(agent_semantic_client_protocol::ClientResponsePayload::from_shared(result))
-        }
+        RuntimeSearchTerminalState::Ready(result) => Ok(result.as_ref().clone()),
         RuntimeSearchTerminalState::Failed(error) => {
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))
         }

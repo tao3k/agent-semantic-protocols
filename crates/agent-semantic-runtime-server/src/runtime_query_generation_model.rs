@@ -74,18 +74,27 @@ impl RuntimeProjectTopologyCacheEntry {
         self.topology_source_generation_digest == topology_source_generation_digest
             && self.owner_scope == *requested
     }
+
+    pub(super) fn matches_request(
+        &self,
+        topology_source_generation_digest: &str,
+        requested: &BTreeSet<String>,
+    ) -> bool {
+        self.matches(topology_source_generation_digest, requested)
+            || (requested.is_empty() && self.attachment.is_ok())
+    }
 }
 
 #[derive(Clone)]
 pub(crate) enum RuntimeSearchMaterializationState {
     Building(Arc<tokio::sync::watch::Sender<Option<RuntimeSearchTerminalState>>>),
-    Ready(Arc<serde_json::Value>),
+    Ready(Arc<agent_semantic_client_protocol::ClientResponsePayload>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
 
 #[derive(Clone)]
 pub(crate) enum RuntimeSearchTerminalState {
-    Ready(Arc<serde_json::Value>),
+    Ready(Arc<agent_semantic_client_protocol::ClientResponsePayload>),
     Failed(Arc<agent_semantic_client_server::AspClientDispatchError>),
 }
 

@@ -377,7 +377,10 @@ impl RuntimeQueryGenerationAuthority {
         }
         .await;
         match reopened {
-            Ok(generation) if generation.generation_digest() == expected_generation_digest => {
+            Ok(mut generation) if generation.generation_digest() == expected_generation_digest => {
+                if let Some(previous) = previous_generation.as_ref() {
+                    generation.inherit_generation_local_authorities(previous)?;
+                }
                 let generation = Arc::new(generation);
                 self.reserve_generation_token(&generation);
                 self.publish_ready(key.clone(), Arc::clone(&generation))?;
@@ -503,7 +506,7 @@ impl RuntimeQueryGenerationAuthority {
             )?,
         };
         if let Some(previous) = previous_generation.as_ref() {
-            generation.inherit_materialization_authorities(previous);
+            generation.inherit_generation_local_authorities(previous)?;
         }
         let generation = Arc::new(generation);
         if generation.generation_digest() != expected_generation_digest {

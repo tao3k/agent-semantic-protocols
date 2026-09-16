@@ -295,6 +295,7 @@ fn project_topology_cache_identity_requires_source_generation_and_owner_scope() 
         "overlay-generation-a",
         &std::collections::BTreeSet::from(["src/b.rs".to_owned()])
     ));
+    assert!(!first.matches_request("overlay-generation-a", &std::collections::BTreeSet::new()));
 }
 
 #[tokio::test]

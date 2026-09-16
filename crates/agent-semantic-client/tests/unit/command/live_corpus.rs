@@ -162,6 +162,21 @@ async fn qualification_cannot_bootstrap_the_product_runtime_without_its_fixture(
     );
 }
 
+#[tokio::test]
+async fn materialization_cannot_bootstrap_the_product_runtime_without_its_fixture() {
+    let error = crate::command::live_corpus::run_live_corpus_test(&[
+        "materialize".to_owned(),
+        "--resource".to_owned(),
+        "rust.bytes".to_owned(),
+    ])
+    .await
+    .expect_err("materialization must require its isolated Runtime fixture");
+    assert!(
+        error.contains("reasonKind=live-corpus-isolated-runtime-required"),
+        "{error}"
+    );
+}
+
 #[test]
 fn repository_corpus_lock_is_the_materializer_contract() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))

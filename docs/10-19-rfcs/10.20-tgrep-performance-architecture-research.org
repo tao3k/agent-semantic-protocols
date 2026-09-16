@@ -729,9 +729,10 @@ flowchart TD
   G -. independent attachment .-> O[Content-addressed segment durability]
   G -. independent attachment .-> P[Tantivy acceleration]
   K -. candidate scoped .-> Q[Request graph and Project Topology refinement]
-  Q --> V{Same generation and exact owner scope?}
-  V -->|yes| W[Reuse one-slot topology attachment]
+  Q --> V{Same source generation and exact owner scope?}
+  V -->|yes| W[Reuse generation-local topology attachment]
   V -->|no| Y[Build outside cache lock and replace slot]
+  W --> WI[Inherit across equivalent Runtime handle refresh]
   O --> R[DurableReady for restart]
 #+end_src
 
@@ -865,6 +866,7 @@ the 1ms budget.  These equations count logical work, not elapsed time.
 | Process-cold exact replay is request-local | process_cold_exact_replay_never_publishes_workspace_ready; changed_runtime_bundle_rejects_process_cold_exact_replay; changed_owner_rejects_process_cold_exact_replay; relocation_rejects_process_cold_exact_replay | Runtime requires the current bundle, hashes only requested current owners against the immutable exact segment, and escalates bundle/content mismatch or relocation to complete generation; replay never enters the global Ready map |
 | Cache hit starts no provider | parser_cache_hit_has_zero_provider_starts | unchanged_owner_reuses_parser_artifact_without_provider_runtime shuts down the provider after publication and proves the generation-rebound hit succeeds without crossing provider lifecycle |
 | Request graph stays candidate-bounded | request_graph_work_is_candidate_bounded | Graph and Project Topology build from the fused owner cut plus a budgeted one-hop Relation neighbourhood |
+| Complete no-match remains an empty request cut | complete_no_match_empty_cut_has_zero_owner_work; expanding_empty_cut_adds_workspace_owner_work | Runtime builds the V1 identity-bound empty request topology on its owned blocking lane; full generations still reject empty source and no-match never expands to the workspace |
 | Candidate publication excludes workspace rewrite | resident_semantic_publication_excludes_workspace_rewrite | Writer commits a resident overlay revision; canonical epoch, pointer and filesystem-write counter remain unchanged |
 | Resident overlay excludes copied base bytes | delta_only_overlay_work_equals_delta; copying_base_bytes_adds_forbidden_work | ResidentOverlayState stores only deltas and reads canonical owners/relations through the immutable lease; base semantic owners remain visible after a delta |
 | Resident handles exclude repeated Search-plane builds | admitted_search_plane_has_zero_request_workspace_build; read_handle_reference_work_is_independent_of_workspace; rebuilding_each_handle_multiplies_workspace_work | WorkspaceMemoryBackend admits one generation-bound Search plane; repeated RuntimeResidentReadClient opens share its Arc and perform no full generation validation or reconstruction |
@@ -1110,6 +1112,25 @@ architecture.  Search builds a request-local topology from materialized fused
 candidates and, when graph semantics require it, a bounded one-hop Relation
 neighbourhood.  This prevents both full-repository parser work and a stale
 first-query topology from becoming permanent generation state.
+
+Runtime handle refresh for the same admitted content generation MUST retain the
+generation-local request topology attachment.  Reopening an equivalent handle
+must not turn every resident Search into a topology rebuild.  Reuse still
+validates the topology-source generation and exact owner scope; the narrow
+exception is a complete empty owner cut, which may bind to an already-successful
+attachment from that same immutable content generation even when its resident
+parser/Relation overlay identity has advanced.  The empty support set contains
+no owner, selector, or Relation fact, so its result is independent of overlay
+contents.  An empty cut never replaces or enlarges the positive request scope;
+all non-empty reuse still requires exact topology-source and scope identity.
+
+A completed resident Search materialization owns two views of one V1 result:
+the typed immutable JSON tree used by in-process admission and one lazily
+memoized canonical JSON byte representation used by the protobuf envelope.
+The memoized bytes do not create another result authority and may not alter the
+schema or request-local envelope fields.  They remove repeated whole-tree JSON
+serialization from resident hits while the client still decodes and admits the
+actual bytes received over the public transport.
 
 The generation builder owns only the lexical attachment.  A Tantivy clause
 waits for that lexical terminal and never for Graph.  Graph cardinality, budget

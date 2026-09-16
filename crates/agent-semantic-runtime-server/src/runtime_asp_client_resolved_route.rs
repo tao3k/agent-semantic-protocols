@@ -447,9 +447,7 @@ pub(super) async fn dispatch_resolved_route(
                 result,
             )) => {
                 dispatch_budget.observe_resident_hit();
-                return Ok(
-                    agent_semantic_client_protocol::ClientResponsePayload::from_shared(result),
-                );
+                return Ok(result.as_ref().clone());
             }
             Some(crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(
                 error,
@@ -618,9 +616,7 @@ pub(super) async fn dispatch_resolved_route(
                     ),
                 ) => {
                     dispatch_budget.observe_resident_hit();
-                    return Ok(
-                        agent_semantic_client_protocol::ClientResponsePayload::from_shared(result),
-                    );
+                    return Ok(result.as_ref().clone());
                 }
                 Some(
                     crate::runtime_query_generation::RuntimeSearchMaterializationState::Failed(

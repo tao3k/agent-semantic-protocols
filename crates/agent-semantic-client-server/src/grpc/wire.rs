@@ -85,7 +85,12 @@ pub(super) fn encode_frame(frame: ClientFrame) -> Result<wire::ClientFrameEnvelo
             Frame::Response(wire::ResponseFrame {
                 request_id: request_id.into_inner(),
                 outcome: encode_outcome(outcome),
-                result_json: encode_optional_serializable(result.as_ref())?,
+                result_json: result
+                    .as_ref()
+                    .map(agent_semantic_client_protocol::ClientResponsePayload::encoded_json)
+                    .transpose()
+                    .map_err(|error| format!("encode response JSON payload: {error}"))?
+                    .map_or_else(Vec::new, |encoded| encoded.as_ref().to_vec()),
                 error_json: encode_optional_json(error.as_ref())?,
                 catalog: catalog.map(encode_catalog),
             }),

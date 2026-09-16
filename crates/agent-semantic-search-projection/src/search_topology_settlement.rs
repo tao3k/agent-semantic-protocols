@@ -11,6 +11,7 @@ use std::fmt;
 use orgize::ast::{
     OrgSourceBlock, OrgSourceBlockDocument, OrgSourceBlockHeader, OrgSourceBlockHeaderValue,
 };
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
 use crate::search_topology_settlement_support::{
@@ -531,16 +532,17 @@ impl SearchTopologySettlement {
             .and_then(Value::as_bool)
             .ok_or_else(|| error("schema-invalid", "postRankingCertified must be boolean"))?;
 
-        let mut node_ids = BTreeSet::new();
-        let mut selectors = BTreeSet::new();
-        for node in required_array(object, "nodes")? {
+        let nodes = required_array(object, "nodes")?;
+        let mut node_ids = FxHashSet::with_capacity_and_hasher(nodes.len(), Default::default());
+        let mut selectors = FxHashSet::with_capacity_and_hasher(nodes.len(), Default::default());
+        for node in nodes {
             let node = required_object(node, "nodes[]")?;
             let node_id = required_text(node, "id")?;
-            if !node_ids.insert(node_id.to_owned()) {
+            if !node_ids.insert(node_id) {
                 return invalid("duplicate-node-id", format!("duplicate node id {node_id}"));
             }
             if let Some(selector) = node.get("selector").and_then(Value::as_str)
-                && !selectors.insert(selector.to_owned())
+                && !selectors.insert(selector)
             {
                 return invalid(
                     "duplicate-selector",
@@ -561,12 +563,6 @@ impl SearchTopologySettlement {
             }
         }
 
-        let authority_by_modality = BTreeMap::from([
-            ("parser-direct", ("provider-parser", "provider-witness")),
-            ("declared", ("source-contract", "contract-witness")),
-            ("derived", ("project-topology-inference.v1", "proof-dag")),
-            ("proposed", ("model-proposal", "model-premises")),
-        ]);
         let mut derived_relation_count = 0_u64;
         for edge in required_array(object, "edges")? {
             let edge = required_object(edge, "edges[]")?;
@@ -576,12 +572,18 @@ impl SearchTopologySettlement {
                 return invalid("dangling-edge", format!("edge {from}->{to} is dangling"));
             }
             let modality = required_text(edge, "modality")?;
-            let expected = authority_by_modality.get(modality).ok_or_else(|| {
-                error(
-                    "unsupported-edge-modality",
-                    format!("unsupported modality {modality}"),
-                )
-            })?;
+            let expected = match modality {
+                "parser-direct" => ("provider-parser", "provider-witness"),
+                "declared" => ("source-contract", "contract-witness"),
+                "derived" => ("project-topology-inference.v1", "proof-dag"),
+                "proposed" => ("model-proposal", "model-premises"),
+                _ => {
+                    return invalid(
+                        "unsupported-edge-modality",
+                        format!("unsupported modality {modality}"),
+                    );
+                }
+            };
             if required_text(edge, "producerAuthority")? != expected.0
                 || required_text(edge, "evidenceAuthority")? != expected.1
             {
@@ -602,18 +604,21 @@ impl SearchTopologySettlement {
             );
         }
 
-        let mut coverage = BTreeMap::new();
-        for certificate in required_array(object, "coverageCertificates")? {
+        let coverage_certificates = required_array(object, "coverageCertificates")?;
+        let mut coverage =
+            FxHashMap::with_capacity_and_hasher(coverage_certificates.len(), Default::default());
+        for certificate in coverage_certificates {
             let certificate = required_object(certificate, "coverageCertificates[]")?;
             let id = required_text(certificate, "id")?;
-            if coverage.insert(id.to_owned(), certificate).is_some() {
+            if coverage.insert(id, certificate).is_some() {
                 return invalid(
                     "duplicate-coverage-id",
                     format!("duplicate coverage id {id}"),
                 );
             }
         }
-        let mut referenced_coverage = BTreeSet::new();
+        let mut referenced_coverage =
+            FxHashSet::with_capacity_and_hasher(coverage.len(), Default::default());
         for frontier in required_array(object, "frontiers")? {
             let frontier = required_object(frontier, "frontiers[]")?;
             let anchor = required_text(frontier, "anchor")?;
@@ -630,11 +635,11 @@ impl SearchTopologySettlement {
             let required_scope = match (state, reason, coverage_ref) {
                 ("unknown", "binding-not-established", None) => continue,
                 ("unknown", "coverage-open", Some(reference)) => {
-                    referenced_coverage.insert(reference.to_owned());
+                    referenced_coverage.insert(reference);
                     "partial"
                 }
                 ("certified-missing", "complete-coverage-no-witness", Some(reference)) => {
-                    referenced_coverage.insert(reference.to_owned());
+                    referenced_coverage.insert(reference);
                     "complete"
                 }
                 _ => {
@@ -664,7 +669,11 @@ impl SearchTopologySettlement {
                 );
             }
         }
-        if referenced_coverage != coverage.keys().cloned().collect::<BTreeSet<_>>() {
+        if referenced_coverage.len() != coverage.len()
+            || coverage
+                .keys()
+                .any(|reference| !referenced_coverage.contains(reference))
+        {
             return invalid(
                 "frontier-coverage-extraneous",
                 "coverage certificates must equal exactly the references retained by frontiers",

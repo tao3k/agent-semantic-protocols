@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Generation-local completed-response retention tests.
+//! Generation-local authority retention tests.
 
 use super::test_generation;
 use crate::runtime_query_generation::{
@@ -10,7 +10,7 @@ use crate::runtime_query_generation::{
 };
 
 #[test]
-fn same_content_generation_upgrade_shares_in_flight_and_completed_authority() {
+fn same_content_generation_upgrade_shares_in_flight_completed_and_topology_authority() {
     let first = test_generation("blake3-256:shared-materialization-generation");
     assert!(first.begin_search_materialization("plan".into()).unwrap());
     assert!(
@@ -18,12 +18,22 @@ fn same_content_generation_upgrade_shares_in_flight_and_completed_authority() {
             .begin_query_materialization("source\0selector".into())
             .unwrap()
     );
+    first.project_topology_attachment.lock().unwrap().replace(
+        crate::runtime_query_generation_model::RuntimeProjectTopologyCacheEntry::new(
+            "blake3-256:topology-source".to_owned(),
+            std::collections::BTreeSet::from(["src/lib.rs".to_owned()]),
+            Err(std::sync::Arc::from("retained-fixture")),
+            None,
+        ),
+    );
 
     let mut upgraded = std::sync::Arc::try_unwrap(test_generation(
         "blake3-256:shared-materialization-generation",
     ))
     .unwrap_or_else(|_| panic!("fresh test generation must have one owner"));
-    upgraded.inherit_materialization_authorities(&first);
+    upgraded
+        .inherit_generation_local_authorities(&first)
+        .unwrap();
     first
         .publish_search_materialization("plan".into(), Ok(serde_json::json!({"ready": true})))
         .unwrap();
@@ -41,6 +51,18 @@ fn same_content_generation_upgrade_shares_in_flight_and_completed_authority() {
     assert!(matches!(
         upgraded.query_materialization("source\0selector").unwrap(),
         Some(RuntimeQueryMaterializationState::Ready(value)) if value["ready"] == true
+    ));
+    let retained_topology = upgraded.project_topology_attachment.lock().unwrap();
+    let retained_topology = retained_topology
+        .as_ref()
+        .expect("same generation must retain its request topology attachment");
+    assert!(retained_topology.matches(
+        "blake3-256:topology-source",
+        &std::collections::BTreeSet::from(["src/lib.rs".to_owned()]),
+    ));
+    assert!(matches!(
+        retained_topology.attachment.as_ref(),
+        Err(error) if error.as_ref() == "retained-fixture"
     ));
 }
 

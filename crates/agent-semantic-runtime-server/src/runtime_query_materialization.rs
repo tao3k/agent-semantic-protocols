@@ -79,7 +79,9 @@ impl RuntimeQueryGeneration {
         };
         let completion = Arc::clone(completion);
         let terminal = match result {
-            Ok(value) => RuntimeSearchTerminalState::Ready(Arc::new(value)),
+            Ok(value) => RuntimeSearchTerminalState::Ready(Arc::new(
+                agent_semantic_client_protocol::ClientResponsePayload::from(value),
+            )),
             Err(error) => RuntimeSearchTerminalState::Failed(Arc::new(error)),
         };
         materializations.remove(&key);

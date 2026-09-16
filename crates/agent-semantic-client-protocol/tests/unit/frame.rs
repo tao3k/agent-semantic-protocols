@@ -11,13 +11,27 @@ fn response_payload_clone_shares_storage_and_keeps_wire_json_transparent() {
     let cloned = payload.clone();
 
     let (
-        ClientResponsePayloadInner::Shared(payload_value),
-        ClientResponsePayloadInner::Shared(cloned_value),
+        ClientResponsePayloadInner::Shared {
+            value: payload_value,
+            encoded_json: payload_encoding,
+        },
+        ClientResponsePayloadInner::Shared {
+            value: cloned_value,
+            encoded_json: cloned_encoding,
+        },
     ) = (&payload.0, &cloned.0)
     else {
         panic!("plain response payload must retain shared storage");
     };
     assert!(std::sync::Arc::ptr_eq(payload_value, cloned_value));
+    assert!(std::sync::Arc::ptr_eq(payload_encoding, cloned_encoding));
+    let encoded = payload
+        .encoded_json()
+        .expect("encode shared response payload");
+    let cloned_encoded = cloned
+        .encoded_json()
+        .expect("reuse encoded response payload");
+    assert!(std::sync::Arc::ptr_eq(&encoded, &cloned_encoded));
     assert_eq!(
         serde_json::to_value(&payload).expect("serialize shared response payload"),
         value

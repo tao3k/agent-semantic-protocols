@@ -5,12 +5,11 @@
 #[test]
 fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests() {
     let manifest = include_str!("../../../Cargo.toml");
-    assert!(manifest.contains("name = \"live_corpus\""));
+    assert!(manifest.contains("name = \"asp-live-corpus-test\""));
     assert!(manifest.contains("required-features = [\"live-corpus-test\"]"));
     assert!(manifest.contains("required-features = [\"asp-bin\"]"));
-    assert!(manifest.contains("live-corpus-test = []"));
+    assert!(manifest.contains("live-corpus-test = [\"dep:tempfile\"]"));
     assert!(!manifest.contains("live-corpus-test = [\"asp-bin\"]"));
-    assert!(!manifest.contains("name = \"asp-live-corpus"));
 
     let library = include_str!("../../../src/lib.rs");
     assert!(library.contains("pub mod live_corpus_test;"));
@@ -22,6 +21,9 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
     assert!(runner.contains("materialize_provider_workspace_artifact"));
     assert!(!runner.contains("command::install_provider"));
     assert!(runner.contains("provider-artifact-digest="));
+    assert!(runner.contains("drain_runtime_sessions().await"));
+    assert!(runner.contains("RuntimeServerSupervisor"));
+    assert!(!runner.contains("Command::new(server_artifact)"));
     assert!(!runner.contains("symlink("));
     for forbidden in [
         "CARGO_BIN_EXE_asp",
@@ -36,9 +38,8 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
     }
 
     let justfile = include_str!("../../../../../Justfile");
-    assert!(
-        justfile.contains("--no-default-features --features live-corpus-test --test live_corpus")
-    );
+    assert!(justfile.contains("--bin asp --bin asp-live-corpus-test"));
+    assert!(!justfile.contains("cargo test --release"));
 
     let product_dispatch = include_str!("../../../src/command/dispatch.rs");
     let product_help = include_str!("../../../src/command/cli_help_model.rs");
@@ -50,10 +51,11 @@ fn live_corpus_test_is_separate_and_forwards_only_typed_public_client_requests()
         include_str!("../../../src/command/live_corpus_qualification/client_protocol.rs"),
         include_str!("../../../src/command/live_corpus_qualification/query_protocol.rs"),
         include_str!("../../../src/command/live_corpus_qualification/runner.rs"),
+        include_str!("../../../src/command/live_corpus_qualification/runner_model.rs"),
     );
     for required in [
         "ensure_healthy_runtime_server_for_bounded_operation",
-        "RuntimeLanguageCommandClient",
+        "RuntimeLanguageSessionClient",
         "LanguageCommandClient",
         "LanguageCommandRequest",
         "parse_progressive_search_playbook_args",

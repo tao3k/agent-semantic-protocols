@@ -120,6 +120,30 @@ impl ProjectTopologyGenerationBuilder {
     ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
         self.build_initial(Vec::new(), true).await
     }
+
+    /// Build an identity-bound empty request cut on a caller-owned blocking lane.
+    ///
+    /// Runtime Server uses this entry so the empty-cut proof remains inside its
+    /// daemon-wide task and resource authorities. This is request-local absence
+    /// evidence; it never relaxes the non-empty invariant for full generations.
+    pub fn build_empty_request_scope_on_blocking_lane(
+        &self,
+    ) -> Result<ProjectTopologyGenerationCandidate, ProjectTopologyGenerationBuildError> {
+        build_candidate_blocking(
+            self.identity.clone(),
+            self.limits,
+            Vec::new(),
+            self.expected_relations.clone(),
+            ProjectTopologyGenerationTransition {
+                parent_generation_digest: None,
+                rebuilt_owner_paths: BTreeSet::new(),
+                previous_node_ids: BTreeSet::new(),
+                previous_edge_ids: BTreeSet::new(),
+                change_set_digest: None,
+            },
+            true,
+        )
+    }
     async fn build_initial(
         &self,
         segments: Vec<ProjectTopologySourceSegment>,

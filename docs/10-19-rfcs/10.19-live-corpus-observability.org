@@ -341,6 +341,21 @@ serialization callback, and phase 10 only from the transport writer's
 delivered-or-closed callback. These callbacks are evidence boundaries, not
 planner actions and not recommendations for a later Agent step.
 
+The typed telemetry lane is also the only request-path timing sink. Runtime
+dispatch and response serialization MUST NOT synchronously print one stderr
+line per request: the shared file lock and filesystem write serialize
+otherwise independent streams, perturb resident percentiles, and duplicate
+the phase-9/phase-10 authority already carried by telemetry. Human-readable
+diagnostics remain valid for lifecycle transitions, first-computation stage
+boundaries, and failures; resident per-request observations use the bounded
+telemetry bus.
+
+Every warm sample still enters that bus, but the in-memory direct-inspection
+registry retains only the cold boundary receipt for a resident temperature
+cycle. Retaining every warm receipt under its unique request id duplicates the
+ordered performance event, grows without a generation bound, and adds a
+DashMap insertion plus a deep receipt clone before response egress.
+
 The event attributes include schema reference, request and session identity,
 workspace identity, canonical non-empty language and provider identity sets,
 workspace/source/runtime

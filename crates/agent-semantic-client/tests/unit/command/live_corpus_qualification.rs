@@ -21,6 +21,7 @@ use crate::command::live_corpus::qualification::runner_contract::select_qualific
 use crate::command::live_corpus::qualification::runner_contract::validate_plan;
 use crate::command::live_corpus::qualification::runner_prepare::artifact_current_pointer;
 use crate::command::live_corpus::qualification::runner_prepare::validate_topology_scenarios;
+use crate::command::live_corpus::qualification::search_receipt::workspace_search_qualification_receipt;
 use crate::command::live_corpus::qualification::workspace_fixture::IsolatedBenchmarkWorkspace;
 
 fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCase {
@@ -106,6 +107,71 @@ fn composed_query_preserves_the_ordered_selector_set() {
     )
     .expect("rendered selector set");
     assert!(source.contains("\"rust://src/a.rs#item/a\" \"rust://src/b.rs#item/b\""));
+}
+
+fn search_settlement(
+    result_state: &str,
+    inference_state: &str,
+    terminal_state: &str,
+    selector: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "resultState": result_state,
+        "binding": {
+            "sourceGenerationDigest": format!("blake3-256:{}", "1".repeat(64)),
+            "providerCatalogDigest": format!("blake3-256:{}", "2".repeat(64)),
+            "topologyGenerationDigest": format!("blake3-256:{}", "3".repeat(64))
+        },
+        "inference": {"state": inference_state},
+        "nodes": selector.into_iter().map(|selector| serde_json::json!({"selector": selector})).collect::<Vec<_>>(),
+        "edges": [],
+        "frontiers": [],
+        "coverageCertificates": [],
+        "terminal": {"state": terminal_state, "terminalCount": 1}
+    })
+}
+
+#[test]
+fn live_corpus_rejects_incomplete_search_settlement_as_success() {
+    let settlement = search_settlement("incomplete", "incomplete", "incomplete", None);
+    let error = workspace_search_qualification_receipt(&settlement, "op".to_owned(), 10, 1)
+        .expect_err("an incomplete settlement cannot become a qualified ready terminal");
+    assert!(
+        error.contains("reasonKind=live-corpus-search-settlement-not-complete"),
+        "error={error}"
+    );
+}
+
+#[test]
+fn live_corpus_accepts_only_payload_consistent_ready_search_settlements() {
+    workspace_search_qualification_receipt(
+        &search_settlement(
+            "queryable",
+            "complete",
+            "ready",
+            Some("rust://src/lib.rs#item/function/run"),
+        ),
+        "queryable-op".to_owned(),
+        10,
+        1,
+    )
+    .expect("queryable complete settlement");
+    workspace_search_qualification_receipt(
+        &search_settlement("empty", "complete", "ready", None),
+        "empty-op".to_owned(),
+        10,
+        1,
+    )
+    .expect("empty complete settlement");
+
+    let error = workspace_search_qualification_receipt(
+        &search_settlement("queryable", "complete", "ready", None),
+        "inconsistent-op".to_owned(),
+        10,
+        1,
+    )
+    .expect_err("queryable requires at least one exact selector");
+    assert!(error.contains("selectorCount=0"), "error={error}");
 }
 
 #[test]

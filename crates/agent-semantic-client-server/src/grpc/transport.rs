@@ -192,12 +192,10 @@ async fn dispatch_client_frame<D: AspClientDispatcher>(
             let serialization_started = tokio::time::Instant::now();
             let encoded = encode_response_partitions(response)
                 .map_err(|error| Status::resource_exhausted(error.to_string()));
-            eprintln!(
-                "[runtime-response-serialization] requestId={} elapsedMicros={} state={}",
-                telemetry.request_id.as_str(),
-                elapsed_micros(serialization_started),
-                if encoded.is_ok() { "ready" } else { "failed" }
-            );
+            // Per-request synchronous stderr writes serialize otherwise
+            // independent gRPC streams and perturb the resident latency being
+            // measured. The dispatcher-owned telemetry lane below is the V1
+            // authority for serialization and terminal-egress observations.
             if encoded.is_ok() {
                 frames.response_serialized(&telemetry, elapsed_micros(serialization_started));
             } else {

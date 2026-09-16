@@ -755,6 +755,25 @@ theorem request_graph_work_is_candidate_bounded
   unfold requestGraphWork
   exact Nat.mul_le_mul_right workPerOwner subset
 
+/-- A complete no-match keeps the non-empty active generation identity while
+its request-local topology cut contains no owners. Only the owner-proportional
+term is zero; generation and coverage admission remain separate proof work. -/
+theorem complete_no_match_empty_cut_has_zero_owner_work
+    (workPerOwner : Nat) :
+    requestGraphWork 0 workPerOwner = 0 := by
+  simp [requestGraphWork]
+
+/-- Expanding a proven empty request cut to the workspace is never required to
+construct its owner projection and strictly adds owner work for a non-empty
+workspace with non-zero per-owner work. -/
+theorem expanding_empty_cut_adds_workspace_owner_work
+    (allOwners workPerOwner : Nat)
+    (workspaceNonempty : 0 < allOwners)
+    (ownerWorkNonzero : 0 < workPerOwner) :
+    requestGraphWork 0 workPerOwner <
+      requestGraphWork allOwners workPerOwner := by
+  simp [requestGraphWork, Nat.mul_pos workspaceNonempty ownerWorkNonzero]
+
 /-- Publishing a parser result into the resident read model contains no
 workspace-sized rewrite term. Durable parser artifact I/O is accounted for by
 candidate bytes, independently of the canonical generation. -/
@@ -934,6 +953,38 @@ theorem changed_topology_source_generation_rejects_cache
 
 theorem exact_topology_identity_reuses_cache (identity : TopologyCacheIdentity) :
     topologyCacheReusable identity identity := rfl
+
+/-- Request reuse is stricter than content-generation identity for every
+non-empty cut.  The sole exception is a complete empty cut: after one
+successful topology attachment exists in the same immutable content
+generation, an advancing parser/Relation overlay cannot contribute a fact to
+the empty support set. -/
+def topologyRequestCacheReusable
+    (stored requested : TopologyCacheIdentity)
+    (storedSuccessful : Bool) : Prop :=
+  stored = requested ∨
+    (storedSuccessful = true ∧
+      requested.ownerScope = [] ∧
+      stored.generation = requested.generation)
+
+theorem successful_empty_cut_is_overlay_independent
+    (stored requested : TopologyCacheIdentity)
+    (storedSuccessful : Bool)
+    (successful : storedSuccessful = true)
+    (emptyCut : requested.ownerScope = [])
+    (sameContentGeneration : stored.generation = requested.generation) :
+    topologyRequestCacheReusable stored requested storedSuccessful := by
+  exact Or.inr ⟨successful, emptyCut, sameContentGeneration⟩
+
+theorem nonempty_cut_cannot_use_overlay_independence
+    (stored requested : TopologyCacheIdentity)
+    (nonempty : requested.ownerScope ≠ [])
+    (differentIdentity : stored ≠ requested) :
+    ¬ topologyRequestCacheReusable stored requested true := by
+  intro admitted
+  rcases admitted with exactIdentity | emptyException
+  · exact differentIdentity exactIdentity
+  · exact nonempty emptyException.2.1
 
 /-- Graph entry-node grounding is a generation-admission index lookup.  The
 workspace cardinality is retained in the model so a request-time full scan

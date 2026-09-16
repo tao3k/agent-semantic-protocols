@@ -224,6 +224,11 @@ async fn only_explicit_request_scope_may_build_an_identity_bound_empty_cut() {
         candidate.rebuild_receipt_id().to_owned(),
         candidate.rebuild_receipt().clone(),
     );
+    let blocking = builder
+        .build_empty_request_scope_on_blocking_lane()
+        .expect("Runtime-owned blocking lane preserves the empty-cut proof");
+    assert_eq!(blocking.packet(), candidate.packet());
+    assert_eq!(blocking.rebuild_receipt(), candidate.rebuild_receipt());
     let library = candidate
         .admit(&admitted)
         .expect("empty request cut remains independently admitted");

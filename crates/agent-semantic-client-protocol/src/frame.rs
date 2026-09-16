@@ -97,7 +97,10 @@ pub struct ClientResponsePayload(ClientResponsePayloadInner);
 
 #[derive(Clone, Debug)]
 enum ClientResponsePayloadInner {
-    Shared(Arc<Value>),
+    Shared {
+        value: Arc<Value>,
+        encoded_json: Arc<std::sync::OnceLock<Arc<[u8]>>>,
+    },
     ObjectOverlay {
         template: Arc<Value>,
         fields: Arc<BTreeMap<String, Value>>,
@@ -107,7 +110,10 @@ enum ClientResponsePayloadInner {
 impl ClientResponsePayload {
     #[must_use]
     pub fn from_shared(value: Arc<Value>) -> Self {
-        Self(ClientResponsePayloadInner::Shared(value))
+        Self(ClientResponsePayloadInner::Shared {
+            value,
+            encoded_json: Arc::new(std::sync::OnceLock::new()),
+        })
     }
 
     /// Binds request-local fields to a shared immutable object without cloning
@@ -130,15 +136,32 @@ impl ClientResponsePayload {
     #[must_use]
     pub fn as_value(&self) -> &Value {
         match &self.0 {
-            ClientResponsePayloadInner::Shared(value) => value.as_ref(),
+            ClientResponsePayloadInner::Shared { value, .. } => value.as_ref(),
             ClientResponsePayloadInner::ObjectOverlay { template, .. } => template.as_ref(),
         }
+    }
+
+    /// Return the canonical V1 JSON bytes, memoizing immutable shared payloads.
+    pub fn encoded_json(&self) -> Result<Arc<[u8]>, serde_json::Error> {
+        if let ClientResponsePayloadInner::Shared {
+            value,
+            encoded_json,
+        } = &self.0
+        {
+            if let Some(encoded) = encoded_json.get() {
+                return Ok(Arc::clone(encoded));
+            }
+            let encoded = Arc::<[u8]>::from(serde_json::to_vec(value.as_ref())?);
+            let _ = encoded_json.set(Arc::clone(&encoded));
+            return Ok(encoded_json.get().map_or(encoded, Arc::clone));
+        }
+        serde_json::to_vec(self).map(Arc::<[u8]>::from)
     }
 
     #[must_use]
     pub fn into_value(self) -> Value {
         match self.0 {
-            ClientResponsePayloadInner::Shared(value) => Arc::unwrap_or_clone(value),
+            ClientResponsePayloadInner::Shared { value, .. } => Arc::unwrap_or_clone(value),
             ClientResponsePayloadInner::ObjectOverlay { template, fields } => {
                 let mut value = Arc::unwrap_or_clone(template);
                 let object = value
@@ -155,13 +178,19 @@ impl ClientResponsePayload {
 
 impl From<Value> for ClientResponsePayload {
     fn from(value: Value) -> Self {
-        Self(ClientResponsePayloadInner::Shared(Arc::new(value)))
+        Self::from_shared(Arc::new(value))
     }
 }
 
 impl PartialEq for ClientResponsePayload {
     fn eq(&self, other: &Self) -> bool {
         serde_json::to_value(self).ok() == serde_json::to_value(other).ok()
+    }
+}
+
+impl PartialEq<Value> for ClientResponsePayload {
+    fn eq(&self, other: &Value) -> bool {
+        self.as_value() == other
     }
 }
 
@@ -179,7 +208,7 @@ impl Serialize for ClientResponsePayload {
         S: serde::Serializer,
     {
         match &self.0 {
-            ClientResponsePayloadInner::Shared(value) => value.serialize(serializer),
+            ClientResponsePayloadInner::Shared { value, .. } => value.serialize(serializer),
             ClientResponsePayloadInner::ObjectOverlay { template, fields } => {
                 let object = template
                     .as_object()

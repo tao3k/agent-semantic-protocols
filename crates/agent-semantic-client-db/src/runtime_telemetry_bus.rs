@@ -127,8 +127,16 @@ impl RuntimeTelemetryBusSender {
             return Err("resident request-plane receipt requires operationId".to_owned());
         }
         receipt.validate()?;
-        self.resident_request_receipts
-            .insert(operation_id.to_owned(), receipt.clone());
+        // Retain the cold boundary for direct lifecycle inspection. Warm
+        // samples still emit their complete performance observation below,
+        // but do not grow an unbounded request-id map or pay a second receipt
+        // clone on the response critical path.
+        if receipt.request_temperature
+            == agent_semantic_client_protocol::RuntimeResidentRequestTemperature::Cold
+        {
+            self.resident_request_receipts
+                .insert(operation_id.to_owned(), receipt.clone());
+        }
         let surface = match receipt.operation {
             agent_semantic_client_protocol::RuntimeResidentRequestOperation::Search => "search",
             agent_semantic_client_protocol::RuntimeResidentRequestOperation::Query => "query",

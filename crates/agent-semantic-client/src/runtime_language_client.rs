@@ -154,6 +154,10 @@ fn session_registry() -> &'static tokio::sync::Mutex<SessionRegistry<CachedClien
         .get_or_init(|| tokio::sync::Mutex::new(SessionRegistry::new(SESSION_REGISTRY_CAPACITY)))
 }
 
+pub(crate) async fn drain_cached_runtime_sessions() -> usize {
+    session_registry().lock().await.drain_idle()
+}
+
 fn request_id(prefix: &str) -> Result<ClientRequestId, String> {
     let sequence = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     ClientRequestId::new(format!("{prefix}-{}-{sequence}", std::process::id()))
@@ -529,7 +533,7 @@ impl AspClient {
     /// Drop every idle cached session during an explicit client drain.
     /// Active leases remain available until their in-flight calls complete.
     pub async fn drain_cached_sessions(&self) -> usize {
-        session_registry().lock().await.drain_idle()
+        drain_cached_runtime_sessions().await
     }
 
     /// Dispatch one typed method to the resident ASP Server.

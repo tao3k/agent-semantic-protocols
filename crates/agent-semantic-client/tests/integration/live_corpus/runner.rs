@@ -6,14 +6,14 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use agent_semantic_provider_protocol::ProviderWorkspaceInstallDescriptor;
 
 const SERVER_ARTIFACT_ENV: &str = "ASP_LIVE_CORPUS_SERVER_ARTIFACT";
 const PROVIDER_DESCRIPTOR_ENV: &str = "ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR";
 
-pub fn main() -> std::process::ExitCode {
+/// Runs the isolated Live Corpus fixture process.
+pub(super) fn main() -> std::process::ExitCode {
     let runtime =
         match agent_semantic_workspace_scheduler::RuntimeServerRuntimeBuilder::new_client()
             .enable_all()
@@ -26,8 +26,11 @@ pub fn main() -> std::process::ExitCode {
             }
         };
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let result = if args.first().is_some_and(|argument| argument == "qualify") {
-        runtime.block_on(run_isolated_qualification(args))
+    let result = if args
+        .first()
+        .is_some_and(|argument| matches!(argument.as_str(), "materialize" | "qualify"))
+    {
+        runtime.block_on(run_isolated_runtime_operation(args))
     } else {
         runtime.block_on(agent_semantic_client::live_corpus_test::run_live_corpus_test(args))
     };
@@ -40,7 +43,7 @@ pub fn main() -> std::process::ExitCode {
     }
 }
 
-async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
+async fn run_isolated_runtime_operation(args: Vec<String>) -> Result<(), String> {
     let started = std::time::Instant::now();
     let resource_state_home = agent_semantic_runtime::resolve_state_home()?;
     let fixture = tempfile::tempdir()
@@ -73,7 +76,21 @@ async fn run_isolated_qualification(args: Vec<String>) -> Result<(), String> {
         if result.is_ok() { "ready" } else { "failed" },
         scenario_started.elapsed().as_micros()
     );
-    stop_test_runtime(&server_artifact, fixture.path());
+    let drained_sessions = agent_semantic_client::live_corpus_test::drain_runtime_sessions().await;
+    eprintln!(
+        "[live-corpus-fixture] phase=client-session-drain state=ready drainedSessions={drained_sessions}"
+    );
+    let cleanup = stop_test_runtime(fixture.path()).await;
+    let result = match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(scenario), Ok(())) => Err(scenario),
+        (Ok(()), Err(cleanup)) => Err(format!(
+            "isolated Live Corpus Runtime cleanup failed: {cleanup}"
+        )),
+        (Err(scenario), Err(cleanup)) => Err(format!(
+            "{scenario}; isolated Live Corpus Runtime cleanup failed: {cleanup}"
+        )),
+    };
     if result.is_err() {
         let retained_root = fixture.keep();
         eprintln!(
@@ -168,19 +185,11 @@ async fn publish_test_runtime_bundle(
     Ok(())
 }
 
-fn stop_test_runtime(server_artifact: &Path, state_home: &Path) {
-    let output = Command::new(server_artifact)
-        .env("ASP_STATE_HOME", state_home)
-        .args(["server", "stop"])
-        .output();
-    if let Ok(output) = output
-        && !output.status.success()
-    {
-        eprintln!(
-            "isolated Live Corpus Runtime cleanup failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+async fn stop_test_runtime(state_home: &Path) -> Result<(), String> {
+    agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
+        .stop_runtime_server(state_home)
+        .await
+        .map(|_| ())
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -278,7 +278,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let resident_request_seen = Arc::clone(&self.resident_request_seen);
         let dispatch_budget = RequestDispatchBudget::for_method(&request.method);
         let operation_budget = dispatch_budget.clone();
-        let dispatch_method = request.method.clone();
         let request_plane_operation = resident_request_operation(&request.method);
         let request_plane_operation_id = request.request_id.as_str().to_owned();
         let request_plane_key = (request.project_id.clone(), request.workspace_id.clone());
@@ -765,18 +764,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
             let request_elapsed = dispatch_started.elapsed();
             let result =
                 enforce_completed_dispatch_budget(result, dispatch_budget.limit(), request_elapsed);
-            eprintln!(
-                "[runtime-dispatch-timing] requestId={} method={} phase={} elapsedMicros={} state={}",
-                request_plane_operation_id,
-                dispatch_method,
-                if dispatch_budget.is_first_computation() {
-                    "first-computation-observation"
-                } else {
-                    "resident-or-control"
-                },
-                request_elapsed.as_micros(),
-                if result.is_ok() { "ready" } else { "failed" },
-            );
             // The V1 resident receipt asserts zero waits and <1ms. Never issue
             // it for first computation, even when that computation is fast.
             if let Some(operation) =

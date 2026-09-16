@@ -184,7 +184,34 @@ pub(crate) async fn run_live_corpus_test_at(
     resource_state_home: Option<&Path>,
 ) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
+        Some("materialize") => {
+            let request = parse_materialize_request(&args[1..])?;
+            let runtime_state_home = isolated_runtime_state_home
+                .ok_or_else(|| {
+                    "reasonKind=live-corpus-isolated-runtime-required materialization must be launched by the test-owned Runtime fixture"
+                        .to_owned()
+                })?
+                .to_path_buf();
+            let resource_state_home = resource_state_home
+                .ok_or_else(|| {
+                    "reasonKind=live-corpus-resource-authority-required materialization requires an explicit Live Corpus resource authority"
+                        .to_owned()
+                })?
+                .to_path_buf();
+            let mut ready = crate::server::runtime_server::
+                ensure_healthy_runtime_server_for_bounded_operation_at(&runtime_state_home).await?;
+            let transaction = ready.resident_transaction.take().ok_or_else(|| {
+                "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
+                    .to_owned()
+            })?;
+            materialize(
+                request,
+                crate::AspClientRuntimeHandoff::try_from(&transaction)?,
+                runtime_state_home,
+                resource_state_home,
+            )
+            .await
+        }
         Some("qualify") => {
             // Reject malformed CLI input before touching Runtime authority. This
             // keeps argument validation deterministic even when no Runtime
@@ -313,13 +340,18 @@ fn parse_materialize_request(args: &[String]) -> Result<MaterializeRequest, Stri
     })
 }
 
-async fn materialize(request: MaterializeRequest) -> Result<(), String> {
+async fn materialize(
+    request: MaterializeRequest,
+    runtime_handoff: crate::AspClientRuntimeHandoff,
+    runtime_state_home: PathBuf,
+    resource_state_home: PathBuf,
+) -> Result<(), String> {
     let total_started = std::time::Instant::now();
     let mut step_started = total_started;
     let lock = load_lock(&request.lock_path)?;
     let corpus = unique_resource(&lock.corpora, &request.resource_id)?;
     emit_live_corpus_timing("lock", &mut step_started);
-    let state_home = resolve_state_home()?;
+    let state_home = resource_state_home;
     let repository = live_corpus_git_repository_paths(&state_home, &corpus.git.remote)?;
     let expected_source_path = repository
         .repository_dir
@@ -348,16 +380,8 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let mut ready =
-        crate::server::runtime_server::ensure_healthy_runtime_server_for_bounded_operation()
-            .await?;
-    let transaction = ready.resident_transaction.take().ok_or_else(|| {
-        "reasonKind=runtime-client-handoff-unavailable failureLayer=runtime-resident-transaction Runtime bootstrap returned Healthy without its resident transaction"
-            .to_owned()
-    })?;
-    let handoff = crate::AspClientRuntimeHandoff::try_from(&transaction)?;
     let registration =
-        runtime_provider_registration(handoff.provider_socket_addr(), corpus).await?;
+        runtime_provider_registration(runtime_handoff.provider_socket_addr(), corpus).await?;
     if registration.provider_id != corpus.provider_id {
         return Err(format!(
             "live corpus provider mismatch: lock={} registration={}",
@@ -400,7 +424,18 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     let benchmark_workspace = isolated.path.clone();
     emit_live_corpus_timing("benchmark-workspace", &mut step_started);
 
-    let client = agent_semantic_client::RuntimeLanguageCommandClient;
+    let cache_client = crate::AspClient::new_from_runtime_handoff(
+        runtime_state_home.clone(),
+        benchmark_workspace.clone(),
+        runtime_handoff.clone(),
+    )
+    .admit_runtime_workspace("Live Corpus materialization")
+    .await?;
+    let client = crate::RuntimeLanguageSessionClient::new(
+        runtime_state_home,
+        benchmark_workspace.clone(),
+        runtime_handoff,
+    );
     let runtime_result = async {
         let search = qualification::client_protocol::search_receipt_for_literal(
             &client,
@@ -428,6 +463,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         materialized_source_identity(checkout, query.root_digest)
     }
     .await;
+    drop(cache_client);
     let cleanup_result =
         agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
             "live-corpus-workspace-cleanup",
@@ -770,7 +806,7 @@ fn unique_temporary_path(parent: &Path, prefix: &str) -> PathBuf {
 
 fn root_usage() -> String {
     format!(
-        "Usage: live_corpus <path|sync|materialize|qualify|qualify-topology> ...\n\nCargo test target for Live Corpus qualification; this is not an asp subcommand.\n\ndefaultLock={DEFAULT_LOCK_PATH}"
+        "Usage: live_corpus <path|sync|materialize|qualify|qualify-topology> ...\n\nFeature-gated test runner for Live Corpus qualification; this is not an asp subcommand.\n\ndefaultLock={DEFAULT_LOCK_PATH}"
     )
 }
 
