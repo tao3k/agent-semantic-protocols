@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,9 +16,7 @@ use agent_semantic_client_protocol::SchemaBundleReceipt;
 use agent_semantic_client_protocol::SchemaBundleRequest;
 use agent_semantic_client_protocol::SchemaBundleResponse;
 use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
-use agent_semantic_schema_manager::BUNDLE_RECEIPT_FILE;
 use agent_semantic_schema_manager::SchemaManager;
-use agent_semantic_schema_manager::load_verified_bundle_receipt;
 use serde::Deserialize;
 
 const EMBEDDED_SCHEMA_CATALOG: &[u8] =
@@ -223,31 +220,26 @@ impl RuntimeSchemaBundleCatalog {
             .into_iter()
             .map(|responsibility| (responsibility.name, responsibility.family_id))
             .collect::<BTreeMap<_, _>>();
-        manager.materialize(&[]).await?;
-        let reports = manager.verify(&[]).await?;
+        let resolved_bundles = manager.resolve_bundles(&[]).await?;
         let profiles = profiles
             .into_iter()
             .map(|profile| (profile.language_id.clone(), profile))
             .collect::<HashMap<_, _>>();
         let mut bundles = HashMap::new();
-        for report in reports {
-            let profile = profiles.get(&report.language_id).ok_or_else(|| {
+        for bundle in resolved_bundles {
+            let profile = profiles.get(&bundle.language_id).ok_or_else(|| {
                 format!(
-                    "verified schema bundle has no registered profile: {}",
-                    report.language_id
+                    "resolved schema bundle has no registered profile: {}",
+                    bundle.language_id
                 )
             })?;
-            let receipt = load_verified_bundle_receipt(&report.receipt_path)?;
-            let schema_root = report.receipt_path.parent().ok_or_else(|| {
-                format!(
-                    "schema bundle receipt has no parent: {}",
-                    report.receipt_path.display()
-                )
-            })?;
-            let mut entries = Vec::with_capacity(receipt.schemas.len());
-            let mut documents = Vec::with_capacity(receipt.schemas.len());
-            for owned in receipt.schemas {
-                let document = read_schema_document(schema_root, &owned.name)?;
+            let mut entries = Vec::with_capacity(bundle.schemas.len());
+            let mut documents = Vec::with_capacity(bundle.schemas.len());
+            for owned in bundle.schemas {
+                let document: serde_json::Value =
+                    serde_json::from_slice(&owned.bytes).map_err(|error| {
+                        format!("decode canonical schema document {}: {error}", owned.name)
+                    })?;
                 let schema_id = document
                     .get("$id")
                     .and_then(serde_json::Value::as_str)
@@ -273,9 +265,9 @@ impl RuntimeSchemaBundleCatalog {
                 entries.push(entry);
             }
             let projected_receipt = SchemaBundleReceipt {
-                language_id: report.language_id.clone(),
+                language_id: bundle.language_id.clone(),
                 root_set_ids: profile.root_sets.clone(),
-                bundle_digest: receipt.bundle_digest,
+                bundle_digest: bundle.bundle_digest,
             };
             let ready = Arc::new(SchemaBundleResponse::Ready {
                 schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
@@ -291,7 +283,7 @@ impl RuntimeSchemaBundleCatalog {
                 entries,
             });
             let profile_mismatch = Arc::new(failed(
-                &report.language_id,
+                &bundle.language_id,
                 "schema-bundle-profile-mismatch",
                 serde_json::json!({"action": "use-registered-root-set-profile"}),
                 serde_json::json!({"registeredRootSetIds": profile.root_sets}),
@@ -308,12 +300,12 @@ impl RuntimeSchemaBundleCatalog {
                 profile_mismatch,
             };
             if bundles
-                .insert(report.language_id.clone(), projected)
+                .insert(bundle.language_id.clone(), projected)
                 .is_some()
             {
                 return Err(format!(
-                    "duplicate verified schema bundle: {}",
-                    report.language_id
+                    "duplicate resolved schema bundle: {}",
+                    bundle.language_id
                 ));
             }
         }
@@ -353,16 +345,6 @@ impl RuntimeSchemaBundleCatalog {
 #[cfg(test)]
 #[path = "../tests/unit/schema_bundle.rs"]
 mod binding_tests;
-
-fn read_schema_document(schema_root: &Path, name: &str) -> Result<serde_json::Value, String> {
-    if name == BUNDLE_RECEIPT_FILE || name.contains('/') {
-        return Err(format!("invalid receipt-owned schema name: {name}"));
-    }
-    let bytes = std::fs::read(schema_root.join(name))
-        .map_err(|error| format!("read verified schema document {name}: {error}"))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| format!("decode verified schema document {name}: {error}"))
-}
 
 fn failed(
     language_id: &str,
