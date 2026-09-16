@@ -37,6 +37,10 @@ pub const SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID: &str =
 /// retaining owner-local invalidation.
 pub const PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID: &str = "parser-artifact-content-reuse";
 
+/// The first caller and every identical concurrent caller await one retained
+/// generation-owned terminal without a caller retry.
+pub const FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID: &str = "first-call-single-flight-terminal";
+
 /// Merkle-qualified live-memory code search must never open Turso on the warm path.
 pub const CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID: &str =
     "code-search-merkle-memory-warm-path";
@@ -251,6 +255,48 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                         { name: "affected_owner_count", unit: "owners", kind: Exact, target: 1 },
                         { name: "unrelated_owner_invalidation_count", unit: "owners", kind: Exact, target: 0 },
                         { name: "provider_process_count", unit: "processes", kind: Exact, target: 0 }
+                    ]
+                }
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "The initial Search/Query caller and concurrent joiners receive one retained generation-owned terminal without retrying.",
+                fixture_root: "crates/agent-semantic-runtime-server/tests/unit/scenarios/first_call_single_flight_terminal",
+                tags: ["search", "query", "runtime", "single-flight", "first-result"],
+                commands: [
+                    {
+                        label: "first-call-terminal",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-runtime-server",
+                            "query_generation::tests::first_call_single_flight_terminal_is_scenario_measured",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+                benchmark: {
+                    harness: "libtest",
+                    test: "first_call_single_flight_terminal_is_scenario_measured",
+                    snapshot: "first_call_single_flight_terminal_v1",
+                    target_total: "250us",
+                    max_total: "10ms",
+                    regression_budget: "250us",
+                    memory_budget_bytes: 1_048_576,
+                    target_rationale: "Identical callers perform one atomic claim and event fan-out; timing is diagnostic while work counters are authoritative.",
+                    warmup_iterations: 16,
+                    measure_iterations: 128,
+                    metrics: [
+                        { name: "search_computation_claim_count", unit: "claims", kind: Exact, target: 1 },
+                        { name: "query_computation_claim_count", unit: "claims", kind: Exact, target: 1 },
+                        { name: "terminal_waiter_count", unit: "waiters", kind: Exact, target: 64 },
+                        { name: "generation_owned_task_count", unit: "tasks", kind: Exact, target: 2 },
+                        { name: "caller_retry_count", unit: "retries", kind: Exact, target: 0 },
+                        { name: "public_building_terminal_count", unit: "terminals", kind: Exact, target: 0 }
                     ]
                 }
             ),

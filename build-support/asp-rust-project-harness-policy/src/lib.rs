@@ -35,6 +35,7 @@ pub use member_policy::AspRustProjectHarnessOwnerPolicy;
 pub use member_policy::asp_workspace_member_forbidden_normal_dependencies;
 pub use member_policy::asp_workspace_member_policies;
 pub use search_scenarios::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
+pub use search_scenarios::FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID;
 pub use search_scenarios::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;
 pub use search_scenarios::PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID;
 pub use search_scenarios::SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID;

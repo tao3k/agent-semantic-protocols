@@ -42,6 +42,8 @@ open ASPProof.ResidentGrepCost
 #check changed_scope_rejects_recovery
 #check publication_retains_terminal_for_late_waiters
 #check waiter_cancellation_preserves_shared_terminal
+#check one_claim_serves_all_waiters
+#check no_public_building_terminal
 #check first_search_work_excludes_attachments
 #check split_critical_path_never_adds_work
 #check source_acquisition_has_byte_lower_bound

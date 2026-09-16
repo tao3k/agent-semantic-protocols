@@ -79,16 +79,13 @@ pub(super) async fn settled_search_materialization(
     generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
     key: &str,
 ) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
-    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+    use crate::runtime_query_generation::RuntimeSearchTerminalState;
     match generation.await_search_materialization(key).await? {
-        RuntimeSearchMaterializationState::Ready(result) => {
+        RuntimeSearchTerminalState::Ready(result) => {
             Ok(agent_semantic_client_protocol::ClientResponsePayload::from_shared(result))
         }
-        RuntimeSearchMaterializationState::Failed(error) => {
+        RuntimeSearchTerminalState::Failed(error) => {
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))
         }
-        RuntimeSearchMaterializationState::Building(_) => Err(AspClientOperationError::Message(
-            "Search completion preceded terminal publication".to_owned(),
-        )),
     }
 }

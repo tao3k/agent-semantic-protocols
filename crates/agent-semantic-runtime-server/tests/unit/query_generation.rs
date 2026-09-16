@@ -21,7 +21,9 @@ use crate::query_generation_calibration::select_single_segment_bulk;
 use crate::query_generation_calibration::upsert_runtime_search_calibration_decision;
 use crate::query_generation_calibration::workload_bucket;
 use crate::runtime_query_generation::RuntimeQueryMaterializationState;
+use crate::runtime_query_generation::RuntimeQueryTerminalState;
 use crate::runtime_query_generation::RuntimeSearchMaterializationState;
+use crate::runtime_query_generation::RuntimeSearchTerminalState;
 
 #[path = "query_generation_materialization_retention.rs"]
 mod materialization_retention;
@@ -357,6 +359,156 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
     })
 }
 
+#[tokio::test]
+async fn first_call_single_flight_terminal_is_scenario_measured() {
+    use asp_rust_project_harness_policy::{
+        AspRustProjectHarnessScenarioObservation, FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID,
+        asp_search_scenario_package, measure_asp_rust_scenario,
+        render_asp_rust_scenario_benchmark_toml,
+    };
+
+    const CALLERS: usize = 32;
+    async fn exercise(callers: usize) -> std::time::Duration {
+        let generation = test_generation("first-call-single-flight");
+        let search_key = "blake3-256:first-search-call".to_owned();
+        let query_key = "source\0blake3-256:first-query-call".to_owned();
+        let started = std::time::Instant::now();
+        assert!(
+            generation
+                .begin_search_materialization(search_key.clone())
+                .unwrap()
+        );
+        assert!(
+            generation
+                .begin_query_materialization(query_key.clone())
+                .unwrap()
+        );
+        for _ in 1..callers {
+            assert!(
+                !generation
+                    .begin_search_materialization(search_key.clone())
+                    .unwrap()
+            );
+            assert!(
+                !generation
+                    .begin_query_materialization(query_key.clone())
+                    .unwrap()
+            );
+        }
+        let mut search_waiters = tokio::task::JoinSet::new();
+        let mut query_waiters = tokio::task::JoinSet::new();
+        for _ in 0..callers {
+            let waiting_generation = std::sync::Arc::clone(&generation);
+            let waiting_key = search_key.clone();
+            search_waiters.spawn(async move {
+                waiting_generation
+                    .await_search_materialization(&waiting_key)
+                    .await
+            });
+            let waiting_generation = std::sync::Arc::clone(&generation);
+            let waiting_key = query_key.clone();
+            query_waiters.spawn(async move {
+                waiting_generation
+                    .await_query_materialization(&waiting_key)
+                    .await
+            });
+        }
+        let publishing_generation = std::sync::Arc::clone(&generation);
+        generation
+            .spawn_materialization("first-search-call", async move {
+                tokio::task::yield_now().await;
+                publishing_generation
+                    .publish_search_materialization(
+                        search_key,
+                        Ok(serde_json::json!({"terminal": {"state": "ready"}})),
+                    )
+                    .expect("publish Search terminal");
+            })
+            .expect("spawn generation-owned Search computation");
+        let publishing_generation = std::sync::Arc::clone(&generation);
+        generation
+            .spawn_materialization("first-query-call", async move {
+                tokio::task::yield_now().await;
+                publishing_generation
+                    .publish_query_materialization(
+                        query_key,
+                        Ok(serde_json::json!({"terminal": {"state": "ready"}})),
+                    )
+                    .expect("publish Query terminal");
+            })
+            .expect("spawn generation-owned Query computation");
+        let mut search_terminal_count = 0;
+        while let Some(joined) = search_waiters.join_next().await {
+            assert!(matches!(
+                joined.unwrap().unwrap(),
+                RuntimeSearchTerminalState::Ready(value)
+                    if value["terminal"]["state"] == "ready"
+            ));
+            search_terminal_count += 1;
+        }
+        let mut query_terminal_count = 0;
+        while let Some(joined) = query_waiters.join_next().await {
+            assert!(matches!(
+                joined.unwrap().unwrap(),
+                RuntimeQueryTerminalState::Ready(value)
+                    if value["terminal"]["state"] == "ready"
+            ));
+            query_terminal_count += 1;
+        }
+        assert_eq!(search_terminal_count, callers);
+        assert_eq!(query_terminal_count, callers);
+        loop {
+            let receipt = generation.task_scope.receipt(0);
+            if receipt.active == 0 {
+                assert_eq!(receipt.started, 2);
+                assert_eq!(receipt.completed, 2);
+                assert_eq!(receipt.cancelled, 0);
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        started.elapsed()
+    }
+
+    // The first awaiter models the claiming request. It receives the retained
+    // terminal without a second invocation or a public Building response.
+    let first_elapsed = exercise(CALLERS).await;
+    let scenario = asp_search_scenario_package()
+        .scenarios
+        .into_iter()
+        .find(|scenario| scenario.name == FIRST_CALL_SINGLE_FLIGHT_TERMINAL_SCENARIO_ID)
+        .expect("first-call single-flight Scenario");
+    let measurement = tokio::task::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Scenario runtime");
+        measure_asp_rust_scenario(&scenario, || {
+            let elapsed = runtime.block_on(exercise(CALLERS));
+            AspRustProjectHarnessScenarioObservation::default()
+                .with_timing("retained_terminal_fanout", elapsed)
+                .with_metric("search_computation_claim_count", 1)
+                .with_metric("query_computation_claim_count", 1)
+                .with_metric("terminal_waiter_count", (CALLERS * 2) as u64)
+                .with_metric("generation_owned_task_count", 2)
+                .with_metric("caller_retry_count", 0)
+                .with_metric("public_building_terminal_count", 0)
+        })
+        .map(|measurement| (scenario, measurement))
+    })
+    .await
+    .expect("join Scenario measurement")
+    .expect("measure first-call single-flight Scenario");
+    let rendered = render_asp_rust_scenario_benchmark_toml(&measurement.0, &measurement.1)
+        .expect("render first-call single-flight benchmark");
+    assert!(rendered.contains("[metrics.public_building_terminal_count]"));
+    assert!(rendered.contains("observed = 0"));
+    eprintln!(
+        "first-call retained terminal elapsedMicros={}\n{rendered}",
+        first_elapsed.as_micros()
+    );
+}
+
 #[test]
 fn resident_syntax_scope_cache_requires_exact_plan_and_owner_set() {
     let generation = test_generation("syntax-scope-cache-generation");
@@ -416,7 +568,6 @@ async fn lexical_completion_does_not_wait_for_request_graph() {
 
 #[tokio::test]
 async fn search_waiters_share_one_completion_and_late_subscribers_observe_it() {
-    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
     let generation = test_generation("generation-wait");
     assert!(
         generation
@@ -439,7 +590,7 @@ async fn search_waiters_share_one_completion_and_late_subscribers_observe_it() {
         .unwrap();
     while let Some(joined) = waiters.join_next().await {
         assert!(
-            matches!(joined.unwrap().unwrap(), RuntimeSearchMaterializationState::Ready(value) if value["hits"] == 1)
+            matches!(joined.unwrap().unwrap(), RuntimeSearchTerminalState::Ready(value) if value["hits"] == 1)
         );
     }
     assert!(matches!(
@@ -447,13 +598,12 @@ async fn search_waiters_share_one_completion_and_late_subscribers_observe_it() {
             .await_search_materialization("key")
             .await
             .unwrap(),
-        RuntimeSearchMaterializationState::Ready(_)
+        RuntimeSearchTerminalState::Ready(_)
     ));
 }
 
 #[tokio::test]
 async fn cancelled_query_waiter_does_not_cancel_shared_completion() {
-    use crate::runtime_query_generation::RuntimeQueryMaterializationState;
     let generation = test_generation("generation-cancel");
     assert!(
         generation
@@ -476,13 +626,12 @@ async fn cancelled_query_waiter_does_not_cancel_shared_completion() {
         )
         .unwrap();
     assert!(
-        matches!(generation.await_query_materialization("source\0key").await.unwrap(), RuntimeQueryMaterializationState::Ready(value) if value["source"] == "exact")
+        matches!(generation.await_query_materialization("source\0key").await.unwrap(), RuntimeQueryTerminalState::Ready(value) if value["source"] == "exact")
     );
 }
 
 #[tokio::test]
 async fn terminal_failure_wakes_waiters_without_claiming_an_empty_result() {
-    use crate::runtime_query_generation::RuntimeSearchMaterializationState;
     let generation = test_generation("generation-error");
     assert!(
         generation
@@ -504,7 +653,7 @@ async fn terminal_failure_wakes_waiters_without_claiming_an_empty_result() {
         )
         .unwrap();
     assert!(
-        matches!(waiter.await.unwrap().unwrap(), RuntimeSearchMaterializationState::Failed(error) if error.reason_kind == "budget-exhausted")
+        matches!(waiter.await.unwrap().unwrap(), RuntimeSearchTerminalState::Failed(error) if error.reason_kind == "budget-exhausted")
     );
 }
 
@@ -577,7 +726,7 @@ async fn result_wait_deadline_preserves_late_completion_and_notification() {
             .await_search_materialization("key")
             .await
             .unwrap(),
-        RuntimeSearchMaterializationState::Ready(_)
+        RuntimeSearchTerminalState::Ready(_)
     ));
 }
 

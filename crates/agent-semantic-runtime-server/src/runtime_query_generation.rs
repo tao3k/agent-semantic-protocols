@@ -302,7 +302,7 @@ impl RuntimeQueryGeneration {
     pub(crate) async fn await_search_materialization(
         &self,
         key: &str,
-    ) -> Result<RuntimeSearchMaterializationState, String> {
+    ) -> Result<RuntimeSearchTerminalState, String> {
         match self.search_materialization(key)? {
             Some(RuntimeSearchMaterializationState::Building(completion)) => {
                 let mut receiver = completion.subscribe();
@@ -315,10 +315,14 @@ impl RuntimeQueryGeneration {
                 receiver
                     .borrow()
                     .clone()
-                    .map(RuntimeSearchTerminalState::materialization_state)
                     .ok_or_else(|| "Search completion did not publish a terminal".to_owned())
             }
-            Some(terminal) => Ok(terminal),
+            Some(RuntimeSearchMaterializationState::Ready(value)) => {
+                Ok(RuntimeSearchTerminalState::Ready(value))
+            }
+            Some(RuntimeSearchMaterializationState::Failed(error)) => {
+                Ok(RuntimeSearchTerminalState::Failed(error))
+            }
             None => Err("Search materialization has no claim".to_owned()),
         }
     }
@@ -386,7 +390,7 @@ impl RuntimeQueryGeneration {
     pub(crate) async fn await_query_materialization(
         &self,
         key: &str,
-    ) -> Result<RuntimeQueryMaterializationState, String> {
+    ) -> Result<RuntimeQueryTerminalState, String> {
         match self.query_materialization(key)? {
             Some(RuntimeQueryMaterializationState::Building(completion)) => {
                 let mut receiver = completion.subscribe();
@@ -399,10 +403,14 @@ impl RuntimeQueryGeneration {
                 receiver
                     .borrow()
                     .clone()
-                    .map(RuntimeQueryTerminalState::materialization_state)
                     .ok_or_else(|| "Query completion did not publish a terminal".to_owned())
             }
-            Some(terminal) => Ok(terminal),
+            Some(RuntimeQueryMaterializationState::Ready(value)) => {
+                Ok(RuntimeQueryTerminalState::Ready(value))
+            }
+            Some(RuntimeQueryMaterializationState::Failed(error)) => {
+                Ok(RuntimeQueryTerminalState::Failed(error))
+            }
             None => Err("Query materialization has no claim".to_owned()),
         }
     }

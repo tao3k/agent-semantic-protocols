@@ -785,6 +785,11 @@ For an empty-cache workspace, exact source acquisition has a byte-work lower
 bound: $ W_("snapshot") >= B_("source") $.  Therefore no wall-clock bound below
 one millisecond is valid for arbitrary repository size.  The architecture
 instead removes unrelated work from the first-Search critical path:
+$ N_("compute", k) = 1, quad N_("waiter", k) = k, quad N_("retry", k) = 0 $
+for $k >= 1$ concurrent identical callers.  =Building= is not a public
+terminal; every live waiter observes the retained Ready/Failed value, while
+canceling one waiter changes neither the computation count nor the shared
+terminal.
 $ W_("first Search") = W_("snapshot") + W_("Search Core") + W_("exact verify") + W_("candidate parser") + W_("requested refine") $
 $ W_("full parser") + W_("durability") + W_("global graph") in.not W_("first Search") $
 For a candidate parser artifact of size $c$ in a workspace of size $w$:
@@ -848,6 +853,7 @@ the 1ms budget.  These equations count logical work, not elapsed time.
 | Reject stale restored source | changed_source_rejects_recovery | generation_recovery.rs requires current content/scope and execution identity before reuse |
 | Coalescing lane is not freshness | same_lane_does_not_prove_freshness | for_runtime_admission has no source bytes; cannot authorize durable reuse |
 | Completion survives late subscription and waiter cancellation | publication_retains_terminal_for_late_waiters; waiter_cancellation_preserves_shared_terminal | Runtime watch completion tests, 32 joiners, timeout and cancelled-waiter cases |
+| First invocation returns the shared terminal without retry | one_claim_serves_all_waiters; no_public_building_terminal | first-call-single-flight Scenario measures one claim and 32 terminal waiters for each of Search and Query, zero retries and zero public Building terminals; the Rust await API returns only Ready/Failed terminal types |
 | Ready reads never inherit first-computation allowance | ready_phase_keeps_resident_budget; first_phase_is_monotone | Request-scoped phase changes only on generation/result miss; absolute deadline tests |
 | First Search excludes unrelated attachments | first_search_work_excludes_attachments; split_critical_path_never_adds_work | SearchCoreReady publishes before segment durability, graph and full parser projection |
 | Empty-cache acquisition cannot be constant work | source_acquisition_has_byte_lower_bound | Performance qualification reports source bytes and distinguishes empty-cache, process-cold and resident |

@@ -696,16 +696,18 @@ parser, Python Graphs session, generation service, or secondary Runtime RPC.
 Unsupported enhanced-query semantics fail typed instead of escaping to a
 request-time provider operation.
 
-Search and Query are both strict resident request-plane latency classes.  The
-ASP Server MUST complete cold-not-ready and warm-ready dispatch in under 1,000
-microseconds.  It may clone one already published immutable generation handle
-and project an already resident bounded result, but it MUST NOT scan the corpus,
-construct a provider/search capability snapshot, build an attachment, or wait
-for any lifecycle work.  A request whose complete result is not resident emits
-one typed =query-not-ready= terminal while the lifecycle authority owns any
-detached construction.  Search cardinality does not widen the Server request
-budget; any result too large for the bounded resident projection is a typed
-contract failure rather than permission to execute foreground work.
+Search and Query have two distinct request phases.  A Ready resident projection
+is a strict request-plane latency class and MUST complete in under 1,000
+microseconds.  A first computation is not a resident read: the request atomically
+claims or joins one generation-owned lifecycle task and awaits its retained
+terminal under one absolute observation deadline.  The first caller therefore
+receives Ready or the real typed failure without a second invocation, hidden
+retry, polling loop, or public =materializing= state.  Dropping or timing out one
+waiter MUST NOT cancel the shared lifecycle task.  The task may scan admitted
+corpus bytes or invoke an admitted provider only inside bounded Runtime resource
+lanes; it never becomes request-owned work.  Search cardinality does not widen
+either budget, and any result too large for the bounded projection is a typed
+contract failure.
 
 The stable V1 Search materialization key is
 =BLAKE3("agent.semantic-protocols.workspace-search-materialization.v1\\0" ||
@@ -714,8 +716,10 @@ as =blake3-256:<lowercase-hex>=.  =requestId= is envelope correlation and is
 excluded from this semantic key.  The exact =RuntimeQueryGeneration= owns a
 single-flight map from this key to =Building=, bounded =Ready=, or typed
 =Failed=.  A miss claims =Building= once and schedules plan construction plus
-clause execution outside the request plane; coalesced callers return the same
-typed =query-not-ready= state.  Generation replacement creates a fresh map, so
+clause execution outside the request plane; the claimant and coalesced callers
+subscribe to the same retained completion event and receive the same semantic
+terminal.  =Building= is internal lifecycle state and MUST NOT be serialized as
+a successful or failed Search response.  Generation replacement creates a fresh map, so
 neither success nor failure crosses a generation boundary.  The settlement
 decision identity is the materialization key, making the cached semantic value
 independent of whichever request first claimed it.  Each warm frame still owns
@@ -729,23 +733,23 @@ in the generation-owned detached materializer.  The resident template uses the
 materialization key as its internal decision identity.  Warm dispatch clones
 the bounded template and substitutes only the current frame's top-level
 =requestId=; no semantic or authority-bearing field is recomputed.  Missing and
-=Building= states return typed =query-not-ready=, and Ready/Failed state is
-scoped to the exact =RuntimeQueryGeneration=.
+=Building= states claim or join the generation-owned materializer and await its
+retained terminal; Ready/Failed state is scoped to the exact
+=RuntimeQueryGeneration=.
 
 Within Query, admission and resident native reads form one immutable identity,
-but both generation admission and Query-result materialization complete outside
-the request scope.  A Query request performs only generation lookup,
+but both generation admission and Query-result materialization are owned outside
+the request scope.  A resident Query request performs only generation lookup,
 materialization-key calculation, one map lookup, bounded clone, and current
 envelope =requestId= binding.  Creating one request-owned Tokio task per
 selector is forbidden; concurrency belongs to generation-owned materializers
-and independent request owners. Provider calls, selector reads, content hashes,
+and independent request waiters. Provider calls, selector reads, content hashes,
 receipt admission, parser work, filesystem or database reads, generation
-construction, and asynchronous resident-open work are forbidden in the Query
-request scope.  If either immutable handle is absent or stale, the request
-returns its typed terminal in under 1,000 microseconds while the lifecycle
-authority owns detached construction or repair.  Query Playbook uses the same
-=query-not-ready= reason kind so the request-plane receipt is attributable and
-cannot be confused with a Runtime binding validation failure.
+construction, and asynchronous resident-open work are forbidden in the
+resident request phase.  On a miss, the request changes phase once and awaits
+the external owner; a typed =query-not-ready= terminal is reserved for actual
+generation/materialization failure, not an instruction to call the same request
+again.
 
 Physical completion order cannot affect public semantics. Fan-in keys every
 terminal by project, workspace, worktree, generation, session, and request;

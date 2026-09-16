@@ -6,7 +6,7 @@
 
 use super::test_generation;
 use crate::runtime_query_generation::{
-    RuntimeQueryMaterializationState, RuntimeSearchMaterializationState,
+    RuntimeQueryMaterializationState, RuntimeSearchMaterializationState, RuntimeSearchTerminalState,
 };
 
 #[test]
@@ -81,7 +81,7 @@ async fn completed_search_materializations_are_isolated_by_normalized_plan_ident
     ));
     assert!(matches!(
         waiter.await.unwrap().unwrap(),
-        RuntimeSearchMaterializationState::Ready(value) if value["slot"] == 1
+        RuntimeSearchTerminalState::Ready(value) if value["slot"] == 1
     ));
 
     for slot in 3..=5 {

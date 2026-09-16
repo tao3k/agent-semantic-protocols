@@ -752,17 +752,14 @@ async fn settled_query_materialization(
     request_id: &str,
     started: tokio::time::Instant,
 ) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
-    use crate::runtime_query_generation::RuntimeQueryMaterializationState;
+    use crate::runtime_query_generation::RuntimeQueryTerminalState;
     match generation.await_query_materialization(key).await? {
-        RuntimeQueryMaterializationState::Ready(template) => {
+        RuntimeQueryTerminalState::Ready(template) => {
             bind_query_materialization_to_request(template, request_id, "materialized", started)
         }
-        RuntimeQueryMaterializationState::Failed(error) => {
+        RuntimeQueryTerminalState::Failed(error) => {
             Err(AspClientOperationError::Terminal(error.as_ref().clone()))
         }
-        RuntimeQueryMaterializationState::Building(_) => Err(AspClientOperationError::Message(
-            "Query completion preceded terminal publication".to_owned(),
-        )),
     }
 }
 

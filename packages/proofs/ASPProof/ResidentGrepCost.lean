@@ -363,6 +363,34 @@ theorem publication_retains_terminal_for_late_waiters :
 theorem waiter_cancellation_preserves_shared_terminal (shared : CompletionState) :
     cancelWaiter shared = shared := rfl
 
+/-- One semantic materialization claim serves every identical live caller.
+Rust tests establish atomicity and retained-event ordering; this model states
+the protocol cardinality and forbids caller-driven retries. -/
+structure FirstCallSingleFlight where
+  callers : Nat
+  computationClaims : Nat
+  terminalWaiters : Nat
+  callerRetries : Nat
+  publicBuildingTerminals : Nat
+  deriving DecidableEq, Repr
+
+def firstCallSingleFlight (callers : Nat) : FirstCallSingleFlight :=
+  { callers
+    computationClaims := if callers = 0 then 0 else 1
+    terminalWaiters := callers
+    callerRetries := 0
+    publicBuildingTerminals := 0 }
+
+theorem one_claim_serves_all_waiters (callers : Nat) (live : 0 < callers) :
+    (firstCallSingleFlight callers).computationClaims = 1 ∧
+      (firstCallSingleFlight callers).terminalWaiters = callers := by
+  simp [firstCallSingleFlight, Nat.ne_of_gt live]
+
+theorem no_public_building_terminal (callers : Nat) :
+    (firstCallSingleFlight callers).callerRetries = 0 ∧
+      (firstCallSingleFlight callers).publicBuildingTerminals = 0 := by
+  simp [firstCallSingleFlight]
+
 /-- Request-local policy only; no wall-clock or scheduler guarantee is assumed. -/
 inductive RequestPhase where
   | resident
