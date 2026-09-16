@@ -234,10 +234,7 @@ fn remove_stale_state_profiles<'a>(
 }
 
 fn registered_profile_suffix(file_name: &str, suffixes: &BTreeSet<String>) -> bool {
-    file_name
-        .char_indices()
-        .filter(|(_, character)| *character == '.')
-        .any(|(index, _)| suffixes.contains(&file_name[index..]))
+    suffixes.iter().any(|suffix| file_name.ends_with(suffix))
 }
 
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
