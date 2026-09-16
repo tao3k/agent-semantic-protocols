@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::fmt;
 
 use orgize::ast::{
     OrgSourceBlock, OrgSourceBlockDocument, OrgSourceBlockHeader, OrgSourceBlockHeaderValue,
@@ -14,10 +13,13 @@ use orgize::ast::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
+pub use crate::search_topology_settlement_error::SearchTopologySettlementError;
+use crate::search_topology_settlement_error::{error, invalid};
 use crate::search_topology_settlement_support::{
-    digest_json, gql_alias, is_blake3_digest, org_render_error, quoted, render_edge, render_node,
-    render_result_node, require_text_eq, required_array, required_object, required_object_field,
-    required_text, required_u64, validate_projection,
+    digest_json, gql_alias, is_blake3_digest, is_search_result_support_edge, org_render_error,
+    public_node_aliases, quoted, render_edge, render_node, render_result_node, require_text_eq,
+    required_array, required_object, required_object_field, required_text, required_u64,
+    validate_projection,
 };
 
 pub const SEARCH_TOPOLOGY_SETTLEMENT_SCHEMA_ID: &str =
@@ -962,95 +964,4 @@ impl SearchTopologySettlement {
             .and_then(|document| document.render())
             .map_err(org_render_error)
     }
-}
-
-fn public_node_aliases(
-    nodes: &[Value],
-    visible_node_ids: &FxHashSet<&str>,
-) -> Result<BTreeMap<String, String>, SearchTopologySettlementError> {
-    let mut ordinals = BTreeMap::<&'static str, usize>::new();
-    let mut aliases = BTreeMap::new();
-    for node in nodes {
-        let node = required_object(node, "nodes[]")?;
-        let node_id = required_text(node, "id")?;
-        if !visible_node_ids.contains(node_id) {
-            continue;
-        }
-        let prefix = if node.contains_key("annotation") {
-            "annotation"
-        } else if node.contains_key("excerpt") {
-            "hit"
-        } else if node.contains_key("selector") || node.contains_key("projection") {
-            "item"
-        } else if node.contains_key("ownerLocator") {
-            "owner"
-        } else {
-            "node"
-        };
-        let ordinal = ordinals.entry(prefix).or_default();
-        *ordinal += 1;
-        aliases.insert(node_id.to_owned(), format!("{prefix}{ordinal}"));
-    }
-    Ok(aliases)
-}
-
-fn is_search_result_support_edge(
-    edge: &serde_json::Map<String, Value>,
-    ranked_node_ids: &FxHashSet<&str>,
-) -> bool {
-    let explicit_grounding =
-        edge.get("witnesses")
-            .and_then(Value::as_array)
-            .is_some_and(|witnesses| {
-                witnesses.len() == 1 && witnesses[0].as_str() == Some("search-result-grounding")
-            });
-    if explicit_grounding {
-        return true;
-    }
-    edge.get("relation").and_then(Value::as_str) == Some("CONTAINS")
-        && edge
-            .get("to")
-            .and_then(Value::as_str)
-            .is_some_and(|to| ranked_node_ids.contains(to))
-        && edge
-            .get("from")
-            .and_then(Value::as_str)
-            .is_some_and(|from| !ranked_node_ids.contains(from))
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SearchTopologySettlementError {
-    reason_kind: &'static str,
-    message: String,
-}
-
-impl SearchTopologySettlementError {
-    pub fn reason_kind(&self) -> &'static str {
-        self.reason_kind
-    }
-}
-
-impl fmt::Display for SearchTopologySettlementError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.reason_kind, self.message)
-    }
-}
-
-impl std::error::Error for SearchTopologySettlementError {}
-
-pub(super) fn error(
-    reason_kind: &'static str,
-    message: impl Into<String>,
-) -> SearchTopologySettlementError {
-    SearchTopologySettlementError {
-        reason_kind,
-        message: message.into(),
-    }
-}
-
-pub(super) fn invalid<T>(
-    reason_kind: &'static str,
-    message: impl Into<String>,
-) -> Result<T, SearchTopologySettlementError> {
-    Err(error(reason_kind, message))
 }

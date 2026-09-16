@@ -14,6 +14,7 @@ mod query_playbook_materialization;
 mod resident_search_result;
 mod runtime_graph_request;
 mod search_topology_settlement;
+mod search_topology_settlement_error;
 mod search_topology_settlement_support;
 mod storage_route;
 

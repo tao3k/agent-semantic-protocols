@@ -4,14 +4,71 @@
 
 //! Rendering and JSON-field helpers for Search topology settlement.
 
+use std::collections::BTreeMap;
+
+use rustc_hash::FxHashSet;
 use serde_json::{Map, Value};
 
-use crate::search_topology_settlement::{SearchTopologySettlementError, error, invalid};
+use crate::search_topology_settlement_error::{SearchTopologySettlementError, error, invalid};
 
 pub(super) fn digest_json(value: &Value) -> Result<String, SearchTopologySettlementError> {
     let encoded = serde_json::to_vec(value)
         .map_err(|failure| error("rendering-failed", failure.to_string()))?;
     Ok(format!("blake3-256:{}", blake3::hash(&encoded).to_hex()))
+}
+
+pub(super) fn public_node_aliases(
+    nodes: &[Value],
+    visible_node_ids: &FxHashSet<&str>,
+) -> Result<BTreeMap<String, String>, SearchTopologySettlementError> {
+    let mut ordinals = BTreeMap::<&'static str, usize>::new();
+    let mut aliases = BTreeMap::new();
+    for node in nodes {
+        let node = required_object(node, "nodes[]")?;
+        let node_id = required_text(node, "id")?;
+        if !visible_node_ids.contains(node_id) {
+            continue;
+        }
+        let prefix = if node.contains_key("annotation") {
+            "annotation"
+        } else if node.contains_key("excerpt") {
+            "hit"
+        } else if node.contains_key("selector") || node.contains_key("projection") {
+            "item"
+        } else if node.contains_key("ownerLocator") {
+            "owner"
+        } else {
+            "node"
+        };
+        let ordinal = ordinals.entry(prefix).or_default();
+        *ordinal += 1;
+        aliases.insert(node_id.to_owned(), format!("{prefix}{ordinal}"));
+    }
+    Ok(aliases)
+}
+
+pub(super) fn is_search_result_support_edge(
+    edge: &Map<String, Value>,
+    ranked_node_ids: &FxHashSet<&str>,
+) -> bool {
+    let explicit_grounding =
+        edge.get("witnesses")
+            .and_then(Value::as_array)
+            .is_some_and(|witnesses| {
+                witnesses.len() == 1 && witnesses[0].as_str() == Some("search-result-grounding")
+            });
+    if explicit_grounding {
+        return true;
+    }
+    edge.get("relation").and_then(Value::as_str) == Some("CONTAINS")
+        && edge
+            .get("to")
+            .and_then(Value::as_str)
+            .is_some_and(|to| ranked_node_ids.contains(to))
+        && edge
+            .get("from")
+            .and_then(Value::as_str)
+            .is_some_and(|from| !ranked_node_ids.contains(from))
 }
 
 pub(super) fn org_render_error(
