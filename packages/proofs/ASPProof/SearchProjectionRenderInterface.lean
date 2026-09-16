@@ -483,6 +483,46 @@ theorem unranked_owner_membership_is_not_agent_facing_evidence :
       publicNodeVisible .rankedResult = true := by
   decide
 
+inductive PublicRenderRole where
+  | item
+  | owner
+  | annotation
+  | sourceHit
+  | context
+  deriving Repr, DecidableEq, BEq
+
+def publicRenderPrefix : PublicRenderRole → String
+  | .item => "item"
+  | .owner => "owner"
+  | .annotation => "annotation"
+  | .sourceHit => "hit"
+  | .context => "node"
+
+/- Internal generation identities are deliberately ignored by the public
+renderer.  Only public role and request-local ordinal determine an alias. -/
+def publicRenderAlias
+    (_internalGenerationId : String)
+    (role : PublicRenderRole)
+    (ordinal : Nat) : String :=
+  publicRenderPrefix role ++ toString ordinal
+
+theorem public_alias_is_independent_of_internal_generation_identity
+    (leftInternalId rightInternalId : String)
+    (role : PublicRenderRole)
+    (ordinal : Nat) :
+    publicRenderAlias leftInternalId role ordinal =
+      publicRenderAlias rightInternalId role ordinal := by
+  rfl
+
+theorem public_item_alias_does_not_expose_hashed_internal_id :
+    publicRenderAlias "item-031fe3bbab56abc8845e" .item 1 = "item1" := by
+  rfl
+
+theorem adjacent_public_item_aliases_are_distinct :
+    publicRenderAlias "grounded-a" .item 1 !=
+      publicRenderAlias "grounded-b" .item 2 := by
+  decide
+
 structure EncoderIdentity where
   encoderId : String
   encoderVersion : String

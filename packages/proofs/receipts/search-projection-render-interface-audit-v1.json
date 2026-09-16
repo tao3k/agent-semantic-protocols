@@ -3,7 +3,7 @@
  "schemaId": "asp.lean-proof-audit.v1",
  "proofPackage": "ASPProof",
  "module": "ASPProof.SearchProjectionRenderInterface",
- "leanVersion": "4.32.2",
+ "leanVersion": "4.34.0",
  "hasSorryAx": false,
  "declarations":
  [{"type":
@@ -169,6 +169,60 @@
    "hasSorryAx": false,
    "axioms": []},
   {"type":
+   "ASPProof.SearchProjectionRenderInterface.publicNodeVisible\n      ASPProof.SearchProjectionRenderInterface.SettlementNodeRole.rankedResult =\n    true ∧\n  ASPProof.SearchProjectionRenderInterface.publicNodeVisible\n      ASPProof.SearchProjectionRenderInterface.SettlementNodeRole.groundingOnlyOwner =\n    false",
+   "theoremFamily": "grounding-owner-visibility-cut",
+   "rfcClauseIds": ["ASP-RFC-SPRI-GROUNDING", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.ranked_result_remains_public_when_grounding_noise_is_hidden",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.publicEdgeVisible\n      ASPProof.SearchProjectionRenderInterface.SettlementEdgeRole.searchResultGrounding =\n    false ∧\n  ASPProof.SearchProjectionRenderInterface.publicEdgeVisible\n        ASPProof.SearchProjectionRenderInterface.SettlementEdgeRole.semanticRelation =\n      true ∧\n    ASPProof.SearchProjectionRenderInterface.publicEdgeVisible\n        ASPProof.SearchProjectionRenderInterface.SettlementEdgeRole.topologyFrontier =\n      true",
+   "theoremFamily": "grounding-edge-not-agent-evidence",
+   "rfcClauseIds": ["ASP-RFC-SPRI-EVIDENCE", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.generation_grounding_edge_is_not_agent_facing_evidence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.publicNodeVisible\n      ASPProof.SearchProjectionRenderInterface.SettlementNodeRole.resultSupportOnlyOwner =\n    false ∧\n  ASPProof.SearchProjectionRenderInterface.publicEdgeVisible\n        ASPProof.SearchProjectionRenderInterface.SettlementEdgeRole.unrankedOwnerContainment =\n      false ∧\n    ASPProof.SearchProjectionRenderInterface.publicNodeVisible\n        ASPProof.SearchProjectionRenderInterface.SettlementNodeRole.rankedResult =\n      true",
+   "theoremFamily": "owner-membership-not-agent-evidence",
+   "rfcClauseIds": ["ASP-RFC-SPRI-OWNER", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.unranked_owner_membership_is_not_agent_facing_evidence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (leftInternalId rightInternalId : String) (role : ASPProof.SearchProjectionRenderInterface.PublicRenderRole)\n  (ordinal : Nat),\n  ASPProof.SearchProjectionRenderInterface.publicRenderAlias leftInternalId role ordinal =\n    ASPProof.SearchProjectionRenderInterface.publicRenderAlias rightInternalId role ordinal",
+   "theoremFamily": "public-alias-internal-id-noninterference",
+   "rfcClauseIds": ["ASP-RFC-SPRI-IDENTITY", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.public_alias_is_independent_of_internal_generation_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.publicRenderAlias \"item-031fe3bbab56abc8845e\"\n    ASPProof.SearchProjectionRenderInterface.PublicRenderRole.item 1 =\n  \"item1\"",
+   "theoremFamily": "hashed-internal-id-not-rendered",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ENCODING", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.public_item_alias_does_not_expose_hashed_internal_id",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "(ASPProof.SearchProjectionRenderInterface.publicRenderAlias \"grounded-a\"\n      ASPProof.SearchProjectionRenderInterface.PublicRenderRole.item 1 !=\n    ASPProof.SearchProjectionRenderInterface.publicRenderAlias \"grounded-b\"\n      ASPProof.SearchProjectionRenderInterface.PublicRenderRole.item 2) =\n  true",
+   "theoremFamily": "public-alias-local-uniqueness",
+   "rfcClauseIds": ["ASP-RFC-SPRI-IDENTITY", "ASP-RFC-SPRI-PROJECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.adjacent_public_item_aliases_are_distinct",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
    "ASPProof.SearchProjectionRenderInterface.encodedProjectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.canonicalEncoderV1\n    ASPProof.SearchProjectionRenderInterface.canonicalEncodedProjection =\n  true",
    "theoremFamily": "bounded-polyglot-positive",
    "rfcClauseIds": ["ASP-RFC-SPRI-BOUND", "ASP-RFC-SPRI-POLYGLOT"],
@@ -321,7 +375,7 @@
    "kind": "theorem",
    "hasSorryAx": false,
    "axioms": []}],
- "declarationCount": 35,
- "axiomInventory": [],
- "axiomFreeDeclarationCount": 35,
- "axiomDependentDeclarationCount": 0}
+ "declarationCount": 41,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 38,
+ "axiomDependentDeclarationCount": 3}

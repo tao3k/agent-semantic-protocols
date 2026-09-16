@@ -22,8 +22,8 @@ pub(super) fn org_render_error(
 
 pub(super) fn render_node(
     node: &Map<String, Value>,
+    alias: &str,
 ) -> Result<String, SearchTopologySettlementError> {
-    let id = required_text(node, "id")?;
     let language = required_text(node, "language")?;
     if let Some(annotation) = node.get("annotation") {
         let annotation = required_object(annotation, "nodes[].annotation")?;
@@ -50,14 +50,14 @@ pub(super) fn render_node(
             properties.push(format!("admission:{}", quoted(reference)));
         }
         return Ok(format!(
-            "({id}:SemanticAnnotation {{{}}})",
+            "({alias}:SemanticAnnotation {{{}}})",
             properties.join(",")
         ));
     }
     if let Some(excerpt) = node.get("excerpt") {
         let excerpt = required_object(excerpt, "nodes[].excerpt")?;
         return Ok(format!(
-            "({id}:SourceHit {{language:{},path:{},match:{},read:{},witness:{}}})",
+            "({alias}:SourceHit {{language:{},path:{},match:{},read:{},witness:{}}})",
             quoted(language),
             quoted(required_text(excerpt, "path")?),
             serde_json::to_string(
@@ -76,7 +76,7 @@ pub(super) fn render_node(
         ));
     }
 
-    let (_, body) = render_result_node(node)?;
+    let (_, body) = render_result_node(node, alias)?;
     Ok(format!(
         "({}:Language)-[:RESULTS]->[{body}]",
         gql_alias(language),
@@ -85,8 +85,8 @@ pub(super) fn render_node(
 
 pub(super) fn render_result_node(
     node: &Map<String, Value>,
+    alias: &str,
 ) -> Result<(String, String), SearchTopologySettlementError> {
-    let id = required_text(node, "id")?;
     let language = required_text(node, "language")?;
     let kind = required_text(node, "kind")?;
     let label = format!("{}{}", gql_type_prefix(language), gql_type_prefix(kind));
@@ -110,7 +110,7 @@ pub(super) fn render_result_node(
     }
     Ok((
         language.to_owned(),
-        format!("({id}:{label} {{{}}})", properties.join(",")),
+        format!("({alias}:{label} {{{}}})", properties.join(",")),
     ))
 }
 
@@ -245,6 +245,8 @@ pub(super) fn validate_projection(
 
 pub(super) fn render_edge(
     edge: &Map<String, Value>,
+    from_alias: &str,
+    to_alias: &str,
 ) -> Result<String, SearchTopologySettlementError> {
     let modality = required_text(edge, "modality")?;
     let mut properties = vec![format!("modality:{}", quoted(modality))];
@@ -260,10 +262,10 @@ pub(super) fn render_edge(
     ));
     Ok(format!(
         "({})-[:{} {{{}}}]->({})",
-        required_text(edge, "from")?,
+        from_alias,
         required_text(edge, "relation")?,
         properties.join(","),
-        required_text(edge, "to")?,
+        to_alias,
     ))
 }
 

@@ -319,15 +319,15 @@ fn topology_settlement_renders_one_compact_polyglot_gql_result() {
     assert_eq!(rendered.matches("#+end_src").count(), 1);
     assert!(!rendered.contains("#+begin_src ascent"));
     assert!(rendered.contains("(rust:Language)-[:RESULTS]->["));
-    assert!(rendered.contains("refresh:RustMethod"));
+    assert!(rendered.contains("item1:RustMethod"));
     assert!(rendered.contains("selector:\"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry\""));
     assert!(rendered.contains(
         "projection:{rank:1,depth:0,hit:{rg:[[42,46]],tantivy:[\"artifact refresh\"],native:true}}"
     ));
     assert!(rendered.contains("(org:Language)-[:RESULTS]->["));
-    assert!(rendered.contains("meaning:SemanticAnnotation"));
+    assert!(rendered.contains("annotation1:SemanticAnnotation"));
     assert!(rendered.contains("state:\"proposed\""));
-    assert!(rendered.contains("(refresh)-[:DOCUMENTED_PATH {modality:\"derived\""));
+    assert!(rendered.contains("(item1)-[:DOCUMENTED_PATH {modality:\"derived\""));
     assert!(rendered.contains("proof:\"proof-path-42\""));
     assert!(!rendered.contains("MaterializationSet"));
 }
@@ -355,8 +355,8 @@ fn topology_settlement_groups_same_language_nodes_in_one_results_list() {
         .lines()
         .find(|line| line.starts_with("(rust:Language)-[:RESULTS]->["))
         .unwrap();
-    assert!(rust_results.contains("refresh:RustMethod"));
-    assert!(rust_results.contains("publish:RustMethod"));
+    assert!(rust_results.contains("item1:RustMethod"));
+    assert!(rust_results.contains("item3:RustMethod"));
 }
 
 #[test]
@@ -396,7 +396,7 @@ fn unranked_owner_membership_is_retained_internally_but_not_rendered() {
     let rendered = settlement.render_org_gql().unwrap();
     assert!(!rendered.contains("registry-owner"));
     assert!(!rendered.contains("edge-owner-refresh"));
-    assert!(rendered.contains("refresh:RustMethod"));
+    assert!(rendered.contains("item1:RustMethod"));
 }
 
 #[test]
@@ -439,7 +439,7 @@ fn executed_workspace_result_is_joined_to_topology_before_rendering() {
         settlement
             .render_org_gql()
             .unwrap()
-            .contains("(registry)-[:DECLARES")
+            .contains(")-[:DECLARES")
     );
     assert!(
         settlement
@@ -478,11 +478,30 @@ async fn generated_v2_frontier_is_preserved_in_public_gql() {
         1
     );
     let gql = settlement.render_org_gql().unwrap();
-    assert!(gql.contains("(registry)-[:CALLS {modality:\"parser-direct\""));
-    assert!(gql.contains("(refresh)-[:COVERS {modality:\"parser-direct\""));
+    assert!(gql.contains("(item3)-[:CALLS {modality:\"parser-direct\""));
+    assert!(gql.contains("(item2)-[:COVERS {modality:\"parser-direct\""));
     assert!(gql.contains(
-        "(registry)-[:FRONTIER {relation:\"COVERS\",target_kind:\"heading\",depth:1,state:\"unknown\",reason:\"coverage-open\",coverage:\"coverage-expected-publication\"}]->(publication)"
+        "(item3)-[:FRONTIER {relation:\"COVERS\",target_kind:\"heading\",depth:1,state:\"unknown\",reason:\"coverage-open\",coverage:\"coverage-expected-publication\"}]->(item1)"
     ));
+}
+
+#[test]
+fn public_gql_aliases_do_not_expose_internal_hashed_node_ids() {
+    let mut packet = valid_settlement();
+    let internal_id = "item-031fe3bbab56abc8845e";
+    packet["nodes"][0]["id"] = serde_json::json!(internal_id);
+    packet["edges"][0]["from"] = serde_json::json!(internal_id);
+    packet["edges"][1]["to"] = serde_json::json!(internal_id);
+    packet["frontiers"][0]["anchor"] = serde_json::json!(internal_id);
+
+    let rendered = SearchTopologySettlement::admit(packet)
+        .expect("internal identity remains valid settlement evidence")
+        .render_org_gql()
+        .expect("render request-local public aliases");
+
+    assert!(rendered.contains("item1:RustMethod"));
+    assert!(rendered.contains("(item1)-[:DOCUMENTED_PATH"));
+    assert!(!rendered.contains(internal_id));
 }
 
 #[test]

@@ -840,7 +840,6 @@ impl SearchTopologySettlement {
             independently_visible_node_ids.insert(required_text(frontier, "target")?);
         }
         let mut visible_node_ids = FxHashSet::default();
-
         for node in nodes {
             let node = required_object(node, "nodes[]")?;
             let node_id = required_text(node, "id")?;
@@ -853,10 +852,22 @@ impl SearchTopologySettlement {
                 continue;
             }
             visible_node_ids.insert(node_id);
+        }
+        let public_aliases = public_node_aliases(nodes, &visible_node_ids)?;
+
+        for node in nodes {
+            let node = required_object(node, "nodes[]")?;
+            let node_id = required_text(node, "id")?;
+            if !visible_node_ids.contains(node_id) {
+                continue;
+            }
+            let alias = public_aliases
+                .get(node_id)
+                .ok_or_else(|| error("rendering-failed", "visible node has no public alias"))?;
             if node.contains_key("annotation") || node.contains_key("excerpt") {
-                standalone_nodes.push(render_node(node)?);
+                standalone_nodes.push(render_node(node, alias)?);
             } else {
-                let (language, rendered) = render_result_node(node)?;
+                let (language, rendered) = render_result_node(node, alias)?;
                 result_nodes.entry(language).or_default().push(rendered);
             }
         }
@@ -876,7 +887,19 @@ impl SearchTopologySettlement {
             let from = required_text(edge, "from")?;
             let to = required_text(edge, "to")?;
             if visible_node_ids.contains(from) && visible_node_ids.contains(to) {
-                lines.push(render_edge(edge)?);
+                let from_alias = public_aliases.get(from).ok_or_else(|| {
+                    error(
+                        "rendering-failed",
+                        "visible edge source has no public alias",
+                    )
+                })?;
+                let to_alias = public_aliases.get(to).ok_or_else(|| {
+                    error(
+                        "rendering-failed",
+                        "visible edge target has no public alias",
+                    )
+                })?;
+                lines.push(render_edge(edge, from_alias, to_alias)?);
             }
         }
         for certificate in required_array(packet, "coverageCertificates")? {
@@ -907,9 +930,19 @@ impl SearchTopologySettlement {
             }
             lines.push(format!(
                 "({})-[:FRONTIER {{{}}}]->({})",
-                required_text(frontier, "anchor")?,
+                public_aliases
+                    .get(required_text(frontier, "anchor")?)
+                    .ok_or_else(|| error(
+                        "rendering-failed",
+                        "frontier anchor has no public alias"
+                    ))?,
                 properties.join(","),
-                required_text(frontier, "target")?,
+                public_aliases
+                    .get(required_text(frontier, "target")?)
+                    .ok_or_else(|| error(
+                        "rendering-failed",
+                        "frontier target has no public alias"
+                    ))?,
             ));
         }
         let block = OrgSourceBlock::new(
@@ -929,6 +962,36 @@ impl SearchTopologySettlement {
             .and_then(|document| document.render())
             .map_err(org_render_error)
     }
+}
+
+fn public_node_aliases(
+    nodes: &[Value],
+    visible_node_ids: &FxHashSet<&str>,
+) -> Result<BTreeMap<String, String>, SearchTopologySettlementError> {
+    let mut ordinals = BTreeMap::<&'static str, usize>::new();
+    let mut aliases = BTreeMap::new();
+    for node in nodes {
+        let node = required_object(node, "nodes[]")?;
+        let node_id = required_text(node, "id")?;
+        if !visible_node_ids.contains(node_id) {
+            continue;
+        }
+        let prefix = if node.contains_key("annotation") {
+            "annotation"
+        } else if node.contains_key("excerpt") {
+            "hit"
+        } else if node.contains_key("selector") || node.contains_key("projection") {
+            "item"
+        } else if node.contains_key("ownerLocator") {
+            "owner"
+        } else {
+            "node"
+        };
+        let ordinal = ordinals.entry(prefix).or_default();
+        *ordinal += 1;
+        aliases.insert(node_id.to_owned(), format!("{prefix}{ordinal}"));
+    }
+    Ok(aliases)
 }
 
 fn is_search_result_support_edge(

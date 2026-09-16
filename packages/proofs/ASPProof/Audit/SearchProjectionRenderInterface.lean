@@ -65,6 +65,12 @@ def targets : List Target := [
     "grounding-edge-not-agent-evidence" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-EVIDENCE"],
   Target.mk ``unranked_owner_membership_is_not_agent_facing_evidence
     "owner-membership-not-agent-evidence" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-OWNER"],
+  Target.mk ``public_alias_is_independent_of_internal_generation_identity
+    "public-alias-internal-id-noninterference" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-IDENTITY"],
+  Target.mk ``public_item_alias_does_not_expose_hashed_internal_id
+    "hashed-internal-id-not-rendered" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-ENCODING"],
+  Target.mk ``adjacent_public_item_aliases_are_distinct
+    "public-alias-local-uniqueness" ["ASP-RFC-SPRI-PROJECTION", "ASP-RFC-SPRI-IDENTITY"],
   Target.mk ``bounded_typed_polyglot_projection_is_admitted
     "bounded-polyglot-positive" ["ASP-RFC-SPRI-POLYGLOT", "ASP-RFC-SPRI-BOUND"],
   Target.mk ``projection_over_token_budget_is_rejected

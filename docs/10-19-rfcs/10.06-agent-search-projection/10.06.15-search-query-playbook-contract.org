@@ -525,6 +525,20 @@ complete internal graph.  Thus removing result-support presentation noise
 cannot weaken selector ownership, relation closure, frontier coverage, or Query
 admission authority.
 
+Internal topology node identities are admission keys, not public GQL variable
+names.  In particular, content-derived identifiers such as
+=item-<digest>=, =owner-<digest>=, and =grounded-<digest>= MUST NOT cross the
+default Org/GQL rendering boundary.  The renderer assigns request-local,
+ordinal aliases by public role (=item1=, =item2=, =owner1=, =annotation1=,
+and so on), rewrites every visible edge and frontier endpoint through that
+total alias map, and retains the canonical selector as the result identity.
+Aliases are presentation-only: they do not enter settlement admission,
+generation identity, cache identity, or Query input.  Therefore changing an
+internal node ID without changing the admitted node, relation, or selector
+cannot change the public alias sequence, and two public nodes cannot share one
+alias.  Semantic evidence identifiers such as proof and coverage references
+remain properties; they are not GQL variables and are not rewritten.
+
 Public Search output has no =queryGrammar=, =next=, =nextAction=,
 =recommendedNext=, command plan, or equivalent planner field. Query capability
 is part of the CLI contract and is not repeated beside the GQL graph. A
