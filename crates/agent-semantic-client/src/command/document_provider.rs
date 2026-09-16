@@ -157,7 +157,7 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => "guide|contract|capture|recall|archive|eval|export|fmt|lint",
+        "org" => "guide|contract|capture|archive|eval|export|fmt|lint",
         _ => "guide",
     }
 }

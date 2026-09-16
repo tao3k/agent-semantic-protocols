@@ -144,6 +144,31 @@ fn exact_structural_selector_does_not_require_a_term() {
 }
 
 #[test]
+fn legacy_org_plan_recall_fails_closed_as_unused() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["org", "recall", "plans"])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run retired Org plan recall surface");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(!output.status.success(), "retired recall succeeded: {text}");
+    assert!(
+        text.contains("state=unused"),
+        "missing unused state: {text}"
+    );
+    assert!(
+        text.contains("reasonKind=org-plan-recall-unused"),
+        "missing typed recall reason: {text}"
+    );
+    assert!(!text.contains("hits=0"), "legacy false zero leaked: {text}");
+}
+
+#[test]
 fn removed_exact_query_flags_are_rejected_by_cli_admission() {
     for removed_flag in ["--code", "--names-only"] {
         let source = exact_query_source(
