@@ -12,7 +12,6 @@
 #+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-query-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-read-packet.v1.schema.json
-#+SEE_ALSO: docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org (012)
 
 * One-sentence summary
 
@@ -1214,9 +1213,9 @@ rules before richer v2 projection layers move into default guide output.
 3. A provider may list =tree-sitter-runtime= only when a real tree-sitter
    runtime proves the pattern and the packet records that backend honestly.
 4. A provider may list =codeql= only when a real CodeQL-backed executor emits
-   the advertised frontier packet.  RFC 012 owns the native relation catalog,
-   flow-lite packet plan, artifact policy, and CodeQL promotion gates; RFC 011
-   only carries the shared backend/projection vocabulary.
+   the advertised frontier packet and an active RFC owns the native relation
+   catalog, flow-lite packet plan, artifact policy, and promotion gates.  RFC
+   011 only carries the shared backend/projection vocabulary; it does not admit a CodeQL command surface by itself.
 5. Providers must not promote =pattern graph=, =multi-capture=, or
    =field structural selector= support in guide output until the descriptor and
    tests name those capabilities explicitly.
@@ -1399,9 +1398,10 @@ queryInputForms=catalog-id
 
 Required gates:
 
-- RFC 012 defines the native relation catalog, flow-lite packet plan, artifact
-  policy, and CodeQL promotion gates before provider guides advertise this
-  lane.
+- An active RFC must define the native relation catalog, flow-lite packet plan,
+  artifact policy, Scheme composition, and CodeQL promotion gates before
+  provider guides advertise this lane.  A removed or historical RFC cannot
+  authorize a public command surface.
 - Registry descriptors list =codeql= only when a real executor can produce the
   advertised local source/sink/path frontier.
 - Default syntax guides keep =native-parser= lanes available without requiring
