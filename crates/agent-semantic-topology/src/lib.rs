@@ -10,6 +10,8 @@ mod project_topology_closure;
 mod project_topology_frontier;
 mod project_topology_generation_builder;
 mod project_topology_generation_error;
+mod project_topology_generation_execution;
+mod project_topology_generation_model;
 mod project_topology_library;
 mod project_topology_manifest;
 mod project_topology_program_binding;
@@ -30,11 +32,12 @@ pub use project_topology_closure::{
 pub use project_topology_frontier::{
     ProjectTopologyExpectedRelation, ProjectTopologyRelationCoverage,
 };
-pub use project_topology_generation_builder::{
-    ProjectTopologyGenerationBuilder, ProjectTopologyGenerationCandidate,
-    ProjectTopologyGenerationIdentity, ProjectTopologySourceNode, ProjectTopologySourceSegment,
-};
+pub use project_topology_generation_builder::ProjectTopologyGenerationBuilder;
 pub use project_topology_generation_error::ProjectTopologyGenerationBuildError;
+pub use project_topology_generation_model::{
+    ProjectTopologyGenerationCandidate, ProjectTopologyGenerationIdentity,
+    ProjectTopologySourceNode, ProjectTopologySourceSegment,
+};
 pub use project_topology_library::{
     PROJECT_TOPOLOGY_LIBRARY_SCHEMA_ID, PROJECT_TOPOLOGY_LIBRARY_SCHEMA_VERSION,
     ProjectTopologyDisplayRelationship, ProjectTopologyLibrary, ProjectTopologyLibraryError,

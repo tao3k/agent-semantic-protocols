@@ -14,11 +14,19 @@ mod manager;
 #[cfg(feature = "runtime")]
 mod manager_validation;
 #[cfg(feature = "runtime")]
+mod publication;
+#[cfg(feature = "runtime")]
 mod receipt;
+#[cfg(feature = "runtime")]
+mod registry;
 #[cfg(feature = "runtime")]
 mod responsibility;
 #[cfg(feature = "runtime")]
+mod responsibility_model;
+#[cfg(feature = "runtime")]
 mod search_architecture_inventory;
+#[cfg(feature = "runtime")]
+mod task_owner;
 
 #[cfg(feature = "runtime")]
 pub use agent_semantic_content_identity::SchemaContractIdentity;
@@ -31,23 +39,19 @@ pub use bootstrap_projection::{
 #[cfg(feature = "runtime")]
 pub use cli::run_cli;
 #[cfg(feature = "runtime")]
-pub use manager::{
+pub use manager::{SchemaManager, load_verified_bundle_receipt, verify_bundle_receipt};
+#[cfg(feature = "runtime")]
+pub use registry::{
     BUNDLE_RECEIPT_FILE, BUNDLE_RECEIPT_SCHEMA_ID, DEFAULT_PROFILE_REGISTRY,
     LanguageSchemaBundleReceipt, LanguageSchemaProfile, LanguageSchemaProfileRegistry,
     PROFILE_REGISTRY_SCHEMA_ID, ResolvedLanguageSchemaBundle, ResolvedSchemaDocument,
-    SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReport, SchemaManager, SearchProducerAxis,
-    load_verified_bundle_receipt, verify_bundle_receipt,
+    SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReport, SearchProducerAxis,
 };
 #[cfg(feature = "runtime")]
-pub use responsibility::SchemaFamily;
-#[cfg(feature = "runtime")]
-pub use responsibility::SchemaFamilyMembershipOverrides;
-#[cfg(feature = "runtime")]
-pub use responsibility::SchemaFamilyNamespace;
-#[cfg(feature = "runtime")]
-pub use responsibility::SchemaReferenceDecision;
-#[cfg(feature = "runtime")]
-pub use responsibility::SchemaResponsibility;
+pub use responsibility_model::{
+    SchemaFamily, SchemaFamilyMembershipOverrides, SchemaFamilyNamespace, SchemaReferenceDecision,
+    SchemaResponsibility,
+};
 #[cfg(feature = "runtime")]
 pub use search_architecture_inventory::SEARCH_ARCHITECTURE_INVENTORY_SCHEMA_ID;
 #[cfg(feature = "runtime")]

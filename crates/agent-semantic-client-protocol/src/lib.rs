@@ -158,6 +158,9 @@ pub mod runtime_generation;
 pub use protocol_validation::run_conformance_suite;
 
 #[cfg(test)]
+#[path = "../tests/unit/client_protocol_terminal_contract.rs"]
+mod terminal_contract_tests;
+#[cfg(test)]
 #[path = "../tests/unit/client_protocol_contract.rs"]
 mod tests;
 pub use agent_session::AGENT_SESSION_REGISTER_METHOD;

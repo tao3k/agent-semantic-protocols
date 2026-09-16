@@ -12,6 +12,7 @@ use crate::manager_validation::validate_identity;
 use crate::manager_validation::validate_schema_name;
 use crate::receipt::read_public_receipt_blocking;
 use crate::receipt::schema_digest;
+use crate::task_owner::run_blocking;
 
 /// Package-local V1 bootstrap projection checked against canonical authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,11 +40,10 @@ impl SchemaManager {
         projection: LanguageSchemaBootstrapProjection,
     ) -> Result<VerifiedLanguageSchemaBootstrap, String> {
         let manager = self.clone();
-        tokio::task::spawn_blocking(move || {
+        run_blocking("schema-verify-bootstrap-projection", move || {
             manager.verify_client_bootstrap_projection_blocking(&projection)
         })
         .await
-        .map_err(|error| format!("schema bootstrap verification task failed: {error}"))?
     }
 
     fn verify_client_bootstrap_projection_blocking(

@@ -11,7 +11,7 @@ use agent_semantic_client_protocol::{AspClientWorkspaceQueryPlaybookRequest, Cli
 
 use crate::{LanguageCommandClient, LanguageCommandOperation, LanguageCommandRequest};
 
-use super::client_protocol::{registered_producer_axis, typed_terminal};
+use super::protocol_model::{registered_producer_axis, typed_terminal};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct WorkspaceQueryQualificationReceipt {

@@ -214,6 +214,15 @@ same query-set/predicate and owner-universe digests, covers the full admitted
 owner count, and reports zero matches.  A result enum, an empty top-K projection,
 or a truncated receipt cannot prove absence.
 
+This clause receipt is not the =coverageCertificates= array rendered for
+topology relation frontiers.  Topology coverage proves whether an expected
+relation is complete, partial, or still open after graph construction; it does
+not prove that an rg, Tantivy, or Syntax acquisition leaf enumerated a complete
+set.  Consumers MUST NOT infer acquisition completeness from that array's
+length. Ordinary Tantivy top-K is incomplete for set algebra and cannot enter
+an =intersect= until a separate same-generation, same-owner-universe,
+untruncated acquisition receipt proves coverage.
+
 Every public Syntax item is total and functional with respect to exact Query:
 it carries one parser-owned structural identity and exactly one
 generation-current selector in the GQL graph, but no embedded Query request or

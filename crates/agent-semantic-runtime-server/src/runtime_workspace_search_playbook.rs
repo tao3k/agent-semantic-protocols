@@ -683,6 +683,9 @@ fn execute_default_retrieval_layout(
                 AspClientOperationError::Message(message)
             }
         })?;
+        if retrieval_composition == RetrievalCompositionKind::Intersect {
+            require_complete_intersection_branch(WorkspaceSearchAxisKind::Rg, result.truncated)?;
+        }
         rg_results.push((
             block_index,
             priority_rank,
@@ -849,14 +852,21 @@ struct TantivyClauseResult {
 
 impl TantivyClauseResult {
     fn require_complete_fused_scope(&self) -> Result<(), AspClientOperationError> {
-        if self.truncated {
-            return Err(AspClientOperationError::Message(
-                "query-not-ready: Tantivy candidate scope truncated before GREP intersection"
-                    .to_owned(),
-            ));
-        }
-        Ok(())
+        require_complete_intersection_branch(WorkspaceSearchAxisKind::Tantivy, self.truncated)
     }
+}
+
+fn require_complete_intersection_branch(
+    axis: WorkspaceSearchAxisKind,
+    truncated: bool,
+) -> Result<(), AspClientOperationError> {
+    if truncated {
+        return Err(AspClientOperationError::Message(format!(
+            "query-not-ready: {} candidate scope truncated before explicit intersection",
+            axis.label()
+        )));
+    }
+    Ok(())
 }
 
 fn execute_tantivy_block(

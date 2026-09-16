@@ -416,7 +416,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
             )
         })?;
         let query_template = qualification::source_query_scheme_template(corpus.language.as_str())?;
-        let query = qualification::client_protocol::public_query(
+        let query = qualification::public_query(
             &client,
             &benchmark_workspace,
             corpus.language.as_str(),

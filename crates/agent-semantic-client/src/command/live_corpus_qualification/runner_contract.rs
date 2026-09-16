@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use super::contract::{QualificationCase, QualificationPlan};
-use super::runner::{DEFAULT_PLAN_PATH, QualifyArgs};
+use super::runner_model::{DEFAULT_PLAN_PATH, QualifyArgs};
 
 pub(in crate::command::live_corpus) fn validate_args(args: &[String]) -> Result<(), String> {
     parse_args(args).map(|_| ())
@@ -160,6 +160,7 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
         }
     }
     let mut covered_route_classes = BTreeSet::new();
+    let mut structural_languages = BTreeSet::new();
     for case in &plan.cases {
         if !registered.contains(&case.language_id) {
             return Err(format!(
@@ -176,7 +177,7 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
             .intersection(&BTreeSet::from([
                 "regex-truth",
                 "ranked-text",
-                "explicit-conjunction",
+                "structural-syntax",
             ]))
             .copied()
             .collect::<Vec<_>>();
@@ -201,13 +202,21 @@ pub(super) fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
         }
         let route_class = route_classes[0];
         validate_predicate_route(case, route_class)?;
+        if route_class == "structural-syntax" {
+            structural_languages.insert(case.language_id.clone());
+        }
         covered_route_classes.insert(route_class);
     }
     let required_route_classes =
-        BTreeSet::from(["regex-truth", "ranked-text", "explicit-conjunction"]);
+        BTreeSet::from(["regex-truth", "ranked-text", "structural-syntax"]);
     if covered_route_classes != required_route_classes {
         return Err(format!(
             "Live Corpus must cover every predicate-directed Search route: observed={covered_route_classes:?} required={required_route_classes:?}"
+        ));
+    }
+    if structural_languages != registered {
+        return Err(format!(
+            "Live Corpus must exercise parser-owned structural Search for every registered language: observed={structural_languages:?} required={registered:?}"
         ));
     }
     Ok(())
@@ -241,14 +250,12 @@ fn validate_predicate_route(case: &QualificationCase, route_class: &str) -> Resu
                 && request.syntax.is_empty()
                 && request.native_syntax.is_empty()
         }
-        "explicit-conjunction" => {
-            !request.rg.is_empty()
-                && !request.tantivy.is_empty()
-                && matches!(
-                    request.normalized_composition,
-                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
-                        | agent_semantic_search::SearchPlaybookNormalizedComposition::Chain(_)
-                )
+        "structural-syntax" => {
+            request.rg.is_empty()
+                && request.tantivy.is_empty()
+                && request.syntax.len() == 1
+                && request.syntax[0].producer == case.language_id
+                && request.native_syntax.is_empty()
         }
         _ => false,
     };

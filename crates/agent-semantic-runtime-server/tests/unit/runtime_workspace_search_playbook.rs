@@ -119,6 +119,22 @@ fn truncated_tantivy_scope_cannot_authorize_an_empty_intersection() {
 }
 
 #[test]
+fn every_intersection_branch_requires_complete_untruncated_coverage() {
+    for axis in [
+        agent_semantic_search::WorkspaceSearchAxisKind::Rg,
+        agent_semantic_search::WorkspaceSearchAxisKind::Tantivy,
+    ] {
+        assert!(super::require_complete_intersection_branch(axis, false).is_ok());
+        let error = super::require_complete_intersection_branch(axis, true)
+            .expect_err("a truncated branch cannot authorize set intersection");
+        let super::AspClientOperationError::Message(message) = error else {
+            panic!("truncated intersection branch must return a query-not-ready message");
+        };
+        assert!(message.contains("candidate scope truncated before explicit intersection"));
+    }
+}
+
+#[test]
 fn rg_and_tantivy_intersection_owns_the_file_context_scope() {
     let rg = ["src/rg-only.rs", "src/shared.rs"]
         .into_iter()

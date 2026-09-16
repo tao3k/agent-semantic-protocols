@@ -74,12 +74,11 @@ multi_callable_skeleton_query = '''(query (producers (documents org)) (select (s
 [[cases]]
 case_id = "python.fastapi.core"
 resource_id = "python.fastapi"
-route_class = "explicit-conjunction"
-complete_set_witness = "The exact FastAPI byte predicate and the independently materialized routing-text owner set are both complete before intersection."
+route_class = "structural-syntax"
 reasoning_focus = "Explain the selected FastAPI callable's request-routing and dependency role."
 required_relation_kinds = ["depends-on", "routes-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "FastAPI") (tantivy "body:APIRouter OR title:routing^2")))'''
+composed_search = '''(search (producers (language python)) (syntax python "(_) @item"))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
@@ -130,12 +129,11 @@ multi_callable_skeleton_query = '''(query (producers (language rust)) (select (s
 [[cases]]
 case_id = "rust.ripgrep.core"
 resource_id = "rust.ripgrep"
-route_class = "explicit-conjunction"
-complete_set_witness = "The exact RegexMatcher byte predicate and the independently materialized matcher-ranking owner set are both complete before intersection."
+route_class = "regex-truth"
 reasoning_focus = "Explain the selected ripgrep callable's matching or traversal role."
 required_relation_kinds = ["calls", "searches-with"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "RegexMatcher") (tantivy "body:search OR title:matcher^2")))'''
+composed_search = '''(search (producers (language rust)) (rg "-n" "-F" "RegexMatcher"))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 

@@ -7,13 +7,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use super::client_protocol::ResidentSearchLatencyBudget;
 use super::contract::{
     AgentOrgTopologyScenario, AgentOrgTopologyScenarioSuite, QualificationCase, QualificationPlan,
 };
+use super::protocol_model::ResidentSearchLatencyBudget;
 use super::query_protocol::validate_workspace_query_set_scheme_template;
-use super::runner::{DEFAULT_TOPOLOGY_PLAN_PATH, PreparedCase, PreparedRun};
 use super::runner_contract::{parse_args, select_qualification_cases, validate_plan};
+use super::runner_model::{DEFAULT_TOPOLOGY_PLAN_PATH, PreparedCase, PreparedRun};
 use crate::command::live_corpus::{
     LiveCorpusQualification, live_corpus_git_repository_paths, load_lock, unique_resource,
 };
@@ -187,9 +187,6 @@ pub(super) fn prepare_run(
             multi_source_query: topology_scenario.multi_source_query.clone(),
             multi_callable_skeleton_query: topology_scenario.multi_callable_skeleton_query.clone(),
             minimum_composed_candidates: topology_scenario.minimum_composed_candidates,
-            expected_coverage_certificate_count: expected_coverage_certificate_count(
-                &topology_scenario.route_class,
-            )?,
             checkout_path,
             remote: corpus.git.remote.clone(),
             qualification,
@@ -322,7 +319,6 @@ pub(super) fn validate_topology_scenarios(
         "regex-truth".to_owned(),
         "ranked-text".to_owned(),
         "structural-syntax".to_owned(),
-        "explicit-conjunction".to_owned(),
     ]);
     if covered_route_classes != required_route_classes {
         return Err(format!(
@@ -357,48 +353,34 @@ fn validate_topology_search_route(
     search_case: &QualificationCase,
     parsed: &agent_semantic_search::ProgressiveSearchPlaybookRequest,
 ) -> Result<(), String> {
-    let no_witness = scenario
-        .complete_set_witness
-        .as_deref()
-        .is_none_or(|witness| witness.trim().is_empty());
     let route_matches = match scenario.route_class.as_str() {
         "regex-truth" => {
-            no_witness
-                && parsed.rg.len() == 1
+            parsed.rg.len() == 1
                 && parsed.tantivy.is_empty()
                 && parsed.syntax.is_empty()
                 && parsed.native_syntax.is_empty()
                 && parsed.graph.is_empty()
         }
         "ranked-text" => {
-            no_witness
-                && parsed.rg.is_empty()
+            parsed.rg.is_empty()
                 && parsed.tantivy.len() == 1
                 && parsed.syntax.is_empty()
                 && parsed.native_syntax.is_empty()
                 && parsed.graph.is_empty()
         }
         "structural-syntax" => {
-            no_witness
-                && parsed.rg.is_empty()
+            parsed.rg.is_empty()
                 && parsed.tantivy.is_empty()
                 && parsed.syntax.len() == 1
                 && parsed.syntax[0].producer == search_case.language_id
                 && parsed.native_syntax.is_empty()
                 && parsed.graph.is_empty()
         }
-        "explicit-conjunction" => {
-            !no_witness
-                && parsed.rg.len() == 1
-                && parsed.tantivy.len() == 1
-                && parsed.syntax.is_empty()
-                && parsed.native_syntax.is_empty()
-                && parsed.graph.is_empty()
-                && matches!(
-                    parsed.normalized_composition,
-                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
-                )
-        }
+        // A topology coverage certificate proves relation-frontier coverage. It
+        // does not prove that two acquisition result sets are complete over one
+        // generation and owner universe. Until Search exposes that distinct
+        // clause receipt, Live Corpus must not certify an intersection.
+        "explicit-conjunction" => false,
         _ => false,
     };
     if !route_matches {
@@ -410,26 +392,10 @@ fn validate_topology_search_route(
     Ok(())
 }
 
-pub(super) fn expected_coverage_certificate_count(route_class: &str) -> Result<usize, String> {
-    match route_class {
-        "regex-truth" | "ranked-text" | "structural-syntax" => Ok(1),
-        "explicit-conjunction" => Ok(2),
-        _ => Err(format!(
-            "Live Corpus topology Search route class is unsupported: {route_class}"
-        )),
-    }
-}
-
 fn render_agent_prompt(prompt_contract: &str, scenario: &AgentOrgTopologyScenario) -> String {
-    let witness = scenario
-        .complete_set_witness
-        .as_deref()
-        .filter(|witness| !witness.trim().is_empty())
-        .unwrap_or("not-applicable");
     format!(
-        "{prompt_contract}\n\nSearch route class: {}\nComplete-set witness: {}\nReasoning focus: {}\nRequired relationship kinds: {}",
+        "{prompt_contract}\n\nSearch route class: {}\nReasoning focus: {}\nRequired relationship kinds: {}",
         scenario.route_class,
-        witness,
         scenario.reasoning_focus,
         scenario.required_relation_kinds.join(", ")
     )

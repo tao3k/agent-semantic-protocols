@@ -4,24 +4,24 @@
 
 use std::path::Path;
 
-use super::IsolatedBenchmarkWorkspace;
-use super::artifact_current_pointer;
-use super::expected_coverage_certificate_count;
-use super::parse_args;
 use super::qualification_receipt_path;
-use super::select_qualification_cases;
-use super::validate_topology_scenarios;
-use crate::command::live_corpus::qualification::client_protocol::PublicRouteTerminal;
 use crate::command::live_corpus::qualification::client_protocol::render_workspace_query_scheme_source;
-use crate::command::live_corpus::qualification::client_protocol::typed_terminal;
 use crate::command::live_corpus::qualification::client_protocol::workspace_query_qualification_request;
 use crate::command::live_corpus::qualification::contract::AgentOrgTopologyEvidence;
 use crate::command::live_corpus::qualification::contract::AgentOrgTopologyScenarioSuite;
 use crate::command::live_corpus::qualification::contract::LatencyDistribution;
 use crate::command::live_corpus::qualification::contract::QualificationCase;
 use crate::command::live_corpus::qualification::contract::QualificationPlan;
+use crate::command::live_corpus::qualification::protocol_model::PublicRouteTerminal;
+use crate::command::live_corpus::qualification::protocol_model::typed_terminal;
 use crate::command::live_corpus::qualification::query_protocol::render_workspace_query_set_scheme_source;
 use crate::command::live_corpus::qualification::query_protocol::validate_workspace_query_set_scheme_template;
+use crate::command::live_corpus::qualification::runner_contract::parse_args;
+use crate::command::live_corpus::qualification::runner_contract::select_qualification_cases;
+use crate::command::live_corpus::qualification::runner_contract::validate_plan;
+use crate::command::live_corpus::qualification::runner_prepare::artifact_current_pointer;
+use crate::command::live_corpus::qualification::runner_prepare::validate_topology_scenarios;
+use crate::command::live_corpus::qualification::workspace_fixture::IsolatedBenchmarkWorkspace;
 
 fn case(case_id: &str, language_id: &str, resource_id: &str) -> QualificationCase {
     QualificationCase {
@@ -109,6 +109,36 @@ fn composed_query_preserves_the_ordered_selector_set() {
 }
 
 #[test]
+fn live_corpus_plan_exercises_structural_search_for_every_registered_language() {
+    let plan: QualificationPlan = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
+    ))
+    .expect("baseline Scheme suite");
+    validate_plan(&plan).expect("predicate-directed V1 qualification plan");
+}
+
+#[test]
+fn live_corpus_plan_rejects_a_language_without_structural_search() {
+    let mut plan: QualificationPlan = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
+    ))
+    .expect("baseline Scheme suite");
+    for case in plan
+        .cases
+        .iter_mut()
+        .filter(|case| case.language_id == "org")
+    {
+        case.scenario_classes[0] = "regex-truth".to_owned();
+        case.search = "(search (producers (documents org)) (rg \"-n\" \"headline\"))".to_owned();
+    }
+    let error = validate_plan(&plan).expect_err("missing structural language coverage");
+    assert!(
+        error.contains("structural Search for every registered language"),
+        "error={error}"
+    );
+}
+
+#[test]
 fn every_live_corpus_case_admits_its_complex_scheme_intent() {
     let plan: QualificationPlan = toml::from_str(include_str!(
         "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
@@ -124,7 +154,7 @@ fn every_live_corpus_case_admits_its_complex_scheme_intent() {
 }
 
 #[test]
-fn topology_intersection_requires_an_explicit_complete_set_witness() {
+fn topology_intersection_cannot_reuse_relation_coverage_as_set_completeness() {
     let plan: QualificationPlan = toml::from_str(include_str!(
         "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
     ))
@@ -136,13 +166,23 @@ fn topology_intersection_requires_an_explicit_complete_set_witness() {
     let scenario = suite
         .cases
         .iter_mut()
-        .find(|scenario| scenario.route_class == "explicit-conjunction")
-        .expect("witnessed conjunction scenario");
-    scenario.complete_set_witness = None;
+        .find(|scenario| scenario.route_class == "ranked-text")
+        .expect("ranked scenario");
+    let language = plan
+        .cases
+        .iter()
+        .find(|case| case.case_id == scenario.case_id)
+        .expect("matching baseline case")
+        .language_id
+        .clone();
+    scenario.route_class = "explicit-conjunction".to_owned();
+    scenario.composed_search = format!(
+        "(search (producers (language {language})) (intersect (rg \"-n\" \"owner\") (tantivy \"title:\\\"owner identity\\\"^2 OR body:owner\")))"
+    );
 
     let error = validate_topology_scenarios(&plan.cases, suite)
-        .expect_err("an unwitnessed intersection must fail closed");
-    assert!(error.contains("completeness witness"), "error={error}");
+        .expect_err("an intersection without acquisition-set receipts must fail closed");
+    assert!(error.contains("predicate-directed route"), "error={error}");
 }
 
 #[test]
@@ -175,24 +215,18 @@ fn topology_route_class_must_match_the_scheme_ast() {
 }
 
 #[test]
-fn topology_route_class_owns_the_runtime_coverage_certificate_cardinality() {
-    assert_eq!(
-        expected_coverage_certificate_count("regex-truth").expect("regex route"),
-        1
+fn topology_suite_does_not_claim_acquisition_completeness_from_frontier_coverage() {
+    let suite: AgentOrgTopologyScenarioSuite = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
+    ))
+    .expect("topology Scheme suite");
+    assert!(
+        suite
+            .cases
+            .iter()
+            .all(|scenario| scenario.route_class != "explicit-conjunction"
+                && !scenario.composed_search.contains("(intersect "))
     );
-    assert_eq!(
-        expected_coverage_certificate_count("ranked-text").expect("ranked route"),
-        1
-    );
-    assert_eq!(
-        expected_coverage_certificate_count("structural-syntax").expect("syntax route"),
-        1
-    );
-    assert_eq!(
-        expected_coverage_certificate_count("explicit-conjunction").expect("conjunction route"),
-        2
-    );
-    assert!(expected_coverage_certificate_count("automatic-engine-pair").is_err());
 }
 
 fn error_frame(

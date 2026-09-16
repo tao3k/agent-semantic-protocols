@@ -7,18 +7,13 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use serde::Deserialize;
-use serde::Serialize;
 use serde_json::Value;
 
-use crate::responsibility::SchemaFamily;
-use crate::responsibility::SchemaReferenceDecision;
-use crate::responsibility::SchemaResponsibility;
 use crate::responsibility::audit_schema_responsibilities;
+use crate::responsibility_model::SchemaResponsibility;
 
 use crate::manager_validation::ensure_unique;
 use crate::manager_validation::local_schema_name;
@@ -26,106 +21,27 @@ use crate::manager_validation::schema_references;
 use crate::manager_validation::validate_identity;
 use crate::manager_validation::validate_relative_path;
 use crate::manager_validation::validate_schema_name;
+use crate::publication::report;
+use crate::publication::write_bundle;
+use crate::publication::write_package_projection;
 use crate::receipt::BUNDLE_MEMBERSHIP_FILE;
-use crate::receipt::SchemaBundleMembership;
 use crate::receipt::read_public_receipt_blocking;
-use crate::receipt::read_receipt_if_present;
 use crate::receipt::schema_digest;
 use crate::receipt::tagged_content_digest;
 use crate::receipt::verify_bundle_receipt_blocking;
-
-pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
-    "agent.semantic-protocols.language-schema-profile-registry";
-pub const BUNDLE_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.language-schema-bundle-receipt";
-pub const SCHEMA_VERSION: &str = "1";
-pub const DEFAULT_PROFILE_REGISTRY: &str = "schemas/language-schema-profiles.json";
-pub const BUNDLE_RECEIPT_FILE: &str = ".asp-schema-manager-receipt.json";
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LanguageSchemaProfileRegistry {
-    #[serde(rename = "$schema")]
-    pub schema: String,
-    pub schema_id: String,
-    pub schema_version: String,
-    pub families: Vec<SchemaFamily>,
-    pub reference_decisions: Vec<SchemaReferenceDecision>,
-    pub wire_artifacts: BTreeMap<String, String>,
-    pub root_sets: BTreeMap<String, Vec<String>>,
-    pub profiles: Vec<LanguageSchemaProfile>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LanguageSchemaProfile {
-    pub language_id: String,
-    pub search_producer_axes: Vec<SearchProducerAxis>,
-    pub package_root: String,
-    pub bundle_root: String,
-    pub root_sets: Vec<String>,
-    pub roots: Vec<String>,
-    #[serde(default)]
-    pub bootstrap: Vec<String>,
-    pub provider_owned: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SearchProducerAxis {
-    Language,
-    Document,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SchemaBundleEntry {
-    pub name: String,
-    pub digest: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LanguageSchemaBundleReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub schema_digest: String,
-    #[serde(skip)]
-    pub language_id: String,
-    #[serde(skip)]
-    pub profile_digest: String,
-    #[serde(skip)]
-    pub bundle_digest: String,
-    #[serde(skip)]
-    pub schemas: Vec<SchemaBundleEntry>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SchemaBundleReport {
-    pub language_id: String,
-    pub schema_count: usize,
-    pub changed_count: usize,
-    pub removed_count: usize,
-    pub receipt_path: PathBuf,
-    pub bundle_digest: String,
-}
-
-/// One canonical schema document resolved without writing a package-local bundle.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResolvedSchemaDocument {
-    pub name: String,
-    pub digest: String,
-    pub bytes: Vec<u8>,
-}
-
-/// Immutable language bundle input for build-time consumers.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResolvedLanguageSchemaBundle {
-    pub language_id: String,
-    pub root_set_ids: Vec<String>,
-    pub bundle_digest: String,
-    pub schemas: Vec<ResolvedSchemaDocument>,
-}
+use crate::registry::BUNDLE_RECEIPT_FILE;
+use crate::registry::BUNDLE_RECEIPT_SCHEMA_ID;
+use crate::registry::DEFAULT_PROFILE_REGISTRY;
+use crate::registry::LanguageSchemaBundleReceipt;
+use crate::registry::LanguageSchemaProfile;
+use crate::registry::LanguageSchemaProfileRegistry;
+use crate::registry::PROFILE_REGISTRY_SCHEMA_ID;
+use crate::registry::ResolvedLanguageSchemaBundle;
+use crate::registry::ResolvedSchemaDocument;
+use crate::registry::SCHEMA_VERSION;
+use crate::registry::SchemaBundleEntry;
+use crate::registry::SchemaBundleReport;
+use crate::task_owner::run_blocking;
 
 #[derive(Clone, Debug)]
 pub struct SchemaManager {
@@ -186,17 +102,19 @@ impl SchemaManager {
     ) -> Result<Vec<SchemaBundleReport>, String> {
         let manager = self.clone();
         let language_ids = language_ids.to_vec();
-        tokio::task::spawn_blocking(move || manager.materialize_blocking(&language_ids))
-            .await
-            .map_err(|error| format!("schema materialization task failed: {error}"))?
+        run_blocking("schema-materialize", move || {
+            manager.materialize_blocking(&language_ids)
+        })
+        .await
     }
 
     pub async fn verify(&self, language_ids: &[String]) -> Result<Vec<SchemaBundleReport>, String> {
         let manager = self.clone();
         let language_ids = language_ids.to_vec();
-        tokio::task::spawn_blocking(move || manager.verify_blocking(&language_ids))
-            .await
-            .map_err(|error| format!("schema verification task failed: {error}"))?
+        run_blocking("schema-verify", move || {
+            manager.verify_blocking(&language_ids)
+        })
+        .await
     }
 
     /// Resolve canonical closures for embedding without materializing or
@@ -207,9 +125,10 @@ impl SchemaManager {
     ) -> Result<Vec<ResolvedLanguageSchemaBundle>, String> {
         let manager = self.clone();
         let language_ids = language_ids.to_vec();
-        tokio::task::spawn_blocking(move || manager.resolve_bundles_blocking(&language_ids))
-            .await
-            .map_err(|error| format!("schema bundle resolution task failed: {error}"))?
+        run_blocking("schema-resolve-bundles", move || {
+            manager.resolve_bundles_blocking(&language_ids)
+        })
+        .await
     }
 
     pub async fn publish_client_bundle(
@@ -219,21 +138,19 @@ impl SchemaManager {
     ) -> Result<SchemaBundleReport, String> {
         let manager = self.clone();
         let output_root = output_root.into();
-        tokio::task::spawn_blocking(move || {
+        run_blocking("schema-publish-client-bundle", move || {
             manager.publish_client_bundle_blocking(&language_id, &output_root)
         })
         .await
-        .map_err(|error| format!("client schema publication task failed: {error}"))?
     }
 
     pub async fn responsibilities(&self) -> Result<Vec<SchemaResponsibility>, String> {
         let manager = self.clone();
-        tokio::task::spawn_blocking(move || {
+        run_blocking("schema-audit-responsibilities", move || {
             let registry = manager.load_registry()?;
             manager.schema_responsibilities(&registry)
         })
         .await
-        .map_err(|error| format!("schema responsibility audit task failed: {error}"))?
     }
 
     fn materialize_blocking(
@@ -627,206 +544,20 @@ impl SchemaManager {
     }
 }
 
-fn write_package_projection(
-    profile: &LanguageSchemaProfile,
-    receipt: &LanguageSchemaBundleReceipt,
-    documents: &BTreeMap<String, Vec<u8>>,
-    schema_root: &Path,
-) -> Result<SchemaBundleReport, String> {
-    let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
-    let previous = read_receipt_if_present(&receipt_path).unwrap_or_default();
-    let protected_names = profile
-        .provider_owned
-        .iter()
-        .chain(&profile.bootstrap)
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let mut changed_count = 0;
-    for name in &profile.bootstrap {
-        let bytes = documents.get(name).ok_or_else(|| {
-            format!(
-                "bootstrap schema is outside canonical closure for {}: {name}",
-                profile.language_id
-            )
-        })?;
-        let target = schema_root.join(name);
-        if fs::read(&target).ok().as_deref() != Some(bytes.as_slice()) {
-            atomic_write(&target, bytes)?;
-            changed_count += 1;
-        }
-    }
-    let mut removed_count = 0;
-    if let Some(previous) = previous {
-        for stale in previous
-            .schemas
-            .into_iter()
-            .map(|entry| entry.name)
-            .filter(|name| !protected_names.contains(name))
-        {
-            let stale_path = schema_root.join(&stale);
-            if stale_path.is_file() {
-                fs::remove_file(&stale_path).map_err(|error| {
-                    format!(
-                        "remove shared package schema {}: {error}",
-                        stale_path.display()
-                    )
-                })?;
-                removed_count += 1;
-            }
-        }
-    }
-    let membership_path = schema_root.join(BUNDLE_MEMBERSHIP_FILE);
-    if membership_path.is_file() {
-        fs::remove_file(&membership_path).map_err(|error| {
-            format!(
-                "remove package schema membership {}: {error}",
-                membership_path.display()
-            )
-        })?;
-        removed_count += 1;
-    }
-    let receipt_bytes = serde_json::to_vec_pretty(receipt)
-        .map_err(|error| format!("encode schema bundle receipt: {error}"))?;
-    if fs::read(&receipt_path).ok().as_deref() != Some(receipt_bytes.as_slice()) {
-        atomic_write(&receipt_path, &receipt_bytes)?;
-        changed_count += 1;
-    }
-    sync_directory(schema_root)?;
-    Ok(report(
-        profile,
-        receipt,
-        changed_count,
-        removed_count,
-        receipt_path,
-    ))
-}
-
-fn write_bundle(
-    profile: &LanguageSchemaProfile,
-    receipt: &LanguageSchemaBundleReceipt,
-    documents: &BTreeMap<String, Vec<u8>>,
-    schema_root: &Path,
-    protected_names: &BTreeSet<String>,
-) -> Result<SchemaBundleReport, String> {
-    fs::create_dir_all(schema_root).map_err(|error| {
-        format!(
-            "create schema bundle root {}: {error}",
-            schema_root.display()
-        )
-    })?;
-    let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
-    // A pre-MVP1 receipt is deliberately not accepted as a current receipt,
-    // but materialization must be able to replace it atomically.
-    let previous = read_receipt_if_present(&receipt_path).unwrap_or_default();
-    let expected_names = documents.keys().cloned().collect::<BTreeSet<_>>();
-    let mut changed_count = 0;
-    for (name, bytes) in documents {
-        let target = schema_root.join(name);
-        if fs::read(&target).ok().as_deref() == Some(bytes.as_slice()) {
-            continue;
-        }
-        atomic_write(&target, bytes)?;
-        changed_count += 1;
-    }
-    let mut removed_count = 0;
-    if let Some(previous) = previous {
-        for stale in previous
-            .schemas
-            .into_iter()
-            .map(|entry| entry.name)
-            .filter(|name| !expected_names.contains(name) && !protected_names.contains(name))
-        {
-            let stale_path = schema_root.join(&stale);
-            if stale_path.is_file() {
-                fs::remove_file(&stale_path).map_err(|error| {
-                    format!(
-                        "remove stale managed schema {}: {error}",
-                        stale_path.display()
-                    )
-                })?;
-                removed_count += 1;
-            }
-        }
-    }
-    let receipt_bytes = serde_json::to_vec_pretty(receipt)
-        .map_err(|error| format!("encode schema bundle receipt: {error}"))?;
-    if fs::read(&receipt_path).ok().as_deref() != Some(receipt_bytes.as_slice()) {
-        atomic_write(&receipt_path, &receipt_bytes)?;
-        changed_count += 1;
-    }
-    let membership = SchemaBundleMembership {
-        language_id: receipt.language_id.clone(),
-        profile_digest: receipt.profile_digest.clone(),
-        bundle_digest: receipt.bundle_digest.clone(),
-        schemas: receipt.schemas.clone(),
-    };
-    let membership_path = schema_root.join(BUNDLE_MEMBERSHIP_FILE);
-    let membership_bytes = serde_json::to_vec_pretty(&membership)
-        .map_err(|error| format!("encode schema bundle membership: {error}"))?;
-    if fs::read(&membership_path).ok().as_deref() != Some(membership_bytes.as_slice()) {
-        atomic_write(&membership_path, &membership_bytes)?;
-        changed_count += 1;
-    }
-    sync_directory(schema_root)?;
-    Ok(report(
-        profile,
-        receipt,
-        changed_count,
-        removed_count,
-        receipt_path,
-    ))
-}
-
+/// Verify a portable bundle receipt without blocking a Tokio worker thread.
 pub async fn verify_bundle_receipt(
     receipt_path: impl Into<PathBuf>,
 ) -> Result<LanguageSchemaBundleReceipt, String> {
     let receipt_path = receipt_path.into();
-    tokio::task::spawn_blocking(move || verify_bundle_receipt_blocking(&receipt_path))
-        .await
-        .map_err(|error| format!("schema bundle receipt verification task failed: {error}"))?
+    run_blocking("schema-verify-bundle-receipt", move || {
+        verify_bundle_receipt_blocking(&receipt_path)
+    })
+    .await
 }
 
+/// Load and verify a portable bundle receipt from a synchronous owner.
 pub fn load_verified_bundle_receipt(
     receipt_path: impl AsRef<Path>,
 ) -> Result<LanguageSchemaBundleReceipt, String> {
     verify_bundle_receipt_blocking(receipt_path.as_ref())
-}
-
-fn report(
-    profile: &LanguageSchemaProfile,
-    receipt: &LanguageSchemaBundleReceipt,
-    changed_count: usize,
-    removed_count: usize,
-    receipt_path: PathBuf,
-) -> SchemaBundleReport {
-    SchemaBundleReport {
-        language_id: profile.language_id.clone(),
-        schema_count: receipt.schemas.len(),
-        changed_count,
-        removed_count,
-        receipt_path,
-        bundle_digest: receipt.bundle_digest.clone(),
-    }
-}
-
-fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = target
-        .parent()
-        .ok_or_else(|| format!("schema target has no parent: {}", target.display()))?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|error| format!("stage schema bundle file in {}: {error}", parent.display()))?;
-    staged
-        .write_all(bytes)
-        .and_then(|()| staged.as_file().sync_all())
-        .map_err(|error| format!("write staged schema bundle file: {error}"))?;
-    let staged_path = staged.into_temp_path();
-    fs::rename(&staged_path, target)
-        .map_err(|error| format!("atomically publish schema {}: {error}", target.display()))?;
-    Ok(())
-}
-
-fn sync_directory(path: &Path) -> Result<(), String> {
-    fs::File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("sync schema bundle directory {}: {error}", path.display()))
 }

@@ -206,6 +206,89 @@ engines the same question and treating their overlap as rigor. Multi-engine
 work is admitted only as an explicit typed operation, and each successful
 branch remains attributable to one predicate-owning leaf.
 
+*** SP-LAYOUT-004B — Acquisition completeness is not topology coverage
+
+The V1 contract distinguishes two proof domains that earlier Live Corpus
+qualification accidentally conflated:
+
+- an /acquisition-set receipt/ proves that one Search leaf evaluated an
+  untruncated complete set over one source generation and owner universe;
+- a /topology coverage certificate/ proves only the coverage state of an
+  expected relation frontier in the resulting topology.
+
+Counting topology coverage certificates by the number of rg, Tantivy, or
+Syntax leaves is invalid.  A relation-frontier certificate cannot authorize an
+=intersect=.  In particular, ordinary Tantivy top-K is ranked evidence and not
+a complete set.  Until Runtime publishes distinct generation-bound
+acquisition-set receipts, Live Corpus V1 qualifies rg, Tantivy, and structural
+Syntax independently and rejects scenarios that claim a successful
+multi-engine set intersection.
+
+#+name: search-acquisition-intersection-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Complete(x) = $upright("complete")(#x)$
+#let Truncated(x) = $upright("truncated")(#x)$
+#let Generation(x) = $upright("generation")(#x)$
+#let Universe(x) = $upright("ownerUniverse")(#x)$
+#let Admit(a, b) = $upright("admitIntersect")(#a, #b)$
+
+$
+  Admit(a, b) <=>
+    Complete(a) and Complete(b) and
+    not Truncated(a) and not Truncated(b) and
+    Generation(a) = Generation(b) and
+    Universe(a) = Universe(b).
+$
+
+$ upright("TantivyTopK")(q, k).complete = false $
+#+end_src
+
+#+name: search-route-proof-domains
+#+begin_src mermaid
+flowchart LR
+  P["Scheme predicate"]
+  R["rg byte truth"]
+  T["Tantivy ranked top-K"]
+  S["provider Syntax facts"]
+  A["Acquisition-set receipt\nsame generation + universe\ncomplete + untruncated"]
+  I["explicit set intersection"]
+  G["evidence graph"]
+  C["Topology coverage certificate\nrelation frontier only"]
+
+  P --> R
+  P --> T
+  P --> S
+  R -. "only with complete receipt" .-> A
+  T -. "top-K is not complete" .-> A
+  S -. "only with complete receipt" .-> A
+  A --> I
+  R --> G
+  T --> G
+  S --> G
+  I --> G
+  G --> C
+  C -. "must not authorize" .-> I
+#+end_src
+
+The executable model is maintained in
+=packages/proofs/ASPProof/LiveCorpusPredicateRoute.lean=.  Its central shape is:
+
+#+begin_src lean
+def AdmitIntersection
+    (explicitConjunction : Bool)
+    (left right : SetEvidence) : Prop :=
+  explicitConjunction = true ∧
+    left.complete = true ∧ right.complete = true ∧
+    left.truncated = false ∧ right.truncated = false ∧
+    left.generation = right.generation ∧
+    left.ownerUniverse = right.ownerUniverse
+#+end_src
+
+Live Corpus must exercise =structural-syntax= for every registered language,
+not merely one representative provider.  This keeps parser-owned facts in the
+base qualification matrix and prevents byte regex from becoming an accidental
+substitute for document or programming-language syntax.
+
 *** SP-RECOVERY-005 — Invalid requests fail without alternate rendering
 
 An incomplete request is typed =search-playbook-request-incomplete=.  A

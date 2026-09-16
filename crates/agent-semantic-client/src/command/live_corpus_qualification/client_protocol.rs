@@ -10,110 +10,26 @@ use std::time::Instant;
 use agent_semantic_client::LanguageCommandClient;
 use agent_semantic_client::LanguageCommandOperation;
 use agent_semantic_client::LanguageCommandRequest;
-use agent_semantic_client_protocol::AspClientExactQueryFailure;
 use agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis;
 use agent_semantic_client_protocol::AspClientSearchPlaybookClauseRef;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
 use agent_semantic_client_protocol::ClientFrame;
-use agent_semantic_client_protocol::ClientOutcome;
 use agent_semantic_client_protocol::LIVE_CORPUS_CACHE_STATE_REQUEST_SCHEMA_ID;
 use agent_semantic_client_protocol::LiveCorpusCacheStateRequest;
 
 use super::contract::LatencyDistribution;
 use super::contract::QualificationCase;
-pub(crate) use super::query_protocol::{WorkspaceQueryQualificationReceipt, public_query};
+use super::protocol_model::ResidentSearchLatencyBudget;
+use super::protocol_model::WorkspaceSearchQualificationReceipt;
+use super::protocol_model::registered_producer_axis;
+use super::protocol_model::typed_terminal;
+use super::query_protocol::WorkspaceQueryQualificationReceipt;
+use super::query_protocol::public_query;
 #[cfg(test)]
 pub(crate) use super::query_protocol::{
     render_workspace_query_scheme_source, workspace_query_qualification_request,
 };
 use super::search_receipt::workspace_search_qualification_receipt;
-
-#[derive(Debug, serde::Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct PublicRouteFailure {
-    reason_kind: String,
-    message: String,
-    #[serde(default)]
-    details: Option<serde_json::Value>,
-    #[serde(default)]
-    terminal: Option<serde_json::Value>,
-}
-
-#[derive(Debug, PartialEq)]
-pub(super) enum PublicRouteTerminal {
-    Queued(AspClientExactQueryFailure),
-    Building(AspClientExactQueryFailure),
-    Ready(serde_json::Value),
-    Failed(PublicRouteFailure),
-    Cancelled,
-}
-
-impl PublicRouteTerminal {
-    pub(super) fn require_ready(self, route: &str) -> Result<serde_json::Value, String> {
-        match self {
-            Self::Ready(payload) => Ok(payload),
-            Self::Queued(failure) => Err(format!(
-                "Live Corpus public route remained Queued: route={route} reasonKind={} phase={}",
-                failure.reason_kind, failure.phase
-            )),
-            Self::Building(failure) => Err(format!(
-                "Live Corpus public route remained Building: route={route} reasonKind={} phase={}",
-                failure.reason_kind, failure.phase
-            )),
-            Self::Failed(failure) => Err(format!(
-                "Live Corpus public route failed: route={route} reasonKind={} message={} terminal={:?}",
-                failure.reason_kind, failure.message, failure.terminal
-            )),
-            Self::Cancelled => Err(format!(
-                "Live Corpus public route was cancelled: route={route}"
-            )),
-        }
-    }
-}
-
-pub(super) fn typed_terminal(frame: ClientFrame) -> Result<PublicRouteTerminal, String> {
-    match frame {
-        ClientFrame::Response {
-            outcome: ClientOutcome::Ready,
-            result: Some(payload),
-            error: None,
-            ..
-        } => Ok(PublicRouteTerminal::Ready(payload.into_value())),
-        ClientFrame::Response {
-            outcome: ClientOutcome::Cancelled,
-            ..
-        } => Ok(PublicRouteTerminal::Cancelled),
-        ClientFrame::Response {
-            outcome: ClientOutcome::Error | ClientOutcome::StaleGeneration,
-            error: Some(error),
-            ..
-        } => {
-            let failure = serde_json::from_value::<PublicRouteFailure>(error.clone()).map_err(
-                |decode_error| {
-                    format!(
-                        "decode Live Corpus typed route failure: {decode_error}; payload={error}"
-                    )
-                },
-            )?;
-            if let Some(details) = failure.details.as_ref()
-                && let Ok(generation_failure) =
-                    serde_json::from_value::<AspClientExactQueryFailure>(details.clone())
-            {
-                return Ok(match generation_failure.reason_kind.as_str() {
-                    "runtime-generation-queued" => PublicRouteTerminal::Queued(generation_failure),
-                    "runtime-generation-building" => {
-                        PublicRouteTerminal::Building(generation_failure)
-                    }
-                    _ => PublicRouteTerminal::Failed(failure),
-                });
-            }
-            Ok(PublicRouteTerminal::Failed(failure))
-        }
-        other => Err(format!(
-            "Live Corpus public route returned an invalid terminal frame: {other:?}"
-        )),
-    }
-}
 
 #[derive(Debug)]
 pub(super) struct PublicQualificationEvidence {
@@ -132,30 +48,6 @@ pub(super) struct PublicQualificationEvidence {
     pub(super) warm_read_prepare_elapsed_micros: u64,
     pub(super) sequential_search_query_latency_micros: LatencyDistribution,
     pub(super) concurrent_search_query_latency_micros: LatencyDistribution,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkspaceSearchQualificationReceipt {
-    pub(crate) operation_id: String,
-    pub(crate) source_generation_digest: String,
-    pub(crate) provider_catalog_digest: String,
-    pub(crate) topology_generation_digest: String,
-    pub(crate) selectors: Vec<String>,
-    pub(crate) owner_paths: Vec<String>,
-    pub(crate) elapsed_micros: u64,
-    pub(crate) response_decode_elapsed_micros: u64,
-    pub(crate) packet_bytes: usize,
-    pub(crate) node_count: usize,
-    pub(crate) edge_count: usize,
-    pub(crate) frontier_count: usize,
-    pub(crate) coverage_certificate_count: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct ResidentSearchLatencyBudget {
-    pub(super) p50_micros: u64,
-    pub(super) p99_micros: u64,
-    pub(super) max_micros: u64,
 }
 
 #[expect(
@@ -935,41 +827,4 @@ fn workspace_search_request_from_parsed(
             })
             .collect(),
     })
-}
-
-pub(crate) fn registered_producer_axis(producer_id: &str) -> Result<&'static str, String> {
-    let profile = include_str!("../../../../../schemas/language-schema-profiles.json");
-    let profile: serde_json::Value = serde_json::from_str(profile)
-        .map_err(|error| format!("decode embedded Search producer profile registry: {error}"))?;
-    let profiles = profile
-        .get("profiles")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "Search producer profile registry has no profiles".to_owned())?;
-    let producer = profiles
-        .iter()
-        .find(|profile| {
-            profile
-                .get("languageId")
-                .and_then(serde_json::Value::as_str)
-                == Some(producer_id)
-        })
-        .ok_or_else(|| format!("Search producer profile is not registered: {producer_id}"))?;
-    let axes = producer
-        .get("searchProducerAxes")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| format!("Search producer profile has no registered axis: {producer_id}"))?;
-    if axes.is_empty() {
-        return Err(format!(
-            "Live Corpus Search producer must expose a Search producer classification: {producer_id}"
-        ));
-    }
-    let language = axes.iter().any(|axis| axis.as_str() == Some("language"));
-    let documents = axes.iter().any(|axis| axis.as_str() == Some("document"));
-    match (language, documents) {
-        (true, false) => Ok("language"),
-        (false, true) => Ok("documents"),
-        _ => Err(format!(
-            "Live Corpus producer must resolve to exactly one language/document axis: {producer_id}"
-        )),
-    }
 }

@@ -16,6 +16,8 @@ pub mod schema_bundle;
 mod runtime_asp_client;
 mod runtime_query_generation;
 mod runtime_query_generation_authority;
+mod runtime_query_generation_model;
+mod runtime_query_materialization;
 pub(crate) use runtime_query_generation::RuntimeQueryGeneration;
 pub(crate) use runtime_query_generation::RuntimeQueryTerminalState;
 pub use runtime_query_generation_authority::RuntimeQueryGenerationAuthority;

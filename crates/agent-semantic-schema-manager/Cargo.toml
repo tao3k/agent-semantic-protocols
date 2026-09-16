@@ -12,6 +12,7 @@ license.workspace = true
 default = ["runtime"]
 runtime = [
     "dep:agent-semantic-content-identity",
+    "dep:agent-semantic-workspace-scheduler",
     "dep:serde",
     "dep:tempfile",
     "dep:tokio",
@@ -19,6 +20,7 @@ runtime = [
 
 [dependencies]
 agent-semantic-content-identity = { workspace = true, optional = true }
+agent-semantic-workspace-scheduler = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json.workspace = true
 tempfile = { workspace = true, optional = true }

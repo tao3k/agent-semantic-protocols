@@ -602,5 +602,8 @@ impl RuntimeSearchGenerationBuilder {
 }
 
 #[cfg(test)]
+#[path = "../tests/unit/query_generation_terminals.rs"]
+mod terminal_tests;
+#[cfg(test)]
 #[path = "../tests/unit/query_generation.rs"]
 mod tests;

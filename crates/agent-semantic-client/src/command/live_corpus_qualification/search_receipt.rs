@@ -4,7 +4,7 @@
 
 //! Derives compact, generation-bound qualification facts from a Search settlement.
 
-use super::client_protocol::WorkspaceSearchQualificationReceipt;
+use super::protocol_model::WorkspaceSearchQualificationReceipt;
 
 pub(super) fn qualification_result_string(
     result: &serde_json::Value,
