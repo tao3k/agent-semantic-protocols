@@ -4,6 +4,8 @@
 
 //! Schema bundle publication and canonical responsibility governance.
 
+#[cfg(feature = "runtime")]
+mod bootstrap_projection;
 pub mod build_support;
 #[cfg(feature = "runtime")]
 mod cli;
@@ -23,39 +25,19 @@ pub use agent_semantic_content_identity::SchemaContractIdentity;
 #[cfg(feature = "runtime")]
 pub use agent_semantic_content_identity::schema_contract_identities;
 #[cfg(feature = "runtime")]
+pub use bootstrap_projection::{
+    LanguageSchemaBootstrapProjection, VerifiedLanguageSchemaBootstrap,
+};
+#[cfg(feature = "runtime")]
 pub use cli::run_cli;
 #[cfg(feature = "runtime")]
-pub use manager::BUNDLE_RECEIPT_FILE;
-#[cfg(feature = "runtime")]
-pub use manager::BUNDLE_RECEIPT_SCHEMA_ID;
-#[cfg(feature = "runtime")]
-pub use manager::DEFAULT_PROFILE_REGISTRY;
-#[cfg(feature = "runtime")]
-pub use manager::LanguageSchemaBundleReceipt;
-#[cfg(feature = "runtime")]
-pub use manager::LanguageSchemaProfile;
-#[cfg(feature = "runtime")]
-pub use manager::LanguageSchemaProfileRegistry;
-#[cfg(feature = "runtime")]
-pub use manager::PROFILE_REGISTRY_SCHEMA_ID;
-#[cfg(feature = "runtime")]
-pub use manager::ResolvedLanguageSchemaBundle;
-#[cfg(feature = "runtime")]
-pub use manager::ResolvedSchemaDocument;
-#[cfg(feature = "runtime")]
-pub use manager::SCHEMA_VERSION;
-#[cfg(feature = "runtime")]
-pub use manager::SchemaBundleEntry;
-#[cfg(feature = "runtime")]
-pub use manager::SchemaBundleReport;
-#[cfg(feature = "runtime")]
-pub use manager::SchemaManager;
-#[cfg(feature = "runtime")]
-pub use manager::SearchProducerAxis;
-#[cfg(feature = "runtime")]
-pub use manager::load_verified_bundle_receipt;
-#[cfg(feature = "runtime")]
-pub use manager::verify_bundle_receipt;
+pub use manager::{
+    BUNDLE_RECEIPT_FILE, BUNDLE_RECEIPT_SCHEMA_ID, DEFAULT_PROFILE_REGISTRY,
+    LanguageSchemaBundleReceipt, LanguageSchemaProfile, LanguageSchemaProfileRegistry,
+    PROFILE_REGISTRY_SCHEMA_ID, ResolvedLanguageSchemaBundle, ResolvedSchemaDocument,
+    SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReport, SchemaManager, SearchProducerAxis,
+    load_verified_bundle_receipt, verify_bundle_receipt,
+};
 #[cfg(feature = "runtime")]
 pub use responsibility::SchemaFamily;
 #[cfg(feature = "runtime")]

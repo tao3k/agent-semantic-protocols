@@ -305,7 +305,7 @@ impl SchemaManager {
         write_bundle(profile, &receipt, &documents, output_root, &BTreeSet::new())
     }
 
-    fn load_registry(&self) -> Result<LanguageSchemaProfileRegistry, String> {
+    pub(super) fn load_registry(&self) -> Result<LanguageSchemaProfileRegistry, String> {
         let registry = self.load_registry_document()?;
         self.schema_responsibilities(&registry)?;
         self.validate_wire_artifacts(&registry)?;
@@ -395,7 +395,7 @@ impl SchemaManager {
         audit_schema_responsibilities(&self.workspace_root, registry)
     }
 
-    fn select_profiles<'a>(
+    pub(super) fn select_profiles<'a>(
         &self,
         registry: &'a LanguageSchemaProfileRegistry,
         language_ids: &[String],
@@ -475,7 +475,7 @@ impl SchemaManager {
         Ok(documents)
     }
 
-    fn expected_receipt(
+    pub(super) fn expected_receipt(
         &self,
         registry: &LanguageSchemaProfileRegistry,
         profile: &LanguageSchemaProfile,

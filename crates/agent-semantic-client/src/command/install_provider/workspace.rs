@@ -97,9 +97,6 @@ pub(super) async fn build_registered_provider_workspace(
             descriptor_path.display()
         )
     })?;
-    agent_semantic_schema_manager::SchemaManager::new(&dev_root)
-        .materialize(std::slice::from_ref(&descriptor.language_id))
-        .await?;
     let schema_bundle_reference = Path::new(&descriptor.schema_bundle_receipt);
     if schema_bundle_reference.is_absolute()
         || schema_bundle_reference.as_os_str().is_empty()
@@ -126,14 +123,6 @@ pub(super) async fn build_registered_provider_workspace(
         &provider_source_root,
         "schema bundle receipt",
     )?;
-    let schema_bundle_receipt =
-        agent_semantic_schema_manager::verify_bundle_receipt(&schema_bundle_receipt_path).await?;
-    if schema_bundle_receipt.language_id != descriptor.language_id {
-        return Err(format!(
-            "schema bundle receipt language drift: expected={} actual={}",
-            descriptor.language_id, schema_bundle_receipt.language_id
-        ));
-    }
     let descriptor_schema_path = descriptor_parent
         .join(&descriptor.schema)
         .canonicalize()
@@ -148,19 +137,18 @@ pub(super) async fn build_registered_provider_workspace(
         &provider_source_root,
         "provider workspace schema",
     )?;
-    let receipted_schema_path = schema_bundle_receipt_path
-        .parent()
-        .expect("schema bundle receipt has a parent")
-        .join(agent_semantic_provider_protocol::PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE)
-        .canonicalize()
-        .map_err(|error| format!("resolve receipted provider workspace schema: {error}"))?;
-    if descriptor_schema_path != receipted_schema_path {
-        return Err(format!(
-            "provider workspace schema is outside the receipted bundle: schema={} receipt={}",
-            descriptor_schema_path.display(),
-            schema_bundle_receipt_path.display()
-        ));
-    }
+    agent_semantic_schema_manager::SchemaManager::new(&dev_root)
+        .verify_client_bootstrap_projection(
+            agent_semantic_schema_manager::LanguageSchemaBootstrapProjection {
+                language_id: descriptor.language_id.clone(),
+                receipt_path: schema_bundle_receipt_path,
+                schema_name:
+                    agent_semantic_provider_protocol::PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE
+                        .to_owned(),
+                schema_path: descriptor_schema_path,
+            },
+        )
+        .await?;
 
     let provider_registration_reference = Path::new(&descriptor.provider_registration);
     validate_relative_path(

@@ -79,6 +79,19 @@ pub(super) fn read_receipt_if_present(
     }))
 }
 
+pub(super) fn read_public_receipt_blocking(
+    path: &Path,
+) -> Result<LanguageSchemaBundleReceipt, String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("read schema bundle receipt {}: {error}", path.display()))?;
+    let receipt: LanguageSchemaBundleReceipt = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("decode schema bundle receipt {}: {error}", path.display()))?;
+    if receipt.schema_id != BUNDLE_RECEIPT_SCHEMA_ID || receipt.schema_version != SCHEMA_VERSION {
+        return Err("schema bundle receipt identity is unsupported".to_owned());
+    }
+    Ok(receipt)
+}
+
 pub(super) fn verify_bundle_receipt_blocking(
     receipt_path: &Path,
 ) -> Result<LanguageSchemaBundleReceipt, String> {

@@ -93,8 +93,10 @@ the Runtime depend on a source checkout at startup.
 
 1. Replace installer =include_str!= reads of package membership with Runtime
    catalog-derived closure entries.
-2. Replace provider workspace =materialize= with canonical resolution plus an
-   exact check of the one package-local protocol/bootstrap schema.
+2. [X] Replace provider workspace =materialize= with canonical resolution plus
+   an exact check of the one package-local protocol/bootstrap schema.  The
+   public V1 receipt is identity-only; Language directories do not supply
+   membership or shared dependency documents to installer admission.
 3. Make =verify= reject shared package copies and retain only provider-owned and
    bootstrap files.
 4. Remove generated shared copies from Language trees and CI materialization.

@@ -9,6 +9,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::BUNDLE_RECEIPT_FILE;
+use super::LanguageSchemaBootstrapProjection;
 use super::SchemaManager;
 use super::verify_bundle_receipt;
 
@@ -159,6 +160,122 @@ async fn resolve_bundles_returns_canonical_bytes_without_materializing_package_f
     assert!(!schema_root.join("root.schema.json").exists());
     assert!(!schema_root.join("dependency.schema.json").exists());
     assert!(!schema_root.join(BUNDLE_RECEIPT_FILE).exists());
+}
+
+#[tokio::test]
+async fn verifies_thin_bootstrap_projection_without_shared_package_copies() {
+    let (root, manager) = fixture();
+    let bundle = manager
+        .resolve_bundles(&["fixture".to_owned()])
+        .await
+        .expect("resolve canonical bundle")
+        .remove(0);
+    let schema_root = root.path().join("languages/fixture/schemas");
+    let canonical = root.path().join("schemas/root.schema.json");
+    fs::copy(&canonical, schema_root.join("root.schema.json")).expect("project bootstrap schema");
+    write_json(
+        &schema_root.join(BUNDLE_RECEIPT_FILE),
+        &json!({
+            "schemaId": "agent.semantic-protocols.language-schema-bundle-receipt",
+            "schemaVersion": "1",
+            "schemaDigest": bundle.bundle_digest
+        }),
+    );
+
+    let verified = manager
+        .verify_client_bootstrap_projection(LanguageSchemaBootstrapProjection {
+            language_id: "fixture".to_owned(),
+            receipt_path: schema_root.join(BUNDLE_RECEIPT_FILE),
+            schema_name: "root.schema.json".to_owned(),
+            schema_path: schema_root.join("root.schema.json"),
+        })
+        .await
+        .expect("verify thin bootstrap projection");
+
+    assert_eq!(verified.language_id, "fixture");
+    assert_eq!(verified.bundle_digest, bundle.bundle_digest);
+    assert!(!schema_root.join("dependency.schema.json").exists());
+    assert!(
+        !schema_root
+            .join(".asp-schema-manager-membership.json")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn thin_bootstrap_projection_rejects_stale_receipt_and_schema_drift() {
+    let (root, manager) = fixture();
+    let bundle = manager
+        .resolve_bundles(&["fixture".to_owned()])
+        .await
+        .expect("resolve canonical bundle")
+        .remove(0);
+    let schema_root = root.path().join("languages/fixture/schemas");
+    let receipt_path = schema_root.join(BUNDLE_RECEIPT_FILE);
+    let schema_path = schema_root.join("root.schema.json");
+    fs::copy(root.path().join("schemas/root.schema.json"), &schema_path)
+        .expect("project bootstrap schema");
+    let projection = LanguageSchemaBootstrapProjection {
+        language_id: "fixture".to_owned(),
+        receipt_path: receipt_path.clone(),
+        schema_name: "root.schema.json".to_owned(),
+        schema_path: schema_path.clone(),
+    };
+    write_json(
+        &receipt_path,
+        &json!({
+            "schemaId": "agent.semantic-protocols.language-schema-bundle-receipt",
+            "schemaVersion": "1",
+            "schemaDigest": "blake3-256:stale"
+        }),
+    );
+    let stale = manager
+        .verify_client_bootstrap_projection(projection.clone())
+        .await
+        .expect_err("stale thin receipt must fail closed");
+    assert!(stale.contains("receipt is stale"), "{stale}");
+
+    write_json(
+        &receipt_path,
+        &json!({
+            "schemaId": "agent.semantic-protocols.language-schema-bundle-receipt",
+            "schemaVersion": "1",
+            "schemaDigest": bundle.bundle_digest
+        }),
+    );
+    fs::write(&schema_path, b"{}").expect("drift bootstrap schema");
+    let drift = manager
+        .verify_client_bootstrap_projection(projection)
+        .await
+        .expect_err("bootstrap drift must fail closed");
+    assert!(drift.contains("projection drift"), "{drift}");
+}
+
+#[tokio::test]
+async fn canonical_provider_bootstrap_projections_match_runtime_authority() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let manager = SchemaManager::new(workspace);
+    for (language_id, package_root) in [
+        ("rust", "languages/asp-rust"),
+        ("typescript", "languages/asp-typescript"),
+        ("python", "languages/asp-python"),
+        ("julia", "languages/AspJulia.jl"),
+        ("gerbil-scheme", "languages/asp-gerbil-scheme"),
+    ] {
+        let schema_root = workspace.join(package_root).join("schemas");
+        manager
+            .verify_client_bootstrap_projection(LanguageSchemaBootstrapProjection {
+                language_id: language_id.to_owned(),
+                receipt_path: schema_root.join(BUNDLE_RECEIPT_FILE),
+                schema_name: "provider-workspace-install.schema.json".to_owned(),
+                schema_path: schema_root.join("provider-workspace-install.schema.json"),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("{language_id} bootstrap projection: {error}"));
+    }
 }
 
 #[tokio::test]
