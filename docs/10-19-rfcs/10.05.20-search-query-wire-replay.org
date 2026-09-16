@@ -185,6 +185,14 @@ bytes, content digests, binding, and terminal are immutable.  A miss or
 coalesced =Building= state returns typed
 =query-not-ready= under the same request-plane gate.
 
+A Query materialization whose admitted receipt has =terminal.state=failed= is
+published as the generation's typed =Failed= state, never as a =Ready= value
+containing an inner failure.  Dispatch maps that state to a non-ready
+=ClientFrame= outcome with the admitted failed receipt retained as structured
+error evidence.  Consequently a failed selector read cannot become a resident
+ready cache hit, and callers never need to inspect a successful envelope to
+discover that Query failed.
+
 The V1 Query Playbook receipt also carries =sourceGenerationDigest= and
 =sourceRootDigest= from the immutable exact segment that supplied every
 materialization.  These are content-identity witnesses, not timing fields.  A

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
+    AspClientOperationError, AspClientWorkspaceQueryPlaybookRequest, admit_cold_query_owner_paths,
     bind_query_materialization_to_request, emit_runtime_search_trace_observation,
     materialize_query_playbook_receipt, query_playbook_generation_provider_targets,
     read_query_projection_handoff, record_settled_client_timing_observations,
@@ -22,6 +22,28 @@ use agent_semantic_content_identity::runtime_workspace_execution_publication::{
 
 fn digest(byte: char) -> String {
     format!("blake3-256:{}", byte.to_string().repeat(64))
+}
+
+fn failed_query_receipt(
+    result: Result<serde_json::Value, AspClientOperationError>,
+) -> (String, serde_json::Value) {
+    let error = match result {
+        Err(error) => error,
+        Ok(receipt) => {
+            panic!("failed Query materialization must not publish a ready value: {receipt}")
+        }
+    };
+    match error {
+        AspClientOperationError::Terminal(error) => (
+            error.reason_kind,
+            error
+                .details
+                .expect("typed Query failure must retain the admitted receipt"),
+        ),
+        AspClientOperationError::Message(message) => {
+            panic!("Query materialization failure must be typed: {message}")
+        }
+    }
 }
 
 fn runtime_binding() -> RuntimeExecutionBinding {
@@ -445,7 +467,7 @@ fn query_playbook_uses_the_exact_read_generation_after_parser_materialization() 
 #[test]
 fn query_playbook_rejects_a_selector_read_from_another_content_generation() {
     let binding = runtime_binding();
-    let receipt = materialize_query_playbook_receipt(
+    let (reason_kind, receipt) = failed_query_receipt(materialize_query_playbook_receipt(
         "request-query-playbook-drift",
         &params(),
         &binding,
@@ -471,8 +493,8 @@ fn query_playbook_rejects_a_selector_read_from_another_content_generation() {
                 bytes: b"content-bound".to_vec(),
             })
         },
-    )
-    .unwrap_or_else(|_| panic!("typed generation-drift terminal"));
+    ));
+    assert_eq!(reason_kind, "query-playbook-content-identity-mismatch");
     assert_eq!(receipt["terminal"]["state"], "failed");
     assert_eq!(
         receipt["terminal"]["reasonKind"],
@@ -484,7 +506,7 @@ fn query_playbook_rejects_a_selector_read_from_another_content_generation() {
 #[test]
 fn query_playbook_selector_failure_exposes_no_partial_materialization() {
     let binding = runtime_binding();
-    let receipt = materialize_query_playbook_receipt(
+    let (reason_kind, receipt) = failed_query_receipt(materialize_query_playbook_receipt(
         "request-query-playbook-failed",
         &params(),
         &binding,
@@ -513,8 +535,8 @@ fn query_playbook_selector_failure_exposes_no_partial_materialization() {
                 })
             }
         },
-    )
-    .unwrap_or_else(|_| panic!("typed failed materialization terminal"));
+    ));
+    assert_eq!(reason_kind, "query-playbook-selector-not-materialized");
     assert_eq!(receipt["terminal"]["state"], "failed");
     assert_eq!(receipt["terminal"]["terminalCount"], 1);
     assert_eq!(
@@ -527,7 +549,7 @@ fn query_playbook_selector_failure_exposes_no_partial_materialization() {
 #[test]
 fn query_playbook_selector_read_error_emits_one_failed_terminal_without_partial_materialization() {
     let binding = runtime_binding();
-    let receipt = materialize_query_playbook_receipt(
+    let (reason_kind, receipt) = failed_query_receipt(materialize_query_playbook_receipt(
         "request-query-playbook-read-failed",
         &params(),
         &binding,
@@ -553,8 +575,8 @@ fn query_playbook_selector_read_error_emits_one_failed_terminal_without_partial_
                 Err("resident selector reader failed".to_owned())
             }
         },
-    )
-    .unwrap_or_else(|_| panic!("typed failed materialization terminal"));
+    ));
+    assert_eq!(reason_kind, "query-playbook-selector-read-failed");
     assert_eq!(receipt["terminal"]["state"], "failed");
     assert_eq!(receipt["terminal"]["terminalCount"], 1);
     assert_eq!(

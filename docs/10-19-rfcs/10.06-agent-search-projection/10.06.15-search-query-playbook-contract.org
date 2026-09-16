@@ -840,6 +840,12 @@ Missing or ambiguous providers, noncanonical or stale selectors, invalid
 projections, incomplete required witnesses, duplicate aliases, and incompatible
 bindings fail closed. Selector failure never downgrades to a line range.
 
+The all-or-nothing failed receipt is evidence carried by the typed dispatch
+error; it is not a successful response payload.  Runtime publishes the
+materialization key as =Failed=, and the outer ClientFrame outcome is non-ready.
+An outer =ready= response with =terminal.state=failed= is invalid even when the
+receipt itself satisfies the V1 JSON Schema.
+
 The exact-content execution frame admits only =playbook=, =query=, and =exact=
 operations. =playbook= carries the admitted Search Layout request, while =query=
 and =exact= require a nonempty canonical selector. Its content binding is the

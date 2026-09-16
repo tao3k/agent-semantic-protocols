@@ -222,5 +222,15 @@ pub(super) fn materialize_query_playbook_receipt(
             ),
         );
     }
-    Ok(receipt.as_json().clone())
+    let receipt = receipt.as_json().clone();
+    if let Some(reason_kind) = failure_reason {
+        return Err(AspClientOperationError::Terminal(
+            agent_semantic_client_server::AspClientDispatchError {
+                reason_kind: reason_kind.to_owned(),
+                message: "Query Playbook could not materialize every exact selector".to_owned(),
+                details: Some(receipt),
+            },
+        ));
+    }
+    Ok(receipt)
 }
