@@ -153,12 +153,13 @@ impl WorkspaceGenerationAdmission {
         Ok(WorkspaceGenerationReadinessRequestState::Accepted)
     }
 
-    /// Submit one ordered set of language-scoped generation demands and emit
-    /// the terminal only after every selected provider has been admitted.
+    /// Submit a provider-scoped generation demand and emit its terminal.
     ///
-    /// Each provider publication remains a CompleteGeneration successor, so
-    /// later targets carry earlier members forward. Providers outside this
-    /// explicit set are never pulled into a language-scoped Search or Query.
+    /// One provider keeps the narrower language-scoped build. Two or more
+    /// providers cross the complete-generation barrier once. Serial provider
+    /// successors are forbidden here: the source builder performs a complete
+    /// workspace inventory for every successor, so that shape multiplies the
+    /// cold critical path by the producer count.
     pub fn request_runtime_generations_ready_for_providers_with_terminal<Terminal, TerminalFuture>(
         &self,
         workspace_identity: String,
@@ -173,6 +174,13 @@ impl WorkspaceGenerationAdmission {
         TerminalFuture: std::future::Future<Output = ()> + Send + 'static,
     {
         if provider_targets.is_empty() {
+            return self.request_runtime_generation_ready_with_terminal(
+                workspace_identity,
+                project_root,
+                terminal,
+            );
+        }
+        if provider_targets.len() > 1 {
             return self.request_runtime_generation_ready_with_terminal(
                 workspace_identity,
                 project_root,
@@ -215,24 +223,20 @@ impl WorkspaceGenerationAdmission {
         let admission = self.clone();
         self.submit_background_mutation(async move {
             let _guard = guard;
-            let mut last_terminal = None;
-            for provider_target in provider_targets {
-                match admission
+            let provider_target = provider_targets
+                .into_iter()
+                .next()
+                .expect("single provider target established above");
+            terminal(
+                admission
                     .ensure_runtime_generation_ready_for_provider(
-                        workspace_identity.clone(),
-                        project_root.clone(),
+                        workspace_identity,
+                        project_root,
                         Some(provider_target),
                     )
-                    .await
-                {
-                    Ok(receipt) => last_terminal = Some(receipt),
-                    Err(error) => {
-                        terminal(Err(error)).await;
-                        return;
-                    }
-                }
-            }
-            terminal(Ok(last_terminal.expect("non-empty provider target set"))).await;
+                    .await,
+            )
+            .await;
         })?;
         Ok(WorkspaceGenerationReadinessRequestState::Accepted)
     }

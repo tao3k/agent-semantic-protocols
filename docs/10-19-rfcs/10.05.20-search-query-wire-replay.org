@@ -193,6 +193,13 @@ error evidence.  Consequently a failed selector read cannot become a resident
 ready cache hit, and callers never need to inspect a successful envelope to
 discover that Query failed.
 
+A cold Query with more than one producer crosses one complete-generation
+barrier.  Runtime MUST NOT serialize one complete-generation successor per
+producer: candidate discovery and FD inventory are workspace-wide fixed work,
+so the serialized form multiplies that work by the producer count.  A
+single-producer Query may retain its language-scoped build.  This batching is
+an internal V1 execution rule and changes no Scheme or receipt field.
+
 The V1 Query Playbook receipt also carries =sourceGenerationDigest= and
 =sourceRootDigest= from the immutable exact segment that supplied every
 materialization.  These are content-identity witnesses, not timing fields.  A

@@ -388,6 +388,68 @@ async fn provider_hint_cannot_downgrade_the_complete_generation_barrier() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn multiple_provider_demands_cross_one_complete_generation_barrier() {
+    let fixture = tempfile::tempdir().expect("multi-provider generation fixture");
+    let project_root = fixture.path().to_path_buf();
+    run_git(&project_root, &["init", "--quiet"]);
+    fs::write(project_root.join("README.md"), "# provider generation\n")
+        .expect("write provider generation owner");
+    run_git(&project_root, &["add", "README.md"]);
+    let workspace_identity =
+        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
+            .expect("derive canonical workspace identity");
+
+    let build_count = Arc::new(AtomicUsize::new(0));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let build_count = Arc::clone(&build_count);
+        move |workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _changed_paths,
+              provider_target,
+              _cancellation| {
+            build_count.fetch_add(1, Ordering::AcqRel);
+            Box::pin(async move {
+                assert!(
+                    provider_target.is_none(),
+                    "multiple producers must share one complete-generation build"
+                );
+                completed_generation(&workspace_identity, candidate)
+            })
+        }
+    }));
+    let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
+    let state = admission
+        .request_runtime_generations_ready_for_providers_with_terminal(
+            workspace_identity.clone(),
+            project_root.clone(),
+            vec![
+                WorkspaceGenerationProviderTarget {
+                    language_id: "rust".to_owned(),
+                    provider_id: Some("asp-rust".to_owned()),
+                },
+                WorkspaceGenerationProviderTarget {
+                    language_id: "org".to_owned(),
+                    provider_id: Some("asp-org".to_owned()),
+                },
+            ],
+            move |terminal| async move {
+                let _ = terminal_sender.send(terminal);
+            },
+        )
+        .expect("submit one multi-provider generation barrier");
+    assert_eq!(state, WorkspaceGenerationReadinessRequestState::Accepted);
+    let terminal = terminal_receiver
+        .await
+        .expect("multi-provider callback remains connected")
+        .expect("multi-provider generation reaches terminal");
+    assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
+    assert_eq!(build_count.load(Ordering::Acquire), 1);
+    admission.shutdown().await.expect("drain admission lane");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn provider_demand_rebuilds_a_ready_generation_for_its_exact_target() {
     let fixture = tempfile::tempdir().expect("provider successor fixture");
     let project_root = fixture.path().to_path_buf();

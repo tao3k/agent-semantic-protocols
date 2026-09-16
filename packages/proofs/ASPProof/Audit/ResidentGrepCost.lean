@@ -49,6 +49,7 @@ open ASPProof.ResidentGrepCost
 #check candidate_projection_work_is_bounded
 #check parser_cache_hit_has_zero_provider_starts
 #check provider_group_batch_never_exceeds_serial_owner_rpc
+#check one_generation_barrier_removes_duplicate_inventory
 #check request_graph_work_is_candidate_bounded
 #check resident_semantic_publication_excludes_workspace_rewrite
 #check delta_only_overlay_work_equals_delta

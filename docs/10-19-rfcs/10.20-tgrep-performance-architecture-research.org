@@ -751,7 +751,7 @@ Reuse requires the cached digest to be computed from the same immutable bytes.
 Durable reuse additionally requires current content, execution and scope
 identity; request-coalescing identity alone is insufficient.
 The generation-owned Project Topology hot slot uses the same rule:
-$ Reuse_("topology") = G_("requested") = G_("cached") and S_("requested") = S_("cached") $.
+$ "Reuse"_("topology") = G_("requested") = G_("cached") and S_("requested") = S_("cached") $.
 Here $S$ is the canonical exact owner set, not one representative path or a
 cardinality.  A different generation or any narrower/wider owner set is a
 mandatory miss.  The Rust cache therefore remains a one-entry bounded
@@ -830,6 +830,13 @@ $ W_("serial owner RPC") = n s + n p $
 $ W_("provider-group batch") = g s + n p, quad g <= n $
 The grouping removes repeated setup; it does not claim that parser payload work
 is constant or that byte-budget frame splitting is free.
+For $k$ producer demands whose generation builder performs fixed workspace
+inventory work $I$ and producer-specific work $P_i$, serial complete-generation
+successors cost $W_("serial generations") = k I + sum_(i=1)^k P_i$.  One
+complete barrier costs $W_("one generation barrier") = I + P_("complete")$.
+The Runtime therefore admits one barrier when $k > 1$; it may retain one
+language-scoped build when $k = 1$.  This removes the proven $(k-1)I$ duplicate
+inventory term without claiming that a complete build is constant work.
 Process-cold recovery targets a small verified manifest; resident lookup keeps
 the 1ms budget.  These equations count logical work, not elapsed time.
 #+end_src
@@ -848,6 +855,7 @@ the 1ms budget.  These equations count logical work, not elapsed time.
 | Durability failure does not revoke resident reads | failed_durability_preserves_resident_read; resident_is_not_restart_restorable | Failed attachment rejects restart restore while the validated in-process generation remains readable |
 | Candidate-scoped parser work is bounded by full projection | candidate_projection_work_is_bounded | Exact verifier selects owners before parser/Relation materialization |
 | Provider-group batching removes repeated setup | provider_group_batch_never_exceeds_serial_owner_rpc | Materializer groups misses by language/provider; one service batch reuses cache lookup, lifecycle and bounded projection frames |
+| Multi-producer admission removes repeated inventory | one_generation_barrier_removes_duplicate_inventory | Two or more producer demands cross one complete-generation barrier; build-count regression proves one builder execution instead of serial successors |
 | Cache hit starts no provider | parser_cache_hit_has_zero_provider_starts | unchanged_owner_reuses_parser_artifact_without_provider_runtime shuts down the provider after publication and proves the generation-rebound hit succeeds without crossing provider lifecycle |
 | Request graph stays candidate-bounded | request_graph_work_is_candidate_bounded | Graph and Project Topology build from the fused owner cut plus a budgeted one-hop Relation neighbourhood |
 | Candidate publication excludes workspace rewrite | resident_semantic_publication_excludes_workspace_rewrite | Writer commits a resident overlay revision; canonical epoch, pointer and filesystem-write counter remain unchanged |

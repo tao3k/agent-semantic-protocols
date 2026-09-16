@@ -788,6 +788,8 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
         .expect("drain failed generation admission lane");
 }
 
+#[path = "runtime_generation_readiness_request.rs"]
+mod runtime_generation_readiness_request;
 #[path = "runtime_server_generation_admission_failure.rs"]
 mod runtime_server_generation_admission_failure;
 #[path = "runtime_server_generation_admission_mutation.rs"]

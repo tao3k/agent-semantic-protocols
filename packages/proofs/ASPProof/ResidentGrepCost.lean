@@ -483,6 +483,24 @@ theorem provider_group_batch_never_exceeds_serial_owner_rpc
     (Nat.mul_le_mul_right setupPerRpc groupsBounded)
     (owners * payloadPerOwner)
 
+/-- A complete-generation producer batch pays the workspace inventory term
+once.  The former serial-successor shape is exactly that work plus one
+duplicate inventory term for every producer after the first. -/
+def oneGenerationBarrierWork (inventoryWork producerWork : Nat) : Nat :=
+  inventoryWork + producerWork
+
+def serialGenerationSuccessorWork
+    (producerCount inventoryWork producerWork : Nat) : Nat :=
+  oneGenerationBarrierWork inventoryWork producerWork +
+    (producerCount - 1) * inventoryWork
+
+theorem one_generation_barrier_removes_duplicate_inventory
+    (producerCount inventoryWork producerWork : Nat) :
+    oneGenerationBarrierWork inventoryWork producerWork ≤
+      serialGenerationSuccessorWork producerCount inventoryWork producerWork := by
+  unfold serialGenerationSuccessorWork
+  exact Nat.le_add_right _ _
+
 /-- Request graph construction is proportional to the bounded materialized
 owner cut, never implicitly to every workspace owner. -/
 def requestGraphWork (owners workPerOwner : Nat) : Nat := owners * workPerOwner
