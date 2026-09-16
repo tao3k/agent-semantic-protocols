@@ -241,6 +241,7 @@ pub fn synthesize_workspace_search_playbook_result(
         );
     }
     clause_receipts.sort_by_key(|receipt| receipt.priority_rank);
+    let owner_supports = index_owner_supports(&clause_receipts);
     let completed_clause_count = clause_receipts
         .iter()
         .filter(|receipt| receipt.complete)
@@ -288,26 +289,21 @@ pub fn synthesize_workspace_search_playbook_result(
                 Some(positions) => *positions.get(candidate.owner.as_str())?,
                 None => usize::MAX,
             };
-            let supporting = clause_receipts
-                .iter()
-                .filter(|receipt| receipt.candidate_owners.contains(&candidate.owner))
-                .collect::<Vec<_>>();
-            let first_priority = supporting
-                .first()
-                .map_or(usize::MAX, |receipt| receipt.priority_rank);
+            let supporting = owner_supports.get(candidate.owner.as_str())?;
+            let first_priority = supporting.first().map_or(usize::MAX, |(receipt_index, _)| {
+                clause_receipts[*receipt_index].priority_rank
+            });
             let acquisition_rank = supporting
                 .iter()
-                .filter_map(|receipt| {
-                    receipt
-                        .candidate_owners
-                        .iter()
-                        .position(|owner| owner == &candidate.owner)
-                })
+                .map(|(_, owner_rank)| *owner_rank)
                 .min()
                 .unwrap_or(usize::MAX);
             let supporting_labels = supporting
                 .iter()
-                .map(|receipt| format!("{}:{}", receipt.axis.label(), receipt.block_index))
+                .map(|(receipt_index, _)| {
+                    let receipt = &clause_receipts[*receipt_index];
+                    format!("{}:{}", receipt.axis.label(), receipt.block_index)
+                })
                 .collect::<Vec<_>>();
             let mut matched_by = supporting_labels;
             if let Some(graph) = &graph_fan_in {
@@ -369,6 +365,21 @@ pub fn synthesize_workspace_search_playbook_result(
         (_, false, _) => WorkspaceSearchPlaybookResultKind::DisambiguationRequired,
     };
     build_workspace_search_playbook_result(result, evidence, evidence_item_limit, witness)
+}
+
+fn index_owner_supports(
+    clause_receipts: &[WorkspaceSearchClauseReceipt],
+) -> BTreeMap<&str, Vec<(usize, usize)>> {
+    let mut support = BTreeMap::<&str, Vec<(usize, usize)>>::new();
+    for (receipt_index, receipt) in clause_receipts.iter().enumerate() {
+        for (owner_rank, owner) in receipt.candidate_owners.iter().enumerate() {
+            support
+                .entry(owner.as_str())
+                .or_default()
+                .push((receipt_index, owner_rank));
+        }
+    }
+    support
 }
 
 fn is_exact_selector(selector: &str) -> bool {

@@ -824,6 +824,21 @@ which admitted future can make progress; they MUST NOT silently choose how much
 semantic evidence exists. Conversely, a result budget MUST NOT act as a leaf
 semaphore or prescribe a task count.
 
+Search fan-in MUST build one request-local owner-support index after clause
+receipts have been deduplicated and ordered by Agent-authored priority.  Each
+index value records the supporting clause position and the owner's rank inside
+that clause.  Candidate projection then performs one indexed owner lookup; it
+MUST NOT rescan every clause and every clause owner for every selector.
+
+An exact syntax candidate absent from this support index is ungrounded.  It is
+discarded before ranking and before the public evidence limit, even when a Graph
+result happens to name the same owner.  Graph is filtering and ranking fan-in,
+not an independent acquisition vote.  Therefore an unrelated provider
+candidate cannot consume Top-30 evidence capacity, change the result state, or
+acquire =graph:*= provenance.  Selector deduplication and support admission both
+precede ranking; the public evidence limit is applied only to this admitted,
+unique selector sequence.
+
 Runtime derives one typed =runtime-search-execution-budget.v1= receipt from the
 exact immutable generation before layout execution begins. The receipt binds
 the Runtime generation digest and the admitted owner, corpus-byte, corpus-line,

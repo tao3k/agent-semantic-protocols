@@ -74,6 +74,9 @@ pub const RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID: &str = "runtime-resident-
 pub const QUERY_CALLABLE_SKELETON_COMPACT_PRESENTATION_SCENARIO_ID: &str =
     "query-callable-skeleton-compact-presentation";
 
+/// Search fan-in uses one owner-support index and rejects graph-only owner promotion.
+pub const SEARCH_RESULT_OWNER_SUPPORT_INDEX_SCENARIO_ID: &str = "search-result-owner-support-index";
+
 /// Builds the ASP-owned search scenario package consumed by Rust harness policy.
 #[must_use]
 pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
@@ -579,6 +582,54 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "--test",
                             "query_playbook",
                             "projection_presentation::query_human_presentation_rejects_mixed_projection_receipt",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: SEARCH_RESULT_OWNER_SUPPORT_INDEX_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Search fan-in builds one request-local owner support index, preserves Agent-authored support order, and removes syntax owners lacking acquisition support before ranking and Top-30 projection.",
+                fixture_root: "crates/agent-semantic-search/tests/unit/scenarios/search_result_owner_support_index",
+                tags: ["search", "fan-in", "owner-index", "result-quality", "complexity"],
+                commands: [
+                    {
+                        label: "unrelated-owner-rejection",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-search",
+                            "workspace_playbook_result_tests::fan_in_rejects_unrelated_syntax_owner_before_ranking_and_limit",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "graph-cannot-promote-unbacked-owner",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-search",
+                            "workspace_playbook_result_tests::graph_cannot_promote_an_owner_without_acquisition_support",
+                            "--",
+                            "--exact",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "indexed-work-metrics",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-search",
+                            "workspace_playbook_result_tests::fan_in_owner_support_index_scenario_records_work_reduction",
                             "--",
                             "--exact",
                             "--nocapture",

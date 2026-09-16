@@ -299,6 +299,115 @@ fn acquisition_candidates_without_exact_syntax_mapping_require_refinement() {
 }
 
 #[test]
+fn fan_in_rejects_unrelated_syntax_owner_before_ranking_and_limit() {
+    let result = synthesize_workspace_search_playbook_result(
+        vec![receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &["src/a.rs"])],
+        vec![
+            syntax_candidate("src/unrelated.rs", "unrelated"),
+            syntax_candidate("src/a.rs", "a"),
+        ],
+        None,
+        EVIDENCE_ITEM_LIMIT,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.result,
+        WorkspaceSearchPlaybookResultKind::ExactSelectorReady
+    );
+    assert_eq!(result.evidence.len(), 1);
+    assert_eq!(result.evidence[0].owner, "src/a.rs");
+    assert_eq!(result.evidence[0].matched_by, ["rg:0"]);
+}
+
+#[test]
+fn graph_cannot_promote_an_owner_without_acquisition_support() {
+    let result = synthesize_workspace_search_playbook_result(
+        vec![receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &["src/a.rs"])],
+        vec![
+            syntax_candidate("src/unrelated.rs", "unrelated"),
+            syntax_candidate("src/a.rs", "a"),
+        ],
+        Some(WorkspaceSearchGraphFanIn {
+            ranked_candidate_owners: vec!["src/unrelated.rs".to_owned(), "src/a.rs".to_owned()],
+            applied_clause_count: 1,
+            complete: true,
+            truncated: false,
+        }),
+        EVIDENCE_ITEM_LIMIT,
+    )
+    .unwrap();
+
+    assert_eq!(result.evidence.len(), 1);
+    assert_eq!(result.evidence[0].owner, "src/a.rs");
+    assert_eq!(result.evidence[0].matched_by, ["rg:0", "graph:0"]);
+}
+
+#[test]
+fn fan_in_owner_support_index_scenario_records_work_reduction() {
+    let supported_owners = (0..128)
+        .map(|index| format!("src/supported_{index}.rs"))
+        .collect::<Vec<_>>();
+    let clause_receipts = (0..8)
+        .map(|block_index| WorkspaceSearchClauseReceipt {
+            axis: WorkspaceSearchAxisKind::Rg,
+            block_index,
+            priority_rank: block_index,
+            input_owner_count: supported_owners.len(),
+            output_owner_count: supported_owners.len(),
+            candidate_owners: supported_owners.clone(),
+            marginal_owner_reduction: None,
+            elapsed_micros: 1,
+            complete: true,
+            coverage_complete: true,
+            truncated: false,
+        })
+        .collect::<Vec<_>>();
+    let mut candidates = supported_owners
+        .iter()
+        .enumerate()
+        .map(|(index, owner)| syntax_candidate(owner, &format!("supported_{index}")))
+        .collect::<Vec<_>>();
+    candidates.extend((0..128).map(|index| {
+        syntax_candidate(
+            &format!("src/unrelated_{index}.rs"),
+            &format!("unrelated_{index}"),
+        )
+    }));
+    let owner_occurrence_count = 8 * supported_owners.len();
+    let candidate_count = candidates.len();
+
+    let result = synthesize_workspace_search_playbook_result(
+        clause_receipts,
+        candidates,
+        None,
+        EVIDENCE_ITEM_LIMIT,
+    )
+    .unwrap();
+
+    let legacy_membership_checks = candidate_count * owner_occurrence_count;
+    let indexed_owner_visits_and_lookups = owner_occurrence_count + candidate_count;
+    eprintln!(
+        "[scenario-metric] ownerOccurrences={owner_occurrence_count} candidates={candidate_count} legacyMembershipChecks={legacy_membership_checks} indexedOwnerVisitsAndLookups={indexed_owner_visits_and_lookups} evidence={}",
+        result.evidence.len()
+    );
+    assert!(indexed_owner_visits_and_lookups < legacy_membership_checks);
+    assert_eq!(result.evidence.len(), EVIDENCE_ITEM_LIMIT);
+    assert!(
+        result
+            .evidence
+            .iter()
+            .all(|item| item.owner.starts_with("src/supported_"))
+    );
+    assert!(
+        result
+            .evidence
+            .iter()
+            .all(|item| item.matched_by.len() == 8)
+    );
+}
+
+#[test]
 fn complete_empty_acquisition_may_prove_no_match() {
     let result = synthesize_workspace_search_playbook_result(
         vec![receipt(WorkspaceSearchAxisKind::Rg, 0, 0, &[])],
