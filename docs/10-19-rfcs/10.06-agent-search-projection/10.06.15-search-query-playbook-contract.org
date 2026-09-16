@@ -415,6 +415,14 @@ rg match. Structural stages consume and narrow their predecessor frontier.
 Graph, when configured and requested, consumes only the final structurally
 grounded facts.
 
+The rg result limit applies only after exact regex verification. Trigram
+postings are a sound candidate accelerator, not an alternate result set, so
+Runtime MUST NOT reuse the result limit as a candidate-owner limit. Candidate
+enumeration is bounded by the admitted immutable generation cardinality and
+its work-byte authority; exact verification then applies the requested result
+limit. A trigram false positive ordered before a real match therefore cannot
+hide that match.
+
 A shared enhanced Tree-sitter Query string and an exact native selector are two
 query forms for this structural stage: the first describes captured structural
 patterns plus typed resident-fact predicates, while the second is an

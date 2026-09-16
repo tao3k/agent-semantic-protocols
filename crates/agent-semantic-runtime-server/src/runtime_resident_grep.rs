@@ -93,8 +93,12 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         let mut resident_owner_read_count = 0_usize;
         let mut resident_regex_scan_count = 0_usize;
         let mut truncated = false;
+        // The public result limit belongs after exact regex verification.
+        // Candidate postings may contain false positives, so truncating them
+        // at the result limit could hide a later real match. The immutable
+        // generation cardinality is the complete, already-admitted bound.
         let (candidate_owner_paths, candidate_receipt) =
-            candidate_owner_paths(&matcher.candidate_plan, limit as usize)?;
+            candidate_owner_paths(&matcher.candidate_plan, corpus.owner_spans.len())?;
         let candidate_owners = candidate_owner_paths
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>();

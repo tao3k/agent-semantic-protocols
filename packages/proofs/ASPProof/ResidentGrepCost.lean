@@ -194,6 +194,13 @@ theorem limit_before_intersection_loses_hit :
     (([0, 1] : List Nat).filter (fun owner => owner == 1)).take 1 = [1] := by
   decide
 
+/-- A candidate accelerator may return false positives. Applying the public
+result limit before exact verification can therefore erase a real match. -/
+theorem candidate_limit_before_exact_verification_loses_hit :
+    ([false, true].take 1).filter id = [] ∧
+    ([false, true].filter id).take 1 = [true] := by
+  decide
+
 def packedGramBytes : Nat := 4
 def directoryEntryBytes : Nat := 32
 

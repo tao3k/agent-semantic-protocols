@@ -24,6 +24,7 @@ open ASPProof.ResidentGrepCost
 #check prefix_decode_bounded_by_full_decode
 #check fixed_cost_blocks_target_factor
 #check limit_before_intersection_loses_hit
+#check candidate_limit_before_exact_verification_loses_hit
 #check v1_directory_field_accounting
 #check mapped_generation_has_zero_workspace_heap_retention
 #check flat_posting_arena_never_exceeds_fragmented

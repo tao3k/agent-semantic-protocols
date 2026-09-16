@@ -182,6 +182,44 @@ fn zero_width_eof_is_not_projected_as_a_phantom_line() {
     );
 }
 
+#[test]
+fn result_limit_is_applied_after_complete_candidate_verification() {
+    let false_positive = b"bar appears before foo\n";
+    let exact_match = b"foo appears before bar\n";
+    let corpus = agent_semantic_search::build_resident_grep_corpus(
+        &digest(b"generation"),
+        [
+            agent_semantic_search::ResidentGrepCorpusOwner {
+                owner_path: "a-false-positive.rs",
+                content_digest: &digest(false_positive),
+                bytes: false_positive,
+            },
+            agent_semantic_search::ResidentGrepCorpusOwner {
+                owner_path: "b-exact-match.rs",
+                content_digest: &digest(exact_match),
+                bytes: exact_match,
+            },
+        ],
+    )
+    .unwrap();
+    let result = execute_runtime_resident_grep_blocks(
+        &corpus,
+        &[vec!["-n".into(), "foo.*bar".into(), ".".into()]],
+        1,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.branch_matches[0]
+            .iter()
+            .map(|hit| (hit.owner_path.as_str(), hit.owner_line))
+            .collect::<Vec<_>>(),
+        [("b-exact-match.rs", 1)]
+    );
+    assert_eq!(result.block_receipts[0].candidate_owner_count, 2);
+    assert!(!result.truncated);
+}
+
 /// Reference processes exist only in this explicitly selected qualification test.
 #[test]
 #[ignore = "requires an installed rg reference binary"]
