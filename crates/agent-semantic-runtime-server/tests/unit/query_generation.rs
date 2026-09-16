@@ -351,6 +351,9 @@ fn test_generation(digest: &str) -> std::sync::Arc<super::RuntimeQueryGeneration
         query_materializations: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        materialization_tasks: std::sync::Arc::new(std::sync::Mutex::new(
+            tokio::task::JoinSet::new(),
+        )),
     })
 }
 
@@ -640,6 +643,9 @@ fn query_materialization_claims_once_and_preserves_a_generation_local_terminal()
             .is_err()
     );
 }
+
+#[path = "runtime_query_materialization_tasks.rs"]
+mod runtime_query_materialization_tasks;
 
 #[test]
 fn search_playbook_readiness_rejects_generation_without_topology_attachment() {

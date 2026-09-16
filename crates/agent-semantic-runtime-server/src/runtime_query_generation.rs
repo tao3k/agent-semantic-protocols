@@ -49,6 +49,7 @@ pub struct RuntimeQueryGeneration {
     pub(super) query_materializations: Arc<Mutex<
         std::collections::HashMap<String, RuntimeQueryMaterializationState>,
     >>,
+    pub(super) materialization_tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
 }
 
 #[derive(Clone)]
@@ -106,6 +107,7 @@ impl RuntimeQueryGeneration {
         if previous.generation_digest == self.generation_digest {
             self.search_materializations = Arc::clone(&previous.search_materializations);
             self.query_materializations = Arc::clone(&previous.query_materializations);
+            self.materialization_tasks = Arc::clone(&previous.materialization_tasks);
         }
     }
 
@@ -152,6 +154,7 @@ impl RuntimeQueryGeneration {
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
             query_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            materialization_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
         })
     }
 
@@ -198,7 +201,29 @@ impl RuntimeQueryGeneration {
             build_resource_receipt: std::sync::OnceLock::new(),
             search_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
             query_materializations: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            materialization_tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
         })
+    }
+
+    pub(crate) fn spawn_materialization<F>(
+        &self,
+        name: &'static str,
+        future: F,
+    ) -> Result<(), String>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let permit = self.task_scope.permit(name)?;
+        let mut tasks = self
+            .materialization_tasks
+            .lock()
+            .map_err(|_| "Query materialization task registry is poisoned".to_owned())?;
+        while tasks.try_join_next().is_some() {}
+        tasks.spawn(async move {
+            future.await;
+            permit.complete();
+        });
+        Ok(())
     }
 
     pub(crate) fn search_materialization(

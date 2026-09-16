@@ -16,7 +16,8 @@ use super::query_generation_support::{
     RequestDispatchBudget, request_and_await_runtime_query_generation_ready,
 };
 use super::search_materialization::{
-    search_materialization_dispatch_error, settled_search_materialization,
+    SearchMaterializationPublicationGuard, search_materialization_dispatch_error,
+    settled_search_materialization,
 };
 use crate::RuntimeQueryGenerationState;
 use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
@@ -33,6 +34,10 @@ use super::{
     query_generation_not_ready_error, record_runtime_route_performance,
     request_runtime_query_generation_ready,
 };
+
+#[path = "runtime_asp_client_resolved_route_provider_targets.rs"]
+mod provider_targets;
+use provider_targets::{selected_playbook_provider_targets, selected_provider_targets};
 
 pub(super) struct ResolvedRouteContext {
     pub(super) dispatch_budget: RequestDispatchBudget,
@@ -65,105 +70,6 @@ pub(super) struct ResolvedRouteContext {
         >,
     >,
     pub(super) active_telemetry_trace_count: Arc<std::sync::atomic::AtomicUsize>,
-}
-
-fn selected_provider_targets(
-    languages: Option<&str>,
-    active_provider_targets: &[(String, String)],
-) -> Result<
-    Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
-    AspClientOperationError,
-> {
-    let mut seen = std::collections::BTreeSet::new();
-    languages
-        .into_iter()
-        .flat_map(|languages| languages.split('|'))
-        .map(str::trim)
-        .filter(|language_id| !language_id.is_empty())
-        .filter(|language_id| seen.insert((*language_id).to_owned()))
-        .map(|language_id| {
-            let provider_id = active_provider_targets
-                .iter()
-                .find_map(|(installed_language_id, provider_id)| {
-                    (installed_language_id == language_id).then(|| provider_id.clone())
-                })
-                .ok_or_else(|| {
-                    AspClientOperationError::Message(format!(
-                        "installed provider target missing for languageId={language_id}"
-                    ))
-                })?;
-            Ok(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                language_id: language_id.to_owned(),
-                provider_id: Some(provider_id),
-            })
-        })
-        .collect()
-}
-
-fn selected_playbook_provider_targets(
-    language: Option<&str>,
-    documents: Option<&str>,
-    providers: &[agent_semantic_search::WorkspaceSearchProvider],
-) -> Result<
-    Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
-    AspClientOperationError,
-> {
-    let mut requested = language
-        .into_iter()
-        .flat_map(|expression| expression.split('|'))
-        .map(|producer| {
-            (
-                producer.trim(),
-                agent_semantic_search::WorkspaceSearchProducerAxis::Language,
-            )
-        })
-        .chain(
-            documents
-                .into_iter()
-                .flat_map(|expression| expression.split('|'))
-                .map(|producer| {
-                    (
-                        producer.trim(),
-                        agent_semantic_search::WorkspaceSearchProducerAxis::Document,
-                    )
-                }),
-        )
-        .filter(|(producer, _)| !producer.is_empty())
-        .collect::<Vec<_>>();
-    requested.sort_unstable();
-    requested.dedup();
-    let mut admitted = std::collections::BTreeSet::new();
-    let mut targets = Vec::new();
-    for (producer, producer_axis) in requested {
-        let provider = providers
-            .iter()
-            .find(|provider| provider.language_id == producer)
-            .ok_or_else(|| {
-                AspClientOperationError::Message(format!(
-                    "Search Playbook producer is not installed: producer={producer}"
-                ))
-            })?;
-        if !provider.producer_axes.contains(&producer_axis) {
-            return Err(AspClientOperationError::Message(format!(
-                "Playbook producer is declared on the wrong axis: producer={producer} requestedAxis={producer_axis:?} admittedAxes={:?}",
-                provider.producer_axes
-            )));
-        }
-        if admitted.insert((producer.to_owned(), provider.provider_id.clone())) {
-            targets.push(
-                agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                    language_id: producer.to_owned(),
-                    provider_id: match producer_axis {
-                        agent_semantic_search::WorkspaceSearchProducerAxis::Language => {
-                            Some(provider.provider_id.clone())
-                        }
-                        agent_semantic_search::WorkspaceSearchProducerAxis::Document => None,
-                    },
-                },
-            );
-        }
-    }
-    Ok(targets)
 }
 
 use super::query_playbook::dispatch_workspace_query_playbook;
@@ -715,7 +621,13 @@ pub(super) async fn dispatch_resolved_route(
                                     .content_generation_digest()
                                     .to_owned(),
                             };
-                        tokio::spawn(async move {
+                        let task_admission = generation.spawn_materialization(
+                            "search-materialization",
+                            async move {
+                            let publication_guard = SearchMaterializationPublicationGuard::new(
+                                Arc::clone(&materialization_generation),
+                                materialization_key_for_task.clone(),
+                            );
                             let compute_started = std::time::Instant::now();
                             let result = match build_workspace_search_materialization_plan(
                                 params,
@@ -747,11 +659,19 @@ pub(super) async fn dispatch_resolved_route(
                                 compute_started.elapsed().as_micros(),
                                 if result.is_ok() { "ready" } else { "failed" }
                             );
-                            let _ = materialization_generation.publish_search_materialization(
-                                materialization_key_for_task,
-                                result,
+                            let _ = publication_guard.publish(result);
+                            },
+                        );
+                        if let Err(error) = task_admission {
+                            let terminal = search_materialization_dispatch_error(
+                                AspClientOperationError::Message(error),
                             );
-                        });
+                            generation.publish_search_materialization(
+                                materialization_key.clone(),
+                                Err(terminal.clone()),
+                            )?;
+                            return Err(AspClientOperationError::Terminal(terminal));
+                        }
                     }
                     return settled_search_materialization(&generation, &materialization_key).await;
                 }

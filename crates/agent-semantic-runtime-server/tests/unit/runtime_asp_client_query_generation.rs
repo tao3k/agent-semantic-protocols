@@ -40,6 +40,9 @@ fn generation_without_resident_authority(
         query_materializations: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        materialization_tasks: std::sync::Arc::new(std::sync::Mutex::new(
+            tokio::task::JoinSet::new(),
+        )),
     })
 }
 
