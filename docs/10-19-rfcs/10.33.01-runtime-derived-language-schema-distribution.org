@@ -129,4 +129,7 @@ socket transport remains responsible for serializing the selected payload.
 * Formal model
 
 The executable ownership and replica-count model is
-=packages/proofs/ASPProof/ServerDerivedSchemaDistribution.lean=.
+=packages/proofs/ASPProof/ServerDerivedSchemaDistribution.lean=.  The same model
+also proves the six Scenario transitions, corruption rejection, constant
+catalog-projection work independent of schema count, zero document transfer for
+=Unchanged=, and the unavoidable linear wire-document count for =Ready=.
