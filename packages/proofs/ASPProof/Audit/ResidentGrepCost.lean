@@ -35,6 +35,9 @@ open ASPProof.ResidentGrepCost
 #check offloaded_assembly_has_no_reactor_work
 #check changed_source_rejects_recovery
 #check same_lane_does_not_prove_freshness
+#check zero_io_without_continuity_cannot_admit
+#check current_snapshot_admission_observes_workspace
+#check uninterrupted_continuity_admits_zero_io
 #check changed_execution_rejects_recovery
 #check changed_scope_rejects_recovery
 #check publication_retains_terminal_for_late_waiters

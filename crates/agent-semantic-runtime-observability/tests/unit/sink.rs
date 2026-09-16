@@ -8,8 +8,8 @@ use std::sync::{
 };
 
 use crate::{
-    RuntimeObservationSink, RuntimePerformanceObservation, register_runtime_observation_sink,
-    try_record_to_active_runtime,
+    RuntimeFreshnessAuthority, RuntimeObservationSink, RuntimePerformanceObservation,
+    register_runtime_observation_sink, try_record_to_active_runtime,
 };
 
 struct CountingSink(Arc<AtomicU64>);
@@ -47,10 +47,20 @@ fn stale_registration_cannot_revoke_the_current_runtime_sink() {
 
 #[test]
 fn observation_serialization_preserves_v1_identity() {
-    let value = serde_json::to_value(observation()).expect("serialize observation");
+    let mut observation = observation();
+    observation.freshness_authority = Some(RuntimeFreshnessAuthority::CurrentSnapshot);
+    let value = serde_json::to_value(observation).expect("serialize observation");
     assert_eq!(value["schemaVersion"], "1");
     assert_eq!(
         value["schemaId"],
         "agent.semantic-protocols.runtime-server-performance-observation"
+    );
+    assert_eq!(value["freshnessAuthority"], "current-snapshot");
+
+    let mut invalid = value;
+    invalid["freshnessAuthority"] = serde_json::json!("persisted-lane");
+    assert!(
+        serde_json::from_value::<RuntimePerformanceObservation>(invalid).is_err(),
+        "a persisted lane is not a Runtime freshness authority"
     );
 }

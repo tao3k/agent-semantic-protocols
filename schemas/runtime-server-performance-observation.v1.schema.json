@@ -53,6 +53,10 @@
     "incidentTransition": { "type": ["string", "null"], "minLength": 1 },
     "incidentTransitionSequence": { "type": ["integer", "null"], "minimum": 0 },
     "requestedProjection": { "type": ["string", "null"], "minLength": 1 },
+    "freshnessAuthority": {
+      "type": ["string", "null"],
+      "enum": ["current-snapshot", "uninterrupted-continuity", null]
+    },
     "observedAtUnixMicros": { "type": ["integer", "null"], "minimum": 0 },
     "processResidentBytes": { "type": ["integer", "null"], "minimum": 0 },
     "processPeakResidentBytes": { "type": ["integer", "null"], "minimum": 0 },

@@ -560,6 +560,15 @@ impl RuntimeSearchTelemetryTrace {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeFreshnessAuthority {
+    /// The current workspace was observed before durable bytes were admitted.
+    CurrentSnapshot,
+    /// A gap-free owner that outlives Runtime proves unchanged source identity.
+    UninterruptedContinuity,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimePerformanceObservation {
@@ -590,6 +599,7 @@ pub struct RuntimePerformanceObservation {
     pub incident_transition: Option<String>,
     pub incident_transition_sequence: Option<u64>,
     pub requested_projection: Option<String>,
+    pub freshness_authority: Option<RuntimeFreshnessAuthority>,
     pub observed_at_unix_micros: Option<u64>,
     pub process_resident_bytes: Option<u64>,
     pub process_peak_resident_bytes: Option<u64>,
@@ -714,6 +724,7 @@ impl RuntimePerformanceObservation {
             incident_transition: None,
             incident_transition_sequence: None,
             requested_projection: None,
+            freshness_authority: None,
             observed_at_unix_micros: None,
             process_resident_bytes: None,
             process_peak_resident_bytes: None,

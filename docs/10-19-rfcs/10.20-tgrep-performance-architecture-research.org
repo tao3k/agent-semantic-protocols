@@ -923,6 +923,61 @@ projection merely because the process restarted. The new path still performs
 snapshot I/O and durable validation. Zero-I/O verified reopen and changed-owner
 parser reuse remain separate requirements.
 
+** Zero-I/O recovery requires an external continuity authority
+
+Process-cold zero-I/O recovery is not derivable from the durable generation,
+the admission binding, a request-lane digest, or equality with the previously
+observed candidate.  All four values can remain unchanged while source bytes
+change after the prior Runtime process exits.  V1 therefore admits exactly two
+freshness authorities:
+
+1. =current-snapshot=: observe the current workspace and compare its source,
+   execution and scope identity with the durable binding; this performs
+   filesystem work;
+2. =uninterrupted-continuity=: an external owner survives the Runtime restart,
+   proves that its observation interval has no gap, and binds the unchanged
+   source identity; this may admit zero filesystem reads in the new Runtime.
+
+=persisted-lane= is never freshness authority. Until the Host or another
+long-lived owner publishes =uninterrupted-continuity= with a gap-free interval,
+the Rust recovery path MUST retain current-workspace discovery. A timing target
+cannot weaken this premise.
+
+The V1 Runtime performance observation reports the admitted proof as
+=freshnessAuthority=. Rust MUST emit =current-snapshot= for the existing
+process-cold restore path and MUST reject =persisted-lane= as an observation
+value. =uninterrupted-continuity= is reserved for a future external owner that
+actually supplies the gap-free interval; declaring it without that owner is a
+contract violation.
+
+#+begin_src lean
+inductive RecoveryFreshnessAuthority
+  | currentSnapshot
+  | uninterruptedContinuity
+  | persistedLane
+
+def admitsRecoveryFreshness
+    (authority : RecoveryFreshnessAuthority)
+    (sourceEqual : Bool)
+    (filesystemReads : Nat) : Prop :=
+  sourceEqual = true ∧
+    match authority with
+    | .currentSnapshot => 0 < filesystemReads
+    | .uninterruptedContinuity => filesystemReads = 0
+    | .persistedLane => False
+
+theorem zero_io_without_continuity_cannot_admit
+    (sourceEqual : Bool) :
+    ¬ admitsRecoveryFreshness .persistedLane sourceEqual 0 := by
+  simp [admitsRecoveryFreshness]
+#+end_src
+
+#+begin_src typst
+$ A_(reopen) = S_(current) union C_(uninterrupted) $
+$ L_(persisted) notin A_(reopen) $
+$ "zero-IO" => C_(uninterrupted) $
+#+end_src
+
 Canonical import must hash each immutable owner once, then compare every
 selector's source digest with that computed owner digest.  Rehashing the whole
 owner for each selector costs =sum(ownerBytes * selectorCount)= instead of

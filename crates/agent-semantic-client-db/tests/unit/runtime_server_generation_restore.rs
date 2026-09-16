@@ -89,7 +89,7 @@ fn candidate_build(
         ),
         file_hashes: vec![agent_semantic_client_core::ClientCacheFileHash {
             path: "src/lib.rs".to_owned(),
-            sha256: blake3::hash(bytes).to_hex().to_string(),
+            sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes)),
             byte_len: bytes.len() as u64,
             mtime_ms: 1,
         }],

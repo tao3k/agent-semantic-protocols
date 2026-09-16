@@ -436,6 +436,9 @@ impl RuntimeServer {
                         )
                         .with_operation_id(operation_id.clone());
                         restore_observation.workspace_identity = Some(workspace_identity.clone());
+                        restore_observation.freshness_authority = Some(
+                            agent_semantic_runtime_observability::RuntimeFreshnessAuthority::CurrentSnapshot,
+                        );
                         if pointer_restore.is_err() {
                             restore_observation.failure_reason =
                                 Some("workspace-generation-pointer-restore-failed".to_owned());

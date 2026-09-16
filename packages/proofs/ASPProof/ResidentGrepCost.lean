@@ -303,6 +303,40 @@ theorem same_lane_does_not_prove_freshness :
   · unfold mayReuseRecovery
     decide
 
+/-- A process-cold reopen may establish freshness from a current snapshot or
+from a gap-free continuity authority that outlives the Runtime process.  A
+persisted request lane is only a coalescing identity. -/
+inductive RecoveryFreshnessAuthority where
+  | currentSnapshot
+  | uninterruptedContinuity
+  | persistedLane
+  deriving DecidableEq, Repr
+
+def admitsRecoveryFreshness
+    (authority : RecoveryFreshnessAuthority)
+    (sourceEqual : Bool)
+    (filesystemReads : Nat) : Prop :=
+  sourceEqual = true ∧
+    match authority with
+    | .currentSnapshot => 0 < filesystemReads
+    | .uninterruptedContinuity => filesystemReads = 0
+    | .persistedLane => False
+
+theorem zero_io_without_continuity_cannot_admit
+    (sourceEqual : Bool) :
+    ¬ admitsRecoveryFreshness .persistedLane sourceEqual 0 := by
+  simp [admitsRecoveryFreshness]
+
+theorem current_snapshot_admission_observes_workspace
+    (filesystemReads : Nat)
+    (observed : 0 < filesystemReads) :
+    admitsRecoveryFreshness .currentSnapshot true filesystemReads := by
+  exact ⟨rfl, observed⟩
+
+theorem uninterrupted_continuity_admits_zero_io :
+    admitsRecoveryFreshness .uninterruptedContinuity true 0 := by
+  simp [admitsRecoveryFreshness]
+
 theorem changed_execution_rejects_recovery (stored current : RecoveryIdentity)
     (changed : stored.execution ≠ current.execution) : ¬ mayReuseRecovery stored current := by
   intro same

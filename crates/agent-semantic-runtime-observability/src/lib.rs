@@ -13,10 +13,11 @@ pub use sink::{
     register_runtime_observation_sink, try_record_to_active_runtime,
 };
 pub use telemetry::{
-    RUNTIME_SEARCH_TELEMETRY_PHASES, RUNTIME_SEARCH_TELEMETRY_SCHEMA_REF, RuntimeLifecycleEvent,
-    RuntimePerformanceObservation, RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryCollector,
-    RuntimeSearchTelemetryError, RuntimeSearchTelemetryIdentity,
-    RuntimeSearchTelemetryIdentityInput, RuntimeSearchTelemetryTrace,
+    RUNTIME_SEARCH_TELEMETRY_PHASES, RUNTIME_SEARCH_TELEMETRY_SCHEMA_REF,
+    RuntimeFreshnessAuthority, RuntimeLifecycleEvent, RuntimePerformanceObservation,
+    RuntimeSearchTelemetryArtifact, RuntimeSearchTelemetryCollector, RuntimeSearchTelemetryError,
+    RuntimeSearchTelemetryIdentity, RuntimeSearchTelemetryIdentityInput,
+    RuntimeSearchTelemetryTrace,
 };
 
 #[cfg(test)]
