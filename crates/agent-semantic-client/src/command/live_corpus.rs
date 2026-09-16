@@ -375,22 +375,26 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     emit_live_corpus_timing("provider-registration", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
-    let isolated = tokio::task::spawn_blocking({
-        let state_home = state_home.clone();
-        let source = source.clone();
-        let resource_id = corpus.resource_id.clone();
-        let revision = corpus.git.revision.clone();
-        let remote = corpus.git.remote.clone();
-        move || {
-            qualification::IsolatedBenchmarkWorkspace::materialize(
-                &state_home,
-                &source,
-                &resource_id,
-                &revision,
-                &remote,
-            )
-        }
-    })
+    let isolated = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+        "live-corpus-workspace-materialization",
+        {
+            let state_home = state_home.clone();
+            let source = source.clone();
+            let resource_id = corpus.resource_id.clone();
+            let revision = corpus.git.revision.clone();
+            let remote = corpus.git.remote.clone();
+            move || {
+                qualification::IsolatedBenchmarkWorkspace::materialize(
+                    &state_home,
+                    &source,
+                    &resource_id,
+                    &revision,
+                    &remote,
+                )
+            }
+        },
+    )
+    .join()
     .await
     .map_err(|error| format!("materialize isolated Live Corpus workspace task: {error}"))??;
     let benchmark_workspace = isolated.path.clone();
@@ -424,7 +428,12 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         materialized_source_identity(checkout, query.root_digest)
     }
     .await;
-    let cleanup_result = tokio::task::spawn_blocking(move || isolated.cleanup())
+    let cleanup_result =
+        agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+            "live-corpus-workspace-cleanup",
+            move || isolated.cleanup(),
+        )
+        .join()
         .await
         .map_err(|error| format!("cleanup isolated Live Corpus workspace task: {error}"))?;
     let materialized_source = match (runtime_result, cleanup_result) {

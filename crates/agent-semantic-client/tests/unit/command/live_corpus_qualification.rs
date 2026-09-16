@@ -6,6 +6,7 @@ use std::path::Path;
 
 use super::IsolatedBenchmarkWorkspace;
 use super::artifact_current_pointer;
+use super::expected_coverage_certificate_count;
 use super::parse_args;
 use super::qualification_receipt_path;
 use super::select_qualification_cases;
@@ -120,6 +121,78 @@ fn every_live_corpus_case_admits_its_complex_scheme_intent() {
     let (_, admitted) =
         validate_topology_scenarios(&plan.cases, suite).expect("all complex Scheme intents admit");
     assert_eq!(admitted.len(), 17);
+}
+
+#[test]
+fn topology_intersection_requires_an_explicit_complete_set_witness() {
+    let plan: QualificationPlan = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
+    ))
+    .expect("baseline Scheme suite");
+    let mut suite: AgentOrgTopologyScenarioSuite = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
+    ))
+    .expect("topology Scheme suite");
+    let scenario = suite
+        .cases
+        .iter_mut()
+        .find(|scenario| scenario.route_class == "explicit-conjunction")
+        .expect("witnessed conjunction scenario");
+    scenario.complete_set_witness = None;
+
+    let error = validate_topology_scenarios(&plan.cases, suite)
+        .expect_err("an unwitnessed intersection must fail closed");
+    assert!(error.contains("completeness witness"), "error={error}");
+}
+
+#[test]
+fn topology_route_class_must_match_the_scheme_ast() {
+    let plan: QualificationPlan = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-scheme-scenarios.v1.toml"
+    ))
+    .expect("baseline Scheme suite");
+    let mut suite: AgentOrgTopologyScenarioSuite = toml::from_str(include_str!(
+        "../../../../../benchmarks/live-corpus-agent-org-topology-scenarios.v1.toml"
+    ))
+    .expect("topology Scheme suite");
+    let scenario = suite
+        .cases
+        .iter_mut()
+        .find(|scenario| scenario.route_class == "ranked-text")
+        .expect("ranked-text scenario");
+    scenario.composed_search = format!(
+        "(search (producers (language {})) (rg \"-n\" \"owner\"))",
+        plan.cases
+            .iter()
+            .find(|case| case.case_id == scenario.case_id)
+            .expect("matching baseline case")
+            .language_id
+    );
+
+    let error =
+        validate_topology_scenarios(&plan.cases, suite).expect_err("route drift must fail closed");
+    assert!(error.contains("predicate-directed route"), "error={error}");
+}
+
+#[test]
+fn topology_route_class_owns_the_runtime_coverage_certificate_cardinality() {
+    assert_eq!(
+        expected_coverage_certificate_count("regex-truth").expect("regex route"),
+        1
+    );
+    assert_eq!(
+        expected_coverage_certificate_count("ranked-text").expect("ranked route"),
+        1
+    );
+    assert_eq!(
+        expected_coverage_certificate_count("structural-syntax").expect("syntax route"),
+        1
+    );
+    assert_eq!(
+        expected_coverage_certificate_count("explicit-conjunction").expect("conjunction route"),
+        2
+    );
+    assert!(expected_coverage_certificate_count("automatic-engine-pair").is_err());
 }
 
 fn error_frame(

@@ -132,12 +132,12 @@ pub(super) async fn await_runtime_query_generation(
     states: &tokio::sync::watch::Receiver<
         std::sync::Arc<
             std::collections::HashMap<
-                crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+                crate::RuntimeProjectWorkspaceKey,
                 crate::RuntimeQueryGenerationState,
             >,
         >,
     >,
-    key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+    key: &crate::RuntimeProjectWorkspaceKey,
 ) -> Result<std::sync::Arc<crate::runtime_query_generation::RuntimeQueryGeneration>, String> {
     await_runtime_query_generation_for_provider_targets(states, key, &[]).await
 }
@@ -146,12 +146,12 @@ pub(super) async fn await_runtime_query_generation_for_provider_targets(
     states: &tokio::sync::watch::Receiver<
         std::sync::Arc<
             std::collections::HashMap<
-                crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+                crate::RuntimeProjectWorkspaceKey,
                 crate::RuntimeQueryGenerationState,
             >,
         >,
     >,
-    key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+    key: &crate::RuntimeProjectWorkspaceKey,
     provider_targets: &[agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget],
 ) -> Result<std::sync::Arc<crate::runtime_query_generation::RuntimeQueryGeneration>, String> {
     let mut states = states.clone();
@@ -379,12 +379,12 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
     generations: &tokio::sync::watch::Receiver<
         std::sync::Arc<
             std::collections::HashMap<
-                crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+                crate::RuntimeProjectWorkspaceKey,
                 crate::RuntimeQueryGenerationState,
             >,
         >,
     >,
-    key: &crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey,
+    key: &crate::RuntimeProjectWorkspaceKey,
 ) -> Result<std::sync::Arc<crate::RuntimeQueryGeneration>, String> {
     let required_provider_targets = provider_targets.clone();
     let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();

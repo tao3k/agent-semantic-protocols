@@ -6,7 +6,8 @@ import ASPProof.WorkspaceSearchPlaybookPlanner
 
 open ASPProof.WorkspaceSearchPlaybookPlanner
 
-#print axioms admitted_request_has_retrieval_scope_inputs
+#print axioms admitted_request_has_one_primary_acquisition
+#print axioms admitted_request_does_not_require_a_partner_engine
 #print axioms fused_file_context_membership
 #print axioms calibration_cannot_mint_or_remove_file_context
 #print axioms cli_occurrence_order_cannot_change_layout_dependencies

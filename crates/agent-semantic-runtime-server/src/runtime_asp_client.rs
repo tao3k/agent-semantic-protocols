@@ -7,8 +7,8 @@
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
+use crate::RuntimeProjectWorkspaceKey;
 use crate::RuntimeQueryGenerationState;
-use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_METHOD;
 use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
 use agent_semantic_client_protocol::AgentSessionPlatform;

@@ -240,7 +240,7 @@ jobs:
           ./.devenv/devenv-profile-exec "$runner" materialize --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json
           ./.devenv/devenv-profile-exec "$runner" qualify --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
 
-      - name: Upload benchmark evidence
+      - name: Upload Search and Query qualification evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
@@ -248,5 +248,4 @@ jobs:
           path: |
             ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/search-query-qualification/by-resource/${{ matrix.resource }}.json
             ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/agent-org-topology-evidence/by-resource/${{ matrix.resource }}.json
-            ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/agent-org-topology-overlay/by-resource/${{ matrix.resource }}.json
-          if-no-files-found: warn
+          if-no-files-found: error

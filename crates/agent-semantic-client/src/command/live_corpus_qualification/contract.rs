@@ -87,6 +87,8 @@ pub(super) struct AgentOrgTopologyScenarioSuite {
 pub(super) struct AgentOrgTopologyScenario {
     pub(super) case_id: String,
     pub(super) resource_id: String,
+    pub(super) route_class: String,
+    pub(super) complete_set_witness: Option<String>,
     pub(super) reasoning_focus: String,
     pub(super) required_relation_kinds: Vec<String>,
     pub(super) composed_search: String,

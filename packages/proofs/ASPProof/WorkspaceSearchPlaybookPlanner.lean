@@ -22,6 +22,13 @@ structure NativeArgs where
   tokens : List String
   nonempty : tokens ≠ []
 
+inductive PrimaryAcquisition where
+  | rg
+  | tantivy
+  | syntax
+  | nativeSyntax
+  deriving DecidableEq
+
 inductive PersistentGraphLanguage where
   | pgql
   | sqlPgq
@@ -33,18 +40,25 @@ inductive SnapshotGraphLanguage where
 
 structure PlaybookRequest where
   binding : Binding
-  rg : NativeArgs
-  tantivy : NativeArgs
+  primary : PrimaryAcquisition
+  refinements : List PrimaryAcquisition
   languages : Option String
   documents : Option String
   syntaxQueries : List NativeArgs
   nativeSelectors : List String
   graph : List NativeArgs
 
-theorem admitted_request_has_retrieval_scope_inputs
+def RequiresPartnerEngine (_request : PlaybookRequest) : Bool := false
+
+theorem admitted_request_has_one_primary_acquisition
     (request : PlaybookRequest) :
-    request.rg.tokens ≠ [] ∧ request.tantivy.tokens ≠ [] := by
-  exact ⟨request.rg.nonempty, request.tantivy.nonempty⟩
+    ∃ primary, request.primary = primary := by
+  exact ⟨request.primary, rfl⟩
+
+theorem admitted_request_does_not_require_a_partner_engine
+    (request : PlaybookRequest) :
+    RequiresPartnerEngine request = false := by
+  rfl
 
 /-! Available clause kinds; this list is not a required flat execution set. -/
 

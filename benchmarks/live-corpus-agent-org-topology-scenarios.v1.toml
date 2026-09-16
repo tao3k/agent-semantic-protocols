@@ -8,66 +8,74 @@ prompt_contract = "Analyze only the exact source and callable-skeleton evidence 
 [[cases]]
 case_id = "gerbil-scheme.gerbil.core"
 resource_id = "gerbil-scheme.gerbil"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Gerbil definition's module and import role."
 required_relation_kinds = ["defined-in", "imports-from"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language gerbil-scheme)) (intersect (rg "-n" "-F" "def") (tantivy "body:import OR title:module^2")))'''
+composed_search = '''(search (producers (language gerbil-scheme)) (tantivy "body:import OR title:module^2"))'''
 multi_source_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "julia.dataframes.core"
 resource_id = "julia.dataframes"
+route_class = "regex-truth"
 reasoning_focus = "Explain how the selected DataFrames callable participates in tabular operations."
 required_relation_kinds = ["defined-in", "dispatches-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "DataFrame") (tantivy "body:function OR title:table^2")))'''
+composed_search = '''(search (producers (language julia)) (rg "-n" "-F" "DataFrame"))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "julia.flux.core"
 resource_id = "julia.flux"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Flux callable's model or training data flow."
 required_relation_kinds = ["calls", "defined-in"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "Chain") (tantivy "body:training OR title:model^2")))'''
+composed_search = '''(search (producers (language julia)) (tantivy "body:training OR title:model^2"))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "julia.makie.core"
 resource_id = "julia.makie"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Makie callable's rendering or scene-graph role."
 required_relation_kinds = ["calls", "produces"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language julia)) (intersect (rg "-n" "-F" "plot") (tantivy "body:scene OR title:Figure^2")))'''
+composed_search = '''(search (producers (language julia)) (tantivy "body:scene OR title:Figure^2"))'''
 multi_source_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "md.mdn-content.core"
 resource_id = "md.mdn-content"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected MDN document section's concept and link topology."
 required_relation_kinds = ["documents", "links-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (documents md)) (intersect (rg "-n" "-F" "JavaScript") (tantivy "body:CSS OR title:web^2")))'''
+composed_search = '''(search (producers (documents md)) (tantivy "body:JavaScript OR body:CSS OR title:web^2"))'''
 multi_source_query = '''(query (producers (documents md)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (documents md)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "org.worg.core"
 resource_id = "org.worg"
+route_class = "structural-syntax"
 reasoning_focus = "Explain the selected Org node's headline hierarchy and referenced concepts."
 required_relation_kinds = ["contains", "links-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (documents org)) (intersect (rg "-n" "-F" "Org") (tantivy "body:Emacs OR title:manual^2")))'''
+composed_search = '''(search (producers (documents org)) (syntax org "(headline) @item"))'''
 multi_source_query = '''(query (producers (documents org)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (documents org)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "python.fastapi.core"
 resource_id = "python.fastapi"
+route_class = "explicit-conjunction"
+complete_set_witness = "The exact FastAPI byte predicate and the independently materialized routing-text owner set are both complete before intersection."
 reasoning_focus = "Explain the selected FastAPI callable's request-routing and dependency role."
 required_relation_kinds = ["depends-on", "routes-to"]
 minimum_composed_candidates = 2
@@ -78,46 +86,52 @@ multi_callable_skeleton_query = '''(query (producers (language python)) (select 
 [[cases]]
 case_id = "python.pandas.core"
 resource_id = "python.pandas"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected pandas callable's data transformation path."
 required_relation_kinds = ["calls", "transforms"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "DataFrame") (tantivy "body:Series OR title:indexing^2")))'''
+composed_search = '''(search (producers (language python)) (tantivy "body:DataFrame OR body:Series OR title:indexing^2"))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "python.rich.core"
 resource_id = "python.rich"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Rich callable's rendering and output relationship."
 required_relation_kinds = ["calls", "renders-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language python)) (intersect (rg "-n" "-F" "Console") (tantivy "body:RenderableType OR title:rendering^2")))'''
+composed_search = '''(search (producers (language python)) (tantivy "body:Console OR body:RenderableType OR title:rendering^2"))'''
 multi_source_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "rust.tokio.core"
 resource_id = "rust.tokio"
+route_class = "structural-syntax"
 reasoning_focus = "Explain the selected Tokio callable's asynchronous scheduling or I/O role."
 required_relation_kinds = ["awaits", "dispatches-to"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "spawn") (tantivy "body:Runtime OR title:scheduler^2")))'''
+composed_search = '''(search (producers (language rust)) (syntax rust "(function_item) @item"))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "rust.bytes.core"
 resource_id = "rust.bytes"
+route_class = "regex-truth"
 reasoning_focus = "Explain the selected bytes callable's buffer ownership and data flow."
 required_relation_kinds = ["borrows-from", "returns"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "Bytes") (tantivy "body:Buf OR title:buffer^2")))'''
+composed_search = '''(search (producers (language rust)) (rg "-n" "-F" "Bytes"))'''
 multi_source_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "rust.ripgrep.core"
 resource_id = "rust.ripgrep"
+route_class = "explicit-conjunction"
+complete_set_witness = "The exact RegexMatcher byte predicate and the independently materialized matcher-ranking owner set are both complete before intersection."
 reasoning_focus = "Explain the selected ripgrep callable's matching or traversal role."
 required_relation_kinds = ["calls", "searches-with"]
 minimum_composed_candidates = 2
@@ -128,49 +142,54 @@ multi_callable_skeleton_query = '''(query (producers (language rust)) (select (s
 [[cases]]
 case_id = "typescript.compiler.core"
 resource_id = "typescript.compiler"
+route_class = "regex-truth"
 reasoning_focus = "Explain the selected TypeScript compiler callable's syntax or type-analysis role."
 required_relation_kinds = ["calls", "produces"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "createProgram") (tantivy "body:SourceFile OR title:compiler^2")))'''
+composed_search = '''(search (producers (language typescript)) (rg "-n" "-F" "createProgram"))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "typescript.effect.core"
 resource_id = "typescript.effect"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Effect callable's typed effect composition."
 required_relation_kinds = ["composes-with", "returns"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "Effect") (tantivy "body:Layer OR title:service^2")))'''
+composed_search = '''(search (producers (language typescript)) (tantivy "body:Effect OR body:Layer OR title:service^2"))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "typescript.playwright.core"
 resource_id = "typescript.playwright"
+route_class = "ranked-text"
 reasoning_focus = "Explain the selected Playwright callable's browser-control path."
 required_relation_kinds = ["dispatches-to", "waits-for"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "Page") (tantivy "body:Browser OR title:automation^2")))'''
+composed_search = '''(search (producers (language typescript)) (tantivy "body:Page OR body:Browser OR title:automation^2"))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "typescript.vite.core"
 resource_id = "typescript.vite"
+route_class = "regex-truth"
 reasoning_focus = "Explain the selected Vite callable's module transformation or plugin path."
 required_relation_kinds = ["calls", "transforms"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "defineConfig") (tantivy "body:Plugin OR title:build^2")))'''
+composed_search = '''(search (producers (language typescript)) (rg "-n" "-F" "defineConfig"))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''
 
 [[cases]]
 case_id = "typescript.vue.core"
 resource_id = "typescript.vue"
+route_class = "regex-truth"
 reasoning_focus = "Explain the selected Vue callable's component or reactivity relationship."
 required_relation_kinds = ["depends-on", "updates"]
 minimum_composed_candidates = 2
-composed_search = '''(search (producers (language typescript)) (intersect (rg "-n" "-F" "createApp") (tantivy "body:Component OR title:application^2")))'''
+composed_search = '''(search (producers (language typescript)) (rg "-n" "-F" "createApp"))'''
 multi_source_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection source) (output json)))'''
 multi_callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selectors}}) (projection callable-skeleton) (output json)))'''

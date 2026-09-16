@@ -260,9 +260,13 @@ pub(crate) async fn load_runtime_active_provider_projection(
     state_home: &Path,
 ) -> Result<RuntimeActiveProviderProjection, String> {
     let state_home = state_home.to_path_buf();
-    tokio::task::spawn_blocking(move || runtime_provider_artifacts_from_active_bundle(&state_home))
-        .await
-        .map_err(|error| format!("load Runtime active provider projection task failed: {error}"))?
+    agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+        "client-active-provider-projection",
+        move || runtime_provider_artifacts_from_active_bundle(&state_home),
+    )
+    .join()
+    .await
+    .map_err(|error| format!("load Runtime active provider projection task failed: {error}"))?
 }
 
 pub(crate) fn active_runtime_bundle_digest(state_home: &Path) -> Result<Option<String>, String> {

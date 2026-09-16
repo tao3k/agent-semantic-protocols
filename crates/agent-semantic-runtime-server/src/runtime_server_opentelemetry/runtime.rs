@@ -113,13 +113,15 @@ impl RuntimeServerOpenTelemetry {
         let event_loop_lag_micros =
             u64::try_from(scheduler_probe_started.elapsed().as_micros()).unwrap_or(u64::MAX);
         let scheduler = process_memory::observe_runtime_scheduler();
-        let initial_process_memory = tokio::task::spawn_blocking(move || {
-            process_memory::observe_process_memory(event_loop_lag_micros, scheduler)
-        })
-        .await
-        .map_err(|error| {
-            format!("initial Runtime Server process-memory probe task failed: {error}")
-        })?;
+        let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
+            "runtime-server-opentelemetry",
+        );
+        let initial_process_memory = task_scope
+            .spawn_blocking("runtime-server-initial-memory-probe", move || {
+                process_memory::observe_process_memory(event_loop_lag_micros, scheduler)
+            })?
+            .join()
+            .await?;
         let worker_count = tokio::runtime::Handle::current().metrics().num_workers();
         let capacity = worker_count.saturating_mul(64).clamp(64, 4096);
         let (sender, receiver) = mpsc::channel(capacity);
@@ -143,9 +145,6 @@ impl RuntimeServerOpenTelemetry {
             dropped_observations: Arc::clone(&dropped_observations),
         };
         let registration = register_runtime_observation_sink(Arc::new(handle.clone()))?;
-        let task_scope = agent_semantic_workspace_scheduler::RuntimeServerTaskScope::new(
-            "runtime-server-opentelemetry",
-        );
         let telemetry_sender = handle.sender.clone();
         let mut telemetry_shutdown = shutdown_receiver.clone();
         let telemetry_task = task_scope.spawn("runtime-server-telemetry-bridge", async move {

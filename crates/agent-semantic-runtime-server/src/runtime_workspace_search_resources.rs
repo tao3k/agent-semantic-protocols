@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use crate::RuntimeQueryGeneration;
-use crate::runtime_resident_grep::RuntimeGrepMatch;
+use crate::runtime_search_execution::RuntimeGrepMatch;
 
 pub(super) fn retrieval_work_bytes(generation: &RuntimeQueryGeneration) -> usize {
     generation

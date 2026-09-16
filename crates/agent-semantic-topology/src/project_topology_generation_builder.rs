@@ -407,17 +407,21 @@ impl ProjectTopologyGenerationBuilder {
         let identity = self.identity.clone();
         let limits = self.limits;
         let expected_relations = self.expected_relations.clone();
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            build_candidate_blocking(
-                identity,
-                limits,
-                segments,
-                expected_relations,
-                transition,
-                allow_empty_request_scope,
-            )
-        })
+        agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+            "project-topology-generation-build",
+            move || {
+                let _permit = permit;
+                build_candidate_blocking(
+                    identity,
+                    limits,
+                    segments,
+                    expected_relations,
+                    transition,
+                    allow_empty_request_scope,
+                )
+            },
+        )
+        .join()
         .await
         .map_err(|cause| {
             error(

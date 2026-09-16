@@ -11,8 +11,8 @@ use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRe
 use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender;
 use agent_semantic_client_server::{AspClientDispatchError, AspClientDispatchRequest};
 
+use crate::RuntimeProjectWorkspaceKey;
 use crate::RuntimeQueryGenerationState;
-use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::{
@@ -747,12 +747,12 @@ pub(super) async fn dispatch_workspace_query_playbook(
 }
 
 async fn settled_query_materialization(
-    generation: &crate::runtime_query_generation::RuntimeQueryGeneration,
+    generation: &crate::RuntimeQueryGeneration,
     key: &str,
     request_id: &str,
     started: tokio::time::Instant,
 ) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
-    use crate::runtime_query_generation::RuntimeQueryTerminalState;
+    use crate::RuntimeQueryTerminalState;
     match generation.await_query_materialization(key).await? {
         RuntimeQueryTerminalState::Ready(template) => {
             bind_query_materialization_to_request(template, request_id, "materialized", started)

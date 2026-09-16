@@ -187,6 +187,9 @@ pub(super) fn prepare_run(
             multi_source_query: topology_scenario.multi_source_query.clone(),
             multi_callable_skeleton_query: topology_scenario.multi_callable_skeleton_query.clone(),
             minimum_composed_candidates: topology_scenario.minimum_composed_candidates,
+            expected_coverage_certificate_count: expected_coverage_certificate_count(
+                &topology_scenario.route_class,
+            )?,
             checkout_path,
             remote: corpus.git.remote.clone(),
             qualification,
@@ -238,6 +241,7 @@ pub(super) fn validate_topology_scenarios(
         .map(|case| (case.case_id.as_str(), case))
         .collect::<BTreeMap<_, _>>();
     let mut scenarios = BTreeMap::new();
+    let mut covered_route_classes = BTreeSet::new();
     for mut scenario in suite.cases {
         let search_case = search_cases_by_id
             .get(scenario.case_id.as_str())
@@ -249,6 +253,7 @@ pub(super) fn validate_topology_scenarios(
             })?;
         if scenario.case_id.is_empty()
             || scenario.resource_id.is_empty()
+            || scenario.route_class.is_empty()
             || scenario.reasoning_focus.trim().is_empty()
             || scenario.required_relation_kinds.is_empty()
             || scenario.minimum_composed_candidates < 2
@@ -279,12 +284,8 @@ pub(super) fn validate_topology_scenarios(
                 scenario.case_id
             )
         })?;
-        if parsed.rg.len() != 1 || parsed.tantivy.len() != 1 {
-            return Err(format!(
-                "Live Corpus topology conjunction must contain one regex predicate and one independently motivated ranked-text predicate: case={}",
-                scenario.case_id
-            ));
-        }
+        validate_topology_search_route(&scenario, search_case, &parsed)?;
+        covered_route_classes.insert(scenario.route_class.clone());
         validate_workspace_query_set_scheme_template(
             &search_case.language_id,
             &scenario.multi_source_query,
@@ -320,6 +321,17 @@ pub(super) fn validate_topology_scenarios(
             "Live Corpus Agent Org topology scenarios must map one-to-one to Search/Query cases: expected={expected:?} observed={observed:?}"
         ));
     }
+    let required_route_classes = BTreeSet::from([
+        "regex-truth".to_owned(),
+        "ranked-text".to_owned(),
+        "structural-syntax".to_owned(),
+        "explicit-conjunction".to_owned(),
+    ]);
+    if covered_route_classes != required_route_classes {
+        return Err(format!(
+            "Live Corpus Agent Org topology suite must cover every predicate-directed route: observed={covered_route_classes:?} required={required_route_classes:?}"
+        ));
+    }
     for case in search_cases {
         if scenarios
             .get(&case.case_id)
@@ -334,9 +346,84 @@ pub(super) fn validate_topology_scenarios(
     Ok((suite.prompt_contract, scenarios))
 }
 
+fn validate_topology_search_route(
+    scenario: &AgentOrgTopologyScenario,
+    search_case: &QualificationCase,
+    parsed: &agent_semantic_search::ProgressiveSearchPlaybookRequest,
+) -> Result<(), String> {
+    let no_witness = scenario
+        .complete_set_witness
+        .as_deref()
+        .is_none_or(|witness| witness.trim().is_empty());
+    let route_matches = match scenario.route_class.as_str() {
+        "regex-truth" => {
+            no_witness
+                && parsed.rg.len() == 1
+                && parsed.tantivy.is_empty()
+                && parsed.syntax.is_empty()
+                && parsed.native_syntax.is_empty()
+                && parsed.graph.is_empty()
+        }
+        "ranked-text" => {
+            no_witness
+                && parsed.rg.is_empty()
+                && parsed.tantivy.len() == 1
+                && parsed.syntax.is_empty()
+                && parsed.native_syntax.is_empty()
+                && parsed.graph.is_empty()
+        }
+        "structural-syntax" => {
+            no_witness
+                && parsed.rg.is_empty()
+                && parsed.tantivy.is_empty()
+                && parsed.syntax.len() == 1
+                && parsed.syntax[0].producer == search_case.language_id
+                && parsed.native_syntax.is_empty()
+                && parsed.graph.is_empty()
+        }
+        "explicit-conjunction" => {
+            !no_witness
+                && parsed.rg.len() == 1
+                && parsed.tantivy.len() == 1
+                && parsed.syntax.is_empty()
+                && parsed.native_syntax.is_empty()
+                && parsed.graph.is_empty()
+                && matches!(
+                    parsed.normalized_composition,
+                    agent_semantic_search::SearchPlaybookNormalizedComposition::Intersect(_)
+                )
+        }
+        _ => false,
+    };
+    if !route_matches {
+        return Err(format!(
+            "Live Corpus topology Search does not match its predicate-directed route or completeness witness: case={} routeClass={}",
+            scenario.case_id, scenario.route_class
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn expected_coverage_certificate_count(route_class: &str) -> Result<usize, String> {
+    match route_class {
+        "regex-truth" | "ranked-text" | "structural-syntax" => Ok(1),
+        "explicit-conjunction" => Ok(2),
+        _ => Err(format!(
+            "Live Corpus topology Search route class is unsupported: {route_class}"
+        )),
+    }
+}
+
 fn render_agent_prompt(prompt_contract: &str, scenario: &AgentOrgTopologyScenario) -> String {
+    let witness = scenario
+        .complete_set_witness
+        .as_deref()
+        .filter(|witness| !witness.trim().is_empty())
+        .unwrap_or("not-applicable");
     format!(
-        "{prompt_contract}\n\nReasoning focus: {}\nRequired relationship kinds: {}",
+        "{prompt_contract}\n\nSearch route class: {}\nComplete-set witness: {}\nReasoning focus: {}\nRequired relationship kinds: {}",
+        scenario.route_class,
+        witness,
         scenario.reasoning_focus,
         scenario.required_relation_kinds.join(", ")
     )

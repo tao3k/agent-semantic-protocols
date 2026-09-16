@@ -19,8 +19,8 @@ use super::search_materialization::{
     SearchMaterializationPublicationGuard, search_materialization_dispatch_error,
     settled_search_materialization,
 };
+use crate::RuntimeProjectWorkspaceKey;
 use crate::RuntimeQueryGenerationState;
-use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
 
 use super::service::{ClientRequestKey, ClientWorkspaceKey, InitializedWorkspace};
 use super::workspace_search_playbook::execute_progressive_search_clauses;

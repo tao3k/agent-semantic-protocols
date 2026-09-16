@@ -143,10 +143,11 @@ fn search_playbook_help_owns_the_composed_root_contract() {
     for token in [
         "SCHEME_COMPOSITION_EXPRESSION",
         "One (search ...) expression",
-        "(producers (language rust) (documents org))",
+        "(producers (language rust))",
         "((function_item) @item (#asp-select!",
-        "single enhanced Tree-sitter Query source",
-        "intersect(rg, tantivy)",
+        "Choose rg for regex truth",
+        "There is no mandatory engine pair",
+        "Intersect is an explicit conjunction",
         "graph remains the final barrier",
     ] {
         assert!(help.contains(token), "missing {token}: {help}");

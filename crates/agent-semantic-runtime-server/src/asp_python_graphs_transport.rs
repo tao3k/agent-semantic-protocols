@@ -66,12 +66,8 @@ async fn terminalize_pending(
     }
 }
 
-struct ResponseReader(tokio::task::JoinHandle<()>);
-
-impl Drop for ResponseReader {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
+struct ResponseReader {
+    _task: agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>,
 }
 
 /// One long-lived service session. Clones share the same bounded sender,
@@ -126,49 +122,52 @@ impl AspPythonGraphsTransport {
         let response_cancelled = Arc::clone(&cancelled);
         let response_late_cancellations = Arc::clone(&late_cancellations);
         let response_terminal = Arc::clone(&terminal);
-        let response_reader = tokio::spawn(async move {
-            let mut wire_terminal_open = true;
-            loop {
-                let receipt = tokio::select! {
-                    changed = wire_terminal_rx.changed(), if wire_terminal_open => {
-                        match changed {
-                            Ok(()) => match wire_terminal_rx.borrow_and_update().clone() {
-                                Some(reason) => Err(wire_terminal_message(reason)),
-                                None => continue,
-                            },
-                            Err(_) => {
-                                wire_terminal_open = false;
-                                continue;
+        let response_reader = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn(
+            "asp-python-graphs-response-reader",
+            async move {
+                let mut wire_terminal_open = true;
+                loop {
+                    let receipt = tokio::select! {
+                        changed = wire_terminal_rx.changed(), if wire_terminal_open => {
+                            match changed {
+                                Ok(()) => match wire_terminal_rx.borrow_and_update().clone() {
+                                    Some(reason) => Err(wire_terminal_message(reason)),
+                                    None => continue,
+                                },
+                                Err(_) => {
+                                    wire_terminal_open = false;
+                                    continue;
+                                }
                             }
                         }
+                        message = inbound.message() => match message {
+                            Ok(Some(envelope)) => decode_receipt(&envelope.json),
+                            Ok(None) => Err("asp-python-graphs gRPC stream closed".to_owned()),
+                            Err(error) => Err(error.to_string()),
+                        }
+                    };
+                    let request_id = receipt
+                        .as_ref()
+                        .ok()
+                        .and_then(|value| value.get("requestId"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    if let Some(request_id) = request_id {
+                        if let Some(sender) = response_pending.lock().await.remove(&request_id) {
+                            let _ = sender.send(receipt);
+                        } else if response_cancelled.lock().await.remove(&request_id) {
+                            response_late_cancellations.fetch_add(1, Ordering::AcqRel);
+                        }
+                        continue;
                     }
-                    message = inbound.message() => match message {
-                        Ok(Some(envelope)) => decode_receipt(&envelope.json),
-                        Ok(None) => Err("asp-python-graphs gRPC stream closed".to_owned()),
-                        Err(error) => Err(error.to_string()),
-                    }
-                };
-                let request_id = receipt
-                    .as_ref()
-                    .ok()
-                    .and_then(|value| value.get("requestId"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                if let Some(request_id) = request_id {
-                    if let Some(sender) = response_pending.lock().await.remove(&request_id) {
-                        let _ = sender.send(receipt);
-                    } else if response_cancelled.lock().await.remove(&request_id) {
-                        response_late_cancellations.fetch_add(1, Ordering::AcqRel);
-                    }
-                    continue;
+                    let message = receipt
+                        .err()
+                        .unwrap_or_else(|| "asp-python-graphs receipt has no requestId".to_owned());
+                    terminalize_pending(&response_terminal, &response_pending, message).await;
+                    break;
                 }
-                let message = receipt
-                    .err()
-                    .unwrap_or_else(|| "asp-python-graphs receipt has no requestId".to_owned());
-                terminalize_pending(&response_terminal, &response_pending, message).await;
-                break;
-            }
-        });
+            },
+        );
         Ok(Self {
             outbound,
             control,
@@ -176,7 +175,9 @@ impl AspPythonGraphsTransport {
             cancelled,
             late_cancellations,
             terminal,
-            _response_reader: Arc::new(ResponseReader(response_reader)),
+            _response_reader: Arc::new(ResponseReader {
+                _task: response_reader,
+            }),
         })
     }
 
@@ -279,7 +280,8 @@ pub enum AspPythonGraphsLifecycleState {
 struct LifecycleState {
     transport: Option<AspPythonGraphsTransport>,
     child_shutdown: Option<tokio::sync::watch::Sender<bool>>,
-    child_supervisor: Option<tokio::task::JoinHandle<()>>,
+    child_supervisor: Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>,
+    start_supervisor: Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<()>>,
     starting: Option<Arc<tokio::sync::Notify>>,
     terminal: Option<String>,
     draining: bool,
@@ -315,6 +317,7 @@ impl AspPythonGraphsServer {
                 transport: None,
                 child_shutdown: None,
                 child_supervisor: None,
+                start_supervisor: None,
                 starting: None,
                 terminal: None,
                 draining: false,
@@ -372,6 +375,18 @@ impl AspPythonGraphsServer {
 
     pub async fn ensure_started(&self) -> Result<(), String> {
         loop {
+            let completed_start = {
+                let mut state = self.state.lock().await;
+                if state.starting.is_none() {
+                    state.start_supervisor.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(completed_start) = completed_start {
+                completed_start.join().await?;
+                continue;
+            }
             let wait = {
                 let mut state = self.state.lock().await;
                 if state.draining {
@@ -390,7 +405,12 @@ impl AspPythonGraphsServer {
                     state.starting = Some(Arc::clone(&wait));
                     let server = self.clone();
                     let completion = Arc::clone(&wait);
-                    tokio::spawn(async move { server.start_once(completion).await });
+                    state.start_supervisor = Some(
+                        agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn(
+                            "asp-python-graphs-start",
+                            async move { server.start_once(completion).await },
+                        ),
+                    );
                     Some(wait)
                 }
             };
@@ -414,9 +434,13 @@ impl AspPythonGraphsServer {
             })?;
             let (child_shutdown, child_shutdown_receiver) = tokio::sync::watch::channel(false);
             let server = self.clone();
-            let child_supervisor = tokio::spawn(async move {
-                supervise_child(child, child_shutdown_receiver, server).await;
-            });
+            let child_supervisor =
+                agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn(
+                    "asp-python-graphs-child-supervisor",
+                    async move {
+                        supervise_child(child, child_shutdown_receiver, server).await;
+                    },
+                );
             {
                 let mut state = self.state.lock().await;
                 state.child_shutdown = Some(child_shutdown);
@@ -469,7 +493,7 @@ impl AspPythonGraphsServer {
                 let _ = shutdown.send(true);
             }
             if let Some(supervisor) = supervisor {
-                let _ = supervisor.await;
+                let _ = supervisor.join().await;
             }
         }
         let mut state = self.state.lock().await;
@@ -734,7 +758,7 @@ impl AspPythonGraphsServer {
     }
 
     pub async fn shutdown(&self) -> Result<(), String> {
-        let (transport, child_shutdown, supervisor) = {
+        let (transport, child_shutdown, child_supervisor, start_supervisor) = {
             let mut state = self.state.lock().await;
             state.draining = true;
             state.terminal = Some("asp-python-graphs lifecycle stopped".to_owned());
@@ -742,14 +766,18 @@ impl AspPythonGraphsServer {
                 state.transport.take(),
                 state.child_shutdown.take(),
                 state.child_supervisor.take(),
+                state.start_supervisor.take(),
             )
         };
         drop(transport);
         if let Some(shutdown) = child_shutdown {
             let _ = shutdown.send(true);
         }
-        if let Some(supervisor) = supervisor {
-            let _ = supervisor.await;
+        if let Some(supervisor) = child_supervisor {
+            let _ = supervisor.join().await;
+        }
+        if let Some(supervisor) = start_supervisor {
+            supervisor.abort();
         }
         Ok(())
     }
@@ -788,7 +816,6 @@ async fn supervise_child(
     if !state.draining {
         state.transport = None;
         state.child_shutdown = None;
-        state.child_supervisor = None;
         state.terminal = Some(format!(
             "state=failed reasonKind=asp-python-graphs-process-exited status={status:?}"
         ));

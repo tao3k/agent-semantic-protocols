@@ -21,7 +21,9 @@ use super::query_protocol::public_query_set;
 use super::runner_contract::{parse_args, select_qualification_cases};
 use super::runner_prepare::prepare_run;
 #[cfg(test)]
-use super::runner_prepare::{artifact_current_pointer, validate_topology_scenarios};
+use super::runner_prepare::{
+    artifact_current_pointer, expected_coverage_certificate_count, validate_topology_scenarios,
+};
 use super::search_receipt::qualification_result_string;
 use crate::command::live_corpus::LiveCorpusQualification;
 use crate::command::live_corpus::live_corpus_lock_digest;
@@ -46,6 +48,7 @@ pub(super) struct PreparedCase {
     pub(super) multi_source_query: String,
     pub(super) multi_callable_skeleton_query: String,
     pub(super) minimum_composed_candidates: usize,
+    pub(super) expected_coverage_certificate_count: usize,
     pub(super) checkout_path: PathBuf,
     pub(super) remote: String,
     pub(super) qualification: LiveCorpusQualification,
@@ -335,9 +338,11 @@ pub(crate) async fn run(
     resource_state_home: PathBuf,
 ) -> Result<(), String> {
     let args = args.to_vec();
-    let prepared = tokio::task::spawn_blocking(move || {
-        prepare_run(&args, runtime_state_home, resource_state_home)
-    })
+    let prepared = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+        "live-corpus-qualification-prepare",
+        move || prepare_run(&args, runtime_state_home, resource_state_home),
+    )
+    .join()
     .await
     .map_err(|error| format!("prepare Live Corpus qualification task: {error}"))??;
     let PreparedRun {
@@ -365,15 +370,17 @@ pub(crate) async fn run(
         let resource_id = prepared_case.case.resource_id.clone();
         let artifact_digest = prepared_case.artifact_digest.clone();
         let remote = prepared_case.remote.clone();
-        let isolated = tokio::task::spawn_blocking(move || {
-            IsolatedBenchmarkWorkspace::materialize(
+        let isolated = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+            "live-corpus-qualification-materialization",
+            move || IsolatedBenchmarkWorkspace::materialize(
                 &state_home_for_materialization,
                 &source_path,
                 &resource_id,
                 &artifact_digest,
                 &remote,
-            )
-        })
+            ),
+        )
+        .join()
         .await
         .map_err(|error| format!("materialize isolated Live Corpus workspace task: {error}"))??;
         let checkout_path = isolated.path.clone();
@@ -449,6 +456,8 @@ pub(crate) async fn run(
             let multi_source_query = prepared_case.multi_source_query;
             let multi_callable_skeleton_query = prepared_case.multi_callable_skeleton_query;
             let minimum_composed_candidates = prepared_case.minimum_composed_candidates;
+            let expected_coverage_certificate_count =
+                prepared_case.expected_coverage_certificate_count;
             let (mut qualified, topology_evidence) = qualify_case(
                 &client,
                 &checkout_path,
@@ -472,6 +481,7 @@ pub(crate) async fn run(
                 multi_source_query,
                 multi_callable_skeleton_query,
                 minimum_composed_candidates,
+                expected_coverage_certificate_count,
                 resident_search_latency_budget,
             )
             .await?;
@@ -591,7 +601,11 @@ pub(crate) async fn run(
                 retained_path.display()
             )
         })?;
-        let cleanup_elapsed_micros = tokio::task::spawn_blocking(move || isolated.cleanup())
+        let cleanup_elapsed_micros = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+            "live-corpus-qualification-cleanup",
+            move || isolated.cleanup(),
+        )
+            .join()
             .await
             .map_err(|error| format!("cleanup isolated Live Corpus workspace task: {error}"))??;
         qualified.benchmark_workspace_cleanup_elapsed_micros = cleanup_elapsed_micros;
@@ -671,26 +685,35 @@ pub(crate) async fn run(
     let encoded = serde_json::to_string(&receipt)
         .map_err(|error| format!("encode Live Corpus qualification receipt: {error}"))?;
     let topology_state_home = resource_state_home.clone();
-    let topology_paths = tokio::task::spawn_blocking(move || {
-        topology_evidence
-            .iter()
-            .map(|evidence| publish_topology_evidence(&topology_state_home, evidence))
-            .collect::<Result<Vec<_>, _>>()
-    })
-    .await
-    .map_err(|error| format!("publish Live Corpus topology evidence task: {error}"))??;
+    let topology_paths =
+        agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+            "live-corpus-topology-evidence-publication",
+            move || {
+                topology_evidence
+                    .iter()
+                    .map(|evidence| publish_topology_evidence(&topology_state_home, evidence))
+                    .collect::<Result<Vec<_>, _>>()
+            },
+        )
+        .join()
+        .await
+        .map_err(|error| format!("publish Live Corpus topology evidence task: {error}"))??;
     let publish_state_home = resource_state_home.clone();
     let publish_encoded = encoded.clone();
     let publish_language_id = args.language_id.clone();
     let publish_resource_id = args.resource_id.clone();
-    let receipt_path = tokio::task::spawn_blocking(move || {
-        publish_qualification_receipt(
-            &publish_state_home,
-            publish_language_id.as_deref(),
-            publish_resource_id.as_deref(),
-            &publish_encoded,
-        )
-    })
+    let receipt_path = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
+        "live-corpus-qualification-receipt-publication",
+        move || {
+            publish_qualification_receipt(
+                &publish_state_home,
+                publish_language_id.as_deref(),
+                publish_resource_id.as_deref(),
+                &publish_encoded,
+            )
+        },
+    )
+    .join()
     .await
     .map_err(|error| format!("publish Live Corpus qualification task: {error}"))??;
     if args.json {
@@ -735,6 +758,7 @@ async fn qualify_case<C>(
     multi_source_query: String,
     multi_callable_skeleton_query: String,
     minimum_composed_candidates: usize,
+    expected_coverage_certificate_count: usize,
     resident_search_latency_budget: ResidentSearchLatencyBudget,
 ) -> Result<(QualificationCaseReceipt, AgentOrgTopologyEvidence), String>
 where
@@ -757,6 +781,12 @@ where
     let composed =
         search_receipt_for_scheme(client, project_root, &case.language_id, &composed_search)
             .await?;
+    if composed.coverage_certificate_count != expected_coverage_certificate_count {
+        return Err(format!(
+            "reasonKind=live-corpus-search-coverage-witness-mismatch case={} observed={} expected={expected_coverage_certificate_count}",
+            case.case_id, composed.coverage_certificate_count
+        ));
+    }
     if composed.selectors.len() < minimum_composed_candidates {
         return Err(format!(
             "Live Corpus composed Scheme Search returned too few selectors: case={} observed={} minimum={minimum_composed_candidates}",

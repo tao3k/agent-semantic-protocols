@@ -28,7 +28,7 @@ pub enum RuntimeArtifactActivationDisposition {
 
 pub struct RuntimeArtifactActivationActor {
     shutdown: Option<oneshot::Sender<()>>,
-    task: Option<tokio::task::JoinHandle<Result<(), String>>>,
+    task: Option<agent_semantic_workspace_scheduler::RuntimeServerOwnedTask<Result<(), String>>>,
     receipts: watch::Receiver<Option<RuntimeArtifactActivationReceipt>>,
 }
 
@@ -45,8 +45,7 @@ impl RuntimeArtifactActivationActor {
             .task
             .take()
             .ok_or_else(|| "Runtime artifact activation actor task is absent".to_owned())?;
-        task.await
-            .map_err(|error| format!("Runtime artifact activation actor join failed: {error}"))?
+        task.join().await?
     }
 }
 
@@ -68,61 +67,64 @@ where
 {
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let (receipt_tx, receipt_rx) = watch::channel(None);
-    let task = tokio::spawn(async move {
-        let mut last_observed_event = None;
-        if let Some(event) = read_runtime_artifact_activation_event(&state_home).await? {
-            last_observed_event = Some((
-                event.bundle_digest.clone(),
-                event.artifact_digest.clone(),
-                event.publication_nonce.clone(),
-            ));
-            match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
-                Ok(receipt) => {
-                    let _ = receipt_tx.send(Some(receipt));
-                }
-                Err(error) => {
-                    let _ = receipt_tx.send(Some(RuntimeArtifactActivationReceipt {
-                        artifact_digest: event.artifact_digest,
-                        state: "failed",
-                        reason: Some(error),
-                    }));
-                }
-            }
-        }
-        let mut reconcile = tokio::time::interval(std::time::Duration::from_millis(50));
-        reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                _ = &mut shutdown_rx => break,
-                _ = reconcile.tick() => {
-                    let Some(event) = read_runtime_artifact_activation_event(&state_home).await? else {
-                        continue;
-                    };
-                    let event_identity = (
-                        event.bundle_digest.clone(),
-                        event.artifact_digest.clone(),
-                        event.publication_nonce.clone(),
-                    );
-                    if last_observed_event.as_ref() == Some(&event_identity) {
-                        continue;
+    let task = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn(
+        "runtime-artifact-activation-actor",
+        async move {
+            let mut last_observed_event = None;
+            if let Some(event) = read_runtime_artifact_activation_event(&state_home).await? {
+                last_observed_event = Some((
+                    event.bundle_digest.clone(),
+                    event.artifact_digest.clone(),
+                    event.publication_nonce.clone(),
+                ));
+                match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
+                    Ok(receipt) => {
+                        let _ = receipt_tx.send(Some(receipt));
                     }
-                    last_observed_event = Some(event_identity);
-                    let receipt = match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
-                        Ok(receipt) => receipt,
-                        Err(error) => RuntimeArtifactActivationReceipt {
+                    Err(error) => {
+                        let _ = receipt_tx.send(Some(RuntimeArtifactActivationReceipt {
                             artifact_digest: event.artifact_digest,
                             state: "failed",
                             reason: Some(error),
-                        },
-                    };
-                    if receipt_tx.send(Some(receipt)).is_err() {
-                        break;
+                        }));
                     }
                 }
             }
-        }
-        Ok(())
-    });
+            let mut reconcile = tokio::time::interval(std::time::Duration::from_millis(50));
+            reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = &mut shutdown_rx => break,
+                    _ = reconcile.tick() => {
+                        let Some(event) = read_runtime_artifact_activation_event(&state_home).await? else {
+                            continue;
+                        };
+                        let event_identity = (
+                            event.bundle_digest.clone(),
+                            event.artifact_digest.clone(),
+                            event.publication_nonce.clone(),
+                        );
+                        if last_observed_event.as_ref() == Some(&event_identity) {
+                            continue;
+                        }
+                        last_observed_event = Some(event_identity);
+                        let receipt = match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
+                            Ok(receipt) => receipt,
+                            Err(error) => RuntimeArtifactActivationReceipt {
+                                artifact_digest: event.artifact_digest,
+                                state: "failed",
+                                reason: Some(error),
+                            },
+                        };
+                        if receipt_tx.send(Some(receipt)).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        },
+    );
     Ok(RuntimeArtifactActivationActor {
         shutdown: Some(shutdown_tx),
         task: Some(task),

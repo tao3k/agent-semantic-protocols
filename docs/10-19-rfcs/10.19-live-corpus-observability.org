@@ -95,48 +95,80 @@ lowers the complete =(query ...)= form through the public Query parser.
 Producer, selector, and projection drift is terminal test evidence.
 
 The Agent Org topology scenario suite is not a topology-only checklist.  For
-every baseline case it stores a second executable, complex V1 intent: a
-=chain(intersect(...))= Search with at least two =rg= leaves and two Tantivy
-leaves, followed by ordered multi-selector source and callable-skeleton Query
-forms.  These expressions are lowered by the same public Scheme parsers and
-dispatched through the same Runtime client route.  A scenario that merely
-loads the TOML, checks relation names, or executes the old single-selector
-baseline cannot qualify this stage.
+every baseline case it stores a second executable V1 intent whose primary
+Search leaf is selected by the predicate: =rg= for regex truth over source
+bytes, Tantivy for ranked text, provider-native =syntax= for structural facts,
+and Query for an already known selector.  =intersect= is admitted only for an
+explicit semantic conjunction whose independently computed inputs both carry
+a complete-set witness.  The Search is followed by ordered multi-selector
+source and callable-skeleton Query forms.  These expressions are lowered by
+the same public Scheme parsers and dispatched through the same Runtime client
+route.  A scenario that merely loads the TOML, checks relation names, repeats
+the old single-selector baseline, or pairs engines without a completeness
+witness cannot qualify this stage.
 
 ** V1 Scheme algebra and search cost model
 
-The V1 acquisition grammar admits exactly one =intersect= whose leaves are
-=rg= and Tantivy.  Consequently the denotation of a request with regex owner
-sets =R_i= and Tantivy owner sets =T_j= is fixed and needs no second public
-plan schema:
+Let =P(q)= select the unique primary acquisition route for intent =q=:
 
-#+begin_src text
-C = (intersection over i of R_i) intersection (intersection over j of T_j)
+#+begin_src typst
+$ P(q) = cases(
+  "rg" & q " is byte-regex truth",
+  "tantivy" & q " is ranked text",
+  "syntax" & q " is a structural predicate",
+  "query" & q " already owns an exact selector",
+) $
 #+end_src
 
-The Runtime MUST NOT erase this algebra by unioning leaves that share an axis.
-In particular, =(R1 union R2) intersection (T1 union T2)= is not an execution
-of =intersect(R1, R2, T1, T2)=.  That flattening is both semantically unsound
-and a performance amplification: it admits owners disproved by another leaf
-into exact regex scans, parser grounding, and possible on-demand owner
-materialization.
+The normal candidate denotation is therefore =C(q) = P(q)=, not an automatic
+intersection of overlapping engines.  If and only if the intent is a genuine
+conjunction =q = q_1 and q_2= and both leaves publish complete owner sets, the
+V1 composition may admit:
 
-For a resident generation, let =G_i= be the sound trigram superset for regex
-leaf =i= and let =T= be the complete intersection of all Tantivy leaves.  The
-exact regex work must be bounded by candidates surviving the shared proof
-scope, not the per-axis union:
-
-#+begin_src text
-regex_owner_reads <= sum_i |G_i intersection T|
-parser_grounding_owners <= |(intersection_i R_i) intersection T|
+#+begin_src typst
+$ C(q) = C(q_1) intersection C(q_2) $
 #+end_src
 
-Within a trigram plan, postings are intersected rarest-first.  Across Scheme
-leaves, the Runtime must retain per-leaf receipts while intersecting complete
-owner sets.  A truncated leaf cannot prove an empty intersection.  Future
-cost-based fusion may push several Tantivy expressions or regex candidate
-plans into one backend operation, but it must preserve the same denotation and
-attribution.
+A truncated ranked list, heuristic prefilter, or duplicated rendering of the
+same predicate is not a complete set and cannot witness =intersect=.  This
+prevents the former universal =rg ∩ Tantivy= plan from paying two acquisition
+costs while adding no semantic information.
+
+#+begin_src mermaid
+flowchart LR
+  Q[Scheme Search intent] --> P{predicate owner}
+  P -->|byte regex| R[rg]
+  P -->|ranked prose| T[Tantivy]
+  P -->|syntax fact| S[provider-native syntax]
+  P -->|known selector| X[exact Query]
+  R --> W{explicit conjunction plus complete witnesses?}
+  T --> W
+  S --> W
+  W -->|no| C[primary candidate set]
+  W -->|yes| I[set intersection]
+  C --> E[exact Query and topology evidence]
+  I --> E
+#+end_src
+
+The corresponding executable Lean model is
+=ASPProof.LiveCorpusPredicateRoute=.  It proves that every admitted route has
+one primary owner, that a single route does not require a partner engine, and
+that conjunction admission requires two completeness witnesses.
+
+For a resident regex route, let =G= be its sound trigram candidate superset and
+=R= its exact result.  For an explicitly witnessed conjunction with complete
+set =K=, work is bounded by the proven scope:
+
+#+begin_src typst
+$ regex_owner_reads <= |G intersection K| $
+$ parser_grounding_owners <= |R intersection K| $
+#+end_src
+
+Within a trigram plan, postings are intersected rarest-first.  Across an
+explicit Scheme conjunction, the Runtime retains per-leaf receipts and rejects
+an incomplete input.  Cost-based fusion may push several candidate plans into
+one backend operation only when it preserves denotation, completeness, and
+per-leaf attribution.
 
 Live Corpus performance evidence MUST record per-stage wall time, each leaf's
 candidate cardinality and completeness, the final intersection cardinality,

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::RuntimeQueryGeneration;
 use crate::runtime_asp_client::AspClientOperationError;
 use crate::runtime_asp_client::syntax_query_route::execute_workspace_syntax_query_evidence;
-use crate::runtime_resident_grep::{RuntimeGrepMatch, execute_runtime_resident_grep_blocks};
+use crate::runtime_search_execution::{RuntimeGrepMatch, execute_runtime_resident_grep_blocks};
 use agent_semantic_search::{
     GraphNativeBlock, SearchPlaybookClauseAxis, WorkspaceSearchAxisKind,
     WorkspaceSearchClauseReceipt, WorkspaceSearchPlaybookPlan, WorkspaceSearchSyntaxCandidate,

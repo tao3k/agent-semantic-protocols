@@ -11,6 +11,7 @@ description = "Reusable Project Topology identity, admission, and incremental ge
 
 [dependencies]
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-mrr.workspace = true
 blake3.workspace = true
 orgize.workspace = true
