@@ -1,0 +1,245 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute coverage transition-chain integrity
+#+property: rfc_layer 10.05.20-evidence-graph-routing
+
+* Status and authority
+
+This RFC is canonical for reusing a Pareto vector-coverage certificate across
+more than one graph generation.
+
+It refines
+[[file:01.11-searchroute-vector-coverage-identity-fence.org][vector-coverage semantic identity and generation fences]]
+and composes it with the certified registry-epoch chain model.
+
+The proof and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteCoverageTransitionChainIntegrity.lean][SearchRouteCoverageTransitionChainIntegrity.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteCoverageTransitionChainIntegrity.lean][Lean JSON audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-coverage-transition-chain-integrity-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-coverage-transition-chain-integrity-axle-audit-v1.json][AXLE admission receipt]]
+
+* Lean-discovered composition gap
+
+The single-transition predicate in the previous RFC requires only
+=fromGeneration < toGeneration=. That condition proves monotonicity, but it
+does not prove successor continuity.
+
+Consequently, an otherwise authorized transition from generation 8 directly to
+generation 10 satisfies the old predicate. Such a certificate can skip
+generation 9, including a semantic change at generation 9 that was later
+reverted at generation 10.
+
+The repository already proves that a certified registry transition advances
+exactly one epoch and that a certified transition chain cannot omit trust
+edges. The missing logic was a bridge between that registry chain and the
+semantic identity carried by a vector-coverage certificate.
+
+The correction is therefore not another independent chain abstraction. Every
+coverage transition edge MUST carry and align with one certified registry
+transition edge.
+
+* Mathematical model
+
+Let =D= be the registry clock-domain type, =I= the semantic coverage-identity
+type, and =S : D -> I= the semantic identity actually published at each clock
+domain.
+
+A certified coverage edge is a pair:
+
+- a coverage transition =g=;
+- a registry transition certificate =r=.
+
+The edge is valid only when:
+
+1. =r= is a valid authorized registry successor;
+2. the generation endpoints of =g= equal the epochs of =r=;
+3. the authority digests of =g=, =r=, and the serving context agree;
+4. both =S(r.from)= and =S(r.to)= equal the coverage-header identity;
+5. =g= is explicitly authorized.
+
+A valid coverage chain is a connected list of such edges. Its registry
+projection is therefore a valid registry transition chain. The existing
+registry theorem then gives:
+
+#+begin_example
+start.epoch + edgeCount = end.epoch
+#+end_example
+
+This equation prevents a one-edge certificate from claiming a two-epoch
+transition.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CTCI-REGISTRY-BRIDGE
+
+Every cross-generation coverage edge MUST carry a registry transition
+certificate. Coverage generation endpoints, registry epochs, and authority
+digests MUST agree exactly. A bare =GenerationTransition= is not sufficient
+evidence for cross-generation reuse.
+
+** ASP-RFC-10.05-CTCI-SUCCESSOR-CONTINUITY
+
+The registry projection of a coverage chain MUST be a valid certified
+transition chain. Every edge advances exactly one certified epoch, and:
+
+#+begin_example
+startEpoch + edgeCount == endEpoch
+#+end_example
+
+Monotonic =fromGeneration < toGeneration= is necessary but insufficient.
+
+** ASP-RFC-10.05-CTCI-INTERMEDIATE-SEMANTIC
+
+For every edge, the semantic lineage at both its source and destination domain
+MUST equal the coverage-header semantic identity. Checking only the issued and
+current endpoints is forbidden.
+
+Any missing intermediate semantic identity, semantic mismatch, or unverified
+intermediate domain rejects the complete chain.
+
+** ASP-RFC-10.05-CTCI-FORK-PREVENTION
+
+The authorized registry-successor relation used by coverage reuse MUST be
+functional. Two valid coverage edges with the same source domain MUST resolve
+to the same destination domain.
+
+A forked publication history cannot authorize cache or proof reuse until a
+separate reconciliation proof selects one canonical successor.
+
+** ASP-RFC-10.05-CTCI-CHAIN-COMPOSITION
+
+Two valid coverage-chain fragments may be appended only when the first fragment
+ends at the exact clock domain where the second fragment begins. Composition
+preserves every registry trust edge and every intermediate semantic check.
+
+A summary or endpoint digest MUST NOT replace the underlying certified chain
+unless an independently audited chain-compression proof binds the full edge
+list.
+
+** ASP-RFC-10.05-CTCI-ENDPOINTS-INSUFFICIENT
+
+Equal semantic identities at the issued and current generations do not imply
+that all intermediate generations have the same identity. Endpoint equality
+alone MUST NOT admit cross-generation coverage reuse.
+
+** ASP-RFC-10.05-CTCI-GLOBAL-LIFT
+
+Only chain-admitted vector coverage may lift frontier-local Pareto minimality to
+global Pareto minimality after more than one graph generation.
+
+* Org-Babel Typst executable mathematics
+
+#+name: coverage-transition-chain-integrity-math
+#+begin_src typst
+#let identity-base = (
+  workspace: 11,
+  query: 12,
+  policy: 13,
+  completion: 14,
+  catalog: 15,
+  frontier: 16,
+  dimensions: 17,
+)
+
+#let identity-drift = (
+  workspace: 11,
+  query: 12,
+  policy: 99,
+  completion: 14,
+  catalog: 15,
+  frontier: 16,
+  dimensions: 17,
+)
+
+#let semantic-at(epoch) = (
+  if epoch == 9 { identity-drift } else { identity-base }
+)
+
+#let old-transition = (
+  semantic: identity-base,
+  from-generation: 8,
+  to-generation: 10,
+  authority: 77,
+  authorized: true,
+)
+
+#let old-admitted(step) = (
+  step.semantic == identity-base
+  and step.from-generation == 8
+  and step.to-generation == 10
+  and step.from-generation < step.to-generation
+  and step.authority == 77
+  and step.authorized
+)
+
+#let certified-step(from-generation, to-generation) = (
+  to-generation == from-generation + 1
+  and semantic-at(from-generation) == identity-base
+  and semantic-at(to-generation) == identity-base
+)
+
+#metadata((
+  schema-id: "asp.searchroute.coverage-transition-chain-integrity.v1",
+  legacy-skip-admitted: old-admitted(old-transition),
+  first-certified-edge: certified-step(8, 9),
+  endpoint-eight-bound: semantic-at(8) == identity-base,
+  endpoint-ten-bound: semantic-at(10) == identity-base,
+  intermediate-nine-bound: semantic-at(9) == identity-base,
+)) <coverage-transition-chain-integrity>
+
+$ "Legacy"(8, 10) = (8 < 10) $
+
+$ "CertifiedEdge"(e_i, e_(i+1))
+  ⇒ e_(i+1) = e_i + 1 $
+
+$ e_0 + |C| = e_n $
+
+$ not (
+  ((S(e_0) = I) and (S(e_n) = I))
+  ⇒ (forall e in C, S(e) = I)
+) $
+#+end_src
+
+The block is evaluated directly through =typst eval= on stdin. It is not a
+generated sidecar source file.
+
+* Lean theorem correspondence
+
+| RFC obligation | Lean theorem |
+|-
+| Registry-chain projection | =valid_coverage_chain_projects_registry_chain= |
+| Exact epoch span | =valid_coverage_chain_exact_epoch_span= |
+| No single-edge skip | =single_coverage_edge_cannot_skip_epoch= |
+| Intermediate semantics | =valid_coverage_edge_preserves_both_endpoint_semantics= |
+| Functional successor | =functional_lineage_rejects_coverage_successor_fork= |
+| Chain composition | =valid_coverage_chain_append= |
+| Global Pareto lift | =chain_admitted_vector_coverage_lifts_global_pareto= |
+| Old monotone-predicate gap | =legacy_monotone_transition_admits_generation_skip= |
+| Drift rejection | =intermediate_semantic_drift_rejects_adjacent_edge= |
+| Endpoint counterexample | =endpoint_binding_does_not_exclude_intermediate_drift= |
+
+* Admission and failure behavior
+
+The serving path MUST fail closed when:
+
+- a coverage edge has no registry transition certificate;
+- registry and coverage endpoints disagree;
+- the chain omits an epoch;
+- the successor relation is not functional;
+- any intermediate semantic identity differs;
+- an authority digest differs;
+- the chain endpoints do not match the issued and current generations.
+
+These failures invalidate proof reuse. They do not invalidate the underlying
+source evidence; the SearchLoop may rebuild coverage under the current
+generation.
+
+* Explicit boundary
+
+This RFC assumes one stable transition-authority digest across the admitted
+coverage chain. Authority rotation requires a separate proof that composes
+authority transfer with semantic-lineage continuity. It MUST NOT be inferred
+from an epoch transition alone.

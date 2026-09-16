@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Search-owned ASP Rust harness scenarios.
 
 use crate::AspRustProjectHarnessScenarioPackage;
@@ -29,6 +33,14 @@ pub const SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID: &str =
 pub const SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID: &str =
     "search-source-index-read-only-client-db-zero-write";
 
+/// Merkle-qualified live-memory code search must never open Turso on the warm path.
+pub const CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID: &str =
+    "code-search-merkle-memory-warm-path";
+
+/// Merkle-qualified code search over one resident Turso 0.7 read session.
+pub const CODE_SEARCH_TURSO_RESIDENT_SESSION_WARM_PATH_SCENARIO_ID: &str =
+    "code-search-turso-resident-session-warm-path";
+
 /// GraphRouter next-action policy for selector-ready evidence.
 pub const SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID: &str =
     "search-graph-router-next-exact-action";
@@ -38,6 +50,10 @@ pub const SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID: &str = "search-subagent-c
 
 /// Bounded route contract for source-index and owner-item miss recovery.
 pub const SEARCH_DEGRADED_ROUTE_BOUNDED_SCENARIO_ID: &str = "search-degraded-route-bounded";
+
+/// Runtime Search stages share daemon CPU and memory admission.
+pub const RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID: &str =
+    "runtime-search-tokio-resource-lifecycle";
 
 /// Builds the ASP-owned search scenario package consumed by Rust harness policy.
 #[must_use]
@@ -180,6 +196,52 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                 ],
             ),
             crate::asp_rust_project_harness_scenario!(
+                name: CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Merkle-qualified live-memory code search stays below one millisecond p95 without opening Turso or starting providers.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/code_search_merkle_memory_warm_path",
+                tags: ["search", "code-search", "performance", "merkle", "memory", "turso"],
+                commands: [
+                    {
+                        label: "merkle-memory-warm-path-gate",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--test",
+                            "performance_test",
+                            "code_search_merkle_memory_warm_path_is_a_strong_gate",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: CODE_SEARCH_TURSO_RESIDENT_SESSION_WARM_PATH_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Merkle-qualified code search reuses one resident Turso 0.7 read session without reconnecting or starting providers.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/code_search_turso_resident_session_warm_path",
+                tags: ["search", "code-search", "performance", "merkle", "turso", "resident-session"],
+                commands: [
+                    {
+                        label: "turso-resident-session-warm-path-gate",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--test",
+                            "performance_test",
+                            "code_search_turso_resident_session_warm_path_is_a_strong_gate",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
                 name: SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID,
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
                 description: "GraphRouter chooses exact selector actions and rejects seed escape after selector-ready evidence.",
@@ -249,10 +311,49 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                 ],
             ),
             crate::asp_rust_project_harness_scenario!(
+                name: RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Resident retrieval and parser grounding share the Runtime daemon resource supervisor while retaining intermediate-result memory reservations.",
+                fixture_root: "crates/agent-semantic-workspace-scheduler/tests/unit/scenarios/runtime_search_tokio_resource_lifecycle",
+                tags: ["search", "runtime", "tokio", "performance", "resource-budget"],
+                commands: [
+                    {
+                        label: "unified-resource-lifecycle",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-workspace-scheduler",
+                            "runtime_search_resource_lifecycle_is_scenario_measured",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+                benchmark: {
+                    harness: "libtest",
+                    test: "runtime_search_resource_lifecycle_is_scenario_measured",
+                    snapshot: "runtime_search_tokio_resource_lifecycle_v1",
+                    target_total: "250us",
+                    max_total: "5ms",
+                    regression_budget: "250us",
+                    memory_budget_bytes: 2_097_152,
+                    target_rationale: "Two resident CPU stages require O(1) permit operations; retained intermediate memory is charged until Search projection completes.",
+                    warmup_iterations: 16,
+                    measure_iterations: 128,
+                    metrics: [
+                        { name: "queue_wait_micros", unit: "microseconds", kind: Maximum, target: 5000 },
+                        { name: "admitted_cpu", unit: "lanes", kind: Exact, target: 1 },
+                        { name: "peak_admitted_memory_bytes", unit: "bytes", kind: Exact, target: 2_097_152 },
+                        { name: "completed_stage_count", unit: "count", kind: Exact, target: 2 }
+                    ]
+                }
+            ),
+            crate::asp_rust_project_harness_scenario!(
                 name: "tree-sitter-querycursor-native-hot-path",
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
                 description: "Canonical Tree-sitter QueryCursor execution keeps predicate semantics and bounded native hot-path metrics visible.",
-                fixture_root: "languages/rust-lang-project-harness/tests/unit/cli/query/catalog",
+                fixture_root: "languages/asp-rust/tests/unit/cli/query/catalog",
                 tags: ["search", "query", "tree-sitter", "performance", "native-runtime"],
                 commands: [
                     {
@@ -261,7 +362,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "cargo",
                             "test",
                             "--manifest-path",
-                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "languages/asp-rust/Cargo.toml",
                             "--features",
                             "cli",
                             "--test",
@@ -277,7 +378,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "cargo",
                             "test",
                             "--manifest-path",
-                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "languages/asp-rust/Cargo.toml",
                             "--features",
                             "cli",
                             "--test",

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-search-execution-budget.v1.schema.json",
+  "title": "Runtime Search execution budget V1",
+  "description": "A Runtime-generation-owned Search cardinality receipt. It bounds semantic work and output; it does not configure Tokio scheduling concurrency.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "authority",
+    "generationDigest",
+    "cardinality",
+    "limits"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-search-execution-budget"
+    },
+    "schemaVersion": {"const": "1"},
+    "authority": {"const": "runtime-generation"},
+    "generationDigest": {"$ref": "#/$defs/digest"},
+    "cardinality": {"$ref": "#/$defs/cardinality"},
+    "limits": {"$ref": "#/$defs/limits"}
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "cardinality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "indexedOwnerCount",
+        "corpusByteCount",
+        "corpusLineCount",
+        "graphNodeCount",
+        "graphEdgeCount"
+      ],
+      "properties": {
+        "indexedOwnerCount": {"type": "integer", "minimum": 1},
+        "corpusByteCount": {"type": "integer", "minimum": 1},
+        "corpusLineCount": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "graphNodeCount": {"type": "integer", "minimum": 0},
+        "graphEdgeCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rgMatchCount",
+        "lexicalOwnerCount",
+        "syntaxSelectorCount",
+        "graphCandidateOwnerCount",
+        "graphDepth",
+        "graphNodeCount",
+        "graphEdgeCount",
+        "graphResultCount",
+        "evidenceItemCount"
+      ],
+      "properties": {
+        "rgMatchCount": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "lexicalOwnerCount": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "syntaxSelectorCount": {"type": "integer", "minimum": 1},
+        "graphCandidateOwnerCount": {"type": "integer", "minimum": 1},
+        "graphDepth": {"type": "integer", "minimum": 0, "maximum": 16},
+        "graphNodeCount": {"type": "integer", "minimum": 0, "maximum": 256},
+        "graphEdgeCount": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "graphResultCount": {"type": "integer", "minimum": 0, "maximum": 30},
+        "evidenceItemCount": {"const": 30}
+      }
+    }
+  }
+}

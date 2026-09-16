@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/project-topology-inference-receipt.v1.schema.json",
+  "title": "Project Topology Inference Receipt V1",
+  "description": "Complete bounded MRR/Ascent topology closure retaining relation and rule identity for every derived result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "generationIdentity",
+    "rulePackIdentity",
+    "inputEdges",
+    "relationships",
+    "mrrClosureDigest",
+    "ascentSemanticDigest",
+    "mrrMaterializationDigest",
+    "receiptDigest",
+    "terminal"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.project-topology-inference-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "const": "admitted"
+    },
+    "generationIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rulePackIdentity": {
+      "const": "project-topology-reachability"
+    },
+    "inputEdges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "relation",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relation": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "from",
+          "to",
+          "ruleId",
+          "premiseEdgeIds"
+        ],
+        "properties": {
+          "relation": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$(?![\\s\\S])"
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ruleId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "premiseEdgeIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "mrrClosureDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "ascentSemanticDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "mrrMaterializationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "receiptDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "terminalCount",
+        "reasonKind"
+      ],
+      "properties": {
+        "state": {
+          "const": "admitted"
+        },
+        "terminalCount": {
+          "const": 1
+        },
+        "reasonKind": {
+          "type": "null"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  },
+  "$comment": "V1 semantic admission additionally requires deterministic ordering, unique input edge identities, every premiseEdgeIds entry to resolve in inputEdges, and the receipt to be independently admitted before Runtime attachment."
+}
+

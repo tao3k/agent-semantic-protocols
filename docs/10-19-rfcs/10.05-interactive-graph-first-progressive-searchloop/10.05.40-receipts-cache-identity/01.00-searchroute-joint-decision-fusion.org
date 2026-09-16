@@ -1,0 +1,358 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.40.01.00 - Joint Decision Fusion
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module defines how independently verified old and new weighted receipts
+produce one joint routing decision during the joint transition phase. It
+changes protocol and receipt semantics only. It does not authorize Rust or
+Python implementation.
+
+* Abstract
+
+RFC 00.99 preserves old and new weighted receipts as separate schedule-bound
+proofs. A router still needs one deterministic value for a joint decision.
+
+If both selected values are certified inside the same honest interval
+\([A,L]\), their maximum is also inside that interval:
+
+#+name: searchroute-joint-decision-fusion-model
+#+begin_src typst
+#let joint-max(old, new) = if old >= new { old } else { new }
+#assert(joint-max(1, 2) == 2)
+#assert(joint-max(2, 1) == 2)
+#assert(joint-max(2, 2) == 2)
+#assert(joint-max(1, 2) >= 1)
+#assert(joint-max(1, 2) >= 2)
+"ok"
+#+end_src
+
+The maximum is the conservative fusion policy because it dominates both input
+bounds while remaining below the shared live upper bound.
+
+* Preconditions
+
+Joint fusion is authorized only when:
+
+- transition phase is =joint=;
+- the old weighted receipt is independently verified;
+- the new weighted receipt is independently verified;
+- both receipts bind the same =transitionId=;
+- each receipt binds its authorized snapshot and weight schedule;
+- neither receipt is expired, revoked, quarantined, or superseded;
+- both receipts use a compatible bound domain and comparison semantics;
+- the joint decision policy version is authorized.
+
+One valid lane and one missing or invalid lane do not produce a joint decision
+under the strict dual-input policy.
+
+* Mathematical contract
+
+Let:
+
+- \(S_o\) be the old-lane selected value;
+- \(S_n\) be the new-lane selected value;
+- \(A\) be the actual faulty voting weight;
+- \(L\) be the shared honest live upper bound;
+- \(S_j = \max(S_o,S_n)\) be the joint value.
+
+Input receipts establish:
+
+\[
+A \le S_o \le L
+\qquad\text{and}\qquad
+A \le S_n \le L.
+\]
+
+Fusion establishes:
+
+\[
+S_o \le S_j
+\qquad\text{and}\qquad
+S_n \le S_j.
+\]
+
+Therefore:
+
+#+name: searchroute-joint-decision-fusion-proposition
+#+begin_src typst
+#let interval-preservation = $
+  A <= S_o <= L
+  and A <= S_n <= L
+  arrow.r.double
+  A <= max(S_o, S_n) <= L
+$
+#let conservative-dominance = $
+  S_o <= max(S_o, S_n)
+  and S_n <= max(S_o, S_n)
+$
+#let identity-separation = $
+  V_j = V_j^prime
+  and R_o != R_o^prime
+  arrow.r.double
+  J != J^prime
+$
+#assert(type(interval-preservation) == content)
+#assert(type(conservative-dominance) == content)
+#assert(type(identity-separation) == content)
+"ok"
+#+end_src
+
+The interval proof and the conservative-policy proof are separate. A smaller
+candidate may remain inside \([A,L]\) without dominating both inputs.
+
+* Why maximum is normative
+
+Minimum, either-lane preference, or any interior value can preserve interval
+membership under strong input assumptions. That fact alone does not satisfy
+the conservative joint policy.
+
+For example:
+
+\[
+A=1,\quad L=2,\quad S_o=1,\quad S_n=2,\quad C=1.
+\]
+
+The candidate \(C=1\) lies inside \([A,L]\), but \(S_n\nleq C\). It discards the
+more conservative certified bound.
+
+The strict policy therefore requires:
+
+#+begin_example
+fusedValue >= oldSelectedValue
+fusedValue >= newSelectedValue
+#+end_example
+
+Together with interval preservation, these obligations uniquely determine the
+numeric maximum in a total order.
+
+A future policy MAY choose another fusion rule, but it requires a distinct
+policy version and proof family. It MUST NOT reuse the maximum-policy receipt
+identity.
+
+* Dual-input verification
+
+The fusion verifier MUST consume verification receipts, not bare selected
+numbers.
+
+The old input MUST bind:
+
+- =oldWeightedReceiptId=;
+- old snapshot and schedule identities;
+- selected value and interval proof;
+- validity interval and verification status.
+
+The new input MUST bind the corresponding new-lane fields.
+
+The verifier MUST reject:
+
+- =missing-old-joint-input=;
+- =missing-new-joint-input=;
+- =unverified-old-joint-input=;
+- =unverified-new-joint-input=;
+- =joint-input-transition-mismatch=;
+- =joint-input-domain-mismatch=.
+
+If an input becomes invalid after fusion but before publication, the fusion
+attempt must be recomputed or failed. It MUST NOT publish using a stale
+verification snapshot.
+
+* Lane-role identity
+
+The maximum is numerically commutative:
+
+\[
+\max(S_o,S_n)=\max(S_n,S_o).
+\]
+
+Joint receipt identity is intentionally not lane-commutative. Old and new
+receipts have different transition roles. Swapping them changes which snapshot
+is being retired and which snapshot is being activated.
+
+Therefore:
+
+#+begin_example
+(oldReceiptId=A, newReceiptId=B)
+!=
+(oldReceiptId=B, newReceiptId=A)
+#+end_example
+
+when \(A\ne B\), even if both forms calculate the same fused value.
+
+This prevents a numerically commutative operation from erasing transition
+direction.
+
+* Joint decision receipt
+
+The receipt MUST bind:
+
+- =transitionId=;
+- =transitionPhase = "joint"=;
+- =oldWeightedReceiptId=;
+- =newWeightedReceiptId=;
+- =oldSelectedValue=;
+- =newSelectedValue=;
+- =oldVerificationReceiptId=;
+- =newVerificationReceiptId=;
+- =decisionPolicyVersion=;
+- =fusedValue=;
+- =comparisonDomainVersion=;
+- =verificationSnapshotId=;
+- =issuedAt=;
+- =expiresAt=.
+
+The fused value MUST be reconstructible from the two selected values and policy
+version. A receipt claiming a non-maximum value under the maximum policy is
+invalid.
+
+The receipt MUST preserve links to both input receipts. Fusion does not mutate,
+replace, or relabel either schedule-specific receipt.
+
+* Receipt and cache identity
+
+The identity MUST bind:
+
+#+begin_example
+jointDecisionReceiptId = H(
+  transitionId,
+  transitionPhase,
+  oldWeightedReceiptId,
+  newWeightedReceiptId,
+  oldVerificationReceiptId,
+  newVerificationReceiptId,
+  decisionPolicyVersion,
+  comparisonDomainVersion,
+  fusedValue,
+  verificationSnapshotId,
+  issuedAt,
+  expiresAt
+)
+#+end_example
+
+Consequences:
+
+- changing either input receipt invalidates the joint decision cache;
+- changing either verification receipt invalidates the cache;
+- changing lane roles invalidates the cache;
+- changing policy or comparison domain invalidates the cache;
+- equal fused values do not make receipt identities compatible.
+
+A search-result cache hit requires exact identity and validity. A model
+prefix-cache hit only means deterministic rendered bytes were reusable; it
+does not verify either input or the joint decision.
+
+* SearchLoop and graph-router consequences
+
+The short graph path is:
+
+#+begin_example
+load compact old receipt
+  -> load compact new receipt
+  -> verify dual-input gate
+  -> compute conservative maximum
+  -> verify interval and dominance
+  -> emit joint decision receipt
+  -> route
+#+end_example
+
+The router does not need to reopen concrete report lists when both compact
+input proofs remain valid. Progressive inspection remains available:
+
+- =inspect old-input= opens the old 00.98 certificate;
+- =inspect new-input= opens the new 00.98 certificate;
+- =inspect fusion-proof= exposes interval and dominance obligations;
+- =inspect identity= exposes the joint receipt key.
+
+This reduces graph traversal, prompt tokens, and interaction rounds without
+hiding the evidence path.
+
+No specialized complex CLI command is required. The agent-facing interface is
+the typed joint-decision transition and its inspect continuations.
+
+* Proof-discovered gaps
+
+** Same result is not same computation
+
+Two fusion attempts can both return value five while depending on different
+old receipts. Their evidence, validity, and transition meaning differ. Caching
+by =fusedValue= is unsound.
+
+** Numeric commutativity is not identity commutativity
+
+Sorting receipt IDs before hashing would improve accidental cache sharing but
+erase old/new lane roles. The receipt key MUST preserve role order.
+
+** Interval validity is weaker than conservative dominance
+
+Checking only \(A\le S_j\le L\) permits a policy implementation to return a
+smaller input silently. Both dominance checks are required.
+
+** A valid input cannot excuse an invalid input
+
+If the maximum happens to equal the valid lane's value, the invalid lane still
+blocks strict joint fusion. Otherwise an implementation could bypass joint
+transition requirements whenever one lane numerically dominates.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.lean
+#+end_example
+
+It proves:
+
+- a conservative maximum exists for every pair;
+- the maximum preserves the shared honest interval;
+- the maximum dominates both input values;
+- interval membership alone does not imply conservative dominance;
+- either missing verification blocks strict joint fusion;
+- compatibility binds both input receipt identities;
+- changing either input invalidates joint compatibility;
+- equal fused values do not imply equal receipt identity;
+- swapping distinct old/new lane receipts changes joint identity.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinJointDecisionFusion.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinJointDecisionFusionAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-joint-decision-fusion-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- atomic publication of the fused receipt;
+- crash recovery between input verification and publication;
+- phase advancement from joint to new-only;
+- revocation races during fusion;
+- policies other than conservative maximum;
+- cross-domain numeric conversion.
+
+* Next proof boundary
+
+The next module should prove atomic publication and phase advancement. A system
+must not expose =newOnly= until the joint decision receipt is durably published
+and its two input verification snapshots remain valid.
+
+The proof must model a publication intent, durable decision record, phase
+compare-and-swap, crash recovery, and idempotent replay.

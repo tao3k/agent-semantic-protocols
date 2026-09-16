@@ -1,0 +1,57 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryWinnerCacheInvalidation.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.CacheEntryUsable\n    ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationZero\n    ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry ∧\n  ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.authorizedCacheLookup\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationZero\n      (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n    some true",
+   "theoremFamily": "current cache hit",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWCI-LOOKUP"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.current_active_authorization_allows_cache_hit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.CacheEntryUsable\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.revokedGenerationZero\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry ∧\n  ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.authorizedCacheLookup\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.revokedGenerationZero\n      (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n    none",
+   "theoremFamily": "revocation invalidation",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWCI-REVOCATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.same_generation_revocation_turns_prior_entry_into_miss",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationOne.grantActive\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry.grantIdentity =\n    true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.CacheEntryUsable\n        ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationOne\n        ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry ∧\n    ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.authorizedCacheLookup\n        ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationOne\n        (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n      none",
+   "theoremFamily": "generation invalidation",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWCI-GENERATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generation_advance_turns_reactivated_grant_entry_into_miss",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.purgeUnusableEntry\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.revokedGenerationZero\n      (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n    none ∧\n  ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.purgeUnusableEntry\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationOne\n      (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n    none",
+   "theoremFamily": "logical purge",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWCI-PURGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.purge_removes_entry_that_is_no_longer_authorized",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.unsafeGenerationFreeCacheLookup\n      (some ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry) =\n    some true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.CacheEntryUsable\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.activeGenerationOne\n      ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generationZeroEntry",
+   "theoremFamily": "stale-cache counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWCI-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerCacheInvalidation.generation_free_cache_lookup_replays_stale_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

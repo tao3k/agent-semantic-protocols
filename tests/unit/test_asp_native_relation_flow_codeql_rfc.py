@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Contract checks for RFC 012 native relation/flow and CodeQL extension plan."""
 
 from pathlib import Path
@@ -51,7 +55,7 @@ def test_asp_relation_flow_rfc_defines_flow_lite_query_catalog_contract() -> Non
     text = _RFC_PATH.read_text(encoding="utf-8")
 
     required_terms = [
-        "asp rust query --catalog flow-lite",
+        "asp query playbook --language rust --catalog flow-lite",
         "source.call=payload_string sink.constructs=ToolAction scope.fn=collect_tool_actions",
         "=--catalog flow-lite= is not a tree-sitter =.scm= catalog id.",
         "tree-sitter-compatible syntax catalog branch",

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema contract tests for embedded semantic graph vocabulary."""
 
 from __future__ import annotations
@@ -9,6 +13,9 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from tests.unit.semantic_search_action_fixture import (
+    complete_search_playbook_command,
+)
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,11 +27,11 @@ def minimal_graph() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "packageName": ".",
         "graphKind": "owner-dependency",
-        "scope": "prime",
+        "scope": "search-playbook",
         "rootOwners": ["src/lib.rs"],
         "nodes": [
             {
@@ -52,7 +59,7 @@ def minimal_graph() -> dict[str, object]:
         ],
         "synthesis": {
             "algorithm": "owner-rank-frontier",
-            "scope": "prime",
+            "scope": "search-playbook",
             "summary": "embedded graph slice for search planning",
             "selectedOwners": 1,
             "selectedEdges": 1,
@@ -63,11 +70,23 @@ def minimal_graph() -> dict[str, object]:
                     "kind": "owner",
                     "target": "src/lib.rs",
                     "ownerPath": "src/lib.rs",
+                    "command": complete_search_playbook_command(
+                        language="rust",
+                        term="src/lib.rs",
+                        path_hint="src/lib.rs",
+                        globs=("*.rs",),
+                    ),
                 },
                 {
                     "kind": "tests",
                     "target": "tests/lib.rs",
                     "ownerPath": "src/lib.rs",
+                    "command": complete_search_playbook_command(
+                        language="rust",
+                        term="tests/lib.rs",
+                        path_hint="tests/lib.rs",
+                        globs=("*.rs",),
+                    ),
                 },
             ],
         },
@@ -79,13 +98,8 @@ class SemanticGraphSchemaTests(unittest.TestCase):
         graph_schema_path = (
             _PROTOCOL_REPO_ROOT / "schemas" / "semantic-graph.v1.schema.json"
         )
-        search_schema_path = (
-            _PROTOCOL_REPO_ROOT / "schemas" / "semantic-search-packet.v1.schema.json"
-        )
         with graph_schema_path.open("r", encoding="utf-8") as handle:
             self.graph_schema = json.load(handle)
-        with search_schema_path.open("r", encoding="utf-8") as handle:
-            self.search_schema = json.load(handle)
         self.validator = Draft202012Validator(self.graph_schema)
 
     def validation_errors(self, graph: dict[str, object]) -> list[str]:
@@ -95,7 +109,7 @@ class SemanticGraphSchemaTests(unittest.TestCase):
         self.assertEqual([], self.validation_errors(minimal_graph()))
 
     def test_graph_agent_facing_scopes_match_synthesis_scopes(self) -> None:
-        for scope in ("policy", "query", "query-set", "lexical", "tests", "ingest"):
+        for scope in ("policy", "query", "query-set", "search-playbook", "tests"):
             with self.subTest(scope=scope):
                 graph = minimal_graph()
                 graph["scope"] = scope
@@ -121,31 +135,6 @@ class SemanticGraphSchemaTests(unittest.TestCase):
         errors = self.validation_errors(graph)
 
         self.assertTrue(any("does not match" in message for message in errors))
-
-    def test_graph_node_and_edge_vocabulary_matches_search_packet(self) -> None:
-        graph_defs = self.graph_schema["$defs"]
-        search_defs = self.search_schema["$defs"]
-
-        self.assertEqual(graph_defs["node"], search_defs["node"])
-        self.assertEqual(graph_defs["edge"], search_defs["edge"])
-
-    def test_graph_synthesis_is_search_synthesis_compatible(self) -> None:
-        graph_defs = self.graph_schema["$defs"]
-        search_defs = self.search_schema["$defs"]
-
-        self.assertEqual(
-            graph_defs["synthesis"]["properties"],
-            search_defs["searchSynthesis"]["properties"],
-        )
-        self.assertEqual(
-            graph_defs["synthesis"]["required"],
-            search_defs["searchSynthesis"]["required"],
-        )
-        self.assertEqual(
-            graph_defs["synthesis"]["additionalProperties"],
-            search_defs["searchSynthesis"]["additionalProperties"],
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

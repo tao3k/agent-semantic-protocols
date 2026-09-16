@@ -31,7 +31,7 @@
     {
       "fixtureId": "rust.sequence.vec",
       "languageId": "rust",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "collectionFamily": "sequence",
       "collectionImpl": "Vec",
       "queryIntent": "sequence collection field",
@@ -118,7 +118,7 @@
     {
       "fixtureId": "rust.map.hashmap",
       "languageId": "rust",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "collectionFamily": "map",
       "collectionImpl": "HashMap",
       "queryIntent": "map collection field",
@@ -208,7 +208,7 @@
     {
       "fixtureId": "python.sequence.list",
       "languageId": "python",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "collectionFamily": "sequence",
       "collectionImpl": "list",
       "queryIntent": "sequence collection field",
@@ -295,7 +295,7 @@
     {
       "fixtureId": "python.map.dict",
       "languageId": "python",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "collectionFamily": "map",
       "collectionImpl": "dict",
       "queryIntent": "map collection field",
@@ -385,7 +385,7 @@
     {
       "fixtureId": "typescript.sequence.array",
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "collectionFamily": "sequence",
       "collectionImpl": "Array",
       "queryIntent": "sequence collection field",
@@ -472,7 +472,7 @@
     {
       "fixtureId": "typescript.map.map",
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "collectionFamily": "map",
       "collectionImpl": "Map",
       "queryIntent": "map collection field",
@@ -562,7 +562,7 @@
     {
       "fixtureId": "julia.sequence.vector",
       "languageId": "julia",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "collectionFamily": "sequence",
       "collectionImpl": "Vector",
       "queryIntent": "sequence collection field",
@@ -649,7 +649,7 @@
     {
       "fixtureId": "julia.map.dict",
       "languageId": "julia",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "collectionFamily": "map",
       "collectionImpl": "Dict",
       "queryIntent": "map collection field",

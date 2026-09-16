@@ -1,0 +1,21 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteScipyMixedRadix
+
+#print axioms ASPProof.SearchRouteScipyMixedRadix.appendDigit_lt_product
+#print axioms ASPProof.SearchRouteScipyMixedRadix.cacheTail_lt_base
+#print axioms ASPProof.SearchRouteScipyMixedRadix.tokenTail_lt_base
+#print axioms ASPProof.SearchRouteScipyMixedRadix.lowerTail_lt_base
+#print axioms ASPProof.SearchRouteScipyMixedRadix.appendDigit_priority
+#print axioms ASPProof.SearchRouteScipyMixedRadix.fewer_hops_dominate_all_bounded_lower_costs
+#print axioms ASPProof.SearchRouteScipyMixedRadix.fewer_rounds_dominate_bounded_token_and_cache_costs
+#print axioms ASPProof.SearchRouteScipyMixedRadix.first_unsafe_integer_exceeds_float64_exact_cap
+#print axioms ASPProof.SearchRouteScipyMixedRadix.search_cache_and_model_cache_are_distinct_digits
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_direct_route_encoding_is_904
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_direct_route_beats_longer_route
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_fast_round_route_encoding_is_1211
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_fast_round_route_beats_cheaper_token_route
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_search_hit_route_encoding_is_19
+#print axioms ASPProof.SearchRouteScipyMixedRadix.python_search_hit_route_beats_search_miss_route

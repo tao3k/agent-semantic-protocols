@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build turn-level quality details from visible agent-session events."""
 
 from __future__ import annotations
@@ -324,14 +328,10 @@ def _command_signals(
 ) -> list[str]:
     signals = ["command-recorded"]
     kind = _command_kind(command, argv)
-    if kind == "search" and "prime" in argv:
-        signals.append("search-prime")
-    elif kind == "search":
-        signals.append("search-followup")
+    if kind == "search" and "playbook" in argv:
+        signals.append("search-playbook")
     elif kind == "query":
         signals.append("query-selector")
-    elif kind == "check":
-        signals.append("check-command")
     elif kind == "guide":
         signals.append("guide-command")
     if command.get("denied") or kind == "hook-deny":
@@ -341,8 +341,6 @@ def _command_signals(
         signals.append("repeated-command")
     if _is_direct_read_risk(argv):
         signals.append("direct-read-risk")
-    if "search.missing-prime" in finding_ids and kind == "search":
-        signals.append("search-followup")
     return _dedupe(signals)
 
 
@@ -356,7 +354,6 @@ def _finding_ids_for_signals(
         "hook-denied": "hook.denied",
         "answer-missing": "answer.missing",
         "answer-weak": "answer.weak-grounding",
-        "search-followup": "search.missing-prime",
     }
     return [
         finding_id
@@ -411,7 +408,7 @@ def _command_kind(command: dict[str, Any], argv: list[str]) -> str:
     kind = command.get("kind")
     if isinstance(kind, str) and kind:
         return kind
-    for surface in ("search", "query", "check", "guide"):
+    for surface in ("search", "query", "guide"):
         if surface in argv:
             return surface
     if command.get("denied"):

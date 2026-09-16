@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.runtime-exact-projection-receipt.v1",
+  "title": "Runtime exact projection receipt v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "ownerContentDigest", "resolvedSelector", "bytes"],
+      "properties": {
+        "state": { "const": "provider-projection" },
+        "ownerContentDigest": { "type": "string", "minLength": 1 },
+        "resolvedSelector": { "type": "string", "minLength": 1 },
+        "bytes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "generationDigest",
+        "rootDigest",
+        "resolvedSelector",
+        "bytes"
+      ],
+      "properties": {
+        "state": { "const": "projection" },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "resolvedSelector": { "type": "string", "minLength": 1 },
+        "bytes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "generationDigest",
+        "rootDigest",
+        "resolvedSelector",
+        "projectionScope",
+        "ownerContentDigest"
+      ],
+      "properties": {
+        "state": { "const": "projection-scope-omitted" },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "resolvedSelector": { "type": "string", "minLength": 1 },
+        "projectionScope": {
+          "enum": ["production", "test-all-targets", "live-corpus"]
+        },
+        "ownerContentDigest": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "generationDigest", "rootDigest", "candidates"],
+      "properties": {
+        "state": { "const": "relocation-ambiguous" },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "candidates": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "const": "generation-missing" }
+      }
+    }
+  ]
+}

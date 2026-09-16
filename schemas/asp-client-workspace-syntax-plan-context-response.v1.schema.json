@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-syntax-plan-context-response.v1.schema.json",
+  "title": "ASP Client Workspace Syntax Plan Context Response V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "generationDigest", "capability"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response"},
+    "schemaVersion": {"const": "1"},
+    "generationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "capability": {"$ref": "enhanced-tree-sitter-query-capability-table.v1.schema.json"}
+  }
+}

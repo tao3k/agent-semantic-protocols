@@ -1,0 +1,97 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (sinkId : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkId)\n  (protocolVersion : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.ProtocolVersion)\n  (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (publishable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.deliveryIdentity sinkId protocolVersion\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle publishable).obligation.edge =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.deliveryIdentity sinkId protocolVersion\n      bundle.obligation.edge",
+   "theoremFamily": "stable-delivery-identity",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.publication_retry_preserves_delivery_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt →\n    receipt.identity =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.deliveryIdentity publication.sinkId\n        publication.protocolVersion publication.bundle.obligation.edge",
+   "theoremFamily": "receipt-delivery-binding",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRSA-EDGE",
+    "ASP-RFC-10.05-CRSA-SINK",
+    "ASP-RFC-10.05-CRSA-VERSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.admitted_receipt_matches_expected_delivery",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier)\n  (admitted :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.acknowledgeWithReceipt verifier publication receipt\n            admitted).closedBundle.obligation.phase =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.acknowledged",
+   "theoremFamily": "verified-receipt-closure",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-ACK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.verified_receipt_closes_publication_obligation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  receipt.identity.sinkId ≠ publication.sinkId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt",
+   "theoremFamily": "cross-sink-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-SINK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.cross_sink_receipt_cannot_acknowledge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  receipt.identity.protocolVersion ≠ publication.protocolVersion →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt",
+   "theoremFamily": "wrong-version-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-VERSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.wrong_protocol_version_receipt_cannot_acknowledge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  receipt.identity.edge ≠ publication.bundle.obligation.edge →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt",
+   "theoremFamily": "wrong-edge-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-EDGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.wrong_edge_receipt_cannot_acknowledge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  ¬verifier.verifies receipt.identity.sinkId receipt.identity.protocolVersion receipt.identity.edge receipt.evidence →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt",
+   "theoremFamily": "unverifiable-receipt-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-VERIFY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.unverifiable_receipt_cannot_acknowledge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  publication.bundle.obligation.edge.committedRevision < publication.bundle.admission.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt",
+   "theoremFamily": "stale-receipt-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.stale_edge_receipt_cannot_acknowledge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkVerifier Digest)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (receipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier)\n  (admitted :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier publication receipt)\n  (secondReceipt : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkAcceptanceReceipt verifier),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.CanAcknowledgeWithReceipt verifier\n      {\n        bundle :=\n          (ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.acknowledgeWithReceipt verifier publication\n              receipt admitted).closedBundle,\n        sinkId := publication.sinkId, protocolVersion := publication.protocolVersion }\n      secondReceipt",
+   "theoremFamily": "post-receipt-closure-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRSA-ACK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.receipt_closed_bundle_cannot_acknowledge_again",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 9,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 8,
+ "axiomDependentDeclarationCount": 1}

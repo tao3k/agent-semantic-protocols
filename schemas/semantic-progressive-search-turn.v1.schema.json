@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-progressive-search-turn.v1.schema.json",
+  "title": "Semantic Progressive Search Turn v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "turnKind",
+    "semanticDigest",
+    "sourceSnapshotDigest",
+    "exposureBudget",
+    "selectionBudget",
+    "visibleCandidates",
+    "selectedCandidateIds",
+    "omittedItemCount",
+    "obligationState",
+    "continuation"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.progressive-search-turn.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "turnKind": { "enum": ["frontier", "selection", "complete", "failure"] },
+    "semanticDigest": { "$ref": "#/$defs/digest" },
+    "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+    "exposureBudget": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "selectionBudget": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "visibleCandidates": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "selectedCandidateIds": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "omittedItemCount": { "type": "integer", "minimum": 0 },
+    "obligationState": { "enum": ["open", "partial", "closed", "failed"] },
+    "continuation": {
+      "oneOf": [
+        { "$ref": "#/$defs/continuation" },
+        { "type": "null" }
+      ]
+    },
+    "failure": { "$ref": "#/$defs/failure" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "omittedItemCount": { "minimum": 1 } },
+        "required": ["omittedItemCount"]
+      },
+      "then": {
+        "properties": { "continuation": { "$ref": "#/$defs/continuation" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "turnKind": { "const": "failure" } },
+        "required": ["turnKind"]
+      },
+      "then": { "required": ["failure"] }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^(blake3-256|sha256):[a-f0-9]{64}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "nodeRef", "provenanceDigest", "features"],
+      "properties": {
+        "candidateId": { "type": "string", "minLength": 1 },
+        "nodeRef": { "type": "string", "minLength": 1 },
+        "provenanceDigest": { "$ref": "#/$defs/digest" },
+        "features": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["continuationId", "semanticDigest", "omissionCertificateDigest"],
+      "properties": {
+        "continuationId": { "type": "string", "minLength": 1 },
+        "semanticDigest": { "$ref": "#/$defs/digest" },
+        "omissionCertificateDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reasonKind", "message"],
+      "properties": {
+        "reasonKind": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

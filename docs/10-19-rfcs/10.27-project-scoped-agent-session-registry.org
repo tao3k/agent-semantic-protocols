@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: 10.27 Project-Scoped Agent Session Registry
 #+PROPERTY: RFC_ID 10.27
 #+PROPERTY: STATUS draft
@@ -9,6 +13,79 @@ session artifact tree just to remember root and child session relationships.
 The durable key is the current project plus the agent session ids.
 
 * Contract
+** Codex V2 adapter and ASP control-plane authority
+
+Codex host events are an external, versioned observation surface.  They are not
+the ASP session state machine and they do not own routing or delegation policy.
+Each supported Codex event version MUST be consumed by a dedicated adapter that
+validates host identity and rollout topology, then emits the stable ASP facts:
+
+- root session identity;
+- current agent-node identity and verified parent identity;
+- turn identity;
+- proposed delegation edge;
+- host lifecycle evidence.
+
+The project-scoped ASP Control Plane is the sole authority that materializes
+those facts into agent nodes, turns, delegation edges, lifecycle transitions,
+admission decisions, and durable receipts.  A future Codex event revision MUST
+therefore change only the adapter/input schema and its projection proof; it MUST
+NOT require Codex-specific branches in the registry, Hook policy, or the stable
+ASP transition model.
+
+Every registered agent node carries a delegation capability.  The initial
+capabilities are =standard= and =focused-leaf=:
+
+- =standard= permits a proposed child edge subject to the normal registered
+  route and lifecycle checks;
+- =focused-leaf= permits work in the current session but admits no outgoing
+  delegation edge.
+
+The canonical =asp_testing= and =asp_explorer= routes MUST materialize as
+=focused-leaf=.  When either session proposes another child, admission MUST
+return a typed deny receipt before child registration, Host binding, dispatch,
+or delegation publication.  The pre-state and post-state agent/delegation sets
+MUST be identical.  This rule is evaluated against the verified current
+agent-node identity; it is neither a root-session policy nor inheritance from a
+generic parent node.
+
+The synchronous Hook is only an adapter for this admission result.  It MUST NOT
+reimplement focus-mode routing from configuration, infer authority from an
+unverified =agent_type=, or manufacture a child record before the Control Plane
+has admitted the edge.
+
+** Durable delegation transition authority
+
+Delegation admission MUST be durable before it is observable.  The ASP Control
+Plane owns an append-only, project-scoped transition journal whose event identity
+is stable across Hook retries, Runtime restarts, and concurrent sessions.  A
+delegation proposal is linearized by one database transaction that:
+
+1. admits or rejects the proposal against the current generation and agent
+   capability;
+2. appends the transition event exactly once;
+3. publishes the next materialized generation when accepted, or preserves the
+   current generation when denied; and
+4. stores the typed admission receipt with the same commit.
+
+The transaction MUST use generation compare-and-swap.  A stale writer MUST
+retry against the committed generation and MUST NOT overwrite newer agent,
+turn, delegation, or receipt state.  Duplicate event identity MUST return the
+already committed receipt without appending a second event or advancing a
+generation.
+
+Startup and owner handoff MUST reconstruct the projection from a durable
+checkpoint plus the ordered journal tail.  A crash before commit exposes
+neither state nor receipt; a crash after commit exposes both.  Replay MUST be
+idempotent and MUST never invoke Codex execution operations.
+
+The foreground Hook path submits the proposal and reads its committed receipt;
+it does not wait for unrelated projection rebuilding.  Warm admission is a
+sub-millisecond control-plane gate.  Concurrent multi-workspace and
+multi-session tests MUST prove bounded latency, one committed event per event
+identity, no cross-workspace lock, and no child/session side effect for a
+=focused-leaf= denial.
+
 
 ASP records resident child sessions in the agent session registry DB with this
 identity:
@@ -30,6 +107,50 @@ The =project_id= is implicit from the current workspace. A normal agent never
 copies a host child id, message target, or model into a shell command. The
 platform adapter projects native lifecycle events into the registry; rollout
 data remains recovery evidence, not routing authority.
+
+** Tokio stream lifecycle contract
+
+Long-lived Session Control Plane event sources MUST be represented as bounded,
+shutdown-aware Tokio streams owned by the Runtime service.  A stream consumer
+MUST preserve backpressure, observe the Runtime shutdown signal, drain already
+admitted transitions, and join its owned task before lifecycle completion.
+No command adapter may own a long-lived consumer, and no consumer may detach a
+task without a durable join owner.
+
+This requirement applies only to continuing event sources.  A single
+request/reply receipt remains a Tokio oneshot, and a Turso row cursor remains a
+database cursor; wrapping either as an application stream would add ambiguity
+without adding lifecycle authority.  A bounded event stream MUST NOT be
+collected into a whole-generation vector before processing.
+
+Every resident stream MUST expose lock-free Runtime metrics for queue capacity,
+current depth, high-water mark, admitted and completed transitions, shutdown
+drain and cancellation counts, and actor starts and stops.  Metrics collection
+MUST perform no database operation, socket round trip, or awaited lock on the
+admission hot path.  A stopped Runtime is closed only when its admitted queue is
+drained, its actor has published a stop receipt, and its join handle has
+completed.
+
+** Authority-current delegation admission
+
+A Host adapter MUST NOT implement delegation as two independent IPC operations
+that first read a generation and later submit a compare-and-swap proposal.  Two
+sessions under the same root can observe the same generation, causing one valid
+delegation to fail only because another valid delegation linearized first.
+
+The agent-facing adapter submits an immutable delegation intent without a
+caller-selected generation.  The workspace resident writer lane materializes
+the current generation, validates the current-session capability, commits the
+child node, edge, next generation, and admission receipt in one Immediate
+transaction, and returns the materialized expected generation as evidence.
+Explicit generation compare-and-swap remains available to reconciliation and
+diagnostic clients, but it is not the Host lifecycle admission surface.
+
+Concurrent distinct intents MUST serialize without stale-generation failure.
+Duplicate event identities MUST return the first durable receipt without a
+second state transition.  A focused-leaf denial MUST preserve generation and
+state digest.  No Host child registration or dispatch may become visible before
+the corresponding accepted receipt is durable.
 
 * Gap Audit
 
@@ -194,33 +315,37 @@ one exists, behind the same project scope function.
 The command and hook behavior tests cover the failure modes and the full
 lifecycle. A declarative scenario-harness wrapper would make the same lifecycle
 easier to reuse for future lanes such as =asp-testing= and future host adapters.
-* Native lifecycle transport authority
-For Codex, generated native hook schemas are the source of truth. The
-=SubagentStart= adapter uses this fixed projection:
+* Collaboration V2 lifecycle transport authority
+For Codex, the typed =collaboration.spawn_agent= result and the configured
+Agent registry are the source of truth. The Host-parent registration adapter
+uses this fixed projection:
 
 | Registry field | Codex native field |
 | =root_session_id= | =session_id= |
 | =parent_session_id= | =session_id= |
-| child =session_id= | =agent_id= |
-| =message_target_id= | =agent_id= |
-| managed role/profile | =agent_type= |
+| child =session_id= | returned child identity |
+| =message_target_id= | returned canonical Agent path |
+| managed role/profile | configured =agent_type= |
 | observed model | =model= |
 
-=agent_id= is both the value returned by native =spawn_agent= and the address
-accepted by native =send_input=. A successful =SubagentStart= therefore closes
-the message-target handshake without a model-authored receipt or a second probe.
-=session_id= is the parent task and must never be registered as the child.
+The canonical path returned by =collaboration.spawn_agent= is the address used
+by =collaboration.followup_task=, =send_message=, and =interrupt_agent=. The
+Host parent persists the returned child identity and canonical path as one
+typed registration transaction. No model-authored receipt or lifecycle-log
+probe is registration authority. =session_id= is the parent task and must
+never be registered as the child.
 
-The adapter ignores non-ASP =agent_type= values so customer subagents remain
+The adapter ignores non-ASP =agent_type= values so customer Agents remain
 outside ASP lifecycle management. For the configured resident type, an atomic
-claim admits one resident. A duplicate or model-mismatched start is rejected
-through the native hook response while the existing valid resident remains
-authoritative. =SubagentStop= retires only the registry row whose child id equals
-the native =agent_id=.
+claim admits one canonical path. A duplicate or model-mismatched spawn is
+rejected while the existing valid Agent remains authoritative. V2 has no
+=close_agent= operation: =interrupt_agent= preserves the canonical path, and
+absence from =list_agents= is observation rather than replacement authority.
 
-The bootstrap pane does not accept child identity as normal-agent output. After
-native create or resume, the normal agent re-enters the same pane. =Ready= is
-derived only from the registry row written by the native lifecycle hook.
+The bootstrap pane does not accept child identity from natural-language Agent
+output. After =spawn_agent= or =followup_task=, the normal Agent re-enters the
+same pane. =Ready= is derived only from the registry row written by the typed
+Host-parent registration transaction.
 
 Codex currently does not expose effective reasoning effort in the generated
 =SubagentStart= input. ASP hard-validates =agent_type= and =model=. Reasoning
@@ -235,12 +360,11 @@ a concrete project/workspace and must be under the project layout:
 
 #+BEGIN_SRC text
 ~/.agent-semantic-protocols/
-  projects/by-id/<repo-id>/
-    workspaces/<workspace-id>/
-      live/hooks/cache/
-      live/hooks/state/
-        activation.json
-        events.jsonl
+  workspaces/<workspace-content-digest>/
+    observations/hooks/cache/
+    observations/hooks/state/
+      activation.json
+      events.jsonl
 #+END_SRC
 
 The global state root may still own cross-project registries, runtime binaries,
@@ -251,7 +375,7 @@ own per-project hook activation or event state.
 ASP-owned agent definitions live under:
 
 #+BEGIN_SRC text
-~/.agent-semantic-protocols/agents/
+~/.agent-semantic-protocols/control/config/agents/
   config.toml
   asp-explorer_codex.toml
   asp-testing_codex.toml
@@ -303,11 +427,11 @@ The regression shape is:
 
 #+BEGIN_SRC text
 asp paths --json
-  => hookStateDir is under projects/by-id/.../workspaces/.../live/hooks/state
+  => hookStateDir is under workspaces/<digest>/observations/hooks/state
   => activation is hookStateDir/activation.json
 
 asp sync
-  => scans ~/.agent-semantic-protocols/agents/*_{codex,claude}.*
+  => scans ~/.agent-semantic-protocols/control/config/agents/*_{codex,claude}.*
   => refreshes host agent projections
   => reports agentConfigs=<n>
 

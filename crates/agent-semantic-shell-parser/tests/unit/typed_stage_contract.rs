@@ -1,0 +1,23 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use agent_semantic_shell_parser::PrefixMatch;
+use agent_semantic_shell_parser::bash::parse_bash_command_candidates;
+use agent_semantic_shell_parser::command_stages_match_wrapped_prefix;
+
+fn tokens(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_owned()).collect()
+}
+
+#[test]
+fn typed_stage_matches_bare_and_wrapped_rg_without_wildcards() {
+    let prefix = tokens(&["rg"]);
+    for command in ["rg needle src/lib.rs", "env TRACE=1 rg needle src/lib.rs"] {
+        let stages = parse_bash_command_candidates(command).expect("valid Bash command");
+        assert_eq!(
+            command_stages_match_wrapped_prefix(&stages, &prefix),
+            PrefixMatch::Matched
+        );
+    }
+}

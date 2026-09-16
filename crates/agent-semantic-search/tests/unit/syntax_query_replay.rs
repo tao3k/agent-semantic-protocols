@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use serde_json::json;
 
 use agent_semantic_search::syntax_query_replay::{
@@ -173,5 +177,5 @@ avoid=broad-code-output,raw-read\n"
 }
 
 fn expected_miss_stdout() -> &'static str {
-    "|syntax-query inputForm=s-expression input=inline grammar=tree-sitter-rust grammarProfile=2026-06-04.v1 dialect=tree-sitter-query matchStatus=miss match=0 rows=0 truncated=false captureCount=1 captures=function.name\n"
+    "|syntax-query status=no-matches mode=structural inputForm=s-expression input=inline grammar=tree-sitter-rust grammarProfile=2026-06-04.v1 dialect=tree-sitter-query match=0 rows=0 truncated=false captureCount=1 captures=function.name reason=no-syntax-capture-satisfied-full-pattern next=use-search-for-discovery\n"
 }

@@ -1,0 +1,45 @@
+{
+  "packet": {
+    "schemaId": "agent.semantic-protocols.search-evidence-read-surface",
+    "schemaVersion": "1",
+    "binding": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contextBudgetLines": 80,
+    "nodes": [
+      {"id": "r", "kind": "Function", "selector": "rust://src/registry.rs#item/function/refresh_registry", "witness": "w1"},
+      {"id": "s", "kind": "SourceHit", "path": "config/runtime.json", "jq": ".runtime | {artifactDigest, providerCatalog}", "witness": "w2"},
+      {"id": "t", "kind": "SourceHit", "path": "notes/migration.txt", "lines": [[80, 159]], "witness": "w3"}
+    ],
+    "edges": [{"from": "s", "to": "r", "relation": "SUPPORTS", "witness": "e1"}]
+  },
+  "authority": {
+    "nodes": {
+      "w1": {
+        "binding": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "src/registry.rs", "kind": "Function",
+        "surface": {"selector": "rust://src/registry.rs#item/function/refresh_registry"}
+      },
+      "w2": {
+        "binding": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "config/runtime.json", "kind": "SourceHit",
+        "surface": {"path": "config/runtime.json", "jq": ".runtime | {artifactDigest, providerCatalog}"},
+        "selectionVerified": true, "resultKind": "value"
+      },
+      "w3": {
+        "binding": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "path": "notes/migration.txt", "kind": "SourceHit",
+        "surface": {"path": "notes/migration.txt", "lines": [[80, 159]]}
+      }
+    },
+    "edges": {
+      "e1": {"binding": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fromWitness": "w2", "toWitness": "w1", "relation": "SUPPORTS"}
+    }
+  },
+  "sources": {
+    "src/registry.rs": {"contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "lineCount": 300},
+    "config/runtime.json": {"contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "lineCount": 200},
+    "notes/migration.txt": {"contentDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "lineCount": 200}
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/grpc-warm-latency-receipt.schema.json",
+  "title": "ASP Client gRPC Warm Latency Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "thresholdNanos",
+    "sequentialCount",
+    "sequentialTerminalCount",
+    "sequentialP95Nanos",
+    "concurrentCount",
+    "concurrentTerminalCount",
+    "concurrentP95Nanos"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.grpc-warm-latency-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "enum": ["passed", "failed"] },
+    "thresholdNanos": { "const": 1000000 },
+    "sequentialCount": { "const": 10 },
+    "sequentialTerminalCount": { "const": 10 },
+    "sequentialP95Nanos": { "type": "integer", "minimum": 0 },
+    "concurrentCount": { "const": 32 },
+    "concurrentTerminalCount": { "const": 32 },
+    "concurrentP95Nanos": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "passed" } } },
+      "then": {
+        "properties": {
+          "sequentialP95Nanos": { "exclusiveMaximum": 1000000 },
+          "concurrentP95Nanos": { "exclusiveMaximum": 1000000 }
+        }
+      }
+    }
+  ]
+}

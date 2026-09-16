@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-search-replacement-certificate.v1.schema.json",
+  "title": "Semantic Search Replacement Certificate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "verdict",
+    "rfcDigest",
+    "schemaBundleDigest",
+    "leanAuditDigest",
+    "axleReceiptDigest",
+    "counterexampleCorpusDigest",
+    "conformanceReceiptDigests",
+    "benchmarkReceiptDigests",
+    "runtime",
+    "safety",
+    "quality",
+    "efficiency",
+    "canary",
+    "rollback"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-replacement-certificate.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "verdict": { "enum": ["candidate", "qualified", "rejected"] },
+    "rfcDigest": { "$ref": "#/$defs/digest" },
+    "schemaBundleDigest": { "$ref": "#/$defs/digest" },
+    "leanAuditDigest": { "$ref": "#/$defs/digest" },
+    "axleReceiptDigest": { "$ref": "#/$defs/digest" },
+    "counterexampleCorpusDigest": { "$ref": "#/$defs/digest" },
+    "conformanceReceiptDigests": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/digest" }
+    },
+    "benchmarkReceiptDigests": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/digest" }
+    },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "safety": { "$ref": "#/$defs/safety" },
+    "quality": { "$ref": "#/$defs/gate" },
+    "efficiency": { "$ref": "#/$defs/gate" },
+    "canary": { "$ref": "#/$defs/gate" },
+    "rollback": { "$ref": "#/$defs/rollback" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "verdict": { "const": "qualified" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "quality": { "properties": { "passed": { "const": true } } },
+          "efficiency": { "properties": { "passed": { "const": true } } },
+          "canary": { "properties": { "passed": { "const": true } } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^(blake3-256|sha256):[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateDigest", "installedDigest", "liveDigest"],
+      "properties": {
+        "candidateDigest": { "$ref": "#/$defs/digest" },
+        "installedDigest": { "$ref": "#/$defs/digest" },
+        "liveDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unsoundClosureCount",
+        "acceptedStaleContinuationCount",
+        "acceptedAbiDriftCount",
+        "featureAuthorityViolationCount",
+        "replayDigestMismatchCount"
+      ],
+      "properties": {
+        "unsoundClosureCount": { "const": 0 },
+        "acceptedStaleContinuationCount": { "const": 0 },
+        "acceptedAbiDriftCount": { "const": 0 },
+        "featureAuthorityViolationCount": { "const": 0 },
+        "replayDigestMismatchCount": { "const": 0 }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "receiptDigest"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "receiptDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binaryDigest", "configurationDigest"],
+      "properties": {
+        "binaryDigest": { "$ref": "#/$defs/digest" },
+        "configurationDigest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

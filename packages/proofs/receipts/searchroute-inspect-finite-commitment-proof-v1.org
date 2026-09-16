@@ -1,0 +1,138 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute finite canonical manifest commitment proof receipt
+
+* Scope
+
+This receipt binds RFC 10.05.27 to:
+
+=ASPProof.SearchRouteInspectFiniteCommitment=
+
+=packages/proofs/ASPProof/SearchRouteInspectFiniteCommitment.lean=
+
+=packages/proofs/ASPProof/Audit/Core.lean=
+
+=packages/proofs/ASPProof/Audit/Receipt.lean=
+
+=packages/proofs/ASPProof/Audit/SearchRouteInspectFiniteCommitment.lean=
+
+=packages/proofs/audit/SearchRouteInspectFiniteCommitmentAudit.lean=
+
+=searchroute-inspect-finite-commitment-audit-v1.json=
+
+=searchroute-inspect-finite-commitment-axle-audit-v1.json=
+
+* Lean build
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+#+end_src
+
+Result:
+
+#+begin_example
+Build completed successfully (24 jobs).
+#+end_example
+
+* Lean JSON audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean \
+  audit/SearchRouteInspectFiniteCommitmentAudit.lean
+#+end_src
+
+Result:
+
+#+begin_example
+wrote receipts/searchroute-inspect-finite-commitment-audit-v1.json
+#+end_example
+
+The RFC-owned target inventory is isolated in
+=ASPProof.Audit.SearchRouteInspectFiniteCommitment=.  It imports the two-job
+=ASPProof.Audit.Core= rather than the historical audit monolith.  The core
+owns JSON extraction only, and the shared receipt module owns filesystem
+serialization only.
+
+* AXLE verification
+
+#+begin_src sh
+uv run --project packages/proofs --frozen \
+  python -m asp_proofs lean-audit \
+  packages/proofs/receipts/searchroute-inspect-finite-commitment-audit-v1.json \
+  --allow-axiom Classical.choice \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family root-binding \
+  --require-family domain-separation \
+  --require-family membership-soundness \
+  --require-family membership-completeness \
+  --require-family root-validity \
+  --require-family exclusion-soundness \
+  --require-family exclusion-completeness \
+  --require-family opening-size-boundary \
+  --require-family opening-consistency \
+  --require-rfc-clause ASP-RFC-10.05-FCM-VALID-ROOT \
+  --require-rfc-clause ASP-RFC-10.05-FCM-IDENTITY \
+  --require-rfc-clause ASP-RFC-10.05-FCM-CANONICAL \
+  --require-rfc-clause ASP-RFC-10.05-FCM-DOMAIN \
+  --require-rfc-clause ASP-RFC-10.05-FCM-BINDING \
+  --require-rfc-clause ASP-RFC-10.05-FCM-MEMBERSHIP \
+  --require-rfc-clause ASP-RFC-10.05-FCM-EXCLUSION \
+  --require-rfc-clause ASP-RFC-10.05-FCM-SCHEME \
+  --require-rfc-clause ASP-RFC-10.05-FCM-COST-BOUNDARY
+#+end_src
+
+Result:
+
+#+begin_example
+{"auditSha256":"63ba791b7290ecf22093a1fe5c8312fd7e7038cc3e213791c94ce7b9ddc6ec88","axiomDependentDeclarationCount":6,"axiomFreeDeclarationCount":4,"axiomInventory":["Quot.sound","propext"],"declarationCount":10,"schemaId":"asp.axle-lean-audit-receipt.v1","schemaVersion":"1"}
+#+end_example
+
+* Org-Babel Typst ownership
+
+RFC 10.05.27 has:
+
+- zero raw LaTeX display delimiters;
+- zero raw LaTeX inline delimiters;
+- zero LaTeX environments;
+- one named Org-Babel Typst block.
+
+The executor obtains
+=searchroute-finite-canonical-manifest-commitment-model= through
+=orgize eval plan --json NAME PATH= and forwards =.body= to:
+
+#+begin_src sh
+typst eval --in - '"ok"'
+#+end_src
+
+Result:
+
+#+begin_example
+"ok"
+#+end_example
+
+No =:file= header, standalone =.typ= file, compile step, or PDF is part of
+this receipt.
+
+* Lean-discovered protocol corrections
+
+- Exclusion completeness is invalid for an arbitrary digest.  It requires a
+  root that opens to a valid canonical manifest.
+- Canonical ordering is part of the commitment, not an output-format detail.
+- Universe and frontier commitments require distinct domain tags.
+- Membership and exclusion verifiers must both bind the supplied root.
+- A verified opening materializes the manifest used by this baseline
+  construction, so its proof bytes are linear in manifest size.
+- Verified membership and exclusion cannot coexist for one root and candidate.
+
+* Remaining boundary
+
+The finite full-manifest construction is a correctness baseline, not the final
+online search representation.  A production construction still needs a
+canonical JSON byte contract, algorithm identity, collision-resistance
+assumptions weaker than ideal digest injectivity, and logarithmic membership
+and non-membership openings such as a domain-separated Merkle structure.

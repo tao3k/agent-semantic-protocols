@@ -37,7 +37,7 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "rust",
           "routes.0.kind": "query",
-          "routes.0.providerId": "rs-harness"
+          "routes.0.providerId": "asp-rust"
         },
         "maxElapsedMsWarn": 10000
       }
@@ -62,7 +62,7 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "python",
           "routes.0.kind": "query",
-          "routes.0.providerId": "py-harness"
+          "routes.0.providerId": "asp-python"
         },
         "maxElapsedMsWarn": 10000
       }
@@ -87,7 +87,7 @@
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
           "routes.0.kind": "ingest",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.providerId": "asp-typescript"
         },
         "maxElapsedMsWarn": 6000
       }

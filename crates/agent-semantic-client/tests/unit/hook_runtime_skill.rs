@@ -1,0 +1,200 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#[allow(clippy::module_inception)]
+#[path = "../../src/command/hook_runtime_skill.rs"]
+mod hook_runtime_skill;
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use hook_runtime_skill::hook_runtime_skill_render::validate_agent_semantic_protocols_skill;
+use hook_runtime_skill::{
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_skill,
+};
+
+#[test]
+fn renders_org_skill_from_languages_org_contract() {
+    let rendered = installed_skill_text("rendered-provider-contracts");
+
+    assert!(rendered.contains("* ASP Org"));
+    assert!(rendered.contains(":SKILL_ID: asp-org"));
+    assert!(rendered.contains(":SKILL_DESCRIPTION: Use when"));
+    assert!(rendered.contains("** Use Boundary"));
+    assert!(rendered.contains("** State Workflow"));
+    assert!(rendered.contains("asp paths --get orgArtifacts"));
+    assert!(rendered.contains("asp paths --get orgStateSkill"));
+    assert!(!rendered.contains("Contract Assertions"));
+    assert!(!rendered.contains("asp-skill-has-root-heading"));
+    assert!(!rendered.contains("SKILL.contract.org"));
+    assert!(!rendered.contains("Generated from the repository root =SKILL.org="));
+    assert!(!rendered.contains("#+CONTRACT_ORG:"));
+    assert!(!rendered.contains("SKILL.md"));
+    assert!(!rendered.contains("/tmp/asp-test"));
+}
+
+#[test]
+fn rendered_skill_satisfies_org_contract() {
+    let rendered = installed_skill_text("rendered-skill-contract");
+
+    validate_agent_semantic_protocols_skill(&rendered).unwrap();
+}
+
+#[test]
+fn skill_contract_template_keeps_repo_local_refer_org() {
+    let contract = include_str!("../../../../org/contracts/asp.skill.v1.org");
+
+    assert!(
+        contract.contains(":SKILL_ID: asp-org"),
+        "source asp.skill.v1.org must own the ASP Org skill template"
+    );
+    assert!(contract.contains("** Contract Assertions"));
+    assert!(
+        !contract.contains(":REFER_ORG: .cache/agent-semantic-protocol"),
+        "source asp.skill.v1.org must not hard-code an installed state-tree path"
+    );
+}
+
+#[test]
+fn org_contract_rejects_missing_state_workflow_section() {
+    let rendered = installed_skill_text("broken-provider-contract");
+    let broken = rendered.replace("** State Workflow", "** State Drift");
+
+    let error = validate_agent_semantic_protocols_skill(&broken).unwrap_err();
+
+    assert!(error.contains("generated SKILL.org does not match Org contract"));
+    assert!(error.contains("asp.skill.has-state-workflow"), "{error}");
+}
+
+fn installed_skill_text(name: &str) -> String {
+    let root = temp_project_root(name);
+    let installed = install_agent_semantic_protocols_skill(&root).unwrap();
+    let skill_path = installed.skill_path.expect("skill path");
+    let rendered = std::fs::read_to_string(&skill_path).expect("read installed skill");
+    let _ = std::fs::remove_dir_all(root);
+    rendered
+}
+
+#[test]
+fn install_project_skill_does_not_write_codex_plugin_skill() {
+    let root = temp_project_root("skill-project-only");
+    write_plugin_manifest(&root);
+    let project_contract_path = root
+        .join(".agents")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+    let plugin_contract_path = root
+        .join("asp-codex-plugin")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+    write_stale_contract(&project_contract_path);
+    write_stale_contract(&plugin_contract_path);
+
+    let installed = install_agent_semantic_protocols_skill(&root).unwrap();
+    let project_skill_path = installed.skill_path.expect("project skill path");
+    assert!(
+        installed.plugin_skill_path.is_none(),
+        "project skill install must not mirror SKILL.org into the Codex plugin"
+    );
+    assert!(project_skill_path.is_file(), "project SKILL.org missing");
+    assert!(
+        !project_skill_path
+            .with_file_name("SKILL.contract.org")
+            .exists(),
+        "project skill install must remove stale SKILL.contract.org"
+    );
+    assert!(
+        !plugin_contract_path.with_file_name("SKILL.org").exists(),
+        "project skill install must not create plugin SKILL.org"
+    );
+    assert!(
+        plugin_contract_path.exists(),
+        "project skill install must not manage plugin SKILL.contract.org"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_agent_config_preserves_providers_and_removes_legacy_skill_config() {
+    let root = temp_project_root("agent-config");
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
+    std::fs::write(
+        &config_path,
+        "[providers.rust]\n\
+bin = \"tools/asp-rust\"\n\
+\n\
+[skills.agent-semantic-protocols]\n\
+pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\"\n\
+aspOrg = \"/old/ASP_ORG_SKILL.org#asp-org\"\n\
+orgArtifacts = \"/old/artifacts/org\"\n\
+\n\
+[skills.other]\n\
+enabled = true\n\
+\n\
+[hook.agentOrgArtifacts]\n\
+enabled = true\n\
+inactiveAfterMinutes = 30\n\
+artifactsPath = \"/old/artifacts/org\"\n\
+entrySkillPath = \"/old/ASP_ORG_SKILL.org\"\n",
+    )
+    .expect("write provider config");
+
+    let installed_path = install_agent_semantic_protocols_agent_config(&root).unwrap();
+    assert_eq!(installed_path, config_path);
+    let config = std::fs::read_to_string(&installed_path).expect("read agent config");
+
+    assert!(config.contains("[providers.rust]"), "{config}");
+    assert!(config.contains("bin = \"tools/asp-rust\""), "{config}");
+    assert!(config.contains("[skills.other]"), "{config}");
+    assert!(config.contains("enabled = true"), "{config}");
+    assert!(
+        !config.contains("[skills.agent-semantic-protocols]"),
+        "{config}"
+    );
+    assert!(!config.contains("pluginSkill"), "{config}");
+    assert!(!config.contains("template = \"SKILL.org\""), "{config}");
+    assert!(!config.contains("projectSkill = "), "{config}");
+    assert!(!config.contains("aspOrg"), "{config}");
+    assert!(!config.contains("orgArtifacts"), "{config}");
+    assert!(!config.contains("[hook.agentOrgArtifacts]"), "{config}");
+    assert!(!config.contains("artifactsPath"), "{config}");
+    assert!(!config.contains("entrySkillPath"), "{config}");
+    assert!(!config.contains("orgSkill"), "{config}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_stale_contract(path: &std::path::Path) {
+    std::fs::create_dir_all(path.parent().expect("contract parent"))
+        .expect("create stale contract parent");
+    std::fs::write(path, "* stale user-layer contract\n").expect("write stale contract");
+}
+
+fn write_plugin_manifest(root: &std::path::Path) {
+    let manifest_path = root
+        .join("asp-codex-plugin")
+        .join(".codex-plugin")
+        .join("plugin.json");
+    std::fs::create_dir_all(manifest_path.parent().unwrap()).expect("create plugin manifest dir");
+    std::fs::write(
+        manifest_path,
+        r#"{"name":"asp-codex-plugin","version":"0.1.0","description":"test","author":{"name":"ASP"},"skills":"./skills/"}"#,
+    )
+    .expect("write plugin manifest");
+}
+
+fn temp_project_root(name: &str) -> std::path::PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
+    std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
+    root.canonicalize().expect("canonical temp project root")
+}

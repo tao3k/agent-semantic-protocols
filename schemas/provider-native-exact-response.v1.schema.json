@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-native-exact-response.v1.schema.json",
+  "title": "ASP Provider Native Exact Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "ownerPath",
+    "requestedStructuralSelector"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-native-exact-projection"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedStructuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolutionState": {
+      "enum": [
+        "resolved",
+        "owner-missing",
+        "item-missing",
+        "identity-incomplete",
+        "selector-stale",
+        "kind-mismatch",
+        "ambiguous"
+      ]
+    },
+    "reasonKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "activeGenerationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rootDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "itemKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "itemName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "actualKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "recommendedNext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionMode": {
+      "enum": [
+        "source",
+        "callable-skeleton"
+      ]
+    },
+    "normalizedParserFacts": {
+      "type": "object"
+    },
+    "projectionText": {
+      "type": "string"
+    },
+    "projectionPayload": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/callable-skeleton.schema.json"
+    },
+    "sourceContentDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceByteStart": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceByteEnd": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "structuralSelector",
+        "projectionMode",
+        "normalizedParserFacts",
+        "sourceContentDigest",
+        "sourceByteStart",
+        "sourceByteEnd"
+      ],
+      "properties": {
+        "resolutionState": {
+          "const": "resolved"
+        }
+      }
+    },
+    {
+      "required": [
+        "resolutionState",
+        "reasonKind",
+        "activeGenerationDigest",
+        "rootDigest",
+        "itemKind",
+        "itemName",
+        "candidates",
+        "actualKinds"
+      ],
+      "properties": {
+        "resolutionState": {
+          "enum": [
+            "owner-missing",
+            "item-missing",
+            "identity-incomplete",
+            "selector-stale",
+            "kind-mismatch",
+            "ambiguous"
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "projectionText"
+            ]
+          },
+          {
+            "required": [
+              "projectionPayload"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "item-missing"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "recommendedNext"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "identity-incomplete"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "canonical-item-scope-required"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "owner-missing"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "owner-not-in-workspace"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "item-missing"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "item-not-in-live-owner"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "kind-mismatch"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "owner-item-kind-mismatch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "ambiguous"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "enum": [
+              "multiple-owner-items",
+              "multiple-snapshot-items"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projectionMode": {
+            "const": "source"
+          }
+        },
+        "required": [
+          "projectionMode"
+        ]
+      },
+      "then": {
+        "required": [
+          "projectionText"
+        ],
+        "not": {
+          "required": [
+            "projectionPayload"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projectionMode": {
+            "const": "callable-skeleton"
+          }
+        },
+        "required": [
+          "projectionMode"
+        ]
+      },
+      "then": {
+        "required": [
+          "projectionPayload"
+        ],
+        "not": {
+          "required": [
+            "projectionText"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "resolutionState": {
+                "const": "selector-stale"
+              }
+            },
+            "required": [
+              "resolutionState"
+            ]
+          },
+          {
+            "properties": {
+              "resolutionState": {
+                "const": "owner-missing"
+              }
+            },
+            "required": [
+              "resolutionState"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "activeGenerationDigest",
+          "rootDigest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "selector-stale"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "selector-not-in-active-generation"
+          }
+        }
+      }
+    }
+  ]
+}

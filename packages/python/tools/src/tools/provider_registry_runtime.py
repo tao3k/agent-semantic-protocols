@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Provider registry command runtime helpers."""
 
 from __future__ import annotations
@@ -40,13 +44,16 @@ def provider_registry(asp_bin: str, provider: str, repo_root: Path) -> RegistryR
 
 
 def provider_registry_with_env(
-    asp_bin: str,
+    _asp_bin: str,
     provider: str,
     repo_root: Path,
     *,
     env: dict[str, str] | None,
 ) -> RegistryResult:
-    argv = [asp_bin, provider, "agent", "doctor", "--json", str(repo_root)]
+    # Provider registry discovery is a build-time source contract. The root
+    # `asp` process is a Runtime client and deliberately does not execute
+    # provider-owned `agent doctor` commands as an in-process language facade.
+    argv = [f"asp-{provider}", "agent", "doctor", "--json", str(repo_root)]
     try:
         completed = subprocess.run(
             argv,
@@ -71,10 +78,11 @@ def provider_registry_with_env(
 
     if not isinstance(registry, dict):
         return RegistryResult(error=f"{provider}: registry JSON must be an object")
+    nested_registry = registry.get("registry")
+    if isinstance(nested_registry, dict):
+        registry = nested_registry
     return RegistryResult(registry=registry)
 
 
 def _automation_env(env: dict[str, str] | None) -> dict[str, str]:
-    result = dict(env or os.environ)
-    result["ASP_NO_AGENT_PLATFORM"] = "1"
-    return result
+    return dict(env or os.environ)

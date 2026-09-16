@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: 10.05.13 Typed Source-Access Decision Projection
+#+STATUS: Implemented
+
+* Problem
+
+Hook policy must distinguish immutable Host invocation facts from parser-derived
+semantic capabilities.  A native Read is a Host Read with a Read capability;
+a Bash invocation remains Host Execute even when shell syntax proves a Read or
+Edit capability.  Bare shell operands do not justify inventing either effect.
+
+Registered-language source access must nevertheless fail closed.  A matched
+language profile and registered-source subject provide the routing identity,
+while Action IR evidence records only capabilities that the Host or parser
+actually proved.
+
+* Contract
+
+The Hook matcher evaluates three declarative layers:
+
+1. =actionAny= matches =HostInvocation.action=.
+2. =semanticCapabilityAny= matches parser- or Host-projected semantic
+   capabilities without rewriting the Host action.
+3. =subjectKindAny= and =profilesList= bind registered source identities and
+   their provider-owned routes.
+
+Rule priority and dominance select exactly one terminal decision.  The selected
+rule projects structured fields including =reasonKind=, =operationIntent=,
+normalized Action IR, language/provider identity, parser-owned route,
+=recoveryRef= when applicable, and replay identity.  Human-readable text is a
+compact rendering of those fields and is never the policy authority.
+
+Raw filesystem/source commands and unbounded source searches are denied.
+Explicit user-approved source reads and provider-capability reads remain
+separate authorization lanes; neither is inferred from command spelling.
+
+* Compatibility
+
+The contract has no legacy prompt, synthetic materializer rule, resident-agent
+initialization prose, or free-form subagent receipt requirement.  Host action,
+semantic capability, subject, profile, route, and dominance are the complete
+v1 authority.
+
+* Acceptance
+
+- Native Read over every configured language profile is denied and routed to
+  the matching ASP language provider.
+- Shell redirection projects Read/Edit capabilities without changing Host
+  Execute.
+- Opaque shell access to registered source fails closed without fabricating a
+  Read/Edit capability.
+- JSON/debug search output is dominated by the explicit JSON deny rule.
+- Every terminal deny contains one selected rule, one typed reason, and at most
+  one executable next route.

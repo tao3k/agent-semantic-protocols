@@ -1,0 +1,22 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteBoundedDominanceWitnessChain
+
+namespace ASPProof.Audit.SearchRouteBoundedDominanceWitnessChain
+
+open ASPProof.SearchRouteBoundedDominanceWitnessChain
+
+#print axioms resolution_steps_bounded_by_fuel
+#print axioms retained_resolution_endpoint_is_kept
+#print axioms capacity_resolution_steps_are_bounded
+#print axioms one_step_fuel_is_insufficient_for_example
+#print axioms two_step_fuel_reaches_retained_example_endpoint
+#print axioms descending_chain_rank_relation
+#print axioms nonempty_descending_chain_cannot_cycle
+#print axioms example_chain_has_retained_endpoint
+#print axioms explicit_witness_chain_receipt_is_capacity_bounded
+#print axioms summarized_witness_chain_receipt_is_length_independent
+
+end ASPProof.Audit.SearchRouteBoundedDominanceWitnessChain

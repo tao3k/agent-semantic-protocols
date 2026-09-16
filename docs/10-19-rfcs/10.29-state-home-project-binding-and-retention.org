@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: State Home Project Binding and Retention Authority
+#+author: ASP Architecture
+#+property: header-args :mkdirp yes
+
+* Status
+
+This RFC defines the current State Home identity, physical layout, and
+retention authority. Schema identity and schema version live in documents;
+physical namespaces never carry =v1=, =v2=, or =state-v*= suffixes.
+
+* First divergence
+
+The previous tree nested workspace state under a truncated repository token,
+materialized directories during resolution, and treated directory timestamps
+as activity. Tests consequently left hundreds of partial project/workspace
+trees, while reachability receipts protected only a small subset of artifact
+content. A 36 GiB obsolete database and whole-repository source snapshots were
+not bounded by one cleanup authority.
+
+* Identity product
+
+=ProjectBinding= is the product of three independent axes:
+
+1. an optional Host project reference used only for Host navigation;
+2. a repository content identity derived from repository facts;
+3. a workspace identity derived from repository identity and canonical root.
+
+The Host project id is never a storage key. Projectless work has no Host
+reference and remains fully valid. Full BLAKE3 identities are retained in
+receipts and physical workspace names; truncated hash tokens are forbidden.
+
+** GitOps identity authority
+
+For a Git workspace, =gix= is the sole parser of repository and worktree
+topology.  The repository axis identifies one local Git object database.  Its
+canonical basis is the normalized absolute common Git directory returned by
+=gix=.  Main and linked worktrees therefore share one repository digest, while
+two independent clones remain distinct even when they advertise the same
+remote URL.
+
+Remote URLs are provenance and display aliases only.  They MUST NOT select a
+State Home path, merge mutable databases, protect an object from cleanup, or
+change a repository/workspace digest.  ASP does not reproduce Git remote
+normalization as an identity algorithm.
+
+The workspace axis identifies one concrete Git worktree.  Its basis is the
+repository digest, canonical worktree root, and worktree-private Git directory.
+HEAD, branch names, index entries, tracked files, and worktree overlays belong
+to the source-generation identity.  They MUST invalidate content without
+allocating another workspace.
+
+This three-part workspace identity is part of the single =ProjectBinding= V1
+contract.  There is no reduced compatibility identity and no parallel schema
+version that omits the worktree-private Git directory.
+
+Non-Git work is durable only through an explicit Host binding or explicit
+State Home admission.  An arbitrary path discovered during Search is not a
+durable repository.
+
+* Physical layout
+
+#+begin_example
+$ASP_STATE_HOME/
+  catalog/state.turso
+  workspaces/<workspace-digest>/facts.turso
+  blobs/blake3-256/<content-digest>
+  runtime/
+  receipts/
+  trash/
+#+end_example
+
+The catalog relates Host references, repositories, workspaces, observations,
+leases, and retained objects. Content is stored once in the global blob CAS.
+Workspace records reference content and never reproduce a source tree.
+
+* Mutation boundary
+
+Identity resolution is pure and performs no filesystem write. An explicit
+open/materialize transaction may create a workspace and publish an observation.
+Tests inject a State Home root and fail if the global root changes.
+
+* Retention
+
+Retention consumes typed observations and leases. Filesystem mtime is not
+lifecycle authority. Active workspace/session leases, Runtime
+active/healthy/pending references, and provider build leases protect objects.
+An unleased object becomes eligible only after the declared retention window.
+
+=asp cache clean --day N= evaluates one deterministic plan, validates that the
+lease/observation generation is unchanged, moves eligible objects to =trash=
+inside one mutation transaction, publishes a typed receipt, and only then
+reaps content. Failure preserves the previous catalog and live paths.
+
+=--day N= is only the minimum inactivity window.  Cleanup selection is an
+independent typed axis.  The public command supports exactly one of:
+
+- no selector: all catalog objects eligible under the retention window;
+- an exact workspace digest or canonical workspace root;
+- an exact retained-object id.
+
+A selector narrows the plan but never bypasses a live lease, active/healthy
+Runtime reference, age threshold, or generation revalidation.  Every selected
+object appears in the receipt as retained, deleted, or rejected. A missing
+selector is a typed no-match terminal rather than a successful zero-effect
+cleanup.
+
+Cleanup operates on catalog objects, not repository container directories.
+It can therefore delete a disappeared worktree, a partial imported shell, or
+one cache object while another worktree of the same repository remains live.
+It never invokes =git clean= and never deletes a checkout, Git directory,
+object database, index, or worktree file.
+
+Quarantine and rollback objects include owner, reason, creation time, expiry,
+and byte count. They obey both count and byte budgets. Runtime artifacts retain
+only active, healthy, pending, and one rollback reference. Provider source
+snapshots are manifests over the shared blob CAS rather than copied directory
+trees.
+
+* Required invariants
+
+- resolving identity cannot mutate State Home;
+- a live lease is never deleted;
+- Host project, repository, and workspace axes cannot collapse;
+- concurrent open and cleanup cannot cross-delete;
+- cleanup failure preserves all admitted authority;
+- tests cannot write global State Home;
+- retained object count and bytes are bounded by policy.
+
+* V1 layout closure
+
+Runtime resolution, writes, and retention use only =ProjectBinding=,
+=StateHomeLayout=, and =StateHomeCatalog=. No alternative operational or
+migration identity type exists. Installation converges required content once;
+after that transaction, =asp state sync= removes any output outside the closed
+V1 layout without decoding it or admitting it as authority.

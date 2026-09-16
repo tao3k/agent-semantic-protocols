@@ -1,0 +1,419 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.27 — SearchRoute Finite Canonical Manifest Commitment
+#+startup: overview
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+This RFC provides the first finite authenticated construction for:
+
+- [[file:00.26-searchroute-committed-candidate-universe.org][RFC 10.05.26 — SearchRoute Committed Candidate Universe]]
+- [[file:00.25-searchroute-certified-search-ledger.org][RFC 10.05.25 — SearchRoute Certified Search Ledger]]
+
+The Org document is the protocol authority.  All mathematical notation is
+owned by one named Org-Babel Typst block.  The Lean implementation is:
+
+- =packages/proofs/ASPProof/SearchRouteInspectFiniteCommitment.lean=
+
+This is a correctness baseline, not the final token-optimal Merkle
+implementation.  No Rust code is changed.
+
+* Valid-root correction
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-VALID-ROOT
+:END:
+
+Attempting to instantiate RFC 10.05.26 exposed an invalid universal
+requirement: exclusion completeness cannot hold for an arbitrary digest which
+does not correspond to any committed candidate set.
+
+The corrected commitment scheme includes =validRoot=.  Exclusion completeness
+requires:
+
+- the root is valid;
+- the candidate is not a semantic member.
+
+A verified membership or exclusion opening also proves root validity.
+
+This prevents the protocol from presenting a non-membership proof for an
+unbound random digest.
+
+* Ideal content-identity interface
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-IDENTITY
+:END:
+
+The finite construction is parameterized by =IdealContentIdentity=:
+
+- =encodeCandidate : GraphCandidate → Nat=;
+- proof that candidate encoding is injective;
+- =digest : List Nat → Nat=;
+- proof that the digest is injective over encoded payloads;
+- candidate-universe domain tag;
+- frontier domain tag;
+- proof that the two tags are distinct.
+
+These are explicit mathematical assumptions.
+
+Lean does not prove that a concrete cryptographic hash is collision resistant.
+A provider realization MUST bind:
+
+- candidate encoding version;
+- digest algorithm identifier;
+- domain-tag version;
+- serialization version;
+- snapshot identity.
+
+The word “ideal” is intentional: the interface states the properties needed
+by the theorem without pretending they follow from =Nat= equality.
+
+* Canonical manifest
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-CANONICAL
+:END:
+
+A =CanonicalManifest= contains:
+
+- a finite list of encoded candidate identities;
+- proof that the codes are strictly increasing.
+
+Strict ordering excludes duplicates and makes the manifest suitable for
+deterministic serialization.
+
+The current Lean module accepts a proof-carrying canonical manifest.  It does
+not yet implement or verify a concrete sorting procedure from arbitrary
+=GraphCandidate= input.  A provider MUST construct the manifest through a
+deterministic canonicalizer and preserve its proof receipt.
+
+* Domain-separated roots
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-DOMAIN
+:END:
+
+The universe root authenticates:
+
+- universe domain tag;
+- canonical candidate-code list.
+
+The frontier root uses the frontier domain tag and its canonical code list.
+
+Digest injectivity plus distinct tags proves that a universe root cannot equal
+a frontier root, even when their code lists are otherwise related.
+
+The exact construction is =UniverseRoot= and =FrontierRoot= in the embedded
+Typst model.
+
+* Root binding
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-BINDING
+:END:
+
+If two canonical manifests have equal universe roots, digest injectivity proves
+that their domain-separated payloads are equal.  List constructor injectivity
+then proves that their candidate-code lists are equal.
+
+This is =universe_root_binding= in Lean.
+
+Root binding is stronger than the digest-only structure rejected by RFC
+10.05.26.  It still depends on the explicit ideal digest-injectivity
+assumption.
+
+* Finite membership verifier
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-MEMBERSHIP
+:END:
+
+The membership proof is a proof-carrying canonical manifest.
+
+The verifier checks:
+
+- the manifest recomputes the requested universe root;
+- the encoded candidate is a member of the manifest code list.
+
+Lean proves:
+
+- verifier success implies semantic membership;
+- every semantic member has a successful membership proof;
+- every contained candidate is under a valid root.
+
+The exact obligations are =MembershipVerify=, =MembershipSound=, and
+=MembershipComplete= in the Typst model.
+
+* Finite exclusion verifier
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-EXCLUSION
+:END:
+
+The exclusion proof is also a proof-carrying canonical manifest.
+
+The verifier checks:
+
+- the manifest recomputes the requested universe root;
+- the encoded candidate is absent from the manifest code list.
+
+Exclusion soundness uses root binding.  If another manifest under the same root
+claimed membership, root binding would make the code lists equal and
+contradict the verified absence.
+
+Exclusion completeness uses a valid-root witness to recover a canonical
+manifest.  Semantic absence then proves the candidate code is absent from that
+manifest.
+
+Lean proves:
+
+- verified exclusion implies semantic absence;
+- verified exclusion implies root validity;
+- every semantic absence under a valid root has a successful exclusion proof;
+- verified membership and exclusion cannot both hold.
+
+* Scheme realization
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-SCHEME
+:END:
+
+=finiteCandidateCommitmentScheme= instantiates every field of
+=CandidateCommitmentScheme=:
+
+- proof types;
+- valid-root semantics;
+- membership semantics;
+- Boolean verifiers;
+- membership soundness/completeness;
+- exclusion soundness/completeness;
+- opening-to-root validity.
+
+It can therefore be supplied directly to the committed candidate-universe
+ledger from RFC 10.05.26.
+
+* Token and interaction boundary
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-FCM-COST-BOUNDARY
+:END:
+
+This construction proves correctness, but each opening currently contains the
+full canonical manifest.
+
+Consequences:
+
+- root storage is compact;
+- default packets can still carry only the root;
+- opening verification is deterministic;
+- one requested opening may be linear in candidate-universe size;
+- repeated openings may retransmit the same manifest unless separately cached.
+
+The protocol MUST distinguish:
+
+- semantic-search cache reuse of the canonical manifest or opening;
+- model prefix-cache reuse of repeated serialized proof input.
+
+The two cache layers remain independent.
+
+The next authenticated construction should replace the full-manifest opening
+with a logarithmic Merkle membership path and an ordered non-membership proof.
+
+* Agent-facing receipt
+
+A finite-manifest receipt should contain or address:
+
+- commitment scheme identifier;
+- candidate encoding version;
+- digest algorithm identifier;
+- universe domain tag;
+- snapshot digest;
+- universe root;
+- manifest candidate count;
+- canonical-order proof identity;
+- opening kind;
+- opening content digest;
+- verifier result;
+- semantic-search cache identity;
+- model prefix-cache identity.
+
+The default SearchLoop packet SHOULD omit the full manifest.  The agent
+requests it only when an opening must be independently checked.
+
+* Mathematical model
+
+#+name: searchroute-finite-canonical-manifest-commitment-model
+#+begin_src typst
+#let IdealContentIdentity = (
+  encode_candidate: "EncodeCandidate(candidate)",
+  encoding_injective: "Injective(EncodeCandidate)",
+  digest: "Digest(List[Nat])",
+  digest_injective: "Injective(Digest)",
+  universe_domain_tag: $tau_U$,
+  frontier_domain_tag: $tau_F$,
+  domain_tags_distinct: $tau_U != tau_F$,
+)
+
+#let CanonicalManifest = (
+  codes: $[e_0, e_1, dots, e_n]$,
+  canonical: $e_0 < e_1 < dots < e_n$,
+)
+
+#let UniverseRoot = $ rho_U(M) =
+  "Digest"((tau_U,) + M."codes") $
+
+#let FrontierRoot = $ rho_F(M) =
+  "Digest"((tau_F,) + M."codes") $
+
+#let ValidRoot = $ "ValidRoot"(rho) "iff"
+  exists M, rho_U(M) = rho $
+
+#let Contains = $ "Contains"(rho, c) "iff"
+  exists M, cases(
+    rho_U(M) = rho,
+    "EncodeCandidate"(c) in M."codes",
+  ) $
+
+#let RootBinding = $ rho_U(M_1) = rho_U(M_2)
+  "implies" M_1."codes" = M_2."codes" $
+
+#let DomainSeparation = $ rho_U(M_1) != rho_F(M_2) $
+
+#let MembershipVerify = $ "VerifyMember"(rho, c, M) =
+  cases(
+    rho_U(M) = rho,
+    "EncodeCandidate"(c) in M."codes",
+  ) $
+
+#let MembershipSound = $ "VerifyMember"(rho, c, M) = #true
+  "implies" "Contains"(rho, c) $
+
+#let MembershipComplete = $ "Contains"(rho, c)
+  "implies" exists M, "VerifyMember"(rho, c, M) = #true $
+
+#let ExclusionVerify = $ "VerifyExcluded"(rho, c, M) =
+  cases(
+    rho_U(M) = rho,
+    "EncodeCandidate"(c) "not in" M."codes",
+  ) $
+
+#let ExclusionSound = $ "VerifyExcluded"(rho, c, M) = #true
+  "implies" "not" "Contains"(rho, c) $
+
+#let ExclusionComplete = $ cases(
+  "ValidRoot"(rho),
+  "not" "Contains"(rho, c),
+) "implies" exists M, "VerifyExcluded"(rho, c, M) = #true $
+
+#let OpeningConsistency = $ cases(
+  "VerifyMember"(rho, c, M_1) = #true,
+  "VerifyExcluded"(rho, c, M_2) = #true,
+) "implies" bot $
+
+#let FullManifestOpeningCost = $ "OpeningBytes" = O(|M|) $
+
+#let Main = (
+  IdealContentIdentity,
+  CanonicalManifest,
+  UniverseRoot,
+  FrontierRoot,
+  ValidRoot,
+  Contains,
+  RootBinding,
+  DomainSeparation,
+  MembershipVerify,
+  MembershipSound,
+  MembershipComplete,
+  ExclusionVerify,
+  ExclusionSound,
+  ExclusionComplete,
+  OpeningConsistency,
+  FullManifestOpeningCost,
+)
+
+"ok"
+#+end_src
+
+Expected evaluation:
+
+#+begin_example
+orgize eval plan --json \
+  searchroute-finite-canonical-manifest-commitment-model \
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.27-searchroute-finite-canonical-manifest-commitment.org
+
+typst eval --in - '"ok"'
+#+end_example
+
+The executor forwards =.body= from the Org plan to Typst stdin.  The document
+contains no raw LaTeX, =:file= header, standalone =.typ= source, compile step,
+or PDF artifact.
+
+* Lean theorem mapping
+
+| RFC clause | Lean declaration |
+|-
+| ASP-RFC-10.05-FCM-VALID-ROOT | =finiteValidRoot= |
+| ASP-RFC-10.05-FCM-IDENTITY | =IdealContentIdentity= |
+| ASP-RFC-10.05-FCM-CANONICAL | =CanonicalManifest= |
+| ASP-RFC-10.05-FCM-DOMAIN | =universe_and_frontier_roots_are_domain_separated= |
+| ASP-RFC-10.05-FCM-BINDING | =universe_root_binding= |
+| ASP-RFC-10.05-FCM-MEMBERSHIP | =finite_membership_sound= |
+| ASP-RFC-10.05-FCM-MEMBERSHIP | =finite_membership_complete= |
+| ASP-RFC-10.05-FCM-MEMBERSHIP | =finite_contained_root_is_valid= |
+| ASP-RFC-10.05-FCM-EXCLUSION | =finite_exclusion_sound= |
+| ASP-RFC-10.05-FCM-EXCLUSION | =finite_exclusion_root_is_valid= |
+| ASP-RFC-10.05-FCM-EXCLUSION | =finite_exclusion_complete= |
+| ASP-RFC-10.05-FCM-SCHEME | =finiteCandidateCommitmentScheme= |
+| ASP-RFC-10.05-FCM-SCHEME | =finite_verified_membership_and_exclusion_conflict= |
+| ASP-RFC-10.05-FCM-COST-BOUNDARY | =finite_opening_materializes_manifest= |
+
+* Audit requirements
+
+The Lean JSON audit MUST classify theorem declarations under:
+
+- =root-binding=
+- =domain-separation=
+- =membership-soundness=
+- =membership-completeness=
+- =root-validity=
+- =exclusion-soundness=
+- =exclusion-completeness=
+- =opening-consistency=
+- =opening-size-boundary=
+
+Audit ownership MUST remain modular:
+
+- =ASPProof.Audit.Core= owns only shared environment extraction and JSON
+  assembly;
+- =ASPProof.Audit.Receipt= owns only deterministic receipt serialization;
+- each RFC proof module owns a sibling =ASPProof.Audit.<RFCModule>= target
+  inventory and clause mapping;
+- each executable audit entry imports exactly one RFC audit module plus the
+  shared receipt writer;
+- adding an RFC MUST NOT add theorem targets, RFC clauses, or writer commands
+  to the shared audit core or the historical =ASPProof.Audit= compatibility
+  module.
+
+AXLE MUST require every RFC clause and fail closed for undeclared axioms.
+
+* Non-goals
+
+This RFC does not:
+
+- claim a concrete hash function is injective;
+- provide logarithmic Merkle openings;
+- implement canonical sorting from arbitrary candidates;
+- modify Rust provider code;
+- transmit the full manifest by default;
+- merge semantic-search and model prefix-cache identity;
+- use raw LaTeX or standalone Typst.
+
+* Remaining proof boundary
+
+The next layer should replace full-manifest openings with a finite Merkle tree.
+
+It must prove:
+
+- leaf and branch domain separation;
+- root reconstruction from a membership path;
+- logarithmic membership proof size;
+- ordered non-membership through neighboring leaves or empty intervals;
+- consistency between Merkle leaves and canonical candidate encoding;
+- snapshot and algorithm identity binding;
+- measurable token savings over the full-manifest baseline.

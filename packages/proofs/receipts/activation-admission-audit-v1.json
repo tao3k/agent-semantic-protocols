@@ -1,0 +1,63 @@
+{"sourcePath": "ASPProof/ActivationAdmission.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.ActivationAdmission",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (identity : ASPProof.ActivationAdmission.AdmissionIdentity),\n  ASPProof.ActivationAdmission.decideAdmission identity = ASPProof.ActivationAdmission.AdmissionDecision.reuse ↔\n    ASPProof.ActivationAdmission.CompleteIdentity identity",
+   "theoremFamily": "activation-admission-completeness",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-ADMISSION"],
+   "name": "ASPProof.ActivationAdmission.reuse_iff_complete_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (identity : ASPProof.ActivationAdmission.AdmissionIdentity),\n  ¬ASPProof.ActivationAdmission.CompleteIdentity identity →\n    ASPProof.ActivationAdmission.decideAdmission identity =\n      ASPProof.ActivationAdmission.AdmissionDecision.rebuildAndPublish",
+   "theoremFamily": "activation-identity-drift",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-DRIFT"],
+   "name": "ASPProof.ActivationAdmission.any_identity_drift_requires_rebuild",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (identity : ASPProof.ActivationAdmission.AdmissionIdentity),\n  ¬ASPProof.ActivationAdmission.CompleteIdentity identity →\n    ¬ASPProof.ActivationAdmission.MayServe (ASPProof.ActivationAdmission.decideAdmission identity)\n        ASPProof.ActivationAdmission.PublicationResult.failed",
+   "theoremFamily": "activation-no-stale-fallback",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-NO-STALE-FALLBACK"],
+   "name":
+   "ASPProof.ActivationAdmission.failed_rebuild_cannot_serve_stale_activation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.ActivationAdmission.decideAdmission ASPProof.ActivationAdmission.missingActivation =\n  ASPProof.ActivationAdmission.AdmissionDecision.rebuildAndPublish",
+   "theoremFamily": "activation-missing-self-repair",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-DRIFT"],
+   "name": "ASPProof.ActivationAdmission.missing_activation_requires_rebuild",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (activation receipt : ASPProof.ActivationAdmission.ProviderClosure),\n  ASPProof.ActivationAdmission.ProviderClosureMatches activation\n    (ASPProof.ActivationAdmission.reconcileProviderClosure activation receipt)",
+   "theoremFamily": "activation-provider-closure-exactness",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-PROVIDER-CLOSURE"],
+   "name":
+   "ASPProof.ActivationAdmission.reconciled_provider_closure_matches_activation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (activation receipt : ASPProof.ActivationAdmission.ProviderClosure) (retired : String),\n  ¬retired ∈ activation.logicalPaths →\n    ¬retired ∈ (ASPProof.ActivationAdmission.reconcileProviderClosure activation receipt).logicalPaths",
+   "theoremFamily": "activation-retired-provider-elimination",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-PROVIDER-CLOSURE"],
+   "name":
+   "ASPProof.ActivationAdmission.retired_provider_cannot_survive_reconciliation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 4}

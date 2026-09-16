@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CLI integration for trace-built sandtable receipts."""
 
 from __future__ import annotations
@@ -52,8 +56,8 @@ def test_cli_builds_receipts_that_feed_failure_frontier_compare(
 
     assert exit_code == 0
     assert "[failure-frontier] status=pass" in output
-    assert "baselineCommands=10 candidateCommands=5" in output
-    assert "commandReductionRatio=0.500" in output
+    assert "baselineCommands=10 candidateCommands=4" in output
+    assert "commandReductionRatio=0.600" in output
     assert "candidateDirectSourceReadCode=4" in output
     assert "coveredHotBlocks=4 expectedHotBlocks=4 missingHotBlocks=0" in output
 
@@ -73,7 +77,6 @@ def _write_candidate_trace(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                json.dumps(_frontier_event()),
                 json.dumps(trace_event("test", TEST_BLOCK)),
                 json.dumps(trace_event("writeback", WRITEBACK_BLOCK)),
                 json.dumps(trace_event("replay", REPLAY_BLOCK)),
@@ -83,16 +86,6 @@ def _write_candidate_trace(path: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
-
-
-def _frontier_event() -> dict[str, object]:
-    return {
-        "id": "failure-frontier",
-        "kind": "check",
-        "argv": ["asp", "rust", "check", "changed", "--view", "seeds", "."],
-        "next": HOT_BLOCKS,
-        "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
-    }
 
 
 def _build_receipt_cli(

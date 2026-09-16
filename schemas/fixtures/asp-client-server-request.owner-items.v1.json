@@ -1,0 +1,21 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-client-server-request",
+  "schemaVersion": "1",
+  "operationId": "owner-items-1",
+  "extensionId": "rust",
+  "languageId": "rust",
+  "providerId": "asp-rust",
+  "workspaceIdentity": "workspace-fixture",
+  "generationDigest": "blake3-256:generation-fixture",
+  "rootDigest": "blake3-256:root-fixture",
+  "providerCatalogDigest": "blake3-256:catalog-fixture",
+  "transport": "http-json",
+  "operation": "owner-items",
+  "projectionKind": "owner-items",
+  "overlayIdentity": null,
+  "budgetMicros": 1000,
+  "payloadDigest": "blake3-256:owner-items-payload",
+  "payload": {
+    "ownerPath": "src/lib.rs"
+  }
+}

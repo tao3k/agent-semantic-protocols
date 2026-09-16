@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import json
 from pathlib import Path
 
@@ -62,8 +66,7 @@ def test_hot_path_performance_gate_accepts_warm_broad_index_hit() -> None:
                     "syntax-outline"
                 ],
                 "forbiddenRoutes": [
-                    "prime",
-                    "broad-rg",
+                    "search-playbook",
                     "direct-read"
                 ],
                 "requireExactCodeIdentity": True,

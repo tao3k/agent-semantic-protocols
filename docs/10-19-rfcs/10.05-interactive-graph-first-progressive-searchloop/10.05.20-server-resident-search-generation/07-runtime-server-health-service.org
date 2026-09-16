@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Server Health Service Boundary
+#+property: schema-id agent.semantic-protocols.runtime-server-health-service
+#+property: schema-version 1
+
+* Normative boundary
+
+The =command= namespace is an adapter boundary, not a service implementation
+boundary. A healthcheck command may parse CLI arguments, invoke one typed
+Runtime Server health service operation, and render its receipt. It MUST NOT
+open activation, catalog, provider, workspace database, or generation state;
+canonicalize a workspace; reconcile a daemon; or implement lifecycle state
+transitions. Those responsibilities belong to the Runtime Server service and
+its workspace-keyed resident entries.
+
+* Warm authority
+
+The default warm healthcheck reads the resident status-memory snapshot through
+the Runtime Server service. When that snapshot is healthy and its endpoint,
+artifact, transport-contract, and owner-epoch identities agree, the result is
+authoritative and performs no activation load, catalog scan, provider spawn,
+database open, manifest write, workspace discovery, or supervisor reconcile.
+
+The health snapshot has a stable state-home authority independent of a daemon
+owner epoch. A health consumer MUST NOT first parse =endpoint.v1.json= merely to
+discover the status-memory path. Restart publication replaces the complete
+status snapshot atomically at that stable authority; owner epoch, artifact,
+catalog, and transport identities are fields of the snapshot itself. Dynamic
+control and data socket locators remain endpoint-owned and are not inputs to a
+read-only cached-health operation.
+
+A full artifact or configuration audit is an explicit diagnostic operation.
+Cold reconciliation is an explicit lifecycle operation. Neither operation is
+an implicit fallback hidden inside the warm healthcheck adapter.
+
+* Performance gate
+
+The in-process warm service operation MUST satisfy a sub-millisecond p99 gate
+under concurrent multi-workspace and multi-session status reads. The installed
+ASP CLI client has a separate process-startup budget and MUST report Server
+service time independently from client wall time. A gate failure is a correctness failure;
+the budget MUST NOT be widened to hide filesystem, activation, provider, Turso,
+or supervisor work on the warm path.
+
+* Refinement obligation
+
+The executable service trace refines this transition:
+
+#+begin_src text
+EndpointKnown + StatusSnapshotHealthy + IdentityConsistent
+  -> CachedHealthHealthy
+#+end_src
+
+The transition has zero lifecycle mutations. Missing, stale, or inconsistent
+authority returns a typed non-healthy receipt. Only an explicitly requested
+reconcile operation may enter a lifecycle transition.

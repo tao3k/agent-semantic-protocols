@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Structured Provider Runtime Operation Identity
+#+status: accepted
+
+* Problem
+
+A provider health receipt is the live proof that its executable implements the
+same operation contract admitted by ASP Server.  A historical Gerbil provider
+encoded only =requestSchemaId= and =responseSchemaId= strings.  The shared
+contract now uses structured =requestSchema= and =responseSchema= references,
+each carrying =schemaId= and =schemaVersion=.  The flat receipt could not prove
+the registered schema version and caused workspace generation to fail before
+Search/Query admission.
+
+* Decision
+
+Every provider, independent of transport, returns the same structured operation
+objects as the canonical registration.  HTTP/JSON does not get a weaker schema
+identity than Rust gRPC.  The provider executable must echo the exact current
+operation set; ASP Server validates it before accepting any projection.
+
+There is no flat-field alias, URL heuristic, or client retry.  A stale provider
+artifact fails typed health admission and must be rebuilt from the current
+provider source.  Schema Manager owns distribution of the shared schema; the
+language provider performs only trivial serialization of that contract.
+
+* Performance
+
+The structured identity is emitted once at provider health admission.  It is
+not repeated in parser hot loops.  Accepted requests therefore retain the
+resident HTTP/JSON or gRPC route without filesystem discovery or schema lookup.

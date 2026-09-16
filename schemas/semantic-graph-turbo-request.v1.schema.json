@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-request.v1.schema.json",
   "title": "Semantic Graph Turbo Request",
-  "description": "Schema-owned algorithm request packet consumed by asp-graph-turbo before it emits a semantic-graph-turbo-result response.",
+  "description": "Schema-owned graph-turbo algorithm request packet consumed by the asp-python-graphs service before it emits a semantic-graph-turbo-result response.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,10 +12,12 @@
     "protocolVersion",
     "packetKind",
     "surface",
+    "sourceSnapshot",
+    "workspaceGeneration",
     "queryTerms",
     "profile",
     "algorithm",
-    "seedIds",
+    "entryNodeIds",
     "budget"
   ],
   "anyOf": [
@@ -47,13 +49,10 @@
       "const": "graph-turbo-request"
     },
     "surface": {
-      "description": "ASP search surface that produced this graph-turbo request. This is the cache and receipt boundary for ranking semantics, not an agent-facing graph command.",
+      "description": "ASP public surface that produced this graph-turbo request. This is the cache and receipt boundary for ranking semantics, not an agent-facing graph command.",
       "enum": [
-        "search-pipe",
-        "search-rg",
-        "search-fd",
-        "search-lexical",
-        "search-ingest",
+        "search-playbook",
+        "query",
         "evidence-analyze"
       ]
     },
@@ -97,22 +96,7 @@
       }
     },
     "profile": {
-      "enum": [
-        "owner-query",
-        "query-deps",
-        "owner-tests",
-        "prime",
-        "read-frontier",
-        "failure-frontier",
-        "field-impact",
-        "type-impact",
-        "collection-impact",
-        "failure-evidence",
-        "test-selection",
-        "affected",
-        "evidence-quality",
-        "rust-evidence-quality"
-      ]
+      "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/profile"
     },
     "algorithm": {
       "const": "typed-ppr-diverse"
@@ -132,13 +116,20 @@
       "uniqueItems": true
     },
     "source": {
-      "description": "Candidate source selection requested by search pipe. This selects candidate acquisition only; it is not an output projection.",
+      "description": "Candidate source selection chosen internally by the search playbook planner. This selects candidate acquisition only; it is not a public command or output projection.",
       "enum": [
         "auto",
         "provider",
         "finder",
+        "search-overlay",
         "ingest"
       ]
+    },
+    "sourceSnapshot": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    },
+    "workspaceGeneration": {
+      "$ref": "#/$defs/workspaceGenerationEvidence"
     },
     "candidateSources": {
       "type": "array",
@@ -158,7 +149,7 @@
         "$ref": "#/$defs/sourceTraceEntry"
       }
     },
-    "seedIds": {
+    "entryNodeIds": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/nodeId"
@@ -232,7 +223,7 @@
       "uniqueItems": true
     },
     "actionFrontier": {
-      "description": "Typed action facts projected from the search-pipe frontier. These facts are the materializer input for prompt-visible nextCommand text; they must not carry materialized shell strings or argv.",
+      "description": "Typed action facts projected from the Search Playbook frontier. These facts are the materializer input for prompt-visible next-action text; they must not carry materialized shell strings or argv.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/actionFrontierEntry"
@@ -314,6 +305,34 @@
     }
   },
   "$defs": {
+    "workspaceGenerationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootDigest",
+        "rootDepth",
+        "leafCount",
+        "ownerCount"
+      ],
+      "properties": {
+        "rootDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDepth": {
+          "type": "integer",
+          "enum": [0, 1]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "graph": {
       "type": "object",
       "additionalProperties": false,
@@ -358,7 +377,7 @@
       "minLength": 1
     },
     "seedPlan": {
-      "description": "First-phase seed selection diagnostics for graph-turbo ranking. This explains why seedIds were selected before traversal and rendering.",
+      "description": "First-phase seed selection diagnostics for graph-turbo ranking. This explains why entryNodeIds were selected before traversal and rendering.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -373,7 +392,7 @@
         "queryOwnerSeedCount",
         "fallbackOwnerSeedCount",
         "selectedSeedCount",
-        "seedIds",
+        "entryNodeIds",
         "riskFactors",
         "recommendedActions"
       ],
@@ -425,7 +444,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "seedIds": {
+        "entryNodeIds": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/nodeId"
@@ -719,6 +738,13 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "reachability": {
+          "description": "Whether the selected owner is proven reachable by the active language build graph. Parsed or ranked ownership alone must remain unknown.",
+          "enum": [
+            "verified",
+            "unknown"
+          ]
         }
       }
     },
@@ -772,7 +798,7 @@
       "properties": {
         "kind": {
           "enum": [
-            "search-owner-items"
+            "query-owner-items"
           ]
         },
         "languageId": {
@@ -785,6 +811,23 @@
         "query": {
           "type": "string",
           "minLength": 1
+        },
+        "requiredActor": {
+          "description": "Actor that can execute this exact router-produced action without another routing hop.",
+          "enum": [
+            "current-session",
+            "verified-resident-search-agent"
+          ]
+        },
+        "requiredCapability": {
+          "description": "Parser-owned capability required to execute this action.",
+          "enum": [
+            "owner-items"
+          ]
+        },
+        "executable": {
+          "description": "True only when the router has selected an actor that owns requiredCapability.",
+          "type": "boolean"
         }
       }
     },
@@ -808,24 +851,26 @@
         "enum": [
           "item-skeleton",
           "query-code",
+          "lexical-search",
           "fd-query",
           "rg-query",
           "owner-items",
           "treesitter-query",
           "multi-clause-rg-query",
           "scoped-rg-query",
-          "search-deps",
+          "dependency-query",
           "syntax"
         ]
       },
         "capabilityId": {
           "enum": [
             "query",
+            "lexical-search",
             "fd",
             "rg",
             "owner-items",
             "treesitter-query",
-            "search-deps"
+            "query"
           ]
         },
         "target": {
@@ -1083,6 +1128,8 @@
             "doc",
             "children",
             "content",
+            "source",
+            "callable-skeleton",
             "code"
           ]
         },

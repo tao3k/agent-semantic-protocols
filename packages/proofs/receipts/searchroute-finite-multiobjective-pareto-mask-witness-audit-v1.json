@@ -1,0 +1,183 @@
+{"sourcePath": "ASPProof/SearchRouteFiniteMultiobjectiveParetoMaskWitness.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate witness : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates candidate = some witness →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Appears witness candidates ∧\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates witness candidate = true",
+   "theoremFamily": "found-dominator-is-sound",
+   "rfcClauseIds": ["FPM-SEARCH", "FPM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator_some_is_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates candidate = none →\n    ∀ (other : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Appears other candidates →\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates other candidate = false",
+   "theoremFamily": "no-found-dominator-excludes-every-appearing-route",
+   "rfcClauseIds": ["FPM-COMPLETENESS", "FPM-SEARCH", "FPM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator_none_excludes_dominator",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates candidate = true →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates candidate = none",
+   "theoremFamily": "kept-route-has-no-dominator-result",
+   "rfcClauseIds": ["FPM-MASK", "FPM-SEARCH", "FPM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.kept_candidate_findDominator_none",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates candidate = none →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates candidate = true",
+   "theoremFamily": "no-dominator-result-keeps-route",
+   "rfcClauseIds": ["FPM-COMPLETENESS", "FPM-MASK", "FPM-SEARCH"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator_none_candidate_kept",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates candidate = true →\n    ∀ (other : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Appears other candidates →\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates other candidate = false",
+   "theoremFamily": "kept-route-undominated-soundness",
+   "rfcClauseIds": ["FPM-MASK", "FPM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.kept_candidate_is_undominated",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  (∀ (other : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Appears other candidates →\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates other candidate = false) →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates candidate = true",
+   "theoremFamily": "undominated-route-mask-completeness",
+   "rfcClauseIds": ["FPM-COMPLETENESS", "FPM-MASK"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.undominated_candidate_is_kept",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates candidate = false →\n    ∃ witness,\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator candidates candidate = some witness ∧\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Appears witness candidates ∧\n          ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates witness candidate = true",
+   "theoremFamily": "removed-route-dominating-witness",
+   "rfcClauseIds": ["FPM-COMPLETENESS", "FPM-REMOVAL", "FPM-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.removed_candidate_has_dominating_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (value : Nat), ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.natLt value value = false",
+   "theoremFamily": "executable-natural-less-than-irreflexive",
+   "rfcClauseIds": ["FPM-COST-VECTOR", "FPM-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.natLt_is_irreflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (cost : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.CostVector),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictlyImproves cost cost = false",
+   "theoremFamily": "strict-improvement-irreflexive",
+   "rfcClauseIds": ["FPM-COST-VECTOR", "FPM-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.strictlyImproves_is_irreflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  left.cost = right.cost → ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates left right = false",
+   "theoremFamily": "equal-cost-is-not-strict-dominance",
+   "rfcClauseIds": ["FPM-DOMINANCE", "FPM-EQUAL-COST"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.equal_cost_does_not_strictly_dominate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates candidate candidate = false",
+   "theoremFamily": "strict-dominance-irreflexive",
+   "rfcClauseIds": ["FPM-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.strict_dominance_is_irreflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  left.canonicalRouteId ≠ right.canonicalRouteId →\n    left.cost = right.cost →\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate [left, right] left = true ∧\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate [left, right] right = true",
+   "theoremFamily": "equal-cost-distinct-routes-preserved",
+   "rfcClauseIds": ["FPM-CANONICAL-ID", "FPM-EQUAL-COST", "FPM-MASK"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.equal_cost_distinct_routes_are_both_kept",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (tail : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate (first :: second :: tail) candidate =\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate (second :: first :: tail) candidate",
+   "theoremFamily": "adjacent-swap-preserves-keep-mask",
+   "rfcClauseIds": ["FPM-DETERMINISM", "FPM-PERMUTATION"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.adjacent_swap_preserves_keep_mask",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.EnumerationPermutation left right →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate left candidate =\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate right candidate",
+   "theoremFamily": "constructive-permutation-preserves-keep-mask",
+   "rfcClauseIds": ["FPM-DETERMINISM", "FPM-EXTENSIONAL", "FPM-PERMUTATION"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.candidate_permutation_preserves_keep_mask",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute =\n  true",
+   "theoremFamily": "shorter-lower-token-route-dominates",
+   "rfcClauseIds": ["FPM-COST-VECTOR", "FPM-DOMINANCE"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.faster_route_strictly_dominates_slower_route",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate\n    [ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute,\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute]\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute =\n  false",
+   "theoremFamily": "dominated-route-is-removed",
+   "rfcClauseIds": ["FPM-REMOVAL", "FPM-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slower_route_is_removed_with_faster_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.findDominator\n      [ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute,\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute,\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute]\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute =\n    some ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute ∧\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate\n      [ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute,\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute,\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute]\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowerRoute =\n    false",
+   "theoremFamily": "direct-witness-may-be-nonfrontier-counterexample",
+   "rfcClauseIds": ["FPM-COUNTEREXAMPLE", "FPM-WITNESS", "FPM-WITNESS-CHAIN"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.direct_dominating_witness_may_itself_be_removed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.DominanceWitnessReceiptBudget)\n  (observedBytes : Nat),\n  observedBytes ≤ ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.dominanceWitnessReceiptUpperBound budget →\n    observedBytes ≤ ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.dominanceWitnessReceiptUpperBound budget",
+   "theoremFamily": "dominance-witness-receipt-capacity-bound",
+   "rfcClauseIds": ["FPM-CAPACITY", "FPM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.dominance_witness_receipt_is_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedSummaryBytes firstCount secondCount : Nat),\n  ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.summarizedDominanceReceiptBytes fixedSummaryBytes\n      firstCount =\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.summarizedDominanceReceiptBytes fixedSummaryBytes\n      secondCount",
+   "theoremFamily": "summary-dominance-receipt-constant-size",
+   "rfcClauseIds": ["FPM-RECEIPT", "FPM-SUMMARY"],
+   "name":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.summarized_dominance_receipt_is_removed_count_independent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 19,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 19,
+ "axiomDependentDeclarationCount": 0}

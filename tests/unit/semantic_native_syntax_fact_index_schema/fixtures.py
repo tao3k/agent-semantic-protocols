@@ -1,7 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Fixtures for native syntax fact index schema tests."""
 
 from __future__ import annotations
-
 
 def native_syntax_fact() -> dict[str, object]:
     return {
@@ -28,7 +31,7 @@ def native_syntax_index() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "packageName": "rust-lang-project-harness",
         "scope": "query",
@@ -58,7 +61,7 @@ def julia_native_syntax_index() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "julia",
-        "providerId": "julia-lang-project-harness",
+        "providerId": "asp-julia",
         "projectRoot": "/workspace/Example",
         "packageName": "Example",
         "scope": "workspace",
@@ -134,35 +137,3 @@ def julia_native_syntax_index() -> dict[str, object]:
         ],
     }
 
-
-def search_packet_with_native_syntax_fact() -> dict[str, object]:
-    return {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.semantic-language",
-        "protocolVersion": "1",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
-        "method": "search/query",
-        "projectRoot": ".",
-        "view": "query",
-        "renderMode": "seeds",
-        "query": "pub use rules",
-        "header": {"kind": "search-query", "fields": {"intent": "syntax.import"}},
-        "nodes": [],
-        "edges": [],
-        "owners": [],
-        "items": [],
-        "nativeSyntaxFacts": [native_syntax_fact()],
-        "hits": [],
-        "findings": [],
-        "nextActions": [{"kind": "owner", "target": "src/lib.rs"}],
-        "notes": [],
-        "searchSynthesis": {
-            "algorithm": "native-syntax-query",
-            "scope": "query",
-            "summary": "parser-owned code-shaped query",
-        },
-    }

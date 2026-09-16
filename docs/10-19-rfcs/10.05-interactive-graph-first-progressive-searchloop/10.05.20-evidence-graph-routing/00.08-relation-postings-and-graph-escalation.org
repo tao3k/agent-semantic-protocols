@@ -1,0 +1,316 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Relation Postings and Graph Escalation
+#+OPTIONS: toc:3
+
+#+property: rfc_layer 10.05.20-evidence-graph-routing
+
+* Purpose
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-PURPOSE
+:END:
+
+This module defines the physical retrieval boundary below bound evidence
+clauses and the admitted graph boundary above them.  It prevents an index layout
+from becoming an accidental logical or closure contract.
+
+* Logical fact identity
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-FACT-IDENTITY
+:END:
+
+Each admitted relation fact has one stable identity and contains:
+
+- relation kind and schema version;
+- ordered role-labeled arguments;
+- proof-relevant qualifiers;
+- owner, workspace, project, and source generation;
+- provider and parser artifact identity;
+- provenance and trust scope;
+- completeness and freshness class;
+- exact source or external witness references where available.
+
+Two postings that mention the same endpoints do not establish the same fact
+unless they resolve to a compatible logical fact identity.
+
+* Physical posting families
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-POSTINGS
+:END:
+
+Storage MAY factor a fact into indexes such as:
+
+- relation-kind → fact identifiers;
+- relation-kind + argument-role + entity → fact identifiers;
+- owner or package → fact identifiers;
+- selector → fact identifiers;
+- context or qualifier → fact identifiers;
+- source generation → fact identifiers;
+- forward and inverse argument lookup;
+- provider capability and completeness scope.
+
+Posting values SHOULD remain compact fact identifiers plus bounded routing
+metadata.  The full logical fact is loaded only for selected candidates.
+
+* Reconstruction rule
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-RECONSTRUCTION
+:END:
+
+Logical reconstruction is a join by admitted fact identity.  It is not a join
+of arbitrary endpoints that happen to co-occur in different posting lists.
+
+Reconstruction validates:
+
+- relation schema and arity;
+- role assignment;
+- all required qualifiers;
+- provider and snapshot compatibility;
+- provenance;
+- truncation and completeness state.
+
+Failure produces an incompatible or incomplete fact result, never a weakened
+fact with erased fields.
+
+* Forward and inverse lookup
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-DIRECTIONS
+:END:
+
+A provider capability descriptor states which argument roles support direct
+lookup.  The planner may bind any declared role; it does not assume a universal
+subject/object orientation.
+
+When an inverse index is absent, the provider returns a capability gap or a
+bounded alternate action.  SearchLoop does not emulate completeness through
+unbounded scans.
+
+* Query-pack contract
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-QUERY-PACK
+:END:
+
+A posting query pack contains:
+
+- clause and obligation identity;
+- relation kind and schema;
+- bound role/value pairs;
+- unresolved variable domains;
+- qualifier predicates;
+- canonical workspace and source generation;
+- provider route and artifact identity;
+- scope, completeness, and freshness requirements;
+- result and byte budgets;
+- projection class;
+- continuation and searched-action identity.
+
+Equivalent rendered CLI strings do not define query-pack equality.
+
+* Result-pack contract
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-RESULT-PACK
+:END:
+
+A result pack reports:
+
+- query-pack digest;
+- candidate fact identifiers;
+- selected logical facts;
+- new bindings;
+- truncation and complete-scope status;
+- provider coverage;
+- freshness witnesses;
+- actual owner, selector, provider, byte, and latency costs;
+- cache state;
+- contradictions;
+- graph-escalation proposals or mandatory reasons.
+
+A no-hit result names whether lookup coverage was complete.  No-hit without
+complete admitted scope is not negative evidence.
+
+* Admission before use
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-ADMISSION
+:END:
+
+Posting results enter the SearchLoop evidence set only after:
+
+- provider identity and capability validation;
+- source generation validation;
+- logical fact reconstruction;
+- qualifier preservation;
+- provenance admission;
+- policy-overlay checks;
+- contradiction detection.
+
+Rank and utility apply after admission.  They cannot admit an invalid fact.
+
+* Graph escalation classes
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-ESCALATION-CLASSES
+:END:
+
+** Proof-mandatory escalation
+
+Always escalate for:
+
+- enumeration and absence;
+- complete dependency or reachability closure;
+- contradiction reconciliation;
+- cross-provider or cross-generation joins;
+- alias, relocation, or owner ambiguity;
+- policy findings that require global scope;
+- exact selector reachability that cannot be justified locally.
+
+** Structural-complexity escalation
+
+Escalate when:
+
+- unresolved bindings exceed the admitted expansion bound;
+- hop depth exceeds the relation-class limit;
+- relation degree causes candidate explosion;
+- clause dependencies form an SCC without decreasing measure;
+- required joins lack a complete direct index.
+
+** Cost-recommended escalation
+
+The cost model MAY recommend graph projection when predicted clause work
+exceeds bounded graph work.  This recommendation is advisory and cannot
+override proof-mandatory escalation.
+
+* Escalation predicate inputs
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-ESCALATION-PREDICATE
+:END:
+
+The predicate consumes admitted facts and measured state:
+
+- obligation class;
+- clause count and state distribution;
+- unresolved-variable domains;
+- candidate degree and hop estimates;
+- namespace, provider, and snapshot boundaries;
+- required completeness;
+- contradictions;
+- spent and remaining budget;
+- actual historical costs under the current provider digest.
+
+Provider self-reported cost alone cannot force or suppress escalation.
+
+* Graph projection request
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-GRAPH-REQUEST
+:END:
+
+The clause frontier emits a typed request containing:
+
+- unresolved obligations;
+- admitted facts and provenance references;
+- bound variables and canonical selectors;
+- required join, path, completeness, or contradiction goals;
+- workspace, snapshot, provider, schema, and policy identities;
+- graph budget and projection class;
+- continuation identity.
+
+The graph layer may reuse admitted facts but revalidates their compatibility.
+
+* Graph result handoff
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-GRAPH-HANDOFF
+:END:
+
+Graph projection returns:
+
+- admitted graph generation;
+- graph-route evidence;
+- candidate discharge evidence and unresolved obligation identities;
+- newly justified bindings;
+- contradictions and scope proofs;
+- exact selectors requiring materialization;
+- truncation and budget state;
+- closure-admission evidence.
+
+The clause frontier does not translate graph rank directly into resolved state.
+The closure validator applies the declared discharge rules.  The graph layer
+does not own the final discharged-obligation set.
+
+* Enumeration and absence protocol
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-CLOSED-WORLD
+:END:
+
+An enumeration or absence receipt MUST name:
+
+- the finite admitted scope;
+- all providers and relation classes responsible for that scope;
+- provider coverage and source generation;
+- non-truncation proof;
+- graph or index completeness class;
+- invalidation dependencies;
+- the exact proposition established.
+
+Changing scope, provider coverage, or generation invalidates the receipt.
+
+* Provider asymmetry
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-PROVIDER-ASYMMETRY
+:END:
+
+Shared semantics do not require identical performance capabilities.  Providers
+may differ in indexes, relation extensions, and cost.
+
+They may not differ silently in the meaning of shared relation kinds,
+completeness flags, selector authority, or typed failure.  Unsupported shared
+semantics fail closed with actionable capability receipts.
+
+* Candidate-pool accounting
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-ACCOUNTING
+:END:
+
+The planner records both estimated and actual:
+
+- posting reads;
+- logical facts reconstructed;
+- unique owners and selectors;
+- provider dispatches;
+- graph nodes and relations projected;
+- exact source materializations;
+- candidate, evidence, and model-facing bytes;
+- closure work caused by each candidate.
+
+Policies are evaluated against actual downstream closure cost to resist
+many-small-query and easy-clause gaming.
+
+* Shadow migration receipts
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-SHADOW
+:END:
+
+During migration, clause-first and graph-first paths run against the same
+obligation set.  The receipt compares:
+
+- fact-set and selector-set differences;
+- discharged-obligation differences;
+- graph-escalation decision;
+- closure outcome;
+- missing qualifiers or provenance;
+- latency, bytes, and provider calls;
+- exact-source contradictions.
+
+Scenario classes move from shadow to active only after unexplained semantic
+differences are zero.
+
+* Storage non-goals
+:PROPERTIES:
+:ID: ASP-RFC-10.05-RPGE-NON-GOALS
+:END:
+
+- storing raw source as posting payload;
+- flattening n-ary facts into lossy binary edges;
+- inferring closed-world coverage from index size;
+- requiring one physical index layout across providers;
+- allowing Turso or another database to own semantic truth;
+- making a performance threshold a closure rule.

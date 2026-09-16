@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 name: Large Library Runtime Benchmark
 
 on:
@@ -13,107 +17,236 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  benchmark:
-    name: V1 Search Runtime Matrix
+  matrix:
+    name: Resolve V1 corpus matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-
+    outputs:
+      corpora: ${{ steps.corpora.outputs.corpora }}
+      providers: ${{ steps.corpora.outputs.providers }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout provider catalog submodules
+      - id: corpora
         shell: bash
         run: |
           set -euo pipefail
+          matrix="$(jq -c '{include: [.corpora[] | {resource: .resourceId, language: .language}]}' benchmarks/large-library-runtime-corpora.json)"
+          providers="$(jq -c '{include: ([.corpora[] | select(.language != "md" and .language != "org") | .language] | unique | map({language: .}))}' benchmarks/large-library-runtime-corpora.json)"
+          echo "corpora=$matrix" >> "$GITHUB_OUTPUT"
+          echo "providers=$providers" >> "$GITHUB_OUTPUT"
+
+  runtime-artifacts:
+    name: Build V1 Runtime artifacts once
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Runtime build dependencies
+        shell: bash
+        run: |
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
-            languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
-
-      - name: Install Nix for the project direnv environment
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
+      - name: Install Nix for the project environment
         uses: cachix/install-nix-action@v31
-
-      - name: Install direnv
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes direnv
-          direnv allow "$GITHUB_WORKSPACE"
-          direnv exec . true
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Build Server and test-owned runner
+        shell: bash
+        run: ./.devenv/devenv-profile-exec just build-live-corpus-test-runtime
+      - name: Upload Runtime artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-corpus-runtime-v1
+          path: |
+            target/release/asp
+            .cache/live-corpus-test/bin/live-corpus
+          if-no-files-found: error
 
+  provider-artifacts:
+    name: Build V1 provider artifact ${{ matrix.language }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.providers) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout provider build dependencies
+        shell: bash
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
+      - name: Install Nix for the project environment
+        uses: cachix/install-nix-action@v31
+      - name: Set up Rust
+        if: ${{ matrix.language == 'rust' }}
+        uses: dtolnay/rust-toolchain@stable
       - name: Set up Node
+        if: ${{ matrix.language == 'typescript' }}
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+          cache-dependency-path: languages/asp-typescript/package-lock.json
+      - name: Set up Python and uv
+        if: ${{ matrix.language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.language == 'python' }}
+        with:
+          enable-cache: true
+      - name: Set up Julia
+        if: ${{ matrix.language == 'julia' }}
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.12"
+      - name: Build provider workspace artifact without publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.language }}" in
+            rust) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-rust && just install' ;;
+            typescript) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-typescript && npm ci && npm run build' ;;
+            python) ./.devenv/devenv-profile-exec bash -c 'cd languages/asp-python && uv sync --frozen --no-editable --no-cache --reinstall-package asp-python' ;;
+            julia) ./.devenv/devenv-profile-exec bash -c 'cd languages/AspJulia.jl && ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 ASP_JULIA_BUILD_DIR=build/juliac-asp-local ./juliac/build_provider.sh' ;;
+            gerbil-scheme) ./.devenv/devenv-profile-exec just agent-tools-build-gerbil ;;
+          esac
+      - name: Pack relocatable provider artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.language }}" in
+            rust) paths=(languages/asp-rust/target/provider-runtime/asp-rust languages/asp-rust/provider/asp-provider-workspace-install.json) ;;
+            typescript) paths=(languages/asp-typescript/dist languages/asp-typescript/provider/asp-provider-workspace-install.json) ;;
+            python) paths=(languages/asp-python/.venv languages/asp-python/provider/asp-provider-workspace-install.json) ;;
+            julia) paths=(languages/AspJulia.jl/build/juliac-asp-local/asp-julia languages/AspJulia.jl/juliac/asp-provider-workspace-install.json) ;;
+            gerbil-scheme) paths=(languages/asp-gerbil-scheme/.gerbil/bin/asp-gerbil-scheme languages/asp-gerbil-scheme/provider/asp-provider-workspace-install.json) ;;
+          esac
+          tar -czf "$RUNNER_TEMP/live-corpus-provider-${{ matrix.language }}.tar.gz" "${paths[@]}"
+      - name: Upload provider artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-corpus-provider-v1-${{ matrix.language }}
+          path: ${{ runner.temp }}/live-corpus-provider-${{ matrix.language }}.tar.gz
+          if-no-files-found: error
+
+  benchmark:
+    name: V1 ${{ matrix.resource }}
+    needs: [matrix, runtime-artifacts, provider-artifacts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.corpora) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure isolated benchmark state home
+        shell: bash
+        run: echo "ASP_STATE_HOME=$RUNNER_TEMP/asp-state-home" >> "$GITHUB_ENV"
+
+      - name: Checkout provider descriptors and embedded providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl \
+            languages/asp-gerbil-scheme \
+            languages/orgize \
+            org
+
+      - name: Install Nix for the project direnv environment
+        uses: cachix/install-nix-action@v31
+
+      - name: Set up Node
+        if: ${{ matrix.language == 'typescript' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/asp-typescript/package-lock.json
 
       - name: Set up Python and uv
+        if: ${{ matrix.language == 'python' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - uses: astral-sh/setup-uv@v5
+        if: ${{ matrix.language == 'python' }}
         with:
           enable-cache: true
 
       - name: Set up Julia
+        if: ${{ matrix.language == 'julia' }}
         uses: julia-actions/setup-julia@v2
         with:
           version: "1.12"
 
-      - name: Build V1 provider artifacts through direnv
+      - name: Download prebuilt Runtime artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: live-corpus-runtime-v1
+          path: ${{ runner.temp }}/live-corpus-runtime
+
+      - name: Download selected prebuilt provider artifact
+        if: ${{ matrix.language != 'md' && matrix.language != 'org' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: live-corpus-provider-v1-${{ matrix.language }}
+          path: ${{ runner.temp }}/live-corpus-provider
+
+      - name: Map immutable build artifacts into the test workspace
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . cargo build --release --bin asp
-          direnv exec . cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --release --features cli --bin rs-harness
-          direnv exec . npm --prefix languages/typescript-lang-project-harness ci
-          direnv exec . npm --prefix languages/typescript-lang-project-harness run build
-          direnv exec . uv sync --project languages/python-lang-project-harness --frozen
-          direnv exec . env \
-            JULIA_DEPOT_PATH="$PWD/.cache/julia-depot:$HOME/.julia" \
-            ASP_JULIA_BUILD_DIR="$PWD/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
-            ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
-            languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh
+          chmod 755 "$RUNNER_TEMP/live-corpus-runtime/target/release/asp"
+          chmod 755 "$RUNNER_TEMP/live-corpus-runtime/.cache/live-corpus-test/bin/live-corpus"
+          if [[ "${{ matrix.language }}" != md && "${{ matrix.language }}" != org ]]; then
+            tar -xzf "$RUNNER_TEMP/live-corpus-provider/live-corpus-provider-${{ matrix.language }}.tar.gz" -C "$GITHUB_WORKSPACE"
+          fi
 
-      - name: Enforce V1 1193-owner Turso cold-write gate
+      - name: Run isolated V1 Live Corpus qualification
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . cargo test --release \
-            -p agent-semantic-client-db \
-            source_index_1193_owner_cold_write_stays_inside_v1_gate \
-            -- --test-threads=1
+          runner="$RUNNER_TEMP/live-corpus-runtime/.cache/live-corpus-test/bin/live-corpus"
+          export ASP_LIVE_CORPUS_SERVER_ARTIFACT="$RUNNER_TEMP/live-corpus-runtime/target/release/asp"
+          case "${{ matrix.language }}" in
+            rust) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-rust/provider/asp-provider-workspace-install.json" ;;
+            typescript) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-typescript/provider/asp-provider-workspace-install.json" ;;
+            python) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-python/provider/asp-provider-workspace-install.json" ;;
+            julia) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/AspJulia.jl/juliac/asp-provider-workspace-install.json" ;;
+            gerbil-scheme) export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="$GITHUB_WORKSPACE/languages/asp-gerbil-scheme/provider/asp-provider-workspace-install.json" ;;
+            md|org) unset ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR || true ;;
+          esac
+          ./.devenv/devenv-profile-exec "$runner" sync --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json
+          ./.devenv/devenv-profile-exec "$runner" materialize --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json
+          ./.devenv/devenv-profile-exec "$runner" qualify --resource "${{ matrix.resource }}" --lock benchmarks/large-library-runtime-corpora.json --plan benchmarks/live-corpus-scheme-scenarios.v1.toml
 
-      - name: Materialize pinned large-library corpora
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .data
-          jq -r '.corpora[] | [.repository, .revision, .directory] | @tsv' \
-            benchmarks/large-library-runtime-search.v1.baseline.json | \
-            while IFS=$'\t' read -r repository revision directory; do
-              git clone --filter=blob:none "https://github.com/${repository}.git" ".data/${directory}"
-              git -C ".data/${directory}" checkout --detach "$revision"
-            done
-
-      - name: Run V1 14-corpus search command matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          direnv exec . env UV_CACHE_DIR="$PWD/.cache/uv" \
-            just benchmark-large-library-search-runtime-baseline
-
-      - name: Upload benchmark receipt
+      - name: Upload benchmark evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: large-library-runtime-search-v1-${{ github.run_id }}
-          path: .cache/large-library-runtime-search.v1.receipt.json
+          name: live-corpus-v1-${{ matrix.resource }}-${{ github.run_id }}
+          path: |
+            ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/search-query-qualification/by-resource/${{ matrix.resource }}.json
+            ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/agent-org-topology-evidence/by-resource/${{ matrix.resource }}.json
+            ${{ env.ASP_STATE_HOME }}/resources/live-corpus/receipts/agent-org-topology-overlay/by-resource/${{ matrix.resource }}.json
           if-no-files-found: warn

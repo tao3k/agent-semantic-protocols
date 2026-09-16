@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-runtime-self-repair-receipt.v1.schema.json",
+  "title": "ASP Provider Runtime Self-Repair Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "trigger",
+    "installReceiptDigest",
+    "sourceIdentityDigest",
+    "buildRecipeDigest",
+    "providerManifestDigest",
+    "contractClosureDigest",
+    "previousArtifactDigest",
+    "result",
+    "atomicSwitch",
+    "activationRegenerated",
+    "policyCoverageValidated",
+    "enforcementState",
+    "directSourceReads",
+    "legacyAdapters",
+    "timings"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.provider-runtime-self-repair-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trigger": {
+      "enum": [
+        "activation-schema-drift",
+        "provider-contract-drift",
+        "artifact-digest-drift"
+      ]
+    },
+    "installReceiptDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "buildRecipeDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "providerManifestDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "contractClosureDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "previousArtifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "repairedArtifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "result": {
+      "enum": [
+        "repaired",
+        "failed"
+      ]
+    },
+    "atomicSwitch": {
+      "type": "boolean"
+    },
+    "activationRegenerated": {
+      "type": "boolean"
+    },
+    "policyCoverageValidated": {
+      "type": "boolean"
+    },
+    "enforcementState": {
+      "const": "fail-closed"
+    },
+    "directSourceReads": {
+      "const": 0
+    },
+    "legacyAdapters": {
+      "const": 0
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptValidationMicros",
+        "buildMillis",
+        "contractProbeMillis",
+        "activationPublicationMillis"
+      ],
+      "properties": {
+        "receiptValidationMicros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "buildMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contractProbeMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activationPublicationMillis": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasonKind",
+        "message"
+      ],
+      "properties": {
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result": {
+            "const": "repaired"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "repairedArtifactDigest"
+        ],
+        "properties": {
+          "atomicSwitch": {
+            "const": true
+          },
+          "activationRegenerated": {
+            "const": true
+          },
+          "policyCoverageValidated": {
+            "const": true
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "failure"
+        ],
+        "properties": {
+          "atomicSwitch": {
+            "const": false
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

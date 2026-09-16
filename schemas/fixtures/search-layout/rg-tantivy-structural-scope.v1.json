@@ -1,0 +1,78 @@
+{
+  "schemaId": "agent.semantic-protocols.search-layout",
+  "schemaVersion": "1",
+  "layoutId": "rg-tantivy-structural-scope",
+  "layoutVersion": 1,
+  "authority": {
+    "owner": "agent-semantic-search",
+    "layoutDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "root": {
+    "kind": "serial",
+    "nodeId": "default-search",
+    "steps": [
+      {
+        "kind": "shared-scope",
+        "nodeId": "dual-retrieval",
+        "fusionPolicy": "intersection-rerank",
+        "branches": [
+          {
+            "kind": "stage",
+            "stageId": "rg",
+            "operator": "rg",
+            "inputBinding": "request-rg",
+            "outputBasis": "matches"
+          },
+          {
+            "kind": "stage",
+            "stageId": "tantivy",
+            "operator": "tantivy",
+            "inputBinding": "request-tantivy",
+            "outputBasis": "ranked-owners"
+          }
+        ]
+      },
+      {
+        "kind": "structural-scope",
+        "nodeId": "structural-scope",
+        "selectionPolicy": "explicit-inputs-replace-fallback",
+        "explicitFusionPolicy": "union",
+        "explicitInputs": [
+          {
+            "kind": "stage",
+            "stageId": "syntax",
+            "operator": "syntax",
+            "inputBinding": "request-syntax",
+            "outputBasis": "selectors"
+          },
+          {
+            "kind": "stage",
+            "stageId": "native-syntax",
+            "operator": "native-syntax",
+            "inputBinding": "request-native-syntax",
+            "outputBasis": "selectors"
+          }
+        ],
+        "fallback": {
+          "kind": "stage",
+          "stageId": "native-parser",
+          "operator": "native-parser",
+          "inputBinding": "predecessor-scope",
+          "outputBasis": "selectors"
+        }
+      },
+      {
+        "kind": "optional",
+        "nodeId": "optional-graph",
+        "whenInputPresent": "request-graph",
+        "step": {
+          "kind": "stage",
+          "stageId": "graph",
+          "operator": "graph",
+          "inputBinding": "request-graph",
+          "outputBasis": "relations"
+        }
+      }
+    ]
+  }
+}

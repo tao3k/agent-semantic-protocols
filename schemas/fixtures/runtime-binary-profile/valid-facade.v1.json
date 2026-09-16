@@ -1,0 +1,15 @@
+{
+  "schemaId": "runtime-binary-profile.v1",
+  "schemaVersion": "1",
+  "binaryId": "asp-facade",
+  "profile": "facade",
+  "languageId": null,
+  "providerId": null,
+  "executableAliases": ["asp"],
+  "artifactDigest": null,
+  "invocationAuthorities": ["direct-agent", "asp-facade"],
+  "sessionBinding": "optional",
+  "allowDirectAgent": true,
+  "generationBinding": false,
+  "argvBinding": false
+}

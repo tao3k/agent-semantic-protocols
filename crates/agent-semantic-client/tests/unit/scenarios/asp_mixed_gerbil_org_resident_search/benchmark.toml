@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "live-runtime"
+test = "check-live-corpus-search-query-all"
+phase = "resident-repeat"
+target_total = "250us"
+max_total = "1000us"
+observed_total = "272us"
+regression_budget = "728us"
+memory_budget_bytes = 10485760
+observed_memory_bytes = 1
+route_source = "resident-generation"
+max_provider_process_count = 0
+max_stdout_bytes = 262144
+fallback_reason = "none"
+target_rationale = "Runtime startup, CLI process startup, IPC setup, first parser materialization, and terminal rendering are separate phases. This gate measures only the repeated Runtime dispatch against the same immutable generation; embedded Orgize documents cannot start an external provider process."
+
+[observed_timings]
+runtime_dispatch = "272us"
+response_serialization = "144us"
+first_materialized_dispatch = "87225us"
+shell_process_and_ipc = "170ms"

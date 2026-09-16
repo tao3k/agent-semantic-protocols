@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/enhanced-tree-sitter-query-capability-table.v1.schema.json",
+  "title": "Provider Enhanced Tree-sitter Query Capability Table V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "parserAbi",
+    "queryGrammar",
+    "operatorTableDigest",
+    "tableDigest",
+    "rows"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table"},
+    "schemaVersion": {"const": "1"},
+    "languageId": {"$ref": "#/$defs/identity"},
+    "providerId": {"$ref": "#/$defs/identity"},
+    "parserAbi": {"$ref": "#/$defs/versionedIdentity"},
+    "queryGrammar": {"$ref": "#/$defs/versionedIdentity"},
+    "operatorTableDigest": {"$ref": "#/$defs/digest"},
+    "tableDigest": {"$ref": "#/$defs/digest"},
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/row"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "identity": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._+:/-]*$"},
+    "versionedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identity"},
+        "version": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "lowering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["residentFactPath", "constraintKind"],
+      "properties": {
+        "residentFactPath": {
+          "enum": [
+            "kind",
+            "name",
+            "selector",
+            "byte-range",
+            "scopes.relation",
+            "scopes.kind",
+            "scopes.symbol",
+            "queryKeys",
+            "projections.kind",
+            "relations"
+          ]
+        },
+        "constraintKind": {"enum": ["scalar", "set", "range", "relation", "capture"]},
+        "residentValue": {"type": "string", "minLength": 1}
+      }
+    },
+    "equivalenceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "corpusDigest", "receiptDigest"],
+      "properties": {
+        "method": {"const": "native-parser-tree-sitter-differential-v1"},
+        "corpusDigest": {"$ref": "#/$defs/digest"},
+        "receiptDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rowId", "kind", "sourceName", "publicationState"],
+      "properties": {
+        "rowId": {"$ref": "#/$defs/identity"},
+        "kind": {
+          "enum": [
+            "node-type",
+            "field",
+            "capture-binding",
+            "fact-path",
+            "projection-kind",
+            "relation-kind"
+          ]
+        },
+        "sourceName": {"type": "string", "minLength": 1},
+        "publicationState": {"enum": ["runtime", "provider-local", "not-materialized"]},
+        "lowering": {"$ref": "#/$defs/lowering"},
+        "equivalenceEvidence": {"$ref": "#/$defs/equivalenceEvidence"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"publicationState": {"const": "runtime"}}, "required": ["publicationState"]},
+          "then": {"required": ["lowering", "equivalenceEvidence"]}
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {"const": "node-type"},
+              "publicationState": {"const": "runtime"}
+            },
+            "required": ["kind", "publicationState"]
+          },
+          "then": {
+            "properties": {"lowering": {"required": ["residentValue"]}}
+          }
+        },
+        {
+          "if": {"properties": {"publicationState": {"enum": ["provider-local", "not-materialized"]}}, "required": ["publicationState"]},
+          "then": {"not": {"required": ["equivalenceEvidence"]}}
+        }
+      ]
+    }
+  }
+}

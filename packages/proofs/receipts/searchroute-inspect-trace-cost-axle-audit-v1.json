@@ -1,0 +1,29 @@
+{
+  "auditSha256": "81abbc4b0c33753f6a5889fe33f218e2dfd67e98aca15fe8e7cec96eef9d359a",
+  "axiomDependentDeclarationCount": 13,
+  "axiomFreeDeclarationCount": 1,
+  "axiomInventory": [
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 14,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SIT-CACHE-COLLISION",
+    "ASP-RFC-10.05-SIT-CACHE-SEPARATION",
+    "ASP-RFC-10.05-SIT-COST-FIDELITY",
+    "ASP-RFC-10.05-SIT-COST-STEP",
+    "ASP-RFC-10.05-SIT-OPTIMALITY-BOUNDARY",
+    "ASP-RFC-10.05-SIT-PROJECTION"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "cache-accounting",
+    "cache-soundness",
+    "cost-fidelity",
+    "counterexample",
+    "projection-validity",
+    "route-projection",
+    "trace-alignment"
+  ]
+}

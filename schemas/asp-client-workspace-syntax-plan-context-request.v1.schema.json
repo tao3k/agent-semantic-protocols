@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-workspace-syntax-plan-context-request.v1.schema.json",
+  "title": "ASP Client Workspace Syntax Plan Context Request V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "producer"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request"},
+    "schemaVersion": {"const": "1"},
+    "producer": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._+:/-]*$"}
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Typed records shared by the large-library runtime benchmark seams."""
 
 from __future__ import annotations
@@ -6,13 +10,25 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class LanguageExtensionAdmission:
+    authority: str
+    minimum_matching_files: int
+    minimum_matching_file_ratio: float
+
+
+@dataclass(frozen=True, slots=True)
 class Corpus:
+    resource_id: str
     scenario_id: str
+    provider_id: str
     language: str
     repository: str
+    remote: str
+    revision: str
     directory: str
     environment: str
     inputs: dict[str, str]
+    admission: LanguageExtensionAdmission | None = None
 
 
 @dataclass(frozen=True, slots=True)

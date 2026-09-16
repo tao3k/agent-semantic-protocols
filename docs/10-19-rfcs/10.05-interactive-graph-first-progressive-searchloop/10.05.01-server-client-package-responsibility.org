@@ -1,0 +1,255 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Server/Client Package Responsibility
+
+* SearchLoop Server/Client Package Responsibility
+:PROPERTIES:
+:STATUS: normative
+:SCHEMA_VERSION: 1
+:END:
+
+Parent architecture: [[file:../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+** Single architecture
+
+ASP has one public Search/Query architecture:
+
+#+begin_example
+language plugin/client -> shared ASP client -> ClientFrame gRPC/Tokio stream
+  -> Runtime-owned bounded UDS -> Runtime Server actor -> Search/Query owner
+#+end_example
+
+The CLI, Hook, native integrations, and downstream language clients are equal
+typed clients of that route.  The CLI only parses public arguments, serializes
+the active request schema, invokes the shared client, and renders the terminal
+receipt.  It MUST NOT execute a provider, open a workspace database, build or
+repair a generation, maintain a cache, or own a search fast path.
+
+There is one schema generation, =schemaVersion: 1=.  Schema identity owns wire
+compatibility; Rust namespaces remain version-neutral.  Replacing an operation
+or transport deletes its old parser branch, schema projection, fixture, test,
+help, Agent guidance, Runtime path, and documentation together.  Git is the
+only archive.  A compatibility branch is a second architecture and is forbidden.
+
+** Package boundary
+
+Package responsibilities are exclusive.  A dependency may consume another
+package's typed API; it MUST NOT reproduce that package's policy, state machine,
+schema list, transport loop, or fallback.
+
+| Package | Normative responsibility |
+|-
+| =agent-semantic-client-protocol= | Version-neutral wire types, stream envelopes, generation identity, typed terminal states, and schema identity.  No transport loop, provider process, search implementation, artifact publication, or CLI policy. |
+| =agent-semantic-schema-manager= | Single shared schema registry, profile resolver, downstream synchronization API, and language-plugin SDK manifest.  Language clients MUST NOT copy private schema-family lists or compile a second protocol namespace. |
+| =agent-semantic-runtime-server= | Sole server lifecycle, workspace/generation admission, ClientFrame gRPC service on the Runtime data socket, Tokio actor ownership, =tokio-stream= request/response streams, cancellation terminalization, and drain.  It is the only public provider-route admission authority. |
+| =agent-semantic-client= | Reusable typed ASP client plus the public =asp= binary adapter: session handshake, gRPC transport, bounded stream backpressure, cancellation, terminal receipt decoding, argv parsing, resident-Server connection, and typed presentation.  Library modules remain free of CLI assumptions and are shared by language clients and native integrations.  The binary owns no provider execution, Source Index collection, Merkle/Turso state, search/projection algorithm, schema distribution, artifact mutation, retry loop, or CLI-local fast path; its only lifecycle mutation is the typed Runtime supervisor command/recovery surface. |
+| =agent-semantic-client-db= | ASP Server in-process DB owner: Turso canonical Source Index rows, source blobs, Merkle/generation identities, provider-fact projection, bounded resident read projections, generation publication/recovery, and their typed receipts.  It has no public CLI authority or independent socket/transport lifecycle. |
+| =agent-semantic-artifacts= | Immutable content-addressed materialization, developer/release provenance, =active=/=healthy= two-slot invariant, Release Activity, retention, and the sole atomic artifact-publication transaction.  No process or socket await while holding its publication lock. |
+| =agent-semantic-runtime= | Reusable Tokio runtime primitives, typed actor identity, and process monitoring only.  No artifacts, public transport, CLI commands, provider routing, or active-server publication. |
+| =agent-semantic-search-projection= | Immutable projection model, segment/table codec, mmap reader, and payload-bearing exact projection.  No transport, Runtime lifecycle, DB publication, ranking, or CLI rendering. |
+| =agent-semantic-search= | Query decomposition, in-memory tree/graph execution, candidate selection, ranking, static-index escalation, and deterministic search receipts.  Foreground work remains inside the Runtime Server Tokio task tree. |
+| =languages/*= | Plugin-owned parser facts, capabilities, schemas, and lifecycle hooks behind the shared Schema Manager and ASP client.  No public provider CLI execution or private HTTP, gRPC, lifecycle, cache, or schema-manager implementation. |
+| =agent-semantic-live-corpus= | Cross-language public-route scenarios, OpenTelemetry phase evidence, large-repository fixtures, cancellation terminals, payload invariants, and percentile gates.  Unit-only Workspace DB/provider calls are not qualification evidence. |
+| =packages/proofs= | Independent Lean refinement of lifecycle, stream, publication, cancellation, lock/await, active/healthy, and single-route invariants.  Proof does not replace executable latency or Live Corpus evidence. |
+
+The Runtime Server owns one Tokio runtime and one structured task tree.  Public
+transport is =AspClientGrpcService= over the transport-neutral =ClientFrame=
+schema, implemented with Tokio I/O and =tokio-stream= on the existing Runtime
+data socket.  Before allocating an endpoint, Runtime MUST audit whether that
+data socket already carries the client plane.  The bounded UDS published as
+=client_endpoint= is Runtime-owned; a fourth socket is forbidden.
+
+The gRPC wire is a native protobuf projection of =ClientFrame=.  A protobuf
+message MUST carry the frame discriminant, base identity, request identity,
+outcome, and fixed lifecycle fields directly.  Only method-specific dynamic
+=params=/=result=/=error= documents remain length-delimited JSON values.  A
+=bytes client_frame_json= envelope, JSON serialization of the complete frame,
+or a second package-local proto declaration is forbidden: each introduces a
+second codec and forces every warm request through duplicate encode/decode.
+SchemaManager owns the versioned wire declaration and distributes the same
+descriptor/profile binding to Rust, Python, Gerbil Scheme, and subsequent
+language clients; transport packages consume generated bindings and do not
+copy the declaration.
+
+Package build scripts resolve one declared wire artifact from the registry.
+That lookup validates registry identity, artifact identity, normalized path,
+and the selected file only.  It MUST NOT run the complete schema-family,
+reference-closure, or language-bundle audit as an implicit dependency of every
+consumer build.  Full responsibility verification remains an explicit
+SchemaManager gate.  This keeps declaration authority centralized without
+turning one package build into an O(all schemas + all language bundles) scan.
+
+The previous v1 =client_http_endpoint= may be accepted only as authoritative
+input to a one-way endpoint-record migration.  It is never served, never used
+as fallback, and never projected as a second current endpoint.  Production
+mounts no public HTTP/JSON or TCP service.  After migration, the HTTP client,
+service, fixtures, tests, dependencies, and compatibility locator are deleted
+together.
+
+** Sole Runtime operation transport
+
+The ClientFrame gRPC service is also the only northbound transport for
+language-neutral workspace, generation, cache, agent-session, and lifecycle
+operations.  These operations are catalog-declared typed methods; being
+"internal" does not authorize a second frame codec or a second listener on the
+Runtime data socket.  Every request carries the normal ClientFrame session,
+workspace, catalog-generation, workspace-generation, cancellation, and trace
+bindings, and every response is one Ready, Error, Cancelled, or
+StaleGeneration terminal.
+
+The former =WorkspaceDbIpcSession= architecture is forbidden.  Its endpoint,
+request, and response schemas, length-prefixed =read_frame=/=write_frame=
+codec, lane pool, direct =UnixStream= client, server dispatch loop, health
+probe, and tests are deleted in the same change that moves their remaining
+typed operations behind ClientFrame.  The Runtime endpoint keeps one
+=dataPlaneSocketPath= because that path is the tonic gRPC listener; it MUST NOT
+be interpreted as permission to mount another protocol on the same socket.
+
+Package ownership for these methods is exact:
+
+- =agent-semantic-client-protocol= owns the version-neutral operation DTOs,
+  method identities, catalog descriptors, and terminal schemas;
+- =agent-semantic-client= owns the reusable typed calls over
+  =AspClientGrpcTransport=;
+- =agent-semantic-runtime-server= decodes ClientFrame params and invokes the
+  in-process workspace, generation, cache, and agent-session authorities;
+- =agent-semantic-client-db= owns durable state and in-process operations only,
+  with no socket, stream, retry, timeout, or client-session implementation;
+- =agent-semantic-client= owns the public CLI adapter and reaches Runtime state
+  only through typed ClientFrame or supervisor transactions; Host Hook events
+  enter the separate =runtime/bin/asp-hook= executable, whose immutable policy
+  bundle is embedded at build time and never shares Runtime serving state.
+
+Endpoint publication is a single precommit barrier.  The control listener,
+ClientFrame gRPC listener, provider listener, and status memory for one
+active bundle digest and publication nonce MUST all be bound and validated before =endpoint.v1=
+becomes visible.  Validation or publication failure removes every candidate
+artifact and preserves the previously applied generation.  No state may claim
+Healthy while the pending activation is absent and the gRPC data plane is
+unavailable.
+
+Provider CLI execution, cumulative command timeouts, synchronous Runtime
+bridges, nested =block_on=, independent =std::thread= workers, polling sleeps,
+alternate clients, and compatibility fast paths are not fallback surfaces.
+They are architecture violations and are deleted rather than retained behind a
+configuration flag.
+
+** Language plugin contract
+
+Every language package consumes the same schema profile and client/server
+plugin interface.  Registration declares language identity, provider identity,
+file/source roots, parser facts, semantic capabilities, route schemas, and
+lifecycle hooks.  Runtime Server lazily activates the registered client server,
+binds it to one workspace generation, and retires it through the same typed
+cancellation/drain protocol.
+
+Each language PR MUST prove:
+
+- shared-schema synchronization without a package-local family copy;
+- public client -> ClientFrame gRPC -> Runtime Server route admission for =search= and
+  =query=;
+- payload-bearing exact source and callable-skeleton projections or a typed
+  failure with =reasonKind=;
+- cancellation, concurrent-session isolation, backpressure, and terminal
+  completion;
+- full language Live Corpus qualification and green package CI.
+
+Rust, Python, and Gerbil Scheme are the first restoration gate.  TypeScript,
+Julia, Org, Markdown, and every other registered language follow the identical
+contract; a provider-specific shortcut cannot qualify the shared architecture.
+
+** Shared schema bundle route
+
+Schema distribution is one typed northbound =ClientFrame= method on the same
+gRPC service and Runtime data socket:
+
+| Method | Request schema | Response schema |
+|-
+| =asp.schema.bundle= | =agent.semantic-protocols.asp-client-schema-bundle-request= | =agent.semantic-protocols.asp-client-schema-bundle-response= |
+
+The request selects one registered language profile by its exact =languageId=
+and =rootSetIds= and MAY carry =knownBundleDigest=.  The registry has no
+=profileId= and this contract MUST NOT invent one.  SchemaManager resolves the
+canonical profile and reference closure, verifies every schema identity and
+digest, and returns one of exactly three Version 1 terminals.  The profile
+receipt is exactly ={languageId, rootSetIds, bundleDigest}=.  Each separate
+entry binds required =familyId=, =schemaId=, =schemaVersion=, =name=, and
+=digest=; every returned document repeats that entry identity so content cannot
+be detached from its family, schema identity, or digest:
+
+- =ready=: the canonical receipt, sorted entries, bundle digest, and
+  every schema document;
+- =unchanged=: the same canonical receipt and entries without retransmitting
+  documents when =knownBundleDigest= is current; or
+- =failed=: =languageId=, =reasonKind=, =recommendedNext=, and structured
+  details.  Failure is a typed terminal, never an invitation to inspect a
+  package filesystem.
+
+SchemaManager and Runtime Server exclusively own profile lookup,
+materialization, digest verification, caching, and publication.  Rust, Python,
+Gerbil Scheme, and future language clients consume the response DTO; they MUST
+NOT parse =.asp-schema-manager-receipt.json=, walk root sets, recompute bundle
+digests, or implement package-local list/verifier logic.  A thin
+=materialize=/=verify=/=publish-client= CLI remains a build adapter and may
+produce an offline wheel/package artifact, but it is not a second Runtime
+transport or client-side authority.
+
+The library dependency direction is acyclic and normative:
+
+#+begin_example
+agent-semantic-client-protocol <- agent-semantic-schema-manager
+agent-semantic-client-protocol + agent-semantic-schema-manager <- runtime-server / CLI adapter
+generated schema artifact <- language package build
+#+end_example
+
+=agent-semantic-client-protocol= contains only transport-neutral DTOs, method
+identity, catalog entries, and validation of wire shape.  It MUST NOT depend on
+=agent-semantic-schema-manager=, a ASP language provider, Runtime lifecycle, or
+filesystem receipt logic.  SchemaManager MUST NOT depend on
+=asp-rust-project-harness-policy= through a runtime library edge; the harness
+policy remains build/dev validation only.  ASP language providers may invoke the
+CLI adapter to produce a build artifact, but SchemaManager never imports a
+ASP language provider.  This direction prevents the Rust harness policy cycle and
+prevents generated packages from becoming schema authorities.
+
+** Performance evidence
+
+Compilation, installation, first artifact materialization, and daemon startup
+are reported separately from service latency.  They never authorize a larger
+Search/Query deadline.
+
+The resident in-memory exact-query and projection core has a hard P99 gate below
+1 ms.  After the Runtime gRPC service is Ready, the warm public ClientFrame UDS
+round trip has a hard P95 gate below 1 ms for both ten sequential requests and
+thirty-two concurrent requests.  The qualification receipt records nanoseconds,
+request counts, terminal counts, service time, transport time, and whole wall
+separately.  Compilation, Runtime startup, channel establishment, and the first
+session initialization are cold phases and MUST NOT be folded into that warm
+receipt; conversely, excluding them does not authorize a query-side build,
+admission wait, filesystem/database access, retry, polling, or per-request
+provider activation.  No cumulative 30-second, 800/900-millisecond, sleep,
+retry, or polling wrapper is a performance gate.
+
+Owner search MUST execute parser-owned query-key filtering inside the resident
+mmap segment and materialize only bounded matching seeds.  Transporting a full
+owner projection and filtering it in Runtime or the client is forbidden.  The
+current executable payload gate constructs the same owner population through
+both shapes and requires at least 100x reduction; the accepted receipt is
+=fullBytes:524503=, =compactBytes:390=, =reductionFactor:1344=.  This payload
+elimination, together with removal of query-side build/admission/DB/FS work, is
+the orders-of-magnitude optimization boundary; sub-millisecond gRPC tuning is
+reported separately and MUST NOT be presented as a 10x or 100x transport win.
+
+OpenTelemetry spans MUST cover admission, generation lease, provider/client
+activation, stream enqueue/dequeue, search/projection execution, payload
+materialization, cancellation, and terminal publication.  A phase that starts
+without exactly one completed, failed, or cancelled terminal is a qualification
+failure.
+
+Lean models the single route, active/healthy publication, one-shot lease,
+no-lock-across-await, bounded stream, cancellation terminal, and drain
+invariants.  Live Corpus and scenario gates supply the executable refinement and
+latency evidence. Timeout configuration, retry, allowlist, or Hook disablement
+cannot discharge either obligation.

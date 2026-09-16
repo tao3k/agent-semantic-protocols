@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json",
+  "title": "Resolved Source Scope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scopeId",
+    "packageId",
+    "targetId",
+    "roots",
+    "explicitPaths",
+    "extensions",
+    "includeAuthority",
+    "exclusions"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.resolved-source-scope"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scopeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "explicitPaths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      },
+      "uniqueItems": true
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._+-]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "includeAuthority": {
+      "enum": [
+        "manifest-explicit",
+        "package-manager",
+        "policy-overlay"
+      ]
+    },
+    "classifications": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "production",
+          "generated",
+          "vendor",
+          "test",
+          "example",
+          "benchmark",
+          "build"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exclusion"
+      }
+    },
+    "providerFacts": {
+      "type": "object"
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict"
+      }
+    },
+    "resolutionState": {
+      "enum": [
+        "resolved",
+        "conflicted"
+      ]
+    },
+    "scopeDigest": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "conflicted"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "required": [
+          "conflicts"
+        ],
+        "properties": {
+          "conflicts": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefix",
+        "authority"
+      ],
+      "properties": {
+        "prefix": {
+          "$ref": "#/$defs/path"
+        },
+        "authority": {
+          "enum": [
+            "infrastructure",
+            "package-manager",
+            "user-policy"
+          ]
+        }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "includeAuthority",
+        "excludeAuthority",
+        "reasonKind"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "includeAuthority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "excludeAuthority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasonKind": {
+          "enum": [
+            "explicit-source-excluded",
+            "scope-layer-conflict",
+            "target-path-missing"
+          ]
+        }
+      }
+    }
+  }
+}

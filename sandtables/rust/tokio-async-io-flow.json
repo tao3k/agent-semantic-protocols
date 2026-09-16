@@ -33,7 +33,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
@@ -68,7 +68,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",
@@ -102,7 +102,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-owner]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",
@@ -134,7 +134,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-tests]"
+          "[search-playbook]"
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 7000
@@ -166,7 +166,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-ingest]"
+          "[search-playbook]"
         ],
         "maxStdoutLinesWarn": 18,
         "maxElapsedMsWarn": 2000

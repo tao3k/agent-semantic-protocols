@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-polyglot-search-evidence-sufficiency.v1.schema.json",
+  "title": "Semantic Polyglot Search Evidence Sufficiency v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "generator", "baselineSurface",
+    "candidateSurface", "evidence", "derivedState", "decision",
+    "blockers", "qualificationPayloadDigest", "payloadDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.polyglot-search-evidence-sufficiency.v1"},
+    "schemaVersion": {"const": "1"},
+    "generator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"const": "asp-proofs-polyglot-search-evidence-sufficiency"},
+        "version": {"const": "1"}
+      }
+    },
+    "baselineSurface": {"$ref": "#/$defs/surface"},
+    "candidateSurface": {"$ref": "#/$defs/surface"},
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "derivedState": {"enum": ["reference-only", "executable-unbound", "executable-bound", "paired-measured", "qualified", "inconsistent"]},
+    "decision": {"enum": ["blocked", "ready-for-paired-runs", "qualified"]},
+    "blockers": {
+      "type": "array", "uniqueItems": true,
+      "items": {"enum": [
+        "candidate-executable-missing", "candidate-artifact-identity-missing",
+        "paired-task-identity-missing", "paired-source-snapshot-missing",
+        "paired-environment-missing", "raw-metrics-incomplete",
+        "cold-cache-evidence-missing", "warm-cache-evidence-missing",
+        "repeated-samples-missing", "qualification-not-passed",
+        "evidence-consistency-error"
+      ]}
+    },
+    "qualificationPayloadDigest": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+    },
+    "payloadDigest": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "qualified"}}},
+      "then": {
+        "properties": {
+          "qualificationPayloadDigest": {"$ref": "#/$defs/sha256"},
+          "candidateSurface": {
+            "properties": {
+              "kind": {"const": "production-executable"},
+              "runtimeArtifactDigest": {"type": "string", "minLength": 1},
+              "providerArtifactDigest": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "surface": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "surfaceId", "runtimeArtifactDigest", "providerArtifactDigest"],
+      "properties": {
+        "kind": {"enum": ["production-executable", "reference-only"]},
+        "surfaceId": {"type": "string", "minLength": 1},
+        "runtimeArtifactDigest": {"type": ["string", "null"]},
+        "providerArtifactDigest": {"type": ["string", "null"]}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "candidateExecutable", "candidateArtifactBound", "pairedTaskIdentity",
+        "pairedSourceSnapshot", "pairedEnvironment", "rawMetricsComplete",
+        "coldCacheCovered", "warmCacheCovered", "repeatedSamples",
+        "qualificationPassed"
+      ],
+      "properties": {
+        "candidateExecutable": {"type": "boolean"},
+        "candidateArtifactBound": {"type": "boolean"},
+        "pairedTaskIdentity": {"type": "boolean"},
+        "pairedSourceSnapshot": {"type": "boolean"},
+        "pairedEnvironment": {"type": "boolean"},
+        "rawMetricsComplete": {"type": "boolean"},
+        "coldCacheCovered": {"type": "boolean"},
+        "warmCacheCovered": {"type": "boolean"},
+        "repeatedSamples": {"type": "boolean"},
+        "qualificationPassed": {"type": "boolean"}
+      }
+    }
+  }
+}

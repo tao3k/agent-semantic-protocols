@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Compatibility locator: SearchRoute bounded shortest path
+
+* Canonicalization pending
+
+The historical RFC remains at
+[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.16-searchroute-bounded-shortest-path.org][SearchRoute bounded shortest path]].

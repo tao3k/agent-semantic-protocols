@@ -1,7 +1,9 @@
-//! Provider-manifest-owned source and config file boundaries for search.
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_hook::builtin_provider_manifests;
-use std::collections::BTreeSet;
+//! Runtime-injected source and config file boundaries for search.
+
 use std::path::Path;
 
 /// Source/config file matcher built from provider manifest defaults.
@@ -63,72 +65,35 @@ impl LanguageFileSpec {
             })
     }
 
-    fn from_provider_defaults<'a>(
-        extensions: impl Iterator<Item = &'a String>,
-        config_filenames: impl Iterator<Item = &'a String>,
-        project_markers: impl Iterator<Item = &'a String>,
-        dependency_markers: impl Iterator<Item = &'a String>,
+    /// Construct a matcher from a Runtime Server admitted provider scope.
+    #[must_use]
+    pub fn from_runtime_scope(
+        extensions: Vec<String>,
+        config_filenames: Vec<String>,
+        project_markers: Vec<String>,
+        dependency_markers: Vec<String>,
     ) -> Self {
         Self {
-            extensions: unique_strings(extensions),
-            config_filenames: unique_strings(config_filenames),
-            project_markers: unique_strings(project_markers),
-            dependency_markers: unique_strings(dependency_markers),
+            extensions,
+            config_filenames,
+            project_markers,
+            dependency_markers,
         }
     }
 }
 
-/// Build a language-specific file matcher from provider manifest defaults.
+/// Return a fail-closed matcher when no Runtime Server provider scope was supplied.
+///
+/// Language IDs are identities, not static filename registries. Callers that
+/// own an admitted provider generation must pass `from_runtime_scope` through
+/// `file_spec_override`; search never reconstructs provider scope locally.
 #[must_use]
-pub fn language_file_spec(language_id: &str) -> LanguageFileSpec {
-    let manifests = builtin_provider_manifests();
-    LanguageFileSpec::from_provider_defaults(
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_extensions.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_config_files.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_project_markers.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_dependency_markers.iter()),
-    )
+pub fn language_file_spec(_language_id: impl AsRef<str>) -> LanguageFileSpec {
+    LanguageFileSpec::default()
 }
 
-/// Build a language-neutral matcher from all provider manifest defaults.
+/// Return a fail-closed language-neutral matcher without a Runtime scope.
 #[must_use]
 pub fn language_neutral_search_file_spec() -> LanguageFileSpec {
-    let manifests = builtin_provider_manifests();
-    LanguageFileSpec::from_provider_defaults(
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source.default_extensions.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source.default_config_files.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source.default_project_markers.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source.default_dependency_markers.iter()),
-    )
-}
-
-fn unique_strings<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
-    values
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
+    LanguageFileSpec::default()
 }

@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
+  "title": "Repository Candidate Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "mode",
+    "repositoryIdentity",
+    "worktreeIdentity",
+    "candidateScope",
+    "candidateGeneration",
+    "candidates",
+    "policyOverlayDigest",
+    "policyExclusions",
+    "metrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.repository-candidate-snapshot"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "mode": {
+      "const": "git"
+    },
+    "repositoryIdentity": {
+      "$ref": "#/$defs/repositoryIdentity"
+    },
+    "worktreeIdentity": {
+      "$ref": "#/$defs/worktreeIdentity"
+    },
+    "candidateScope": {
+      "$ref": "#/$defs/candidateScope"
+    },
+    "candidateGeneration": {
+      "$ref": "#/$defs/candidateGeneration"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "policyOverlayDigest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "policyExclusions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/policyExclusion"
+      }
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+      }
+    },
+    "repositoryIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryId",
+        "identityBasis",
+        "gitCommonDir"
+      ],
+      "properties": {
+        "repositoryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identityBasis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gitCommonDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remoteUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "worktreeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worktreeId",
+        "worktreeRoot",
+        "gitDir"
+      ],
+      "properties": {
+        "worktreeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worktreeRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gitDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "candidateScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectRoot"
+      ],
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "candidateGeneration": {
+      "type": "object",
+      "description": "Generation of one concrete primary or linked Git worktree. HEAD/index/worktree changes advance this generation without changing worktreeId.",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "digest",
+        "authorities"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "blake3-worktree-state-v1"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^blake3:[0-9a-f]{64}$"
+        },
+        "authorities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "git-index",
+              "git-worktree"
+            ]
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "state",
+        "authority"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "state": {
+          "enum": [
+            "tracked",
+            "untracked"
+          ]
+        },
+        "authority": {
+          "enum": [
+            "git-index",
+            "git-worktree"
+          ]
+        }
+      }
+    },
+    "policyExclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "authority",
+        "reasonKind",
+        "matchedValue"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "authority": {
+          "const": "user-policy"
+        },
+        "reasonKind": {
+          "const": "ignored-dir-name"
+        },
+        "matchedValue": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "indexEntryCount",
+        "worktreeAdditionCount",
+        "candidateCount",
+        "policyExclusionCount",
+        "fullWorkspaceReads",
+        "fullMerkleRebuilds",
+        "directDbOpens"
+      ],
+      "properties": {
+        "indexEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "worktreeAdditionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policyExclusionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fullWorkspaceReads": {
+          "const": 0
+        },
+        "fullMerkleRebuilds": {
+          "const": 0
+        },
+        "directDbOpens": {
+          "const": 0
+        }
+      }
+    }
+  }
+}

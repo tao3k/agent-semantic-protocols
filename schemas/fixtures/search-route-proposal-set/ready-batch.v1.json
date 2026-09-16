@@ -1,0 +1,99 @@
+{
+  "schemaId": "agent.semantic-protocols.search-route-proposal-set",
+  "schemaVersion": "1",
+  "proposalSetId": "PS-BATCH",
+  "runId": "R1",
+  "basedOnRevision": 0,
+  "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plannerBackendId": "graph-turbo",
+  "plannerBackendDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "ready",
+  "proposals": [
+    {
+      "proposalId": "P-BATCH",
+      "runId": "R1",
+      "basedOnRevision": 0,
+      "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "proposedBy": "graph-turbo",
+      "agentReasoningReceiptRef": "reasoning.agent.batch",
+      "graphDerivationReceiptRef": "derivation.graph.batch",
+      "obligationIds": ["O1", "O2"],
+      "nodes": [
+        {
+          "nodeId": "N1",
+          "actionClass": "provider-query",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "callers-of.v1",
+          "inputTemplateDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "coversObligationIds": ["O1"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "enumeration",
+          "evidencePredicate": {
+            "predicateId": "EP1",
+            "claimClass": "enumeration",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "complete-scope",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": true,
+            "maxResults": 100
+          }
+        },
+        {
+          "nodeId": "N2",
+          "actionClass": "provider-query",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "callers-of.v1",
+          "inputTemplateDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "coversObligationIds": ["O2"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "enumeration",
+          "evidencePredicate": {
+            "predicateId": "EP2",
+            "claimClass": "enumeration",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["workspace-search-playbook-result.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "complete-scope",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": true,
+            "maxResults": 100
+          }
+        }
+      ],
+      "edges": [],
+      "executionGroups": [
+        {
+          "groupId": "G-BATCH",
+          "mode": "batch",
+          "nodeIds": ["N1", "N2"],
+          "joinPolicy": "complete-enumeration",
+          "maxParallel": 1,
+          "derivationReceiptRef": "derivation.group.batch",
+          "batchCapabilityRef": "rust.callers.batch.v1"
+        }
+      ],
+      "joins": [],
+      "estimateReceiptRefs": ["estimate.batch"],
+      "budgetProposal": {
+        "maxCommands": 1,
+        "maxElapsedMs": 1000,
+        "maxPacketBytes": 20000,
+        "maxChoiceDepth": 1,
+        "maxParallel": 1,
+        "maxAggregateProviderLatencyMs": 1000,
+        "maxParentVisibleBytes": 3000
+      },
+      "proposalDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "recommendedProposalId": "P-BATCH",
+  "setDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

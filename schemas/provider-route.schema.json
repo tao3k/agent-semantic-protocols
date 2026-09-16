@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-route.schema.json",
+  "title": "ASP Provider Route DSL",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "routeId",
+    "operation",
+    "authority",
+    "target",
+    "inputs",
+    "requirements",
+    "effects",
+    "output",
+    "failureSchemaIds",
+    "cache",
+    "telemetry"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-route"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "routeId": {
+      "$ref": "#/$defs/dottedId"
+    },
+    "operation": {
+      "$ref": "#/$defs/semanticId"
+    },
+    "authority": {
+      "const": "asp-server"
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "requestSchema": {
+      "$ref": "#/$defs/schemaReference"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/inputSlot"
+      },
+      "uniqueItems": true
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/requirement"
+      },
+      "uniqueItems": true
+    },
+    "effects": {
+      "$ref": "#/$defs/effects"
+    },
+    "output": {
+      "$ref": "#/$defs/output"
+    },
+    "failureSchemaIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/schemaId"
+      }
+    },
+    "cache": {
+      "$ref": "#/$defs/cache"
+    },
+    "telemetry": {
+      "$ref": "#/$defs/telemetry"
+    }
+  },
+  "$defs": {
+    "semanticId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
+    },
+    "dottedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+    },
+    "schemaId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9._:/-]*$"
+    },
+    "schemaReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion"],
+      "properties": {
+        "schemaId": { "$ref": "#/$defs/schemaId" },
+        "schemaVersion": { "const": "1" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId"],
+      "properties": {
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    },
+    "inputSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "valueType", "cardinality", "source"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "valueType": {
+          "enum": [
+            "string",
+            "workspace-relative-path",
+            "structural-selector",
+            "presentation",
+            "boolean",
+            "unsigned-integer",
+            "json"
+          ]
+        },
+        "cardinality": {
+          "enum": ["required", "optional", "many"]
+        },
+        "source": {
+          "enum": ["request", "runtime-context"]
+        },
+        "telemetry": {
+          "enum": ["omit", "identity", "measurement"]
+        }
+      }
+    },
+    "requirement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "capability"],
+          "properties": {
+            "kind": {
+              "const": "capability"
+            },
+            "capability": {
+              "$ref": "#/$defs/dottedId"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "state"],
+          "properties": {
+            "kind": {
+              "const": "state"
+            },
+            "state": {
+              "enum": [
+                "provider-ready",
+                "terminal-generation",
+                "live-owner",
+                "registered-workspace"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["access", "idempotent", "cancellable", "concurrency", "streaming"],
+      "properties": {
+        "access": {
+          "enum": ["read", "write"]
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "cancellable": {
+          "type": "boolean"
+        },
+        "concurrency": {
+          "enum": ["isolated", "shared-read", "exclusive"]
+        },
+        "streaming": {
+          "type": "boolean"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+        "required": ["schema", "mediaType"],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schemaReference"
+        },
+        "mediaType": {
+          "const": "application/json"
+        },
+        "projectionKind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "scope", "keySlots"],
+      "properties": {
+        "authority": {
+          "const": "asp-server"
+        },
+        "scope": {
+          "enum": ["none", "request", "generation", "workspace"]
+        },
+        "keySlots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$"
+          }
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spanName", "attributeSlots"],
+      "properties": {
+        "spanName": {
+          "type": "string",
+          "pattern": "^asp\\.route\\.[a-z0-9.-]+$"
+        },
+        "attributeSlots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$"
+          }
+        }
+      }
+    }
+  }
+}

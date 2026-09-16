@@ -1,0 +1,60 @@
+{"sourcePath":
+ "packages/proofs/ASPProof/SearchRouteAdmissionGcPublication.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionGcPublication",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type} {window : SearchRouteAdmissionGcPublication.CycleWindow Identity}\n  {publication : SearchRouteAdmissionGcPublication.RecordPublication Identity}\n  {token : SearchRouteAdmissionGcPublication.BarrierToken Identity} {expectedReceiptIdentity : Identity},\n  SearchRouteAdmissionGcPublication.ValidBarrierToken window publication token expectedReceiptIdentity →\n    window.markEpoch ≤ window.sweepEpoch",
+   "theoremFamily": "cycle-window",
+   "rfcClauseIds": ["ASP-RFC-10.05-AGP-CYCLE"],
+   "name":
+   "SearchRouteAdmissionGcPublication.valid_barrier_implies_well_formed_cycle_window",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type} {gcCycle : SearchRouteAdmissionGcBarrier.GcCycle Identity}\n  {window : SearchRouteAdmissionGcPublication.CycleWindow Identity}\n  {publication : SearchRouteAdmissionGcPublication.RecordPublication Identity}\n  {baselineToken extensionToken : SearchRouteAdmissionGcPublication.BarrierToken Identity},\n  SearchRouteAdmissionGcPublication.PublicationBarrierCertificate gcCycle window publication baselineToken\n      extensionToken →\n    baselineToken.installedAt ≤ publication.publishedAt ∧\n      extensionToken.installedAt ≤ publication.publishedAt ∧\n        baselineToken.cycleIdentity = publication.cycleIdentity ∧\n          extensionToken.cycleIdentity = publication.cycleIdentity",
+   "theoremFamily": "barrier-publication-order",
+   "rfcClauseIds": ["ASP-RFC-10.05-AGP-ORDER", "ASP-RFC-10.05-AGP-TOKEN"],
+   "name":
+   "SearchRouteAdmissionGcPublication.publication_certificate_orders_both_barriers_before_visibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type} {gcCycle : SearchRouteAdmissionGcBarrier.GcCycle Identity}\n  {window : SearchRouteAdmissionGcPublication.CycleWindow Identity}\n  {publication : SearchRouteAdmissionGcPublication.RecordPublication Identity}\n  {baselineToken extensionToken : SearchRouteAdmissionGcPublication.BarrierToken Identity},\n  SearchRouteAdmissionGcPublication.PublicationBarrierCertificate gcCycle window publication baselineToken\n      extensionToken →\n    SearchRouteAdmissionGcBarrier.ConcurrentCommitCertificate gcCycle publication.publishedAt publication.record",
+   "theoremFamily": "gc-certificate-bridge",
+   "rfcClauseIds": ["ASP-RFC-10.05-AGP-BRIDGE"],
+   "name":
+   "SearchRouteAdmissionGcPublication.publication_certificate_implies_concurrent_commit_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬SearchRouteAdmissionGcPublication.ValidBarrierToken SearchRouteAdmissionGcPublication.currentCycleWindow\n    SearchRouteAdmissionGcPublication.currentPublication SearchRouteAdmissionGcPublication.staleCycleBarrierToken false",
+   "theoremFamily": "cross-cycle-token-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AGP-CYCLE", "ASP-RFC-10.05-AGP-NONIMPLICATION"],
+   "name":
+   "SearchRouteAdmissionGcPublication.barrier_token_from_another_cycle_is_invalid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬SearchRouteAdmissionGcPublication.ValidBarrierToken SearchRouteAdmissionGcPublication.currentCycleWindow\n    SearchRouteAdmissionGcPublication.currentPublication SearchRouteAdmissionGcPublication.lateBarrierToken false",
+   "theoremFamily": "late-barrier-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AGP-NONIMPLICATION", "ASP-RFC-10.05-AGP-ORDER"],
+   "name":
+   "SearchRouteAdmissionGcPublication.barrier_installed_after_publication_is_invalid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 5,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 1}

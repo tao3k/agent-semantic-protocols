@@ -1,0 +1,90 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteBranchBound.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteBranchBound",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {first second third : SearchRouteBranchBound.GraphLowerBound},\n  SearchRouteBranchBound.keyLexNoWorse first second →\n    SearchRouteBranchBound.keyLexNoWorse second third → SearchRouteBranchBound.keyLexNoWorse first third",
+   "theoremFamily": "lower-bound-order",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SBB-LOWER-BOUND", "ASP-RFC-10.05-SBB-SAFE-PRUNING"],
+   "name": "SearchRouteBranchBound.keyLexNoWorse_trans",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {frontier : SearchRouteBranchBound.CertifiedFrontier},\n  SearchRouteBranchBound.Prunable selected frontier.lowerBound →\n    ∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ frontier.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "safe-pruning",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SBB-LOWER-BOUND", "ASP-RFC-10.05-SBB-SAFE-PRUNING"],
+   "name": "SearchRouteBranchBound.valid_lower_bound_pruning_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {candidateUniverse : SearchRouteBranchBound.CandidateUniverse}\n  {visible : List SearchRouteDAG.GraphCandidate},\n  SearchRouteBranchBound.VisibleOptimal selected visible →\n    ∀ (receipt : SearchRouteBranchBound.CoverageReceipt candidateUniverse visible),\n      SearchRouteBranchBound.DeferredPrunable selected receipt →\n        ∀ (candidate : SearchRouteDAG.GraphCandidate),\n          candidate ∈ candidateUniverse.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "lazy-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SBB-COVERAGE",
+    "ASP-RFC-10.05-SBB-LOWER-BOUND",
+    "ASP-RFC-10.05-SBB-SAFE-PRUNING",
+    "ASP-RFC-10.05-SBB-SNAPSHOT"],
+   "name": "SearchRouteBranchBound.certified_lazy_frontier_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {candidateUniverse : SearchRouteBranchBound.CandidateUniverse} {visible : List SearchRouteDAG.GraphCandidate}\n  (receipt : SearchRouteBranchBound.CoverageReceipt candidateUniverse visible) (currentSnapshotDigest : Nat),\n  SearchRouteBranchBound.snapshotMatchesB receipt currentSnapshotDigest = true ↔\n    candidateUniverse.snapshotDigest = currentSnapshotDigest",
+   "theoremFamily": "snapshot-identity",
+   "rfcClauseIds": ["ASP-RFC-10.05-SBB-COVERAGE", "ASP-RFC-10.05-SBB-SNAPSHOT"],
+   "name": "SearchRouteBranchBound.snapshotMatchesB_true_iff",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {candidateUniverse : SearchRouteBranchBound.CandidateUniverse}\n  {visible : List SearchRouteDAG.GraphCandidate}\n  (receipt : SearchRouteBranchBound.CoverageReceipt candidateUniverse visible) (currentSnapshotDigest : Nat),\n  SearchRouteBranchBound.snapshotMatchesB receipt currentSnapshotDigest = true →\n    SearchRouteBranchBound.VisibleOptimal selected visible →\n      SearchRouteBranchBound.DeferredPrunable selected receipt →\n        ∀ (candidate : SearchRouteDAG.GraphCandidate),\n          candidate ∈ candidateUniverse.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "snapshot-bound-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SBB-COVERAGE",
+    "ASP-RFC-10.05-SBB-LOWER-BOUND",
+    "ASP-RFC-10.05-SBB-SAFE-PRUNING",
+    "ASP-RFC-10.05-SBB-SNAPSHOT"],
+   "name":
+   "SearchRouteBranchBound.snapshot_accepted_lazy_frontier_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteBranchBound.Prunable SearchRouteDAG.shortInteractionLongGraph\n    SearchRouteBranchBound.invalidOptimisticFrontier ∧\n  ¬SearchRouteBranchBound.BoundValid [SearchRouteDAG.longInteractionShortGraph]\n        SearchRouteBranchBound.invalidOptimisticFrontier ∧\n    ¬SearchRouteDAG.graphLexNoWorse SearchRouteDAG.shortInteractionLongGraph SearchRouteDAG.longInteractionShortGraph",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SBB-LOWER-BOUND", "ASP-RFC-10.05-SBB-SAFE-PRUNING"],
+   "name":
+   "SearchRouteBranchBound.invalid_lower_bound_can_prune_a_better_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchRouteBranchBound.VisibleOptimal SearchRouteDAG.shortInteractionLongGraph\n    [SearchRouteDAG.shortInteractionLongGraph] ∧\n  ¬∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ [SearchRouteDAG.shortInteractionLongGraph, SearchRouteDAG.longInteractionShortGraph] →\n        SearchRouteDAG.graphLexNoWorse SearchRouteDAG.shortInteractionLongGraph candidate",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-SBB-COVERAGE", "ASP-RFC-10.05-SBB-SNAPSHOT"],
+   "name":
+   "SearchRouteBranchBound.visible_optimality_without_coverage_is_unsound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteBranchBound.snapshotMatchesB SearchRouteBranchBound.staleCoverageReceipt 42 = false",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-SBB-COVERAGE", "ASP-RFC-10.05-SBB-SNAPSHOT"],
+   "name": "SearchRouteBranchBound.stale_snapshot_coverage_receipt_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 8,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 7}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 name: Release ASP tool bundle
 
 on:
@@ -26,19 +30,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             exe: ""
-            python_wrapper: asp-graph-turbo
           - os: macos-14
             target: aarch64-apple-darwin
             exe: ""
-            python_wrapper: asp-graph-turbo
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             exe: .exe
-            python_wrapper: asp-graph-turbo.cmd
 
     env:
       ASP_BINARY: asp
-      GRAPH_TURBO_BINARY: asp-graph-turbo
       RELEASE_BUNDLE: asp-tools
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
 
@@ -61,13 +61,13 @@ jobs:
         run: |
           set -euo pipefail
           git submodule update --init --depth 1 \
-            languages/rust-lang-project-harness \
-            languages/gerbil-scheme-language-project-harness \
-            languages/org \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
             languages/orgize \
-            languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -85,69 +85,85 @@ jobs:
         shell: bash
         run: git config --global core.longpaths true
 
-      - name: Build asp
-        shell: bash
-        run: cargo build --release --bin "$ASP_BINARY"
-
-      - name: Build graph turbo wheel
+      - name: Build atomic ASP and asp-python-graphs service bundle
         shell: bash
         run: |
           set -euo pipefail
-
-          rm -rf dist
-          uv build packages/python/asp_memory_engine --out-dir dist
-          uv build packages/python/asp_graph_turbo --out-dir dist
-
-      - name: Assemble bundle
-        shell: bash
-        run: |
+          cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
+          mkdir -p package/asp-python-graphs.bundle
+          install -m 755 target/release/asp${{ matrix.exe }} package/asp${{ matrix.exe }}
+          uv build --project packages/python/asp_memory_engine --wheel \
+            --out-dir package/asp-python-graphs.bundle
+          uv build --project packages/python/asp_python_graphs --wheel \
+            --out-dir package/asp-python-graphs.bundle
+          service_dir="$PWD/package/asp-python-graphs.bundle"
+          environment_dir="${service_dir}/environment"
+          python -m venv --copies "${environment_dir}"
+          if [[ -x "${environment_dir}/bin/python" ]]; then
+            service_python="${environment_dir}/bin/python"
+            service_launcher="${service_dir}/asp-python-graphs-service"
+            service_arguments_json='["serve", "--socket=${socketPath}"]'
+            cat > "${service_launcher}" <<'EOF'
+          #!/usr/bin/env bash
           set -euo pipefail
-
-          package_dir="package"
-          site_dir="${package_dir}/${GRAPH_TURBO_BINARY}-site"
-
-          rm -rf "${package_dir}"
-          mkdir -p "${site_dir}"
-
-          cp "target/release/${ASP_BINARY}${{ matrix.exe }}" "${package_dir}/${ASP_BINARY}${{ matrix.exe }}"
-
-          python -m pip install \
-            --no-compile \
-            --no-warn-script-location \
-            --find-links dist \
-            --target "${site_dir}" \
-            dist/asp_memory_engine-*.whl \
-            dist/asp_graph_turbo-*.whl
-
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cat > "${package_dir}/${{ matrix.python_wrapper }}" <<'BAT'
-          @echo off
-          set "ROOT=%~dp0"
-          if defined PYTHONPATH (
-            set "PYTHONPATH=%ROOT%asp-graph-turbo-site;%PYTHONPATH%"
-          ) else (
-            set "PYTHONPATH=%ROOT%asp-graph-turbo-site"
-          )
-          if defined PYTHON (
-            "%PYTHON%" -m asp_graph_turbo %*
-          ) else (
-            python -m asp_graph_turbo %*
-          )
-          BAT
+          bundle_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "${bundle_dir}/environment/bin/python" -m asp_python_graphs.service_cli "$@"
+          EOF
+            chmod 755 "${service_launcher}"
           else
-            cat > "${package_dir}/${{ matrix.python_wrapper }}" <<'SH'
-          #!/bin/sh
-          set -eu
-          ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          if [ "${PYTHONPATH:-}" ]; then
-            export PYTHONPATH="$ROOT/asp-graph-turbo-site:$PYTHONPATH"
-          else
-            export PYTHONPATH="$ROOT/asp-graph-turbo-site"
+            service_python="${environment_dir}/Scripts/python.exe"
+            service_launcher="${service_python}"
+            service_arguments_json='["-m", "asp_python_graphs.service_cli", "serve", "--socket=${socketPath}"]'
           fi
-          exec "${PYTHON:-python3}" -m asp_graph_turbo "$@"
-          SH
-            chmod +x "${package_dir}/${{ matrix.python_wrapper }}"
-          fi
+          uv pip install --python "${service_python}" \
+            packages/python/asp_memory_engine packages/python/asp_python_graphs
+          graphs_wheel_path="$(find package/asp-python-graphs.bundle -type f -name 'asp_python_graphs-*.whl' -print -quit)"
+          memory_wheel_path="$(find package/asp-python-graphs.bundle -type f -name 'asp_memory_engine-*.whl' -print -quit)"
+          test -n "${graphs_wheel_path}"
+          test -n "${memory_wheel_path}"
+          python - "${service_dir}" "${service_launcher}" "${graphs_wheel_path}" "${memory_wheel_path}" "${service_arguments_json}" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          service_dir = pathlib.Path(sys.argv[1])
+          launcher = pathlib.Path(sys.argv[2])
+          wheel = pathlib.Path(sys.argv[3])
+          memory_wheel = pathlib.Path(sys.argv[4])
+          entrypoint = json.loads(sys.argv[5])
+          files = []
+          for path in sorted(service_dir.rglob("*")):
+              if not path.is_file() or path.name == "artifact-manifest.v1.json":
+                  continue
+              files.append(
+                  {
+                      "path": path.relative_to(service_dir).as_posix(),
+                      "size": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+              )
+          file_material = json.dumps(files, sort_keys=True, separators=(",", ":"))
+          manifest = {
+              "schemaId": "agent.semantic-protocols.asp-python-graphs-release-artifact",
+              "schemaVersion": "1",
+              "artifactKind": "server-managed-service-environment",
+              "project": "asp-python-graphs",
+              "algorithm": "graph-turbo",
+              "launcher": launcher.relative_to(service_dir).as_posix(),
+              "launcherSha256": hashlib.sha256(launcher.read_bytes()).hexdigest(),
+              "environment": "environment",
+              "files": files,
+              "bundleSha256": hashlib.sha256(file_material.encode()).hexdigest(),
+              "entrypoint": entrypoint,
+              "wheels": [wheel.name, memory_wheel.name],
+              "publicStandaloneCommand": False,
+          }
+          (wheel.parent / "artifact-manifest.v1.json").write_text(
+              json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Smoke bundle
         shell: bash
@@ -155,12 +171,38 @@ jobs:
           set -euo pipefail
 
           "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
-
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cmd.exe /c "package\\${{ matrix.python_wrapper }} --help >NUL"
+          if [[ -x package/asp-python-graphs.bundle/asp-python-graphs-service ]]; then
+            service_launcher="$PWD/package/asp-python-graphs.bundle/asp-python-graphs-service"
+            service_run_args=(serve --socket)
           else
-            "./package/${{ matrix.python_wrapper }}" --help >/dev/null
+            service_launcher="$PWD/package/asp-python-graphs.bundle/environment/Scripts/python.exe"
+            service_run_args=(-m asp_python_graphs.service_cli serve --socket)
           fi
+          test -x "${service_launcher}" || test -f "${service_launcher}"
+          python - "${service_launcher}" <<'PY'
+          import os
+          import pathlib
+          import sys
+
+          launcher = pathlib.Path(sys.argv[1]).resolve()
+          assert os.access(launcher, os.X_OK) or launcher.suffix == ".cmd"
+          PY
+          socket_path="$RUNNER_TEMP/asp-python-graphs-release.sock"
+          "${service_launcher}" "${service_run_args[@]}" "${socket_path}" >/tmp/asp-python-graphs-release.log 2>&1 &
+          service_pid=$!
+          trap 'kill "${service_pid}" 2>/dev/null || true' EXIT
+          python - "${socket_path}" <<'PY'
+          import asyncio
+          import grpc
+          import sys
+
+          async def main() -> None:
+              channel = grpc.aio.insecure_channel(f"unix:{sys.argv[1]}")
+              await channel.channel_ready()
+              await channel.close()
+
+          asyncio.run(main())
+          PY
 
       - name: Package artifact
         shell: bash

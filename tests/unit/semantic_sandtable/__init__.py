@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic sandtable unit tests with explicit owner map.
 
 OWNER_MAP keeps the branch package readable for agents: coverage tests exercise

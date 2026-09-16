@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the software criterion extension report envelope."""
 
 from __future__ import annotations
@@ -17,7 +21,6 @@ sys.path.insert(0, str(_ROOT / "tests" / "unit"))
 from schema_validation import schema_validator_for  # noqa: E402
 
 _SCHEMA_PATH = _ROOT / "schemas" / "software-criterion-extension-report.v1.schema.json"
-_REGISTRY_PATH = _ROOT / "schemas" / "semantic-language-registry.providers.v1.json"
 _RFC_PATH = (
     _ROOT
     / "docs"
@@ -37,7 +40,7 @@ def _effect_report() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.software-criterion",
         "protocolVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
+        "providerId": "asp-typescript",
         "projectRoot": ".",
         "extensionId": "typescript.extension.effect",
         "ecosystem": "effect",
@@ -130,20 +133,17 @@ def test_software_criterion_extension_report_rejects_generic_mapping_rule_id() -
     assert any(list(error.path) == ["findings", 0, "ruleId"] for error in errors)
 
 
-def test_source_language_registry_advertises_software_criterion_extension_schema() -> None:
-    registry = _load_json(_REGISTRY_PATH)
-    source_languages = {"rust", "typescript", "python", "julia"}
-    registrations = {
-        language["languageId"]: {schema["schemaId"] for schema in language["schemas"]}
-        for language in registry["languages"]
-        if language["languageId"] in source_languages
-    }
+def test_extension_schema_remains_provider_owned_not_a_shared_profile_root() -> None:
+    schema = _load_json(_SCHEMA_PATH)
+    profiles = _load_json(_ROOT / "schemas/language-schema-profiles.json")
 
-    assert set(registrations) == source_languages
-    for schema_ids in registrations.values():
-        assert (
-            "agent.semantic-protocols.software-criterion-extension-report" in schema_ids
-        )
+    assert schema["properties"]["schemaId"]["const"] == (
+        "agent.semantic-protocols.software-criterion-extension-report"
+    )
+    assert all(
+        "software-criterion-extension-report.v1.schema.json" not in roots
+        for roots in profiles["rootSets"].values()
+    )
 
 
 def test_software_criterion_extension_policy_rfc_locks_provider_owned_boundary() -> None:

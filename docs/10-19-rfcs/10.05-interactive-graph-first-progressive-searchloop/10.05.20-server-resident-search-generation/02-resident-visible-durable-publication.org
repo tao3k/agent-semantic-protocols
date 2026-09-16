@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Resident-visible and durable generation publication
+#+PROPERTY: RFC_ID ASP-SEARCH-GENERATION-PUBLICATION-V1
+
+* Status
+
+Normative.
+
+* Problem
+
+An exact query needs the current in-process generation, while restart recovery
+needs that generation to be durably represented by its segments, atomic
+pointer, and owner-identity journal.  These are different authorities.  A
+query must not wait for filesystem durability after the complete generation is
+already present in the Runtime Server.
+
+* Publication states
+
+The per-workspace writer lane owns one ordered state machine:
+
+1. =resident-ready=: the complete generation validates, a MemoryBackend has
+   been constructed, and the workspace resident pointer has atomically changed.
+2. =durable-ready=: the same generation's segments, directory entry, atomic
+   snapshot pointer, and owner-identity journal are durable.
+3. =failed=: durable publication failed.  The resident generation remains
+   readable, but health and repair must expose the failure and may not claim
+   restart safety.
+
+The receipt is =runtime-server-workspace-generation-durability.v1=.  Schema
+version is =1=; state names are protocol values, not schema versions.
+
+* Ordering law
+
+For one workspace, generation =g(n+1)= may become resident-visible only after
+the writer lane has reached =durable-ready= or =failed= for =g(n)=.  A replay
+of the same generation may read the resident generation immediately.  Different
+workspaces have independent writer lanes and never share a durability lock.
+
+* Query law
+
+Exact and search consumers may enter on =resident-ready=.  They consume the
+Runtime Server lease, not the mmap checkpoint.  Query-time entry performs no
+filesystem open, write, sync, Git discovery, provider process, Turso open, or
+activation repair.
+
+The registry accepts =ValidatedWorkspaceCanonicalMaterialization=, never a raw
+materialization.  The Turso generation loader validates once before publication;
+the registry must not repeat owner, snapshot, or generation-evidence validation
+on replay.  A raw materialization cannot enter the writer lane.
+
+Runtime Server lifecycle prepares the keyed resident workspace scope before a
+search or exact query is timed or dispatched.  Scope preparation owns durable
+checkpoint discovery and session-entry creation.  A cold generation means no
+active generation is present in an already prepared resident scope; it does not
+mean that query-time code may reopen the workspace session.
+
+* Failure and recovery law
+
+Durability work is never detached without authority.  Its terminal receipt is
+stored on the workspace resident entry.  Healthcheck reports =failed= and the
+repair lane republishes from the still-complete resident generation.  A server
+restart may restore only a =durable-ready= generation.
+
+A process-cold durable restore MUST publish the same
+=WorkspaceGenerationPublished= observation as a newly built resident
+generation before the restore admission returns =Ready=.  That observation is
+the sole handoff to the Runtime query-generation observer, which constructs the
+content-bound in-process generation and schedules its lexical attachment under
+one single-flight lane.  Restoring the resident pointer without publishing this
+observation is a partial restore: exact bytes may be mapped, but Search has no
+lexical terminal and therefore MUST NOT be represented as a complete recovery.
+
+The lexical attachment may finish asynchronously after resident publication,
+but every Search that requires it waits on the one published terminal.  A
+restart must neither omit that terminal nor start a second generation build.
+The wait inherits the request's existing deadline; it does not create a new
+timeout or convert =materializing= into success.
+
+* Runtime startup recovery barrier
+
+Runtime transport readiness and resident Search readiness are separate startup
+states.  The daemon may bind and serve its control transport in =Starting= so
+that artifact activation can commit, but it MUST NOT publish =Healthy= merely
+because the listener accepts connections.
+
+After activation is applied, the daemon restores every scope in the durable V1
+workspace-admission catalog in deterministic order, using the applied bundle's
+active provider targets rather than demanding capabilities absent from that
+bundle.  One scope must reach a terminal complete-generation admission,
+query-generation publication, and lexical-attachment terminal before the next
+scope starts.  This single-writer ordering is normative while generation
+handoff uses one retained publication slot: concurrent startup admissions could
+otherwise overwrite an unobserved handoff.
+
+Only after every catalog scope has produced a startup terminal may the daemon
+publish global =Healthy=.  A changed scope is rebuilt by the admission owner.
+A corrupt, identity-drifted, or provider-closure-incompatible scope publishes a
+workspace-keyed failed terminal and remains unavailable; it MUST NOT prevent
+independent valid scopes from recovering or turn global transport health into a
+cross-workspace conjunction.  Startup recovery is lifecycle work and is not
+charged to Search or Query dispatch latency.  Once =Healthy= is visible, a first
+request for an admitted successfully recovered scope consumes only resident
+state.
+
+* Performance qualification
+
+The empirical gate uses multiple workspaces, multiple sessions, repeated
+replay, and concurrent readers.  Foreground resident publication and replay
+retain sub-millisecond hard gates.  The fixture separately awaits and validates
+the durable terminal receipt; passing the latency gate by omitting durability
+is a protocol failure.

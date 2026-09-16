@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Run simulated deep-search sessions from adaptive validation manifests."""
 
 from __future__ import annotations
@@ -211,24 +215,20 @@ def _commands_for_run(run: dict[str, Any], workdir: Path, asp_bin: str) -> list[
     return [
         [
             asp_bin,
-            language,
             "search",
-            "prime",
+            "playbook",
+            "--language",
+            language,
             "--workspace",
             str(workdir),
-            "--view",
-            "seeds",
-        ],
-        [
-            asp_bin,
-            language,
-            "search",
-            "pipe",
+            "--rg",
+            "-n",
+            "-e",
             prompt,
-            "--workspace",
-            str(workdir),
-            "--view",
-            "seeds",
+            ".",
+            "--tantivy",
+            "term",
+            prompt,
         ],
     ]
 

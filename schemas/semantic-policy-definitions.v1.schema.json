@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-policy-definitions.v1.schema.json",
+  "title": "Semantic Policy Family Definitions v1",
+  "$defs": {
+    "evidenceKind": {
+      "enum": [
+        "parser-fact",
+        "compiler-fact",
+        "provider-fact",
+        "criterion-catalog",
+        "extension-report",
+        "scenario-benchmark",
+        "behavior-snapshot",
+        "runtime-source",
+        "compiler-evidence",
+        "language-rule",
+        "standard-library",
+        "macro-pattern",
+        "evidence-graph",
+        "graph-route",
+        "topology-update",
+        "quality-frame",
+        "provider-capability",
+        "prior-failure",
+        "reasoning-step",
+        "route-receipt",
+        "test-receipt",
+        "verification-receipt",
+        "db-generation",
+        "overlay",
+        "artifact",
+        "org-contract",
+        "manual",
+        "research",
+        "heuristic"
+      ]
+    },
+    "factKind": {
+      "enum": [
+        "architecture-boundary",
+        "api-contract",
+        "code-quality",
+        "control-flow",
+        "cross-language-capability",
+        "dependency",
+        "documentation",
+        "edit-strategy",
+        "error-resource",
+        "macro-boundary",
+        "migration",
+        "native-idiom",
+        "performance",
+        "profile",
+        "runtime-boundary",
+        "schema-boundary",
+        "security",
+        "testing",
+        "topology-context",
+        "verification",
+        "custom"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "producer": {"type": "string", "minLength": 1},
+        "providerVersion": {"type": "string", "minLength": 1},
+        "generatedAt": {"type": "string", "minLength": 1},
+        "command": {"type": "string", "minLength": 1},
+        "sourceHash": {"type": "string", "minLength": 1}
+      }
+    },
+    "agentUse": {
+      "enum": [
+        "before-search",
+        "search-routing",
+        "before-write",
+        "during-write",
+        "edit-strategy",
+        "review",
+        "test-selection",
+        "repair",
+        "documentation",
+        "architecture-context",
+        "plan-selection",
+        "suppress-route"
+      ]
+    }
+  }
+}

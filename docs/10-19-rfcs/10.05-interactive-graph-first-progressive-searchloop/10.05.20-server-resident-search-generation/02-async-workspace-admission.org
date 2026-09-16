@@ -1,0 +1,255 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Async Workspace Admission
+
+* Contract
+
+Lifecycle admission MUST be idempotent and non-blocking. Ensuring an unseen
+workspace records the canonical workspace identity, starts exactly one
+supervisor-owned generation build, and immediately returns =Building=.
+
+Ensuring an already =Building= or =Ready= workspace returns the observed receipt
+without waiting and without starting another attempt.  A query against =Failed=
+may submit the next Runtime-owned attempt; the prior failure is not a permanent
+admission lock.  Only explicit test or Runtime control-plane barriers may wait
+for a terminal receipt. Health and hook latency therefore measures admission
+submit time, never provider construction time.
+
+The query data plane may submit exactly one non-blocking =query-demand= command
+to the Runtime-owned admission coordinator.  It MUST NOT perform the build,
+repair activation, open a database, invoke a provider, or own cancellation.  A
+missing or failed resident generation returns the typed v1 in-progress receipt
+while the detached Runtime task publishes one atomic generation.
+
+Every Search or Query demand observes the same =CompleteGeneration= read
+barrier.  The Runtime data plane MUST parse a canonical selector, validate its
+language identity, and resolve its normalized owner path beneath the workspace
+root before submitting demand, but that target is only a provider-work hint.
+It is never a second publication scope, coverage receipt, or readable partial
+generation.  The single-flight builder may lazily start only the selected
+provider and carry forward already admitted providers byte-for-byte, then it
+publishes one complete immutable workspace generation.  A cold workspace has
+no readable target-only predecessor: the first admitted provider result forms
+the initial complete member set.
+
+The query request may drop after admission; only Runtime lifecycle authority
+may cancel the build.  Concurrent demands reuse the active attempt.  A demand
+whose provider is not represented by the active attempt requests a provider
+extension through the same builder, but every reader still waits on the unique
+=CompleteGeneration= barrier.  An empty target set is therefore valid: it asks
+the authority to prove the current complete workspace generation.  No empty,
+uncovered, or targeted publication may be interpreted as a successful
+=no-matches= result.
+
+* Cold restore preserves committed authority
+
+After daemon election, cold restore validates the complete Turso materialization
+against its admitted workspace identity, provider catalog generation, schema
+digest, project-resolution generation, source snapshot, and selector-set digest.
+Once those durable predicates hold, the writer lane MUST publish that committed
+generation to MemoryBackend immediately. It MUST NOT synchronously discover a
+live Git candidate generation, scan the checkout, invoke a provider, or rebuild
+the source index before making the last committed generation readable.
+
+Checkout drift detection is a separate edge-triggered reconciliation operation.
+An out-of-band host lifecycle owner or Runtime supervisor submits it
+asynchronously and the writer lane stages a replacement generation. The
+synchronous Hook path never submits, joins, waits for, or polls this operation.
+Readers continue leasing the last committed generation until the replacement
+commits atomically. Thus cold restore cost is bounded by durable receipt
+validation and memory publication, while source mutation never creates an
+authority gap.
+
+An empty project-resolution set is a valid committed generation for a workspace
+whose admitted scope contains only document providers or no programming-language
+package anchor. Cold restore MUST NOT reinterpret that valid set as a rebuild
+request; language/provider eligibility is already bound by the catalog and the
+materialization evidence.
+
+** Restore mode is not rebuild authority
+
+Daemon catalog restoration MUST submit =RestoreOnly=.  This mode may validate
+and publish a current canonical materialization, but it MUST NOT invoke source
+collection, a language provider, checkout hashing, or a source-index rebuild.
+A missing, incompatible, or candidate-mismatched materialization therefore
+produces a scope-local terminal =failed= receipt.  It does not silently upgrade
+restoration into =RestoreOrBuild=.
+
+=RestoreOrBuild= is reserved for an explicit workspace-generation admission.
+=RebuildAfterMutation= is reserved for an authenticated mutation successor.
+The three modes are distinct authorities, not optimization hints:
+
+#+begin_src typst
+#table(
+  columns: (auto, 1fr, 1fr),
+  [Mode], [May publish committed materialization], [May run source builder],
+  [RestoreOnly], [yes], [no],
+  [RestoreOrBuild], [yes], [yes, after explicit admission],
+  [RebuildAfterMutation], [no stale restore], [yes, for the admitted successor],
+)
+#+end_src
+
+Independent =RestoreOnly= attempts MAY fan out because they are bounded by
+durable materialization validation.  They MUST NOT become concurrent full
+workspace rebuilds.  This distinction preserves Tokio control-plane
+responsiveness: accepting or observing one workspace cannot be starved behind
+CPU-bound rebuild fallback from unrelated catalog entries.
+
+** Observed runtime counterexample
+
+On 2026-08-03 an installed Runtime Server with eleven catalog entries allowed
+startup restore to fall through into concurrent source builds.  One admission
+request closed without a frame after =41,471,254us= and the daemon reached a
+=4.7GiB= physical-footprint peak.  After the earlier read-side digest fix, a
+later installed probe returned =ready= but still spent =2,474,600us= in
+=workspaceGeneration=.  The latter is a correctness success and a performance
+failure: it exceeds the strict one-second agent-facing wall gate.  Neither
+receipt authorizes calling the restore/rebuild boundary closed until a freshly
+built installed binary containing =RestoreOnly= passes the same probe.
+
+* Atomic mutation reconciliation
+
+One successful post-tool event submits exactly one typed
+=WorkspaceGenerationDelta=. The delta binds the active base generation digest,
+all updated owners with their parser-owned selectors, and all tombstoned owner
+paths. Relocation is represented by one tombstone plus one upsert in the same
+delta. The workspace writer lane validates the complete staged materialization,
+advances the epoch once, persists once, and switches the active pointer once.
+
+Per-owner publish, tombstone, or relocation operations are not public lifecycle
+surfaces. A multi-file edit MUST NOT expose intermediate generations in which a
+test owner is new while its implementation owner is old, or owner bytes are new
+while their selector set is old. A stale base digest rejects the complete delta;
+it never partially applies the non-conflicting owners.
+
+A mutation admission request MUST carry normalized changed paths, not only a
+=workspaceMutated= boolean or the hook cwd. The Runtime Server resolves every
+changed path through the resident workspace catalog, groups changes by
+=workspaceIdentity=, and constructs one =WorkspaceGenerationDelta= per affected
+workspace. One PostTool event MAY therefore atomically advance several isolated
+workspace lanes, while each lane retains its own base-generation CAS and single
+pointer switch. A nested repository or package workspace MUST NOT be silently
+charged to its parent cwd workspace. Dropping changed paths before admission is
+a contract violation because a boolean mutation signal cannot identify the
+affected workspace set.
+
+Fanout MUST NOT rediscover Git candidates or rescan a checkout. The origin
+workspace binds the typed candidate evidence already carried by the admitted
+observation; every additional affected workspace binds the candidate/base
+evidence retained by its own resident admission entry. Missing resident
+candidate evidence fails that workspace lane explicitly. Reusing the origin
+candidate for a nested workspace, or reconstructing candidate identity in the
+writer lane, is an authority violation.
+
+The request MUST also carry a non-empty =mutationId= derived from the typed hook
+event identity (for Codex, the session plus tool-use identity). Changed paths
+are not an event identity: two consecutive edits may change the same paths and
+must create different generation attempts. Runtime clients and the server MAY
+coalesce concurrent observers only when =mutationId= is equal. The resident
+workspace entry retains at most the current or most recently completed mutation
+flight, so this idempotency key is bounded by workspace rather than accumulated
+as an unbounded global history. A different =mutationId= waits behind an active
+writer flight and then submits a successor; it is never answered from the prior
+event merely because its path set is equal.
+
+PostTool submission and generation authority are distinct receipts. The first
+observer of one =mutationId= atomically becomes the resident client-lane leader.
+That leader returns =queued= only after the Runtime Server has accepted the
+typed mutation; it never waits for provider construction or generation
+publication. A short-lived hook process MUST NOT own an unacknowledged
+background send whose exit could discard changed paths. Once the leader flight
+is installed, equal-ID followers return =coalesced= immediately and MUST NOT
+repeat Git candidate discovery or IPC admission. A different =mutationId= waits
+behind the active flight and then becomes a successor leader, preserving
+mutation-ID order.
+
+The leader carries one observed candidate generation into server admission.
+All equal-ID followers share that accepted flight. A later generation =ensure=
+operation reuses the candidate generation and policy-overlay digest from the
+typed mutation-admission receipt when querying the server's current =Building=,
+=Ready=, or =Failed= state; it MUST NOT rescan Git merely to observe the state
+of an already admitted generation.
+
+A mutation-submission receipt never authorizes search or exact projection.
+PreTool, explicit query, and health readiness use the separate generation
+=ensure= receipt and may proceed only when it names the complete active
+generation. Thus asynchronous PostTool latency cannot create an authority gap,
+and a failed background admission remains observable without blocking the tool
+that already completed.
+
+* Installed performance receipt
+
+The installed health receipt MUST expose =workspaceGeneration.elapsedMicros= for
+workspace lookup, writer-lane role selection, and—only for the leader—Runtime
+Server acceptance. Provider construction and terminal generation waiting are
+excluded by contract. Equal-ID followers are released by the resident lane
+without repeating candidate discovery or IPC. The receipt MUST also expose the
+most recent admission outcome for diagnostics. This value is the executable
+cold/warm performance evidence; increasing a command timeout cannot satisfy the
+gate.
+
+* Concurrency gate
+
+The executable gate MUST cover multiple concurrent sessions and workspaces.
+Repeated admission for one workspace and one =mutationId= is single-flight;
+different workspace keys build independently. Exactly one observer returns
+=queued=, equal-ID followers return =coalesced=, and only the leader may discover
+the candidate or perform IPC admission. Submission p99 and typed =ensure= p99
+MUST each remain below one millisecond. The underlying mutation-admission
+receipt exposes the same attempt to every observer that requests the full
+admission result.
+
+* Scientific engineering closure
+
+The daemon owns exactly one Tokio runtime. Registry schema bootstrap, workspace
+admission, Turso connection establishment, and IPC serving are async members of
+that lifecycle. A synchronous bridge that calls =Runtime::block_on= from the
+daemon is a contract violation, not a recoverable fallback. The Lean model
+=registryBootstrapAdmitted= rejects =synchronousNestedRuntime= for every runtime
+owner count; the Rust daemon therefore uses the async registry bootstrap API.
+
+An exact selector is an assertion about the active generation, not a fuzzy
+symbol query. If the owner is present but a fabricated selector such as
+=#item/function/definitely_missing= is absent, exact admission MUST remain
+=item-missing= and MUST NOT substitute another candidate. The optimization
+boundary is discovery-to-query evidence: candidates already returned by the
+active generation are the next decision surface and MUST NOT trigger a second
+search for the same absent name. Lean theorem
+=fabricated_selector_is_never_admitted_as_resolved= proves the fail-closed half;
+the router owns the zero-repeat recovery half. The shared exact-response
+contract therefore MUST omit =recommendedNext= for =item-missing=. Only a
+generation/owner authority failure may request discovery. A live-owner miss is
+a terminal typed negative result, not a provider crash and not a search action.
+Lean theorem =active_item_missing_is_terminal= makes the zero-repeat boundary
+part of the model rather than prompt guidance. Every negative exact response
+MUST carry both =activeGenerationDigest= and =rootDigest=; an unbound
+=item-missing= is invalid because it cannot prove which immutable selector
+inventory was searched.
+
+This contract has four correctness authorities. Passing a later layer cannot
+substitute for a missing earlier layer, and a Lean theorem cannot substitute
+for installed empirical replay.
+
+| Authority layer | Canonical artifact | Required obligation |
+|-
+| Normative | this Org RFC plus shared v1 schemas | define workspace identity, mutation witness, atomic generation publication, terminal negative resolution, and performance budgets |
+| Formal | =packages/proofs/ASPProof/ExactSelectorGenerationAdmission.lean= plus its independent audit | prove old-or-complete-next visibility, terminal item miss, same-workspace mutation blocking, and cross-workspace isolation under explicit assumptions |
+| Executable refinement | Runtime Server Rust trace plus =packages/proofs/src/asp_proofs/= Python trace checker | every executable transition maps to one formal transition; incomplete or reordered traces fail closed |
+| Empirical | sandtable, large repository, and real ASP Explorer/Testing replay | validate multi-workspace and multi-session concurrency, cold/warm latency, search quality, token cost, and zero-repeat behavior |
+
+Mermaid and Typst are presentation artifacts only. They MAY explain these four
+layers but MUST NOT be cited as correctness closure evidence.
+
+The resident daemon MUST own one async source-mutation witness stream per
+resident workspace. Client-hook receipts may submit the same mutation early,
+but correctness cannot depend on every editor passing through one hook. A
+same-workspace file event appends a typed =SourceMutationWitness= and makes
+exact reads unavailable until the writer lane publishes the complete successor
+generation. Events for another workspace cannot block this workspace. Query
+remains a zero-filesystem-read mmap operation; the watcher and writer lane own
+reconciliation outside the data plane.
+
+After each milestone, reflection MUST compare all four authority rows. Any row
+without a current receipt remains open even when another row passes.

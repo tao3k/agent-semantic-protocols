@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-search-identity.v1.schema.json",
+  "title": "Workspace Search Identity V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "scopeKind",
+    "requestedDiscoveryRoot",
+    "cargoWorkspaceRoot",
+    "selectedPackageRoot",
+    "providerToolRoot",
+    "envelopeRoot",
+    "rootCount",
+    "ownerCount",
+    "leafCount",
+    "selectorCount",
+    "sourceSnapshotRootDigest",
+    "identityDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-search-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "providerId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "scopeKind": {
+      "enum": [
+        "package",
+        "workspace"
+      ]
+    },
+    "requestedDiscoveryRoot": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "cargoWorkspaceRoot": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "selectedPackageRoot": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/absolutePath"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required for package scope and null for workspace scope."
+    },
+    "providerToolRoot": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "envelopeRoot": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "rootCount": {
+      "const": 1
+    },
+    "ownerCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must equal leafCount for an admitted complete envelope."
+    },
+    "leafCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must equal ownerCount for an admitted complete envelope."
+    },
+    "selectorCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceSnapshotRootDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "identityDigest": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

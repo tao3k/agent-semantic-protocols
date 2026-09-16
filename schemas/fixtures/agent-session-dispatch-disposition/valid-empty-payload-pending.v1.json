@@ -1,0 +1,12 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-session-dispatch-disposition",
+  "schemaVersion": "1",
+  "registryBinding": "absent",
+  "hostPathObservation": "present",
+  "hostTaskObservation": "running",
+  "bootstrapState": "empty-payload",
+  "requiredAction": "await-bootstrap-terminal",
+  "reasonKind": "agent-bootstrap-terminal-pending",
+  "agentPath": "/root/asp_explorer",
+  "spawnTaskId": "01a06fb3-92f5-78b0-af8c-82bd08bf8556"
+}

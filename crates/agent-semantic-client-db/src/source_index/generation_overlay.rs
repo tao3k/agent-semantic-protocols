@@ -1,0 +1,397 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
+
+use super::{
+    ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId,
+    ClientDbSourceIndexSelectorKind, ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource,
+    ClientDbSourceIndexSourceBlobs,
+};
+use crate::{ClientDbActiveGenerationSourceBlobs, ClientDbSourceIndexGenerationSnapshot};
+
+fn file_hash_belongs_to_complete_generation(path: &str, owner_paths: &BTreeSet<String>) -> bool {
+    path.starts_with("@scope/") || owner_paths.contains(path)
+}
+
+fn validate_overlay_membership(
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+    partial: &ClientDbSourceIndexImport,
+) -> Result<(), String> {
+    if !removed_owner_paths.is_disjoint(changed_owner_paths) {
+        return Err("source-index owner cannot be both changed and tombstoned".to_string());
+    }
+    for owner in &partial.owners {
+        if !changed_owner_paths.contains(owner.owner_path.as_str()) {
+            return Err(format!(
+                "incremental source-index import escaped changed membership: ownerPath={} changedOwnerPaths={changed_owner_paths:?}",
+                owner.owner_path.as_str(),
+            ));
+        }
+        if removed_owner_paths.contains(owner.owner_path.as_str()) {
+            return Err(format!(
+                "incremental source-index import contains tombstoned owner: ownerPath={}",
+                owner.owner_path.as_str()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn base_owner(
+    owner: &crate::ClientDbSourceIndexGenerationOwner,
+) -> Result<ClientDbSourceIndexOwner, String> {
+    Ok(ClientDbSourceIndexOwner {
+        owner_path: ClientDbSourceIndexPath::new(owner.owner_path.clone()),
+        language_id: owner.language_id.as_deref().map(LanguageId::new),
+        provider_id: owner.provider_id.as_deref().map(ProviderId::new),
+        source_kind: ClientDbSourceIndexSource::new(owner.source_kind.clone()),
+        line_count: owner
+            .line_count
+            .map(u32::try_from)
+            .transpose()
+            .map_err(|_| format!("active owner line count is invalid: {}", owner.owner_path))?,
+        query_keys: owner
+            .query_keys
+            .iter()
+            .cloned()
+            .map(ClientDbSourceIndexQueryKey::new)
+            .collect(),
+    })
+}
+
+pub(crate) fn recovered_source_index_import(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    project_root: &std::path::Path,
+    schema_id: agent_semantic_client_core::SemanticSchemaId,
+    schema_version: agent_semantic_client_core::SemanticSchemaVersion,
+    source_blobs: ClientDbSourceIndexSourceBlobs,
+) -> Result<ClientDbSourceIndexImport, String> {
+    let mut selectors = Vec::new();
+    for owner in &active.owners {
+        selectors.extend(base_selectors(owner)?);
+    }
+    Ok(ClientDbSourceIndexImport {
+        // The persisted row id is a project-scoped physical key. Canonical
+        // import identity uses the content snapshot's logical generation id.
+        generation_id: crate::client_db_source_index_generation_id_for_snapshot(
+            &active.source_snapshot,
+        ),
+        project_root: project_root.to_path_buf(),
+        schema_id,
+        schema_version,
+        file_hashes: active.file_hash_records.clone(),
+        source_blobs,
+        owners: active
+            .owners
+            .iter()
+            .map(base_owner)
+            .collect::<Result<_, _>>()?,
+        selectors,
+        relations: active
+            .relations
+            .iter()
+            .map(|row| crate::ClientDbSourceIndexOwnedRelation {
+                owner_path: ClientDbSourceIndexPath::new(row.owner_path.clone()),
+                relation: row.relation.clone(),
+            })
+            .collect(),
+    })
+}
+
+fn base_selectors(
+    owner: &crate::ClientDbSourceIndexGenerationOwner,
+) -> Result<Vec<ClientDbSourceIndexSelector>, String> {
+    let provider_id = ProviderId::new(owner.provider_id.as_deref().ok_or_else(|| {
+        format!(
+            "active selector owner has no provider: {}",
+            owner.owner_path
+        )
+    })?);
+    Ok(owner
+        .selectors
+        .iter()
+        .map(|selector| ClientDbSourceIndexSelector {
+            owner_path: ClientDbSourceIndexPath::new(owner.owner_path.clone()),
+            provider_id: provider_id.clone(),
+            selector_id: ClientDbSourceIndexSelectorId::new(selector.selector_id.clone()),
+            symbol: selector
+                .symbol
+                .clone()
+                .map(ClientDbSourceIndexSelectorSymbol::new),
+            kind: selector
+                .kind
+                .clone()
+                .map(ClientDbSourceIndexSelectorKind::new),
+            source: ClientDbSourceIndexSource::new(selector.source.clone()),
+            query_keys: selector
+                .query_keys
+                .iter()
+                .cloned()
+                .map(ClientDbSourceIndexQueryKey::new)
+                .collect(),
+            projection_record: selector.projection_record.clone(),
+            derived_projections: selector.derived_projections.clone(),
+        })
+        .collect())
+}
+
+/// Restrict one complete provider import to the owner membership admitted by
+/// an incremental generation mutation.
+///
+/// The durable writer consumes this packet as the changed-owner side of a
+/// Merkle overlay. Unchanged owners remain owned by the active generation and
+/// are cloned exactly once by [`overlay_active_source_index_import`].
+pub fn partial_source_index_import(
+    import: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Result<ClientDbSourceIndexImport, String> {
+    if !removed_owner_paths.is_disjoint(changed_owner_paths) {
+        return Err("source-index owner cannot be both changed and tombstoned".to_string());
+    }
+
+    let owners = import
+        .owners
+        .iter()
+        .filter(|owner| changed_owner_paths.contains(owner.owner_path.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let selectors = import
+        .selectors
+        .iter()
+        .filter(|selector| changed_owner_paths.contains(selector.owner_path.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let relations = import
+        .relations
+        .iter()
+        .filter(|relation| changed_owner_paths.contains(relation.owner_path.as_str()))
+        .cloned()
+        .collect();
+    let file_hashes = import
+        .file_hashes
+        .iter()
+        .filter(|record| {
+            changed_owner_paths.contains(record.path.as_str())
+                || changed_owner_paths.iter().any(|owner_path| {
+                    record.path == format!("@scope/selector-generation/{owner_path}")
+                })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let source_blobs = import
+        .source_blobs
+        .iter()
+        .filter(|(path, _)| changed_owner_paths.contains(*path))
+        .map(|(path, bytes)| {
+            (
+                ClientDbSourceIndexPath::new(path.to_string()),
+                bytes.to_vec(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let partial = ClientDbSourceIndexImport {
+        generation_id: import.generation_id.clone(),
+        project_root: import.project_root.clone(),
+        schema_id: import.schema_id.clone(),
+        schema_version: import.schema_version.clone(),
+        file_hashes,
+        source_blobs: ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs),
+        owners,
+        selectors,
+        relations,
+    };
+    validate_overlay_membership(changed_owner_paths, removed_owner_paths, &partial)?;
+    Ok(partial)
+}
+
+/// Derive one complete successor import without reopening unchanged owner bytes.
+///
+/// The returned packet is for canonical materialization. Durable Turso refresh
+/// still receives the changed-owner import and applies it through a Merkle
+/// overlay, so unchanged DB rows are cloned rather than rewritten.
+pub fn overlay_active_source_index_import(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    active_blobs: &ClientDbActiveGenerationSourceBlobs,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Result<ClientDbSourceIndexImport, String> {
+    validate_overlay_membership(changed_owner_paths, removed_owner_paths, partial)?;
+    if active.generation_id != active_blobs.generation_id {
+        return Err(format!(
+            "active source-index facts and bytes are from different generations: facts={} bytes={}",
+            active.generation_id, active_blobs.generation_id
+        ));
+    }
+
+    let (owners, selectors) =
+        overlay_owner_facts(active, partial, changed_owner_paths, removed_owner_paths)?;
+    let owner_paths = owners
+        .iter()
+        .map(|owner| owner.owner_path.as_str().to_owned())
+        .collect::<BTreeSet<_>>();
+    let file_hashes = overlay_file_hashes(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+        &owner_paths,
+    );
+    let relations = overlay_relations(active, partial, changed_owner_paths, removed_owner_paths);
+    let source_blobs = overlay_source_blobs(
+        active_blobs,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+    );
+    let source_membership = file_hashes
+        .iter()
+        .filter(|record| !record.path.starts_with("@scope/"))
+        .map(|record| record.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_membership = owner_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if source_membership != expected_membership {
+        return Err(format!(
+            "complete source-index successor membership drift: sourceMembership={source_membership:?} ownerMembership={expected_membership:?}"
+        ));
+    }
+
+    Ok(ClientDbSourceIndexImport {
+        generation_id: partial.generation_id.clone(),
+        project_root: partial.project_root.clone(),
+        schema_id: partial.schema_id.clone(),
+        schema_version: partial.schema_version.clone(),
+        file_hashes,
+        source_blobs,
+        owners,
+        selectors,
+        relations,
+    })
+}
+
+fn overlay_file_hashes(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+    owner_paths: &BTreeSet<String>,
+) -> Vec<ClientCacheFileHash> {
+    let retired_selector_evidence_paths = changed_owner_paths
+        .iter()
+        .chain(removed_owner_paths)
+        .map(|owner_path| format!("@scope/selector-generation/{owner_path}"))
+        .collect::<BTreeSet<_>>();
+    let mut file_hashes = active
+        .file_hash_records
+        .iter()
+        .filter(|record| {
+            !changed_owner_paths.contains(record.path.as_str())
+                && !removed_owner_paths.contains(record.path.as_str())
+                && !retired_selector_evidence_paths.contains(record.path.as_str())
+                && file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths)
+        })
+        .cloned()
+        .map(|record| (record.path.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    for record in &partial.file_hashes {
+        if file_hash_belongs_to_complete_generation(record.path.as_str(), owner_paths) {
+            file_hashes.insert(record.path.clone(), record.clone());
+        }
+    }
+    file_hashes.into_values().collect()
+}
+
+fn overlay_owner_facts(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Result<
+    (
+        Vec<ClientDbSourceIndexOwner>,
+        Vec<ClientDbSourceIndexSelector>,
+    ),
+    String,
+> {
+    let mut owners = Vec::new();
+    let mut selectors = Vec::new();
+    for owner in active.owners.iter().filter(|owner| {
+        !changed_owner_paths.contains(owner.owner_path.as_str())
+            && !removed_owner_paths.contains(owner.owner_path.as_str())
+    }) {
+        owners.push(base_owner(owner)?);
+        selectors.extend(base_selectors(owner)?);
+    }
+    owners.extend(partial.owners.iter().cloned());
+    selectors.extend(partial.selectors.iter().cloned());
+    owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    selectors.sort_by(|left, right| left.selector_id.cmp(&right.selector_id));
+    Ok((owners, selectors))
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_generation_overlay.rs"]
+mod tests;
+
+fn overlay_relations(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Vec<crate::ClientDbSourceIndexOwnedRelation> {
+    let mut relations = active
+        .relations
+        .iter()
+        .filter(|relation| {
+            !changed_owner_paths.contains(relation.owner_path.as_str())
+                && !removed_owner_paths.contains(relation.owner_path.as_str())
+        })
+        .map(|relation| crate::ClientDbSourceIndexOwnedRelation {
+            owner_path: ClientDbSourceIndexPath::new(relation.owner_path.clone()),
+            relation: relation.relation.clone(),
+        })
+        .collect::<Vec<_>>();
+    relations.extend(partial.relations.iter().cloned());
+    relations.sort();
+    relations.dedup();
+    relations
+}
+
+fn overlay_source_blobs(
+    active_blobs: &ClientDbActiveGenerationSourceBlobs,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> ClientDbSourceIndexSourceBlobs {
+    let mut source_blobs = active_blobs
+        .owners
+        .iter()
+        .filter(|blob| {
+            !changed_owner_paths.contains(blob.owner_path.as_str())
+                && !removed_owner_paths.contains(blob.owner_path.as_str())
+        })
+        .map(|blob| {
+            (
+                ClientDbSourceIndexPath::new(blob.owner_path.clone()),
+                blob.source_bytes.to_vec(),
+            )
+        })
+        .collect::<Vec<_>>();
+    source_blobs.extend(partial.source_blobs.iter().map(|(path, bytes)| {
+        (
+            ClientDbSourceIndexPath::new(path.to_string()),
+            bytes.to_vec(),
+        )
+    }));
+    ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs)
+}

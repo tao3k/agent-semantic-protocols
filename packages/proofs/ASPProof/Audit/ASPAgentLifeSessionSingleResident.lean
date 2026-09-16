@@ -1,0 +1,13 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ASPAgentLifeSessionSingleResident
+
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.missingPathReleaseRejectsReplacement
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.archiveWithoutReleaseRejectsReplacement
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.missingPathReleaseCannotReserveSameName
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.archiveWithoutReleaseCannotReserveSameName
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.singleResidentPerSlot
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.releasedFreshReplacementKeepsExactlyOneResident
+#print axioms ASPProof.ASPAgentLifeSessionSingleResident.releasedSameGenerationCreatesNoResident

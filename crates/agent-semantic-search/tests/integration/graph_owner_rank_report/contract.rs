@@ -1,11 +1,23 @@
-use agent_semantic_search::{
-    GraphOwnerRankCandidate, GraphOwnerRankRequest, rank_graph_owner_report,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use agent_semantic_search::GraphOwnerRankCandidate;
+use agent_semantic_search::GraphOwnerRankRequest;
+use agent_semantic_search::rank_graph_owner_report;
 
 #[test]
 fn graph_owner_rank_report_is_public_and_constructible() {
-    let report = rank_graph_owner_report(GraphOwnerRankRequest {
-        candidates: vec![
+    let fixture = super::source_snapshot_fixture::canonical_test_snapshot();
+    let generation =
+        agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+            &fixture.evidence,
+            &fixture.generation,
+            &fixture.generation,
+        )
+        .expect("canonical graph generation");
+    let report = rank_graph_owner_report(GraphOwnerRankRequest::from_admitted_generation(
+        vec![
             GraphOwnerRankCandidate::new(
                 "src/lib.rs",
                 "SearchRouter",
@@ -21,9 +33,10 @@ fn graph_owner_rank_report_is_public_and_constructible() {
                 "high",
             ),
         ],
-        query_terms: vec!["dynamicOverlay".to_string()],
-        submodule_paths: vec!["languages/rust".to_string()],
-    });
+        vec!["dynamicOverlay".to_string()],
+        vec!["languages/rust".to_string()],
+        &generation,
+    ));
 
     let top = report
         .ranked_owners

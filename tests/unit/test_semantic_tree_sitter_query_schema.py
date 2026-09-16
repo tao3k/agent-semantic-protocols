@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the shared semantic tree-sitter query ABI schema."""
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "method": "query",
         "projectRoot": ".",
         "grammarId": "tree-sitter-rust",

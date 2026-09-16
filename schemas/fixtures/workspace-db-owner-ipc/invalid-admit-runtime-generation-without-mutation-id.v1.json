@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-db-owner-request.v1",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-root",
+  "transportContractDigest": "blake3-256:transport",
+  "ownerEpoch": 1,
+  "bindingToken": "binding-token",
+  "requestId": "mutation-1",
+  "operation": {
+    "kind": "admit-runtime-generation",
+    "projectRoot": "/workspace/root",
+    "changedPaths": ["/workspace/root/src/lib.rs"]
+  }
+}

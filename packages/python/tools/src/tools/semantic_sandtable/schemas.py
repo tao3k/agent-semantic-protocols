@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """JSON-schema validation helpers for sandtable inputs."""
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from .constants import (
     SCENARIO_SCHEMA_PATH,
 )
 from .models import CoveragePolicyLoadError, ReceiptLoadError, ScenarioLoadError
+from .schema_registry import offline_schema_registry
 
 
 def validate_scenario_schema(repo_root: Path, path: Path, scenario: Any) -> None:
@@ -30,7 +35,9 @@ def validate_scenario_schema(repo_root: Path, path: Path, scenario: Any) -> None
     except (OSError, json.JSONDecodeError) as error:
         raise ScenarioLoadError(f"failed to load scenario schema: {error}") from error
 
-    validator = Draft202012Validator(schema)
+    validator = Draft202012Validator(
+        schema, registry=offline_schema_registry(schema_path)
+    )
     errors = sorted(validator.iter_errors(scenario), key=lambda error: list(error.path))
     if errors:
         messages = []
@@ -59,7 +66,9 @@ def validate_receipt_schema(repo_root: Path, path: Path, receipt: Any) -> None:
     except (OSError, json.JSONDecodeError) as error:
         raise ReceiptLoadError(f"failed to load receipt schema: {error}") from error
 
-    validator = Draft202012Validator(schema)
+    validator = Draft202012Validator(
+        schema, registry=offline_schema_registry(schema_path)
+    )
     errors = sorted(validator.iter_errors(receipt), key=lambda error: list(error.path))
     if errors:
         messages = []
@@ -90,7 +99,9 @@ def validate_coverage_policy_schema(repo_root: Path, path: Path, policy: Any) ->
             f"failed to load coverage policy schema: {error}"
         ) from error
 
-    validator = Draft202012Validator(schema)
+    validator = Draft202012Validator(
+        schema, registry=offline_schema_registry(schema_path)
+    )
     errors = sorted(validator.iter_errors(policy), key=lambda error: list(error.path))
     if errors:
         messages = []

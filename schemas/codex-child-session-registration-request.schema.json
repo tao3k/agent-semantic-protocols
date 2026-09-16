@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-child-session-registration-request.schema.json",
+  "title": "Codex Child Session Registration Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "rootSessionId",
+    "parentThreadId",
+    "childThreadId",
+    "agentName",
+    "agentPath",
+    "routeKey"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.codex-child-session-registration-request"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "rootSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentThreadId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childThreadId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentPath": {
+      "type": "string",
+      "pattern": "^/root/[^/]+$"
+    },
+    "routeKey": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

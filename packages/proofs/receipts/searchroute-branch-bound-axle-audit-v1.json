@@ -1,0 +1,27 @@
+{
+  "auditSha256": "d843b3f4184d6c31d88b5b9067ff24bd17064ef954875b9868258ce0dbee7e58",
+  "axiomDependentDeclarationCount": 7,
+  "axiomFreeDeclarationCount": 1,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 8,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SBB-COVERAGE",
+    "ASP-RFC-10.05-SBB-LOWER-BOUND",
+    "ASP-RFC-10.05-SBB-SAFE-PRUNING",
+    "ASP-RFC-10.05-SBB-SNAPSHOT"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "counterexample",
+    "lazy-global-optimality",
+    "lower-bound-order",
+    "safe-pruning",
+    "snapshot-bound-optimality",
+    "snapshot-identity"
+  ]
+}

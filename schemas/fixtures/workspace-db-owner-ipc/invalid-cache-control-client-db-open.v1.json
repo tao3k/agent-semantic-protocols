@@ -1,0 +1,20 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-db-owner-response.v1",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-root",
+  "transportContractDigest": "blake3-256:transport",
+  "ownerEpoch": 1,
+  "requestId": "cache-status-client-open-counterexample",
+  "result": {
+    "state": "cache-control",
+    "receipt": {
+      "action": "status",
+      "authority": "runtime-server",
+      "generationState": "ready",
+      "generationDigest": "blake3-256:generation-1",
+      "databaseOpensByClient": 1,
+      "writerQueueOwner": "runtime-server",
+      "mutationId": null
+    }
+  }
+}

@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Agent Session Runtime Server Boundary Validation
+#+OPTIONS: toc:nil
+
+* Status
+
+This document extends the canonical AXLE and Lean validation contract for the SearchLoop workspace
+authority boundary.  It is not an independent runtime architecture RFC.
+
+* Normative authority contract
+
+- The Runtime Server is the sole storage owner of the workspace agent-session registry.
+- Sole storage ownership does not make the Hook a Runtime Server client.  =HookLocalKernel v1=
+  never opens the registry, connects to Runtime IPC, submits workspace admission, activates a
+  provider, or waits for a generation.
+- Hook evaluation is total over immutable local matcher and agent-registry snapshots plus the
+  current event.  Any Runtime or session action rendered by the Hook is a public recovery hint for
+  a later host-owned operation, never a hidden Hook dependency or fallback.
+- Sole ownership means one long-lived Turso =Database= instance per State Home inside the Runtime
+  Server.  Request handlers may acquire independent read connections or a serialized writer
+  connection from that shared Database, but must not build another Database for the same path.
+- CLI, Hook, SearchLoop, and resident-session processes issue registry reads and writes only through
+  typed workspace IPC.  A non-owner process never opens the Turso registry directly.
+- One workspace may serve multiple root, resident-child, and temporary-child sessions.  Their
+  registry operations share one Runtime Server owner and serialized writer authority while
+  remaining independently addressable by typed session identity.
+- Runtime Server shutdown and artifact replacement must retire the old storage owner before the new
+  owner admits registry operations.
+
+* Endpoint admission
+
+Endpoint admission has two typed stages.  First, the client reads the regular
+=runtime/server/endpoint.v1.json= descriptor.  Second, it validates the transport contract and
+connects to the Unix-domain socket named by that descriptor.  The descriptor and socket are
+different artifacts and must never share one filesystem-kind predicate.
+
+A missing, stale, unreachable, or contract-drifted endpoint yields a typed unavailable or reconcile
+result.  It cannot authorize a direct-open fallback.  A filesystem entry is only evidence that an
+IPC attempt is required; the typed handshake remains the authority for admission.
+
+* Formal validation obligations
+
+The Lean model under =packages/proofs= must:
+
+1. exhibit the finite counterexample showing that a valid regular descriptor and a valid Unix
+   socket require different filesystem-kind predicates;
+2. prove that every non-owner registry route excludes direct open;
+3. prove that endpoint failure preserves the sole-owner invariant;
+4. prove that multiple sessions do not create additional storage owners; and
+5. exhibit the finite counterexample showing that per-request open creates two owner instances for
+   two requests even when both run in one process; and
+6. report assumptions, unsafe declarations, and the complete =sorry= or =admit= inventory.
+
+* Rust conformance obligations
+
+- =AgentSessionRegistry= project constructors must select the runtime proxy when the endpoint
+  descriptor exists and must leave socket validation to the typed transport handshake.
+- The Runtime Server must retain and reuse the engine's shared =Database= across typed IPC requests;
+  per-request connections are allowed, but per-request Database construction is not.
+- Explicit state-root constructors are runtime-owner primitives.  Agent-facing command paths must
+  not use them to bypass the workspace proxy.
+- Tests must publish a regular endpoint descriptor and bind its referenced Unix-domain socket; a
+  single regular-file sentinel or a socket without a descriptor is insufficient evidence.
+- Installed-runtime verification must run =asp agent session bootstrap= through the normal Hook and Runtime authority while
+  the Runtime Server owns the Turso registry.

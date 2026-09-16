@@ -1,6 +1,9 @@
-use crate::graph_candidate_sparsity::{
-    GraphCandidateSparsityInput, select_sparse_graph_candidate_indices,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::graph_candidate_sparsity::GraphCandidateSparsityInput;
+use crate::graph_candidate_sparsity::select_sparse_graph_candidate_indices;
 
 #[test]
 fn sparse_graph_candidate_selection_retains_generated_paths_without_path_policy() {

@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "runtime_asp_client::query_playbook::tests::process_cold_exact_owner_replay_materializes_a_real_durable_generation_on_first_call"
+phase = "process-cold-first-query"
+target_total = "1ms"
+max_total = "10ms"
+observed_total = "200us"
+regression_budget = "9ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 1048576
+route_source = "runtime-durable-exact-owner-replay"
+max_provider_process_count = 0
+max_stdout_bytes = 2048
+fallback_reason = "none"
+target_rationale = "This is not a resident-read SLO. It records the independently budgeted first process-cold exact-owner computation. The architectural gate is the work vector: one fused resource-bounded blocking pipeline, zero complete owner-snapshot copies during mmap preflight, zero provider processes, and zero full-generation admissions. Timings conservatively record the worst percentile observed across four independent 128-sample qualification trials; wall time is evidence rather than a way to hide workload regression."
+sample_count = 128
+trial_count = 4
+
+[observed_timings]
+request_plane_p50 = "200us"
+request_plane_p95 = "287us"
+request_plane_p99 = "388us"
+
+[workload]
+pipeline_task_count = 1
+owner_snapshot_copy_count = 0
+provider_process_count = 0
+full_generation_admission_count = 0
+cpu_per_task = 1
+blocking_task_cpu_permit_count = 1
+blocking_task_memory_permit_count = 1
+streaming_hash_buffer_bytes = 65536
+runtime_worker_threads = 4
+background_cpu_capacity = 3

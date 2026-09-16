@@ -1,0 +1,342 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Graph Router Pareto Cost Selection
+#+subtitle: RFC 10.05.40 / Proof stage 01.08
+#+startup: overview
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+Draft proof-bearing RFC.
+
+This stage defines the route-quality order used by the interactive graph
+router. It does not define a Rust or Python implementation.
+
+* Abstract
+
+SearchRoute is optimizing several different costs:
+
+- graph hops to the required evidence;
+- agent/model interaction rounds;
+- projected model tokens;
+- proof-verification operations;
+- semantic search executions;
+- model prefix recomputations.
+
+These dimensions are not interchangeable. A single weighted score can make a
+large regression disappear behind an improvement in another dimension. A
+lexicographic order can do the same whenever an earlier dimension improves.
+Combining search-cache and model-prefix-cache observations destroys which
+subsystem actually performed work.
+
+The safe router sequence is:
+
+1. reject every route that violates a hard component cap;
+2. remove routes that are Pareto dominated;
+3. retain the Pareto frontier;
+4. only when one route must be selected, apply an explicit, versioned
+   tie-break policy among the remaining incomparable routes.
+
+* Route cost vector
+
+The normative cost vector is:
+
+#+begin_example
+(graphHops,
+ interactionRounds,
+ projectedTokens,
+ verificationOps,
+ searchExecutions,
+ modelPrefixRecomputations)
+#+end_example
+
+All dimensions are costs: lower is better.
+
+=searchExecutions= counts actual semantic search work after valid
+search-result-cache reuse. =modelPrefixRecomputations= counts model prefix work
+after valid model-prefix-cache reuse. They are separate because their keys,
+owners, failure modes, and resource effects differ.
+
+* Componentwise feasibility and dominance
+
+#+name: graph-router-componentwise-cost-model
+#+begin_src typst
+#let no-worse(left, right) = (
+  left.hops <= right.hops
+  and left.rounds <= right.rounds
+  and left.tokens <= right.tokens
+  and left.verify <= right.verify
+  and left.search <= right.search
+  and left.model <= right.model
+)
+
+#let caps = (
+  hops: 4,
+  rounds: 2,
+  tokens: 100,
+  verify: 40,
+  search: 1,
+  model: 1,
+)
+#let route = (
+  hops: 3,
+  rounds: 2,
+  tokens: 80,
+  verify: 35,
+  search: 1,
+  model: 0,
+)
+
+#assert(no-worse(route, caps))
+#assert(not no-worse(caps, route))
+"ok"
+#+end_src
+
+For cost vectors =a= and =b=:
+
+#+begin_example
+NoWorse(a, b)
+  iff every component of a is <= the corresponding component of b
+
+StrictlyDominates(a, b)
+  iff NoWorse(a, b) and at least one component is strictly smaller
+#+end_example
+
+The componentwise relation is reflexive and transitive. Strict dominance is
+irreflexive. If =a= is no worse than feasible route =b=, then =a= is also
+feasible under the same cap vector.
+
+Hard caps MUST be applied before any ranking or tie-breaking operation.
+
+* Proof-discovered correction: scalar equality is not route equivalence
+
+Even unit weights can hide an arbitrarily large tradeoff:
+
+#+name: graph-router-scalar-and-cache-counterexamples
+#+begin_src typst
+#let scalar(cost) = (
+  cost.hops
+  + cost.rounds
+  + cost.tokens
+  + cost.verify
+  + cost.search
+  + cost.model
+)
+#let token-heavy = (
+  hops: 0,
+  rounds: 0,
+  tokens: 101,
+  verify: 0,
+  search: 0,
+  model: 0,
+)
+#let hop-heavy = (
+  hops: 101,
+  rounds: 0,
+  tokens: 0,
+  verify: 0,
+  search: 0,
+  model: 0,
+)
+#let search-reused = (search: 0, model: 1)
+#let model-reused = (search: 1, model: 0)
+#let combined-cache-work(cost) = cost.search + cost.model
+
+#assert(scalar(token-heavy) == scalar(hop-heavy))
+#assert(token-heavy.tokens > hop-heavy.tokens)
+#assert(token-heavy.hops < hop-heavy.hops)
+#assert(combined-cache-work(search-reused) == combined-cache-work(model-reused))
+#assert(search-reused.search != model-reused.search)
+"ok"
+#+end_src
+
+The two routes have the same scalar score but are Pareto incomparable. Scaling
+the example replaces =101= with any desired regression. Therefore:
+
+- scalar-score equality MUST NOT be reported as route equivalence;
+- a scalar minimum MUST NOT bypass component caps;
+- scalar weights MUST NOT be the only explanation for a route decision.
+
+A scalar MAY be emitted as a diagnostic projection after the component vector
+and decision receipt are already available.
+
+* Proof-discovered correction: lexicographic order is not a feasibility check
+
+A hop-first lexicographic order always selects a zero-hop route over a one-hop
+route, even when the zero-hop route exceeds the token budget by an arbitrary
+amount.
+
+Lexicographic selection is therefore permitted only after feasibility and
+Pareto filtering. The order MUST be:
+
+#+begin_example
+filter hard caps
+-> compute Pareto frontier
+-> apply declared tie-break policy
+#+end_example
+
+The tie-break policy MAY prioritize interaction rounds before graph hops for a
+high-latency agent runtime, or hops before rounds for another environment. Its
+ordered dimension list, version, and digest MUST be part of the router policy
+and decision receipt. There is no universal hidden ordering.
+
+When the caller permits alternatives, the router SHOULD return a compact
+Pareto frontier instead of inventing a single winner.
+
+* Semantic path and execution separation
+
+The =graphHops= dimension in this router is the certificate-bound semantic
+evidence-path length.  It is not the cache-adjusted amount of graph work
+executed in one realization.  Search-result cache execution credit and
+model-prefix credit are defined separately by
+[[file:00.94-semantic-path-cache-execution-separation.org][Semantic path and cache execution separation]].
+
+This interpretation is required for Pareto comparison: a cache hit may improve
+execution cost without manufacturing a shorter evidence proof.
+
+* Cache dimensions remain independent
+
+The following routes have equal combined cache work:
+
+#+begin_example
+(searchExecutions = 0, modelPrefixRecomputations = 1)
+(searchExecutions = 1, modelPrefixRecomputations = 0)
+#+end_example
+
+They are not operationally equivalent:
+
+- the first reused search results but recomputed the model prefix;
+- the second reran search but reused the model prefix.
+
+Search reuse does not imply model-prefix reuse, and model-prefix reuse does not
+imply search reuse. The router MUST preserve both dimensions and both validity
+receipts. A single =cacheHit= boolean or combined miss count is insufficient.
+
+Projected tokens also remain independent from prefix recomputation. Stable
+prefix reuse can reduce model compute without reducing the number of projected
+tokens. Provider and billing policies may account for those values
+differently.
+
+* Comparable evaluation identity
+
+Cost vectors may be compared only under the same evaluation identity:
+
+#+begin_example
+(workspaceSnapshotDigest,
+ queryDigest,
+ searchPolicyDigest,
+ modelDigest,
+ promptAndToolDigest,
+ budgetVectorDigest)
+#+end_example
+
+Changing the workspace snapshot or query changes the evidence problem.
+Changing the model, prompt, or tool schema changes tokenization and prefix
+reuse. Changing the cap vector changes feasibility.
+
+The router MUST reject a cross-identity comparison rather than silently ranking
+the two receipts together.
+
+* Decision receipt
+
+A graph-router decision receipt MUST contain:
+
+- evaluation identity;
+- candidate route identifiers;
+- full cost vector for every frontier member;
+- cap vector and feasibility result;
+- dominance edges used to remove candidates;
+- retained Pareto frontier;
+- tie-break policy identity, if a single winner was required;
+- selected route and machine-checkable reason;
+- separate search-result-cache and model-prefix-cache receipts.
+
+The default agent projection MAY include only the winner and compact frontier
+summary. Progressive =inspect= MUST be able to retrieve one dominance edge or
+one alternative vector under the stage 01.07 interaction budget.
+
+* Interactive SearchLoop consequences
+
+The graph router minimizes the path to useful evidence without assuming that
+path length is the entire cost:
+
+#+begin_example
+short graph route
++ few agent turns
++ bounded projected context
++ bounded verification work
++ explicit cache work
+#+end_example
+
+The interactive loop SHOULD stop as soon as the current feasible route supplies
+enough evidence for the decision. It SHOULD NOT continue graph exploration only
+to improve an unobserved scalar score.
+
+This keeps the public interface interaction-first and graph-first: the model
+chooses among semantic alternatives and progressively inspects evidence, rather
+than assembling a complex CLI search expression.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteGraphRouterParetoCostSelection.lean
+#+end_example
+
+It proves:
+
+- componentwise no-worse is reflexive and transitive;
+- strict dominance implies no-worse and is irreflexive;
+- no-worse preserves feasibility;
+- hop-first lexicographic selection requires prior feasibility filtering;
+- equal unit-weight scores can hide arbitrary hop/token tradeoffs;
+- equal scalar scores can describe Pareto-incomparable routes;
+- combined cache work can hide opposite cache directions;
+- search reuse and model-prefix reuse do not imply each other;
+- route comparison is invalid after snapshot or model identity changes.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteGraphRouterParetoCostSelection.lean
+#+end_example
+
+The generated receipt MUST enumerate every theorem in this stage, report an
+empty axiom inventory, and report =hasSorryAx: false=.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and audit modules build;
+- every audited theorem is axiom-free;
+- the audit reports no =sorryAx=;
+- Org lint accepts the RFC;
+- Orgize extracts both named Typst blocks;
+- both exact Typst bodies pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Next proof boundary
+
+Stage 01.09 should stop treating =graphHops= as an externally supplied number.
+It should define evidence-graph paths, edge validity, path cost, and a route
+certificate proving that no shorter feasible path exists within the published
+search frontier.
+
+The next model should distinguish:
+
+- globally shortest paths in a finite graph;
+- shortest paths under authorization and projection budgets;
+- admissible versus non-admissible router heuristics;
+- an unreachable target from an exhausted or truncated search frontier.
+
+A router MUST NOT claim global optimality merely because it found the shortest
+path among the candidates it happened to project.

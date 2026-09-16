@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-recall-composition.v1.schema.json",
+  "title": "Search Recall Composition v1",
+  "description": "Generation-bound playbook decision joining source-byte acquisition, provider-native syntax facts, Tantivy lexical candidates, and Rust resident-graph reasoning without fabricating ripgrep or optional Python-graph execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "sourceRootDigest",
+    "intent",
+    "calibrationState",
+    "stages",
+    "correlation",
+    "residualUncertainty"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-recall-composition"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceRootDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "enum": [
+        "exact-selector",
+        "conceptual",
+        "relationship",
+        "exact-literal",
+        "absence-proof"
+      ]
+    },
+    "calibrationState": {
+      "enum": [
+        "calibrated",
+        "uncalibrated"
+      ]
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {"const": {"family": "acquire", "capabilityId": "search.source-byte-acquisition"}},
+        {"const": {"family": "syntax", "capabilityId": "search.native-syntax-playbook"}},
+        {"const": {"family": "acquire", "capabilityId": "search.tantivy-lexical"}},
+        {"const": {"family": "reason", "capabilityId": "search.rust-resident-graph"}}
+      ],
+      "items": false
+    },
+    "correlation": {
+      "$ref": "#/$defs/correlation"
+    },
+    "residualUncertainty": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "uncalibrated-route-quality",
+          "indexed-owner-coverage-incomplete",
+          "native-syntax-projection-incomplete",
+          "indexed-lexical-unavailable",
+          "graph-frontier-open",
+          "graph-generation-stale",
+          "resident-graph-unavailable",
+          "coverage-proof-incomplete",
+          "coverage-proof-unavailable",
+          "candidate-byte-verification-unavailable"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lexicalGraphOverlapCount",
+        "lexicalByteVerifiedOverlapCount",
+        "graphByteVerifiedOverlapCount",
+        "lexicalGraphJaccardPermille",
+        "graphMarginalCandidateCount",
+        "candidateUnionCount"
+      ],
+      "properties": {
+        "lexicalGraphOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lexicalByteVerifiedOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graphByteVerifiedOverlapCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lexicalGraphJaccardPermille": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "graphMarginalCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateUnionCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

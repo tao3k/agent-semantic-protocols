@@ -1,12 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Agent Org artifact recovery hints for hook deny/block decisions.
 
 use serde_json::Value;
 use std::path::Path;
 
-use crate::{
-    ClientHookConfig, DecisionKind, HookDecision,
-    hook_config_agent_org::AgentOrgArtifactsArchiveWarning,
-};
+use crate::ClientHookConfig;
+use crate::DecisionKind;
+use crate::HookDecision;
+use crate::hook_config_agent_org::AgentOrgArtifactsArchiveWarning;
 
 pub(super) fn with_agent_org_artifact_recovery(
     mut decision: HookDecision,
@@ -62,10 +66,13 @@ fn with_agent_org_artifact_archive_warning(
     config: &ClientHookConfig,
     project_root: &str,
 ) -> HookDecision {
+    if decision.event != "session-start" {
+        return decision;
+    }
     let Some(warning) = config.agent_org_artifacts_archive_warning(Path::new(project_root)) else {
         return decision;
     };
-    if decision.event == "session-start" && !decision.message.contains("ASP Org Archive Warning:") {
+    if !decision.message.contains("ASP Org Archive Warning:") {
         if !decision.message.is_empty() {
             decision.message.push_str("\n\n");
         }
@@ -146,9 +153,9 @@ fn recall_plans_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
 
 fn archive_query_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
     format!(
-        "asp org query --kind task --field todo=DONE --exclude-dir {} --workspace {} --content",
-        shell_arg(&warning.archives_dir),
-        shell_arg(&warning.artifacts_path)
+        "asp org archive done --artifacts-root {} --archive-dir {} --dry-run",
+        shell_arg(&warning.artifacts_path),
+        shell_arg(&warning.archives_dir)
     )
 }
 

@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-hooks/pre-tool-use-command-output.schema.json",
+  "x-agent-semantic-schema-version": 1,
+  "title": "pre-tool-use.command.output",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "PreToolUseDecisionWire": {
+      "type": "string",
+      "enum": ["approve", "block"]
+    },
+    "PreToolUsePermissionDecisionWire": {
+      "type": "string",
+      "enum": ["allow", "deny", "ask"]
+    },
+    "PreToolUseHookSpecificOutputWire": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hookEventName"],
+      "properties": {
+        "hookEventName": { "type": "string", "const": "PreToolUse" },
+        "permissionDecision": {
+          "default": null,
+          "allOf": [{ "$ref": "#/definitions/PreToolUsePermissionDecisionWire" }]
+        },
+        "permissionDecisionReason": { "default": null, "type": "string" },
+        "additionalContext": { "default": null, "type": "string" },
+        "updatedInput": { "default": null }
+      }
+    }
+  },
+  "properties": {
+    "continue": { "default": true, "type": "boolean" },
+    "decision": {
+      "default": null,
+      "allOf": [{ "$ref": "#/definitions/PreToolUseDecisionWire" }]
+    },
+    "hookSpecificOutput": {
+      "default": null,
+      "allOf": [{ "$ref": "#/definitions/PreToolUseHookSpecificOutputWire" }]
+    },
+    "reason": { "default": null, "type": "string" },
+    "stopReason": { "default": null, "type": "string" },
+    "suppressOutput": { "default": false, "type": "boolean" },
+    "systemMessage": { "default": null, "type": "string" }
+  }
+}

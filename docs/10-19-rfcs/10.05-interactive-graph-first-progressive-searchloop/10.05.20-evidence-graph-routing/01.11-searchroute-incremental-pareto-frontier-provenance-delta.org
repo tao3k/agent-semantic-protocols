@@ -1,0 +1,281 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Incremental Pareto Frontier, Provenance, and Delta Bounds
+#+subtitle: RFC 10.05.20 / Proof stage 01.11
+#+startup: overview
+
+* Status
+
+Draft proof-bearing RFC.
+
+This stage defines incremental insertion into a provenance-sensitive Pareto
+frontier. It refines the cost-only antichain notion from stage 01.10. It does
+not define a Rust or Python implementation.
+
+* Abstract
+
+A correct incremental frontier must preserve two invariants:
+
+- no retained route strictly dominates another retained route;
+- every feasible candidate remains covered by a retained route.
+
+Cost equivalence is not canonical route identity. Two equal-cost paths may carry
+different evidence and both remain necessary. Conversely, two entries that
+claim the same canonical identity must not silently carry different cost
+vectors.
+
+An incremental update is also not automatically a constant-size receipt. One
+candidate can remove the entire old frontier. The default agent projection
+therefore needs a bounded removal summary, with detailed removal edges available
+through progressive inspection.
+
+* Frontier entry
+
+Each frontier entry binds:
+
+#+begin_example
+(canonicalRouteIdentity,
+ evidenceProvenanceDigest,
+ routeCostVector)
+#+end_example
+
+The canonical identity includes the graph snapshot and ordered evidence-edge
+sequence described in stage 01.10. The provenance digest binds the concrete
+proof/evidence receipts.
+
+* Refined antichain invariant
+
+Stage 01.10 used Pareto incomparability as a sufficient cost-only antichain
+condition. That condition is too strong for a provenance-sensitive frontier:
+two equal cost vectors are mutually =NoWorse= and therefore not Pareto
+incomparable.
+
+The normative stage 01.11 invariant is:
+
+#+begin_example
+for every pair with distinct canonical route identities:
+  neither route strictly dominates the other
+#+end_example
+
+Cost-equivalent routes with distinct identities MAY coexist.
+
+#+name: incremental-frontier-provenance-model
+#+begin_src typst
+#let no-worse(left, right) = (
+  left.hops <= right.hops
+  and left.tokens <= right.tokens
+)
+#let cost-equivalent(left, right) = (
+  no-worse(left, right) and no-worse(right, left)
+)
+
+#let evidence-a = (id: 11, hops: 2, tokens: 40)
+#let evidence-b = (id: 12, hops: 2, tokens: 40)
+
+#assert(cost-equivalent(evidence-a, evidence-b))
+#assert(evidence-a.id != evidence-b.id)
+"ok"
+#+end_src
+
+Equal vector plus different identity is not a duplicate.
+
+* Incremental insertion
+
+For an accepted candidate =c= and old frontier =F=:
+
+#+begin_example
+newFrontier =
+  {c}
+  union
+  {f in F | c does not strictly dominate f}
+#+end_example
+
+The candidate can be accepted only when:
+
+- it has a fresh canonical identity, or the duplicate path has completed the
+  duplicate-consistency protocol;
+- no old frontier member strictly dominates it;
+- its evaluation identity matches the frontier identity.
+
+Under those assumptions, insertion preserves the strict antichain.
+
+* Coverage preservation
+
+Old candidate coverage is preserved as follows:
+
+- if an old covering frontier entry survives, it continues to cover the old
+  candidate;
+- if the new candidate dominates that entry, transitivity makes the new
+  candidate cover the old candidate;
+- the new candidate covers itself by reflexivity.
+
+The implementation must provide a decidable dominance receipt for every
+affected old entry. Hidden partial comparison is insufficient.
+
+* Proof-discovered correction: equal cost does not imply duplicate
+
+Two equal-cost routes can have:
+
+- different evidence paths;
+- different source owners;
+- different authorization witnesses;
+- different proof provenance;
+- different failure/recovery behavior.
+
+Dropping one solely because the six-dimensional vector is equal destroys
+evidence diversity and can invalidate later inspection.
+
+Stable ordering MUST therefore use a versioned key containing at least:
+
+#+begin_example
+(costVector,
+ canonicalRouteIdentity,
+ evidenceProvenanceDigest)
+#+end_example
+
+The cost vector may order routes, but only canonical identity decides whether
+two entries are duplicates.
+
+* Proof-discovered correction: canonical identity requires cost consistency
+
+The same numeric canonical identity can be paired with two different costs if
+the digest is stale, incorrectly scoped, or collision-prone. Lean constructs
+such a witness directly.
+
+Before duplicate replacement or merging, the provider MUST verify:
+
+#+begin_example
+same canonical identity
+implies
+same evaluation identity
+and componentwise cost equivalence
+and compatible evidence provenance
+#+end_example
+
+A mismatch MUST fail closed with =canonical-route-cost-drift=. The provider
+MUST NOT choose whichever duplicate arrived last.
+
+* Bounded decision delta
+
+An explicit delta that lists every removal costs:
+
+#+name: incremental-frontier-delta-model
+#+begin_src typst
+#let explicit-delta(fixed, candidate, removals, removal-max) = (
+  fixed + candidate + removals * removal-max
+)
+#let summary-delta(fixed, candidate, summary) = fixed + candidate + summary
+
+#assert(explicit-delta(20, 30, 4, 10) == 90)
+#assert(explicit-delta(20, 30, 5, 10) == 100)
+#assert(summary-delta(20, 30, 16) == 66)
+"ok"
+#+end_src
+
+Without a frontier-capacity bound, explicit removal receipts have no fixed byte
+bound. Even with a capacity bound, the default projection should avoid an
+=O(frontierSize)= removal list.
+
+The compact delta MUST contain:
+
+- accepted/rejected candidate identity;
+- old and new frontier roots;
+- removal count;
+- removal accumulator root;
+- antichain and coverage receipt identities;
+- stable ordering policy identity;
+- observed and maximum delta bytes.
+
+Detailed dominance/removal edges remain available through bounded =inspect=.
+The summarized delta size is independent of removal count.
+
+* Duplicate handling
+
+Duplicate handling is a separate transition from fresh insertion:
+
+1. verify canonical identity and evaluation identity;
+2. verify componentwise cost equivalence;
+3. apply the versioned provenance merge policy;
+4. preserve one canonical frontier slot;
+5. publish a duplicate-merge receipt.
+
+If evidence provenance differs and the policy cannot prove safe aggregation,
+the entry must remain a provenance set rather than discarding one witness.
+
+* Interactive SearchLoop consequences
+
+The default graph-router update remains small:
+
+#+begin_example
+candidate
+-> acceptance decision
+-> new frontier root
+-> compact removal summary
+-> next semantic inspection choices
+#+end_example
+
+The agent does not need every removed route in its context. It can inspect one
+dominance edge or one equal-cost provenance alternative when that evidence is
+decision-relevant.
+
+This reduces token cost while retaining the ability to audit incremental
+frontier maintenance.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteIncrementalParetoFrontierProvenanceDelta.lean
+#+end_example
+
+It proves:
+
+- strict dominance excludes reverse componentwise no-worse;
+- cost equivalence excludes strict dominance in both directions;
+- accepted fresh insertion preserves the refined antichain;
+- incremental insertion preserves candidate coverage;
+- equal-cost distinct-provenance routes both survive insertion;
+- equal costs can have distinct canonical route identities;
+- canonical identity alone can hide cost drift;
+- explicit removal deltas are bounded only by frontier capacity;
+- uncapped explicit removals have no fixed delta bound;
+- summarized delta bytes are independent of removal count.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteIncrementalParetoFrontierProvenanceDelta.lean
+#+end_example
+
+The generated receipt MUST enumerate all stage theorems, report an empty axiom
+inventory, and report =hasSorryAx: false=.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and audit modules build;
+- every audited theorem is axiom-free;
+- the audit contains no =sorryAx=;
+- Org lint accepts the canonical RFC;
+- Orgize extracts both named Typst blocks;
+- both exact Typst bodies pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Next proof boundary
+
+Stage 01.12 should lift insertion to deterministic frontier merge for fan-out /
+fan-in SearchLoop execution. It should prove that merging independently
+constructed frontier receipts is associative, commutative, and idempotent only
+under the same evaluation identity and canonical duplicate policy.
+
+The proof must model conflicting provenance, stale snapshots, partial coverage,
+and bounded merge receipts. Parallel subagents are an execution accelerator;
+they must not change the semantic frontier produced by the sequential protocol.

@@ -1,0 +1,73 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryCacheRejoinReceipts.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {record : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecord},\n  record.phase = ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RejoinPhase.readsEnabled →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed record →\n      ∃ stateGeneration tokenGeneration membershipGeneration readGeneration,\n        record.receipts.stateInstalledGeneration = some stateGeneration ∧\n          record.receipts.tokenIssuedGeneration = some tokenGeneration ∧\n            record.receipts.membershipPublishedGeneration = some membershipGeneration ∧\n              record.receipts.readsEnabledGeneration = some readGeneration ∧\n                stateGeneration < tokenGeneration ∧\n                  tokenGeneration < membershipGeneration ∧ membershipGeneration < readGeneration",
+   "theoremFamily": "phase-support-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRTR-ORDER",
+    "ASP-RFC-10.05-CRTR-PHASE",
+    "ASP-RFC-10.05-CRTR-PREDECESSOR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.reads_enabled_record_has_complete_ordered_receipt_chain",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.completeDurableRecord",
+   "theoremFamily": "constructive-receipt-support",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRTR-ORDER", "ASP-RFC-10.05-CRTR-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.complete_strict_receipt_chain_supports_reads_enabled_phase",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.tornTokenRecord.receipts.stateInstalledGeneration = some 0 ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.tornTokenRecord.receipts.tokenIssuedGeneration = none ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.tornTokenRecord",
+   "theoremFamily": "torn-publication-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRTR-ATOMICITY", "ASP-RFC-10.05-CRTR-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.torn_token_receipt_cannot_support_token_issued_phase",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.missingMembershipRecord.receipts.readsEnabledGeneration = some 3 ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.missingMembershipRecord.receipts.membershipPublishedGeneration =\n      none ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.missingMembershipRecord",
+   "theoremFamily": "missing-predecessor-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRTR-NONIMPLICATION", "ASP-RFC-10.05-CRTR-PREDECESSOR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.later_read_receipt_cannot_replace_missing_predecessor",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.reorderedMembershipRecord.receipts.tokenIssuedGeneration =\n    some 2 ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.reorderedMembershipRecord.receipts.membershipPublishedGeneration =\n      some 1 ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.reorderedMembershipRecord",
+   "theoremFamily": "reordered-receipt-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRTR-NONIMPLICATION", "ASP-RFC-10.05-CRTR-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.present_but_reordered_receipts_cannot_support_membership_phase",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.duplicateGenerationRecord.receipts.tokenIssuedGeneration =\n    some 1 ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.duplicateGenerationRecord.receipts.membershipPublishedGeneration =\n      some 1 ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.DurableRejoinRecordWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.duplicateGenerationRecord",
+   "theoremFamily": "duplicate-generation-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRTR-NONIMPLICATION", "ASP-RFC-10.05-CRTR-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceipts.duplicate_receipt_generation_cannot_establish_strict_transition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 5}

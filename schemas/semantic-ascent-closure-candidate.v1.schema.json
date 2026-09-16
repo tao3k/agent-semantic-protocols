@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-ascent-closure-candidate.v1.schema.json",
+  "title": "Semantic Ascent Closure Candidate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "candidateKind",
+    "authority",
+    "graphSessionIdentity",
+    "rulesetDigest",
+    "budget",
+    "sourceFactIds",
+    "derivedFactIds",
+    "derivationTrace",
+    "accounting",
+    "canonicalFactOrderDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-ascent-closure-candidate.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "candidateKind": { "const": "ascent-closure" },
+    "authority": { "const": "candidate" },
+    "graphSessionIdentity": { "$ref": "#/$defs/graphSessionIdentity" },
+    "rulesetDigest": { "$ref": "#/$defs/digest" },
+    "budget": { "$ref": "#/$defs/budget" },
+    "sourceFactIds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/factId" },
+      "uniqueItems": true
+    },
+    "derivedFactIds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/factId" },
+      "uniqueItems": true
+    },
+    "derivationTrace": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/derivationStep" }
+    },
+    "accounting": { "$ref": "#/$defs/accounting" },
+    "canonicalFactOrderDigest": { "$ref": "#/$defs/digest" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "derivedFactIds": { "minItems": 1 }
+        },
+        "required": ["derivedFactIds"]
+      },
+      "then": {
+        "properties": {
+          "derivationTrace": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "factId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphSessionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceDigest",
+        "sessionId",
+        "nodeId",
+        "snapshotDigest",
+        "workspaceGenerationRootDigest",
+        "projectionDigest",
+        "routeDigest"
+      ],
+      "properties": {
+        "workspaceDigest": { "$ref": "#/$defs/digest" },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "nodeId": { "type": "string", "minLength": 1 },
+        "snapshotDigest": { "$ref": "#/$defs/digest" },
+        "workspaceGenerationRootDigest": { "$ref": "#/$defs/digest" },
+        "projectionDigest": { "$ref": "#/$defs/digest" },
+        "routeDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxInputFacts",
+        "maxRuleFirings",
+        "maxDerivedFacts",
+        "maxGraphHops"
+      ],
+      "properties": {
+        "maxInputFacts": { "type": "integer", "minimum": 0 },
+        "maxRuleFirings": { "type": "integer", "minimum": 0 },
+        "maxDerivedFacts": { "type": "integer", "minimum": 0 },
+        "maxGraphHops": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "derivationStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "ruleDigest",
+        "premiseFactIds",
+        "conclusionFactId"
+      ],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "ruleDigest": { "$ref": "#/$defs/digest" },
+        "premiseFactIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/factId" },
+          "uniqueItems": true
+        },
+        "conclusionFactId": { "$ref": "#/$defs/factId" }
+      }
+    },
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputFactCount",
+        "ruleFirings",
+        "derivedFactCount",
+        "maxDerivedGraphHops"
+      ],
+      "properties": {
+        "inputFactCount": { "type": "integer", "minimum": 0 },
+        "ruleFirings": { "type": "integer", "minimum": 0 },
+        "derivedFactCount": { "type": "integer", "minimum": 0 },
+        "maxDerivedGraphHops": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

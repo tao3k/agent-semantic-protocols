@@ -163,7 +163,7 @@
     "notes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/note"
+        "$ref": "semantic-definitions.v1.schema.json#/$defs/note"
       }
     }
   },
@@ -211,7 +211,7 @@
         },
         "code": {
           "type": "string",
-          "description": "Agent-facing compact code projection. This is parser-owned understanding text, not necessarily exact editable source. Line-protocol code text fields and --code output serialize this same projection value."
+          "description": "Agent-facing compact projection. This is parser-owned understanding text, not necessarily exact editable source. Exact editable bytes are requested through an exact selector with projection=source."
         },
         "contentKind": {
           "const": "source-code"
@@ -1085,23 +1085,6 @@
         },
         "location": {
           "$ref": "#/$defs/location"
-        }
-      }
-    },
-    "note": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "message": {
-          "type": "string"
         }
       }
     }

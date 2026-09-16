@@ -1,0 +1,34 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ThreeViewSpecificationConformance
+
+namespace ASPProof.Audit.ThreeViewSpecificationConformance
+
+open ASPProof.ThreeViewSpecificationConformance
+
+#print axioms stateful_node_constructible
+#print axioms missing_node_state_not_stateful
+#print axioms stateful_edge_constructible
+#print axioms missing_edge_source_state_rejected
+#print axioms missing_edge_target_state_rejected
+#print axioms missing_edge_semantics_rejected
+#print axioms complete_projection_constructible
+#print axioms missing_mermaid_not_complete
+#print axioms missing_typst_not_complete
+#print axioms missing_lean_not_complete
+#print axioms exact_receipt_valid
+#print axioms mermaid_digest_change_invalidates
+#print axioms state_digest_change_invalidates
+#print axioms typst_digest_change_invalidates
+#print axioms lean_digest_change_invalidates
+#print axioms clause_digest_change_invalidates
+#print axioms revision_change_invalidates
+#print axioms verified_implementation_conforms
+#print axioms failed_implementation_not_conformant
+#print axioms implementation_digest_mismatch_rejected
+#print axioms implementation_state_digest_mismatch_rejected
+#print axioms complete_views_do_not_conform_failed_implementation
+
+end ASPProof.Audit.ThreeViewSpecificationConformance

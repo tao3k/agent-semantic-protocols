@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Memory Search Generation Qualification
+#+startup: overview
+
+* Authority
+
+This document is the empirical qualification companion to
+=00.11-zero-copy-search-generation.org=.  It records measurements and test
+receipts; it does not redefine the normative protocol or the Lean model.
+
+* Qualified architecture
+
+- Runtime publication encodes source, exact, and search segments before the
+  generation pointer is committed.
+- Search/query consumers mmap the immutable search segment and validate its
+  fixed header, seven-entry section directory, and the headers of the touched
+  indexes.
+- The sorted Memory Search table does not deserialize or hash the complete
+  key/value payload during cold open.  Lookup touches logarithmically many keys
+  and validates the digest of the returned record.
+- Exact/search reads do not open Turso, connect a Runtime socket, spawn a
+  provider, or publish a generation.
+- Full durability scrubbing is a background responsibility and is not charged
+  to an agent-facing read deadline.
+
+* 2026-08-07 offline receipts
+
+| Gate | Receipt |
+|------+---------|
+| Large directory cold open | 131072 records, 30 runs, p99 34417 ns |
+| Concurrent immutable readers | 256 Tokio tasks, pass |
+| Segment validation | 3 passed |
+| Table and touched-record integrity | 3 passed |
+| Publisher to sectioned reader | 1 passed |
+| Protocol socket-free data planes | 2 passed |
+| Shared content contract | 3 passed |
+| Lean atomicity and epoch fencing | pass, zero diagnostics |
+| ASP Server DB all-target check | pass, zero diagnostics |
+| Protocol all-target check | pass, zero diagnostics |
+
+The pre-refactor large-directory p99 was 119721875 ns.  The same strong gate
+after directory-only cold-open validation measured 34417 ns.  The one
+millisecond threshold was not changed.
+
+* Remaining installed qualification
+
+Installed qualification remains fail-closed until all of the following are
+captured from one candidate artifact:
+
+1. thirty fresh CLI processes satisfy p99 below one millisecond;
+2. active Search observations persist mapped, directory, key, value, and source
+   byte counts plus zero Turso opens, socket connects, and provider spawns;
+3. Runtime OpenTelemetry lifecycle pressure tests pass in a Host lane capable
+   of binding their temporary Unix sockets;
+4. one install, one supervised start, healthcheck, search, exact source, and
+   clean shutdown produce matching generation and artifact receipts.

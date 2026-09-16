@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-generation-change-set.v1.schema.json",
+  "title": "ASP Search Generation Merkle Change Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "workspaceIdentity", "baseRootDigest",
+    "candidateRootDigest", "providerDigest", "schemaDigest", "analyzerDigest",
+    "changeSetDigest", "changes"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.search-generation-change-set" },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "baseRootDigest": { "type": ["string", "null"] },
+    "candidateRootDigest": { "type": "string", "minLength": 1 },
+    "providerDigest": { "type": "string", "minLength": 1 },
+    "schemaDigest": { "type": "string", "minLength": 1 },
+    "analyzerDigest": { "type": "string", "minLength": 1 },
+    "changeSetDigest": { "type": "string", "minLength": 1 },
+    "changes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/change" }
+    }
+  },
+  "$defs": {
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "kind"],
+      "properties": {
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["added", "changed", "removed"] },
+        "previousContentDigest": { "type": "string", "minLength": 1 },
+        "contentDigest": { "type": "string", "minLength": 1 },
+        "lineCount": { "type": "integer", "minimum": 1 },
+        "lexicalQueryKeys": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "graphFragmentDigest": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "added" } } },
+          "then": {
+            "required": [
+              "contentDigest", "lineCount", "lexicalQueryKeys", "graphFragmentDigest"
+            ],
+            "not": { "required": ["previousContentDigest"] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "changed" } } },
+          "then": {
+            "required": [
+              "previousContentDigest", "contentDigest", "lineCount",
+              "lexicalQueryKeys", "graphFragmentDigest"
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "removed" } } },
+          "then": {
+            "required": ["previousContentDigest"],
+            "not": { "required": ["contentDigest"] }
+          }
+        }
+      ]
+    }
+  }
+}

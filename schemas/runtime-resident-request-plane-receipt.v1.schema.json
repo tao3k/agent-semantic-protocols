@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-resident-request-plane-receipt.v1.schema.json",
+  "title": "Runtime Resident Request Plane Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "operation",
+    "requestTemperature",
+    "state",
+    "generationDigest",
+    "elapsedMicros",
+    "generationLookupCount",
+    "generationWaitCount",
+    "generationBuildCount",
+    "filesystemReadCount",
+    "databaseReadCount",
+    "providerProcessCount",
+    "parserInvocationCount",
+    "secondaryRuntimeRpcCount",
+    "socketDiscoveryCount",
+    "terminalWaitCount"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-resident-request-plane-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "operation": { "enum": ["search", "query"] },
+    "requestTemperature": { "enum": ["cold", "warm"] },
+    "state": { "enum": ["ready", "query-not-ready"] },
+    "generationDigest": {
+      "type": ["string", "null"],
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0,
+      "exclusiveMaximum": 1000
+    },
+    "generationLookupCount": { "const": 1 },
+    "generationWaitCount": { "const": 0 },
+    "generationBuildCount": { "const": 0 },
+    "filesystemReadCount": { "const": 0 },
+    "databaseReadCount": { "const": 0 },
+    "providerProcessCount": { "const": 0 },
+    "parserInvocationCount": { "const": 0 },
+    "secondaryRuntimeRpcCount": { "const": 0 },
+    "socketDiscoveryCount": { "const": 0 },
+    "terminalWaitCount": { "const": 0 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "state": { "const": "ready" } },
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {
+          "generationDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          }
+        }
+      },
+      "else": {
+        "properties": { "generationDigest": { "const": null } }
+      }
+    }
+  ]
+}

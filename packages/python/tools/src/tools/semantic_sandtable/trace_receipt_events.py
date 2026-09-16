@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Parse recorded trace lines into receipt command entries."""
 
 from __future__ import annotations
@@ -17,7 +21,6 @@ _COMMAND_KINDS = {
     "hook-deny",
     "subagent",
     "external-ingest",
-    "check",
     "other",
 }
 _OUTPUT_MODES = {"compact", "json", "unknown"}
@@ -364,7 +367,7 @@ class TraceCommandParser:
         if "search" in argv:
             return "search"
         if "check" in argv:
-            return "check"
+            return "other"
         return "other"
 
     def infer_output_mode(self, argv: list[str]) -> str:

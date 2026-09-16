@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Reusable lexical overlay search for high-churn candidate evidence.
 
-use crate::dynamic_overlay::{
-    DynamicOverlayDocument, DynamicOverlayNamespace, DynamicOverlayQuery,
-    default_dynamic_overlay_search_backend,
-};
+use crate::dynamic_overlay::DynamicOverlayDocument;
+use crate::dynamic_overlay::DynamicOverlayNamespace;
+use crate::dynamic_overlay::DynamicOverlayQuery;
+use crate::dynamic_overlay::default_dynamic_overlay_search_backend;
 
 /// Request for session-local lexical overlay search.
 #[derive(Debug, Clone)]
@@ -11,16 +15,39 @@ pub struct LexicalOverlaySearchRequest {
     query: String,
     limit: usize,
     documents: Vec<LexicalOverlayDocument>,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+/// Lexical overlay hits bound to the Merkle snapshot that was searched.
+#[derive(Debug, Clone)]
+pub struct LexicalOverlaySearchResult {
+    /// Snapshot evidence for the base plus editor-buffer delta.
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// Ranked lexical hits from that snapshot.
+    pub hits: Vec<LexicalOverlaySearchHit>,
+}
+
+/// File-level lexical candidates bound to the Merkle snapshot that produced them.
+#[derive(Debug, Clone)]
+pub struct LexicalOverlayCandidateSearchResult {
+    /// Snapshot evidence for the base plus editor-buffer delta.
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// File-level candidates projected from the lexical hits.
+    pub candidates: Vec<LexicalOverlayCandidateHit>,
 }
 
 impl LexicalOverlaySearchRequest {
     /// Create a lexical overlay request.
     #[must_use]
-    pub fn new(query: impl Into<String>) -> Self {
+    pub fn new(
+        query: impl Into<String>,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    ) -> Self {
         Self {
             query: query.into(),
             limit: 64,
             documents: Vec::new(),
+            source_snapshot,
         }
     }
 
@@ -177,49 +204,28 @@ impl LexicalOverlayCandidateHit {
 
 /// Run lexical overlay search without writing dirty evidence to durable DB.
 #[must_use]
-pub fn search_lexical_overlay(
-    request: LexicalOverlaySearchRequest,
-) -> Vec<LexicalOverlaySearchHit> {
-    let namespace = DynamicOverlayNamespace::new(
-        "lexical-overlay",
-        "workspace",
-        "worktree",
-        "session",
-        "dirty",
-    );
+pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOverlaySearchResult {
+    let namespace = lexical_overlay_namespace(&request.source_snapshot);
+    let source_snapshot = request.source_snapshot;
     let documents = request
         .documents
         .into_iter()
-        .map(|document| DynamicOverlayDocument {
-            owner_path: document.owner_path,
-            entity_id: document.selector.clone(),
-            selector: document.selector,
-            kind: document.kind,
-            name: document.name,
-            signature: None,
-            display_range: None,
-            source_hash: document.source_hash,
-            search_text: document.search_text,
-        })
+        .map(dynamic_overlay_document)
         .collect::<Vec<_>>();
     let mut overlay = default_dynamic_overlay_search_backend();
     overlay.upsert_documents(namespace.clone(), documents);
-    overlay
+    let hits = overlay
         .search(
             &namespace,
             &DynamicOverlayQuery::new(request.query).limit(request.limit),
         )
         .into_iter()
-        .map(|hit| LexicalOverlaySearchHit {
-            owner_path: hit.document.owner_path,
-            selector: hit.document.selector,
-            kind: hit.document.kind,
-            name: hit.document.name,
-            search_text: hit.document.search_text,
-            score: hit.score,
-            matched_terms: hit.matched_terms,
-        })
-        .collect()
+        .map(lexical_overlay_hit)
+        .collect();
+    LexicalOverlaySearchResult {
+        source_snapshot,
+        hits,
+    }
 }
 
 /// Project query terms to file-level lexical overlay candidates.
@@ -227,30 +233,84 @@ pub fn search_lexical_overlay(
 pub fn search_lexical_overlay_candidates(
     terms: &[String],
     documents: &[LexicalOverlayDocument],
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     per_term_limit: usize,
     total_limit: usize,
-) -> Vec<LexicalOverlayCandidateHit> {
+) -> LexicalOverlayCandidateSearchResult {
     let mut remaining = total_limit;
     let mut candidates = Vec::new();
+    let namespace = lexical_overlay_namespace(source_snapshot);
+    let mut overlay = default_dynamic_overlay_search_backend();
+    overlay.upsert_documents(
+        namespace.clone(),
+        documents
+            .iter()
+            .cloned()
+            .map(dynamic_overlay_document)
+            .collect(),
+    );
     for term in terms {
         if remaining == 0 {
             break;
         }
-        let hits = search_lexical_overlay(documents.iter().cloned().fold(
-            LexicalOverlaySearchRequest::new(term).limit(per_term_limit),
-            LexicalOverlaySearchRequest::document,
-        ));
+        let hits = overlay.search(
+            &namespace,
+            &DynamicOverlayQuery::new(term).limit(per_term_limit),
+        );
         for hit in hits {
             if remaining == 0 {
                 break;
             }
             candidates.push(LexicalOverlayCandidateHit {
-                owner_path: hit.owner_path,
+                owner_path: hit.document.owner_path,
                 symbol: term.clone(),
-                text: hit.search_text,
+                text: hit.document.search_text,
             });
             remaining -= 1;
         }
     }
-    candidates
+    LexicalOverlayCandidateSearchResult {
+        source_snapshot: source_snapshot.clone(),
+        candidates,
+    }
+}
+
+fn lexical_overlay_namespace(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> DynamicOverlayNamespace {
+    DynamicOverlayNamespace::new(
+        "lexical-overlay",
+        "workspace",
+        "worktree",
+        source_snapshot.provider_digest.clone(),
+        source_snapshot.root_digest.clone(),
+    )
+}
+
+fn dynamic_overlay_document(document: LexicalOverlayDocument) -> DynamicOverlayDocument {
+    DynamicOverlayDocument {
+        owner_path: document.owner_path,
+        entity_id: document.selector.clone(),
+        selector: document.selector,
+        kind: document.kind,
+        name: document.name,
+        signature: None,
+        display_range: None,
+        source_hash: document.source_hash,
+        search_text: document.search_text,
+    }
+}
+
+fn lexical_overlay_hit(
+    hit: crate::dynamic_overlay::DynamicOverlaySearchHit,
+) -> LexicalOverlaySearchHit {
+    LexicalOverlaySearchHit {
+        owner_path: hit.document.owner_path,
+        selector: hit.document.selector,
+        kind: hit.document.kind,
+        name: hit.document.name,
+        search_text: hit.document.search_text,
+        score: hit.score,
+        matched_terms: hit.matched_terms,
+    }
 }

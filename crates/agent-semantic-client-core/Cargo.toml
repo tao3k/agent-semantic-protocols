@@ -1,23 +1,25 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "agent-semantic-client-core"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Core request, route, cache, and receipt contracts for the agent semantic client."
-license = "MIT"
+license.workspace = true
 
 [dependencies]
-sha2 = "0.10"
-agent-semantic-hook = { path = "../agent-semantic-hook" }
+sha2.workspace = true
+agent-semantic-provider-protocol.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-artifacts.workspace = true
 agent-semantic-tree-sitter = { version = "0.1.0", path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-
-[dev-dependencies]
-asp-rust-project-harness-policy.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true

@@ -1,8 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Command-line interface for semantic sandtable scenarios."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -152,7 +157,7 @@ def _handle_direct_commands(repo_root: Path, args: argparse.Namespace) -> int | 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="semantic-sandtable",
-        description="Run semantic language harness sandtable scenarios.",
+        description="Run semantic ASP language provider sandtable scenarios.",
     )
     _add_general_arguments(parser)
     _add_receipt_arguments(parser)
@@ -301,9 +306,12 @@ def _add_large_library_benchmark_arguments(parser: argparse.ArgumentParser) -> N
         ),
     )
     parser.add_argument(
-        "--large-library-runtime-corpus-root",
-        default=".data",
-        help="Directory containing the 14 named large-library checkouts.",
+        "--large-library-runtime-state-home",
+        default=os.environ.get("ASP_STATE_HOME"),
+        help=(
+            "ASP State Home containing qualified live-corpus artifacts. "
+            "Defaults to ASP_STATE_HOME and never falls back to .data."
+        ),
     )
     parser.add_argument(
         "--large-library-runtime-asp-bin",
@@ -312,8 +320,8 @@ def _add_large_library_benchmark_arguments(parser: argparse.ArgumentParser) -> N
     )
     parser.add_argument(
         "--large-library-runtime-languages",
-        default="julia,python,rust,typescript",
-        help="Comma-separated runtime benchmark language list.",
+        default="gerbil-scheme,julia,md,org,python,rust,typescript",
+        help="Comma-separated runtime benchmark language list for every registered provider route.",
     )
 
 
@@ -430,19 +438,22 @@ def _large_library_runtime_benchmark(repo_root: Path, args: argparse.Namespace) 
         for item in args.large_library_runtime_languages.split(",")
         if item.strip()
     )
-    corpus_root = resolve_path(repo_root, args.large_library_runtime_corpus_root)
+    state_home = resolve_path(repo_root, args.large_library_runtime_state_home)
     asp_binary = resolve_path(
         repo_root,
         args.large_library_runtime_asp_bin or "target/release/asp",
     )
-    if corpus_root is None or asp_binary is None:
-        emit("[large-library-runtime-benchmark] invalid corpus or ASP binary path", file=sys.stderr)
+    if state_home is None or asp_binary is None:
+        emit(
+            "[large-library-runtime-benchmark] ASP_STATE_HOME and a valid ASP binary are required",
+            file=sys.stderr,
+        )
         return 1
     try:
         receipt = run_large_library_runtime_benchmark(
             repo_root,
             asp_binary=asp_binary,
-            corpus_root=corpus_root,
+            state_home=state_home,
             languages=languages,
         )
     except (OSError, ValueError, subprocess.SubprocessError) as error:

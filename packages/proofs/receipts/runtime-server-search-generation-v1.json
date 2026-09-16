@@ -1,0 +1,111 @@
+{"sourcePath": "ASPProof/RuntimeServerSearchGeneration.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.RuntimeServerSearchGeneration",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type": "¬ASPProof.RuntimeServerSearchGeneration.CliMayWriteGeneration",
+   "theoremFamily": "cli-write-authority-exclusion",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-AUTHORITY"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.cli_has_no_generation_write_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (candidate : ASPProof.RuntimeServerSearchGeneration.Generation),\n  candidate ≠ state.activeGeneration →\n    ¬ASPProof.RuntimeServerSearchGeneration.CanQueryGeneration\n        (ASPProof.RuntimeServerSearchGeneration.stage state candidate) candidate",
+   "theoremFamily": "staged-generation-invisibility",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-STAGING"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.staged_generation_is_not_queryable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (expectedRevision : ASPProof.RuntimeServerSearchGeneration.Revision)\n  (nextGeneration : ASPProof.RuntimeServerSearchGeneration.Generation)\n  (nextDigest : ASPProof.RuntimeServerSearchGeneration.Digest),\n  expectedRevision ≠ state.revision →\n    ASPProof.RuntimeServerSearchGeneration.publishCAS state expectedRevision nextGeneration nextDigest = none",
+   "theoremFamily": "stale-revision-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-CAS"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.stale_revision_publish_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (expectedRevision : ASPProof.RuntimeServerSearchGeneration.Revision)\n  (nextGeneration : ASPProof.RuntimeServerSearchGeneration.Generation)\n  (nextDigest : ASPProof.RuntimeServerSearchGeneration.Digest),\n  state.writerOnline = false →\n    ASPProof.RuntimeServerSearchGeneration.publishCAS state expectedRevision nextGeneration nextDigest = none",
+   "theoremFamily": "offline-writer-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-READ-WRITE"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.offline_writer_cannot_publish",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (nextGeneration : ASPProof.RuntimeServerSearchGeneration.Generation)\n  (nextDigest : ASPProof.RuntimeServerSearchGeneration.Digest),\n  ¬state.activeGeneration < nextGeneration →\n    ASPProof.RuntimeServerSearchGeneration.publishCAS state state.revision nextGeneration nextDigest = none",
+   "theoremFamily": "non-monotone-publication-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-CAS"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.non_monotone_publish_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state next : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (expectedRevision : ASPProof.RuntimeServerSearchGeneration.Revision)\n  (nextGeneration : ASPProof.RuntimeServerSearchGeneration.Generation)\n  (nextDigest : ASPProof.RuntimeServerSearchGeneration.Digest),\n  ASPProof.RuntimeServerSearchGeneration.publishCAS state expectedRevision nextGeneration nextDigest = some next →\n    state.activeGeneration < next.activeGeneration",
+   "theoremFamily": "monotone-publication",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-CAS"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.successful_publish_is_monotone",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state next : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (expectedRevision : ASPProof.RuntimeServerSearchGeneration.Revision)\n  (nextGeneration : ASPProof.RuntimeServerSearchGeneration.Generation)\n  (nextDigest : ASPProof.RuntimeServerSearchGeneration.Digest),\n  ASPProof.RuntimeServerSearchGeneration.publishCAS state expectedRevision nextGeneration nextDigest = some next →\n    next.stagedGeneration = none",
+   "theoremFamily": "publication-clears-staging",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-CAS", "ASP-RFC-10.05-SRSG-STAGING"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.successful_publish_clears_staging",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (lease : ASPProof.RuntimeServerSearchGeneration.GenerationLease),\n  ASPProof.RuntimeServerSearchGeneration.CanQuery state lease → lease.generation = state.activeGeneration",
+   "theoremFamily": "lease-generation-consistency",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-LEASE"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.query_lease_is_generation_consistent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState)\n  (providerReady : ASPProof.RuntimeServerSearchGeneration.ProviderId → Bool)\n  (provider : ASPProof.RuntimeServerSearchGeneration.ProviderId),\n  state.readerOnline = true →\n    providerReady provider = true → ASPProof.RuntimeServerSearchGeneration.SearchLoopAvailable state providerReady",
+   "theoremFamily": "provider-partition-availability",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-AVAILABILITY"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.one_ready_provider_preserves_searchloop",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.RuntimeServerSearchGeneration.ServerState),\n  state.readerOnline = true →\n    ASPProof.RuntimeServerSearchGeneration.CanQuery (ASPProof.RuntimeServerSearchGeneration.stopWriter state)\n      { workspace := state.workspace, generation := state.activeGeneration, revision := state.revision }",
+   "theoremFamily": "writer-failure-read-preservation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRSG-LEASE", "ASP-RFC-10.05-SRSG-READ-WRITE"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.writer_failure_preserves_active_query",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.RuntimeServerSearchGeneration.Dominates ASPProof.RuntimeServerSearchGeneration.serverWarmCost\n  ASPProof.RuntimeServerSearchGeneration.cliRebuildCost",
+   "theoremFamily": "warm-path-cost-dominance",
+   "rfcClauseIds": ["ASP-RFC-10.05-SRSG-COST"],
+   "name":
+   "ASPProof.RuntimeServerSearchGeneration.server_warm_cost_dominates_cli_rebuild",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 11,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 11,
+ "axiomDependentDeclarationCount": 0}

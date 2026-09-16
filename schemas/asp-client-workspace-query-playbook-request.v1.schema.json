@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-workspace-query-playbook-request.v1.schema.json",
+  "title": "ASP Client Workspace Query Playbook Request V1",
+  "description": "The sole public Query request. Code selectors are declared through --language and document selectors through --documents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "selectors", "projection"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-workspace-query-playbook-request"},
+    "schemaVersion": {"const": "1"},
+    "language": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"},
+    "documents": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"},
+    "selectors": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9+.-]*://[^\\s#]+#item/.+$(?![\\s\\S])"}},
+    "projection": {"enum": ["source", "callable-skeleton"]}
+  },
+  "anyOf": [{"required": ["language"]}, {"required": ["documents"]}]
+}

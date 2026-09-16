@@ -1,14 +1,26 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Framed stdout/stderr capture for provider processes.
 
 use std::io;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
+use bytes::BytesMut;
 use futures_util::StreamExt;
-use sha2::{Digest, Sha256};
-use tokio::io::{AsyncRead, AsyncWriteExt};
-use tokio_util::codec::{BytesCodec, FramedRead, LengthDelimitedCodec, LinesCodec};
+use sha2::Digest;
+use sha2::Sha256;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWriteExt;
+use tokio_util::codec::BytesCodec;
+use tokio_util::codec::FramedRead;
+use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::codec::LinesCodec;
 
-use crate::process_contract::{OutputFraming, OutputMode, ProviderProcessError};
+use crate::process_contract::OutputFraming;
+use crate::process_contract::OutputMode;
+use crate::process_contract::ProviderProcessError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct LimitedRead {

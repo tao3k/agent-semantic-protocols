@@ -1,58 +1,130 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
-use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexLookupState,
-    ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSelector,
-    client_db_source_index_generation_id,
-};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbSourceIndexImport;
+use agent_semantic_client_db::ClientDbSourceIndexLookupState;
+use agent_semantic_client_db::ClientDbSourceIndexOwner;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::ClientDbSourceIndexSelector;
 
 const SOURCE_INDEX_WARM_REUSE_GATE: Duration = Duration::from_millis(750);
 const SOURCE_INDEX_HASH_REUSE_GATE: Duration = Duration::from_millis(25);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
 #[cfg(not(debug_assertions))]
+const SOURCE_INDEX_1193_OWNER_COLD_WRITE_DISK_GATE_BYTES: u64 = 16 * 1024 * 1024;
+#[cfg(not(debug_assertions))]
+const SOURCE_INDEX_1193_OWNER_COLD_WRITE_RSS_GROWTH_GATE_BYTES: u64 = 64 * 1024 * 1024;
+#[cfg(not(debug_assertions))]
+const SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
+#[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE: Duration = Duration::from_millis(500);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_HIGH_FANOUT_COLD_LOOKUP_GATE: Duration = Duration::from_millis(400);
 
-static SOURCE_INDEX_REFRESH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static SOURCE_INDEX_REFRESH_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-fn source_index_refresh_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    SOURCE_INDEX_REFRESH_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+#[path = "source_index_refresh_perf_identity.rs"]
+mod source_index_refresh_perf_identity;
+
+#[path = "source_index_refresh_perf_incremental.rs"]
+mod source_index_refresh_perf_incremental;
+
+async fn source_index_refresh_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    SOURCE_INDEX_REFRESH_TEST_LOCK.lock().await
 }
 
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-cold-write");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
+    let rss_before = current_process_rss_bytes().expect("measure RSS before cold write");
     let started_at = Instant::now();
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 1_193),
-    )
-    .expect("write 1193-owner source-index snapshot");
+    let refresh = commit_fixture_generation(&fixture, large_refresh_request(&project_root, 1_193))
+        .expect("write 1193-owner source-index snapshot");
     let elapsed = started_at.elapsed();
+    let rss_after = current_process_rss_bytes().expect("measure RSS after cold write");
+    let rss_growth_bytes = rss_after.saturating_sub(rss_before);
+    let disk_bytes = directory_tree_bytes(&client_dir).expect("measure cold-write disk bytes");
 
     assert!(!refresh.reused_generation, "cold import must publish rows");
     assert_eq!(refresh.owner_count, 1_193);
     assert_eq!(refresh.selector_count, 1_193);
     assert_eq!(refresh.changed_owner_count, 1_193);
     assert_eq!(refresh.removed_owner_count, 0);
-    assert_eq!(refresh.posting_write_count, 20_281);
+    assert_eq!(
+        refresh.posting_write_count, 5_243,
+        "cold-write receipt must match the deterministic canonical posting frontier"
+    );
     assert!(
         elapsed < SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE,
         "1193-owner source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE:?}"
+    );
+    assert!(
+        disk_bytes <= SOURCE_INDEX_1193_OWNER_COLD_WRITE_DISK_GATE_BYTES,
+        "1193-owner source-index cold write exceeded disk gate: diskBytes={disk_bytes} gateBytes={SOURCE_INDEX_1193_OWNER_COLD_WRITE_DISK_GATE_BYTES}"
+    );
+    assert!(
+        rss_growth_bytes <= SOURCE_INDEX_1193_OWNER_COLD_WRITE_RSS_GROWTH_GATE_BYTES,
+        "1193-owner source-index cold write exceeded RSS growth gate: rssGrowthBytes={rss_growth_bytes} gateBytes={SOURCE_INDEX_1193_OWNER_COLD_WRITE_RSS_GROWTH_GATE_BYTES}"
+    );
+    eprintln!(
+        "source-index-1193-owner-cold-write elapsedMicros={} diskBytes={disk_bytes} rssGrowthBytes={rss_growth_bytes}",
+        elapsed.as_micros()
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(not(debug_assertions))]
+#[tokio::test(flavor = "current_thread")]
+async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard().await;
+    let root = temp_project_root("source-index-1278-owner-posting-frontier-cold-write");
+    let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    let request = large_high_term_refresh_request(&project_root, 1_278, 32);
+    let started_at = Instant::now();
+    let refresh = commit_fixture_generation(&fixture, request)
+        .expect("write bounded-posting source-index snapshot");
+    let elapsed = started_at.elapsed();
+
+    assert_eq!(refresh.owner_count, 1_278);
+    assert_eq!(refresh.selector_count, 1_278);
+    assert!(
+        (12_000..=20_448).contains(&refresh.posting_write_count),
+        "posting frontier must remain large enough to exercise bulk writes while retaining at most 16 ranked terms per owner: refresh={refresh:?}"
+    );
+    assert!(
+        elapsed < SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE,
+        "posting-frontier source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE:?}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -61,34 +133,64 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-one-percent-refresh");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 1_193),
-    )
-    .expect("write initial 1193-owner source-index snapshot");
+    commit_fixture_generation(&fixture, large_refresh_request(&project_root, 1_193))
+        .expect("write initial 1193-owner source-index snapshot");
 
     let mut changed_request = large_refresh_request(&project_root, 1_193);
-    for (index, file_hash) in changed_request
-        .import
-        .file_hashes
-        .iter_mut()
-        .take(12)
-        .enumerate()
-    {
-        file_hash.sha256 = format!("{:064x}", u64::MAX - index as u64);
+    for index in 0..12 {
+        let owner_path = format!("src/generated/owner_{index}.rs");
+        let symbol = format!("source_index_large_owner_{index}");
+        let selector_id = format!("rust://{owner_path}#item/function/{symbol}");
+        let changed_source = format!("pub fn {symbol}() {{ let changed = {index}; }}");
+        let file_hash = &mut changed_request.import.file_hashes[index];
+        file_hash.sha256 = format!(
+            "{:x}",
+            <sha2::Sha256 as sha2::Digest>::digest(changed_source.as_bytes())
+        );
+        file_hash.byte_len = changed_source.len() as u64;
+        let selector = &mut changed_request.import.selectors[index];
+        selector.source = changed_source.clone().into();
+        selector.projection_record = crate::projection_fixture::projection_record(
+            crate::projection_fixture::ProjectionFixtureInput {
+                language_id: "rust",
+                provider_id: "asp-rust",
+                owner_path: &owner_path,
+                structural_selector: &selector_id,
+                item_kind: "function",
+                item_name: &symbol,
+                source: changed_source.as_bytes(),
+                source_byte_start: 0,
+                source_byte_end: changed_source.len() as u64,
+            },
+        );
     }
+    changed_request.source_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+            changed_request
+                .import
+                .file_hashes
+                .iter()
+                .map(|file_hash| (file_hash.path.clone(), file_hash.sha256.clone())),
+        )
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+            "d".repeat(64),
+        );
+    changed_request.import.owners.truncate(12);
+    changed_request.import.selectors.truncate(12);
 
     let started_at = Instant::now();
-    let refresh =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
-            .expect("refresh one-percent changed source-index snapshot");
+    let refresh = commit_fixture_generation(&fixture, changed_request)
+        .expect("refresh one-percent changed source-index snapshot");
     let elapsed = started_at.elapsed();
 
     assert!(
@@ -117,22 +219,24 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-high-fanout-lookup");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 1_193),
-    )
-    .expect("write high-fanout source-index snapshot");
+    let refresh_request = large_refresh_request(&project_root, 1_193);
+    let source_snapshot = refresh_request.source_snapshot.clone();
+    commit_fixture_generation(&fixture, refresh_request)
+        .expect("write high-fanout source-index snapshot");
 
     let cold_started_at = Instant::now();
     let cold_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "source",
         Some(&LanguageId::from("rust")),
         128,
@@ -158,19 +262,19 @@ async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-reuse-perf");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let request = refresh_request(&project_root);
     let first =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request.clone())
-            .expect("cold source-index refresh");
+        commit_fixture_generation(&fixture, request.clone()).expect("cold source-index refresh");
     assert!(!first.reused_generation, "first refresh should write rows");
 
     let started_at = Instant::now();
-    let second = ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
-        .expect("warm source-index refresh");
+    let second = commit_fixture_generation(&fixture, request).expect("warm source-index refresh");
     let elapsed = started_at.elapsed();
 
     assert!(second.reused_generation, "second refresh should reuse rows");
@@ -184,375 +288,100 @@ async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
-    let _test_guard = source_index_refresh_test_guard();
-    let root = temp_project_root("source-index-incremental-prune");
-    let client_dir = root.join("client");
-    let project_root = root.join("project");
-    std::fs::create_dir_all(&client_dir).expect("create client dir");
-    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
-
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 2),
-    )
-    .expect("write initial two-owner source-index snapshot");
-
-    let mut pruned_request = large_refresh_request(&project_root, 2);
-    pruned_request.file_count = 1;
-    pruned_request.import.file_hashes.pop();
-    pruned_request.import.owners.pop();
-    pruned_request.import.selectors.pop();
-    let pruned =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, pruned_request)
-            .expect("publish pruned source-index snapshot");
-    assert!(!pruned.reused_generation);
-    assert_eq!(pruned.owner_count, 1);
-    assert_eq!(pruned.selector_count, 1);
-    assert_eq!(pruned.changed_owner_count, 0);
-    assert_eq!(pruned.removed_owner_count, 1);
-    assert_eq!(pruned.posting_write_count, 0);
-
-    let rust_language_id = LanguageId::from("rust");
-    let lookup_deadline = Instant::now() + Duration::from_secs(15);
-    let lookup = loop {
-        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-            &client_dir,
-            "source_index_large_owner_1",
-            Some(&rust_language_id),
-            8,
-        )
-        .await
-        .expect("lookup removed source-index owner");
-        if lookup.state != ClientDbSourceIndexLookupState::Busy {
-            break lookup;
-        }
-        assert!(
-            Instant::now() < lookup_deadline,
-            "removed-owner lookup remained busy past the test deadline"
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    };
-    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Miss);
-    assert!(lookup.candidates.is_empty(), "lookup={lookup:?}");
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[tokio::test(flavor = "current_thread")]
-#[ignore = "explicit source-index memory-bound gate with a 300-owner fixture"]
-async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
-    let _test_guard = source_index_refresh_test_guard();
-    let root = temp_project_root("source-index-lookup-memory-bounds");
-    let client_dir = root.join("client");
-    let project_root = root.join("project");
-    std::fs::create_dir_all(&client_dir).expect("create client dir");
-    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
-
-    let mut request = large_refresh_request(&project_root, 300);
-    for owner in &mut request.import.owners {
-        owner.query_keys.push("shared_lookup_token".into());
-    }
-    for selector in &mut request.import.selectors {
-        selector.query_keys.push("shared_lookup_token".into());
-    }
-    ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
-        .expect("write source-index memory-bound fixture");
-
-    let rust_language_id = LanguageId::from("rust");
-    let lookup_deadline = Instant::now() + Duration::from_secs(15);
-    let bounded = loop {
-        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-            &client_dir,
-            "shared_lookup_token",
-            Some(&rust_language_id),
-            u32::MAX,
-        )
-        .await
-        .expect("lookup with oversized candidate request");
-        if lookup.state != ClientDbSourceIndexLookupState::Busy {
-            break lookup;
-        }
-        assert!(
-            Instant::now() < lookup_deadline,
-            "source-index candidate lookup remained busy past the test deadline"
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    };
-    assert_eq!(bounded.state, ClientDbSourceIndexLookupState::Hit);
-    assert_eq!(bounded.candidates.len(), 256);
-
-    let term_bounded_query = (0..32)
-        .map(|index| format!("absent_term_{index}"))
-        .chain(std::iter::once("shared_lookup_token".to_string()))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let term_bounded = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        &term_bounded_query,
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect("lookup with excess source-index terms");
-    assert_eq!(term_bounded.state, ClientDbSourceIndexLookupState::Miss);
-    assert!(term_bounded.candidates.is_empty());
-
-    let oversized_query = "x".repeat(16 * 1024 + 1);
-    let error = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        &oversized_query,
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect_err("oversized source-index query should fail before token projection");
-    assert!(
-        error.contains("source-index query exceeds byte budget"),
-        "error={error}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn source_index_failed_cold_write_rolls_back_visible_rows() {
-    let _test_guard = source_index_refresh_test_guard();
-    let root = temp_project_root("source-index-refresh-rollback");
-    let client_dir = root.join("client");
-    let project_root = root.join("project");
-    std::fs::create_dir_all(&client_dir).expect("create client dir");
-    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
-
-    let mut invalid_request = refresh_request(&project_root);
-    invalid_request
-        .import
-        .owners
-        .push(invalid_request.import.owners[0].clone());
-    let error =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, invalid_request)
-            .expect_err("duplicate owner must fail the cold write");
-    assert!(
-        error.contains("failed to write Turso source-index owner"),
-        "unexpected cold-write error: {error}"
-    );
-
-    let language_id = LanguageId::from("rust");
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "source_index_perf_fixture",
-        Some(&language_id),
-        8,
-    )
-    .await
-    .expect("lookup after failed cold write");
-    assert_ne!(
-        lookup.state.as_str(),
-        "hit",
-        "a failed cold write must not expose partial source-index rows"
-    );
-
-    let retry = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        refresh_request(&project_root),
-    )
-    .expect("retry after rollback");
-    assert!(
-        !retry.reused_generation,
-        "retry must write a complete generation after the failed transaction"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn source_index_hash_reuse_ignores_scope_dir_mtime() {
-    let root = temp_project_root("source-index-hash-reuse-dir-mtime");
-    let project_root = root.join("project");
-    let source_dir = project_root.join("src");
-    std::fs::create_dir_all(&source_dir).expect("create project src dir");
-    let source_path = source_dir.join("source_index_perf.rs");
-    std::fs::write(&source_path, "pub fn source_index_perf_fixture() {}\n")
-        .expect("write source fixture");
-    let files = vec![agent_semantic_client_db::ClientDbSourceIndexScopeFile {
-        path: source_path,
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        selector_receipts: Vec::new(),
-    }];
-
-    let first = agent_semantic_client_db::source_index_file_hashes(
-        &project_root,
-        &files,
-        None,
-        "registry-fingerprint",
-        std::iter::empty(),
-    )
-    .expect("initial source-index file hashes");
-
-    let transient = source_dir.join(".transient-source-index-mtime");
-    std::fs::write(&transient, "mtime witness").expect("write transient file");
-    std::fs::remove_file(&transient).expect("remove transient file");
-
-    let started_at = Instant::now();
-    let second = agent_semantic_client_db::source_index_file_hashes(
-        &project_root,
-        &files,
-        Some(&first),
-        "registry-fingerprint",
-        std::iter::empty(),
-    )
-    .expect("reused source-index file hashes");
-    let elapsed = started_at.elapsed();
-
-    assert_eq!(
-        second, first,
-        "source-index no-op fingerprint must ignore directory mtime churn"
-    );
-    assert!(
-        elapsed < SOURCE_INDEX_HASH_REUSE_GATE,
-        "source-index hash reuse should remain millisecond-scale; elapsed={elapsed:?} gate={SOURCE_INDEX_HASH_REUSE_GATE:?}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() {
-    let root = temp_project_root("source-index-dirty-git-hash");
-    let project_root = root.join("project");
-    let source_dir = project_root.join("src");
-    std::fs::create_dir_all(&source_dir).expect("create project src dir");
-    let source_path = source_dir.join("dirty_hash.rs");
-    std::fs::write(&source_path, "pub fn first() {}\n").expect("write source fixture");
-    run_git(&project_root, ["init", "--quiet"]);
-    run_git(&project_root, ["add", "src/dirty_hash.rs"]);
-    run_git(
-        &project_root,
-        [
-            "-c",
-            "user.email=source-index@example.invalid",
-            "-c",
-            "user.name=Source Index",
-            "commit",
-            "--quiet",
-            "-m",
-            "initial",
-        ],
-    );
-    let files = vec![agent_semantic_client_db::ClientDbSourceIndexScopeFile {
-        path: source_path.clone(),
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        selector_receipts: Vec::new(),
-    }];
-    let first = agent_semantic_client_db::source_index_file_hashes(
-        &project_root,
-        &files,
-        None,
-        "registry-fingerprint",
-        std::iter::empty(),
-    )
-    .expect("initial source-index file hashes");
-
-    std::fs::write(&source_path, "pub fn other() {}\n").expect("rewrite source fixture");
-    let mut colliding_previous = first.clone();
-    colliding_previous[0].mtime_ms = std::fs::metadata(&source_path)
-        .expect("read rewritten source metadata")
-        .modified()
-        .expect("read rewritten source mtime")
-        .duration_since(UNIX_EPOCH)
-        .expect("rewritten source mtime after epoch")
-        .as_millis()
-        .try_into()
-        .expect("rewritten source mtime fits u64");
-    let second = agent_semantic_client_db::source_index_file_hashes(
-        &project_root,
-        &files,
-        Some(&colliding_previous),
-        "registry-fingerprint",
-        std::iter::empty(),
-    )
-    .expect("dirty source-index file hashes");
-
-    assert_ne!(
-        second[0].sha256, first[0].sha256,
-        "a Git-dirty path must bypass metadata-only hash reuse"
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn source_index_refresh_rewrites_canonical_snapshot_after_file_hash_changes() {
-    let _test_guard = source_index_refresh_test_guard();
-    let root = temp_project_root("source-index-refresh-republish-historical-hash");
-    let client_dir = root.join("client");
-    let project_root = root.join("project");
-    std::fs::create_dir_all(&client_dir).expect("create client dir");
-    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
-
-    let first = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        refresh_request(&project_root),
-    )
-    .expect("write initial source-index facts");
-    assert!(!first.reused_generation);
-
-    let mut changed_request = refresh_request(&project_root);
-    changed_request.import.file_hashes[0].sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
-    let changed =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
-            .expect("publish changed source-index membership");
-    assert!(!changed.reused_generation);
-
-    let restored = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        refresh_request(&project_root),
-    )
-    .expect("republish historical source-index facts");
-    assert!(!restored.reused_generation);
-    assert_ne!(restored.generation_id, first.generation_id);
-    assert_ne!(restored.generation_id, changed.generation_id);
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
 fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
+    let structural_selector =
+        "rust://src/source_index_perf.rs#item/function/source_index_perf_fixture";
+    let source = b"pub fn source_index_perf_fixture() {}";
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "src/source_index_perf.rs",
+        blake3::hash(source).to_hex().to_string(),
+    )])
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        crate::snapshot_fixture::source_snapshot_evidence().provider_digest,
+    );
+    let generation_id = agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+        &source_snapshot,
+    );
     ClientDbSourceIndexRefreshRequest {
         file_count: 1,
+        source_snapshot,
         import: ClientDbSourceIndexImport {
-            generation_id: client_db_source_index_generation_id(),
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+                [(
+                    agent_semantic_client_db::ClientDbSourceIndexPath::from(
+                        "src/source_index_perf.rs",
+                    ),
+                    source.to_vec(),
+                )],
+            ),
+            relations: Vec::new(),
+            generation_id,
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),
             schema_version: "1".into(),
             file_hashes: vec![ClientCacheFileHash {
                 path: "src/source_index_perf.rs".to_string(),
-                sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-                byte_len: 42,
+                sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source)),
+                byte_len: source.len() as u64,
                 mtime_ms: 1,
             }],
             owners: vec![ClientDbSourceIndexOwner {
                 owner_path: "src/source_index_perf.rs".into(),
                 language_id: Some(LanguageId::from("rust")),
-                provider_id: Some(ProviderId::from("rs-harness")),
+                provider_id: Some(ProviderId::from("asp-rust")),
                 source_kind: "source".to_string().into(),
                 line_count: Some(8),
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
             }],
             selectors: vec![ClientDbSourceIndexSelector {
                 owner_path: "src/source_index_perf.rs".into(),
-                selector_id: "source_index_perf_fixture".to_string(),
-                symbol: Some("source_index_perf_fixture".to_string()),
-                kind: Some("function".to_string()),
-                start_line: 1,
-                end_line: 3,
-                source: "pub fn source_index_perf_fixture() {}".to_string().into(),
-                payload_proof: None,
+                provider_id: ProviderId::from("asp-rust"),
+                selector_id: structural_selector.into(),
+                symbol: Some("source_index_perf_fixture".into()),
+                kind: Some("function".into()),
+                source: String::from_utf8(source.to_vec())
+                    .expect("source-index fixture UTF-8")
+                    .into(),
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
+                derived_projections: Vec::new(),
+                projection_record: crate::projection_fixture::projection_record(
+                    crate::projection_fixture::ProjectionFixtureInput {
+                        language_id: "rust",
+                        provider_id: "asp-rust",
+                        owner_path: "src/source_index_perf.rs",
+                        structural_selector,
+                        item_kind: "function",
+                        item_name: "source_index_perf_fixture",
+                        source,
+                        source_byte_start: 0,
+                        source_byte_end: source.len() as u64,
+                    },
+                ),
             }],
         },
     }
+}
+
+fn commit_fixture_generation(
+    fixture: &agent_semantic_client_db::fixture::SourceIndexFixture,
+    mut request: ClientDbSourceIndexRefreshRequest,
+) -> Result<agent_semantic_client_db::ClientDbSourceIndexRefreshReport, String> {
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        request.import.selectors.iter().map(|selector| {
+            (
+                selector
+                    .projection_record
+                    .proof
+                    .owner_path()
+                    .to_owned()
+                    .into(),
+                selector.projection_record.projection_payload.clone(),
+            )
+        }),
+    );
+    request.import.source_blobs = source_blobs.clone();
+    fixture.commit_source_index_generation(request, &source_blobs)
 }
 
 fn large_refresh_request(
@@ -560,42 +389,77 @@ fn large_refresh_request(
     owner_count: u32,
 ) -> ClientDbSourceIndexRefreshRequest {
     let mut file_hashes = Vec::with_capacity(owner_count as usize);
+    let mut source_blob_entries = Vec::with_capacity(owner_count as usize);
     let mut owners = Vec::with_capacity(owner_count as usize);
     let mut selectors = Vec::with_capacity(owner_count as usize);
     for index in 0..owner_count {
         let owner_path = format!("src/generated/owner_{index}.rs");
-        let selector_id = format!("source-index-large-owner-{index}");
         let symbol = format!("source_index_large_owner_{index}");
+        let selector_id = format!("rust://{owner_path}#item/function/{symbol}");
+        let source = format!("pub fn {symbol}() {{}}\n");
         file_hashes.push(ClientCacheFileHash {
-            path: owner_path.clone().into(),
-            sha256: format!("{index:064x}"),
-            byte_len: 64,
+            path: owner_path.clone(),
+            sha256: format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(source.as_bytes())
+            ),
+            byte_len: source.len() as u64,
             mtime_ms: u64::from(index) + 1,
         });
+        source_blob_entries.push((
+            agent_semantic_client_db::ClientDbSourceIndexPath::new(owner_path.clone()),
+            source.as_bytes().to_vec(),
+        ));
         owners.push(ClientDbSourceIndexOwner {
             owner_path: owner_path.clone().into(),
             language_id: Some(LanguageId::from("rust")),
-            provider_id: Some(ProviderId::from("rs-harness")),
+            provider_id: Some(ProviderId::from("asp-rust")),
             source_kind: "source".to_string().into(),
             line_count: Some(1),
             query_keys: vec![symbol.clone().into()],
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
-            selector_id,
-            symbol: Some(symbol.clone()),
-            kind: Some("function".to_string()),
-            start_line: 1,
-            end_line: 1,
-            source: format!("pub fn {symbol}() {{}}").into(),
-            payload_proof: None,
+            provider_id: ProviderId::from("asp-rust"),
+            selector_id: selector_id.clone().into(),
+            symbol: Some(symbol.clone().into()),
+            kind: Some("function".into()),
+            source: source.clone().into(),
             query_keys: vec![symbol.into()],
+            derived_projections: Vec::new(),
+            projection_record: crate::projection_fixture::projection_record(
+                crate::projection_fixture::ProjectionFixtureInput {
+                    language_id: "rust",
+                    provider_id: "asp-rust",
+                    owner_path: &format!("src/generated/owner_{index}.rs"),
+                    structural_selector: &selector_id,
+                    item_kind: "function",
+                    item_name: &format!("source_index_large_owner_{index}"),
+                    source: source.as_bytes(),
+                    source_byte_start: 0,
+                    source_byte_end: source.len() as u64,
+                },
+            ),
         });
     }
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        file_hashes
+            .iter()
+            .map(|file_hash| (file_hash.path.clone(), file_hash.sha256.clone())),
+    )
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "d".repeat(64),
+    );
     ClientDbSourceIndexRefreshRequest {
         file_count: owner_count,
+        source_snapshot,
         import: ClientDbSourceIndexImport {
-            generation_id: client_db_source_index_generation_id(),
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+                source_blob_entries,
+            ),
+            relations: Vec::new(),
+            generation_id: CacheGenerationId::from("snapshot-bound-source-index-large"),
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),
             schema_version: "1".into(),
@@ -604,6 +468,22 @@ fn large_refresh_request(
             selectors,
         },
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn large_high_term_refresh_request(
+    project_root: &Path,
+    owner_count: u32,
+    unique_terms_per_owner: u32,
+) -> ClientDbSourceIndexRefreshRequest {
+    let mut request = large_refresh_request(project_root, owner_count);
+    for (owner_index, owner) in request.import.owners.iter_mut().enumerate() {
+        owner.query_keys.extend(
+            (0..unique_terms_per_owner)
+                .map(|term_index| format!("z{owner_index:04}q{term_index:02}unique").into()),
+        );
+    }
+    request
 }
 
 fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'static str>) {
@@ -627,12 +507,78 @@ fn temp_project_root(label: &str) -> PathBuf {
         .as_nanos();
     std::env::temp_dir().join(format!("asp-{label}-{nonce}"))
 }
-#[test]
-fn source_index_generation_ids_are_monotonic() {
-    let first = client_db_source_index_generation_id();
-    let second = client_db_source_index_generation_id();
 
-    assert!(first.as_str().starts_with("source-index-"));
-    assert!(second.as_str().starts_with("source-index-"));
-    assert!(first.as_str() < second.as_str());
+#[cfg(not(debug_assertions))]
+fn directory_tree_bytes(root: &Path) -> Result<u64, String> {
+    let mut bytes = 0_u64;
+    for entry in std::fs::read_dir(root).map_err(|error| {
+        format!(
+            "read performance artifact directory {}: {error}",
+            root.display()
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            format!(
+                "read performance artifact entry {}: {error}",
+                root.display()
+            )
+        })?;
+        let metadata = entry.metadata().map_err(|error| {
+            format!(
+                "read performance artifact metadata {}: {error}",
+                entry.path().display()
+            )
+        })?;
+        if metadata.is_dir() {
+            bytes = bytes.saturating_add(directory_tree_bytes(&entry.path())?);
+        } else if metadata.is_file() {
+            bytes = bytes.saturating_add(metadata.len());
+        }
+    }
+    Ok(bytes)
+}
+
+#[cfg(all(not(debug_assertions), target_os = "macos"))]
+fn current_process_rss_bytes() -> Result<u64, String> {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .map_err(|error| format!("measure current process RSS with ps: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "measure current process RSS with ps: status={}",
+            output.status
+        ));
+    }
+    let kibibytes = String::from_utf8(output.stdout)
+        .map_err(|error| format!("decode current process RSS: {error}"))?
+        .trim()
+        .parse::<u64>()
+        .map_err(|error| format!("parse current process RSS: {error}"))?;
+    Ok(kibibytes.saturating_mul(1024))
+}
+
+#[cfg(all(not(debug_assertions), target_os = "linux"))]
+fn current_process_rss_bytes() -> Result<u64, String> {
+    let status = std::fs::read_to_string("/proc/self/status")
+        .map_err(|error| format!("read /proc/self/status for RSS: {error}"))?;
+    let rss_line = status
+        .lines()
+        .find(|line| line.starts_with("VmRSS:"))
+        .ok_or_else(|| "read /proc/self/status for RSS: VmRSS missing".to_string())?;
+    let kibibytes = rss_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| "read /proc/self/status for RSS: value missing".to_string())?
+        .parse::<u64>()
+        .map_err(|error| format!("parse /proc/self/status RSS: {error}"))?;
+    Ok(kibibytes.saturating_mul(1024))
+}
+
+#[cfg(all(
+    not(debug_assertions),
+    not(any(target_os = "macos", target_os = "linux"))
+))]
+fn current_process_rss_bytes() -> Result<u64, String> {
+    Err("source-index RSS performance gate supports macOS and Linux only".to_string())
 }

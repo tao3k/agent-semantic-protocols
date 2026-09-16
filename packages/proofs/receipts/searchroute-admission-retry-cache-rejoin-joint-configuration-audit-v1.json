@@ -1,0 +1,49 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinJointConfiguration.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationSystem)\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationVoteLedger system PolicyDigest)\n  (old : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ConfigurationCertificate system PolicyDigest)\n  (joint :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointConfigurationCertificate system PolicyDigest),\n  old.term = joint.term →\n    old.index = joint.index →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.OldCertificateValid system ledger old →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointCertificateValid system ledger joint →\n          old.receipt = joint.receipt",
+   "theoremFamily": "old-joint-history-bridge",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJC-OLD", "ASP-RFC-10.05-CRJC-VOTE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.old_certificate_and_joint_certificate_same_slot_agree",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationSystem)\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationVoteLedger system PolicyDigest)\n  (new : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ConfigurationCertificate system PolicyDigest)\n  (joint :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointConfigurationCertificate system PolicyDigest),\n  new.term = joint.term →\n    new.index = joint.index →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.NewCertificateValid system ledger new →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointCertificateValid system ledger joint →\n          new.receipt = joint.receipt",
+   "theoremFamily": "new-joint-history-bridge",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJC-NEW", "ASP-RFC-10.05-CRJC-VOTE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.new_certificate_and_joint_certificate_same_slot_agree",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationSystem)\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationVoteLedger system PolicyDigest)\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointConfigurationCertificate system PolicyDigest),\n  ¬system.newQuorum certificate.newSigners →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointCertificateValid system ledger certificate",
+   "theoremFamily": "missing-new-quorum-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJC-JOINT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.missing_new_quorum_cannot_finalize_reconfiguration",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationSystem)\n  (ledger :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.ReconfigurationVoteLedger system PolicyDigest)\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointConfigurationCertificate system PolicyDigest),\n  ¬system.oldQuorum certificate.oldSigners →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.JointCertificateValid system ledger certificate",
+   "theoremFamily": "missing-old-quorum-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJC-JOINT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration.missing_old_quorum_cannot_finalize_reconfiguration",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 4,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 0}

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-search-playbook"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lightweight V1 Scheme Search Playbook syntax and lowering contract."
+
+[dependencies]
+agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
+agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
+serde = { workspace = true, features = ["derive"] }
+
+[build-dependencies]
+asp-rust-project-harness-policy = { workspace = true }

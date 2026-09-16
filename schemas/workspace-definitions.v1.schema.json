@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/workspace-definitions.v1.schema.json",
+  "title": "Workspace Shared Definitions v1",
+  "type": "object",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryIdentity",
+        "worktreeIdentity",
+        "workspaceRootDigest"
+      ],
+      "properties": {
+        "repositoryIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worktreeIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRootDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  }
+}

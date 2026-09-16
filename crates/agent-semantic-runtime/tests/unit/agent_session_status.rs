@@ -1,20 +1,29 @@
-use std::{fs, path::Path};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use crate::agent_session_status::{
-    codex_rollout_session_metadata, codex_rollout_session_metadata_recent,
-    current_agent_runtime_session,
-};
+use std::fs;
+use std::path::Path;
+
+use crate::agent_session_status::codex_rollout_session_metadata;
+use crate::agent_session_status::codex_rollout_session_metadata_recent;
+use crate::agent_session_status::current_agent_runtime_session;
 use crate::codex_rollout_sessions::codex_rollout_session_index;
 
 static CODEX_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static AGENT_SESSION_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-const AGENT_SESSION_ENV_VARS: [&str; 5] = [
+const AGENT_SESSION_ENV_VARS: [&str; 6] = [
+    "CODEX_SESSION_ID",
     "CODEX_THREAD_ID",
     "CLAUDE_CODE_SESSION_ID",
     "CLAUDE_CODE_REMOTE_SESSION_ID",
     "AGENT_SESSION_ID",
     "SESSION_ID",
 ];
+
+fn runtime_session_id(value: &str) -> crate::agent_session_status::RuntimeSessionId {
+    crate::agent_session_status::RuntimeSessionId::try_new(value).expect("valid runtime session id")
+}
 
 struct CodexHomeEnvGuard {
     _guard: std::sync::MutexGuard<'static, ()>,
@@ -151,18 +160,15 @@ fn codex_rollout_metadata_uses_latest_turn_context() {
     )
     .expect("write rollout");
 
-    let metadata = codex_rollout_session_metadata("child-session")
+    let metadata = codex_rollout_session_metadata(&runtime_session_id("child-session"))
         .expect("read metadata")
         .expect("metadata");
 
-    assert_eq!(metadata.model.as_deref(), Some("gpt-5.5"));
-    assert_eq!(metadata.reasoning_effort.as_deref(), Some("low"));
-    assert_eq!(
-        metadata.sandbox_policy.as_deref(),
-        Some("danger-full-access")
-    );
-    assert_eq!(metadata.approval_policy.as_deref(), Some("on-request"));
-    assert_eq!(metadata.permission_profile.as_deref(), Some("full"));
+    assert_eq!(metadata.model(), Some("gpt-5.5"));
+    assert_eq!(metadata.reasoning_effort(), Some("low"));
+    assert_eq!(metadata.sandbox_policy(), Some("danger-full-access"));
+    assert_eq!(metadata.approval_policy(), Some("on-request"));
+    assert_eq!(metadata.permission_profile(), Some("full"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -197,20 +203,30 @@ fn codex_rollout_metadata_recent_rejects_stale_registration_window() {
     });
     fs::write(&rollout, format!("{session_meta}\n{turn_context}\n")).expect("write rollout");
 
-    let metadata = codex_rollout_session_metadata("child-session")
+    let metadata = codex_rollout_session_metadata(&runtime_session_id("child-session"))
         .expect("read metadata")
         .expect("metadata");
-    let reference_unix = metadata.rollout_created_at_unix.expect("rollout timestamp");
+    let reference_unix = metadata
+        .rollout_created_at_unix()
+        .expect("rollout timestamp");
 
     assert!(
-        codex_rollout_session_metadata_recent("child-session", reference_unix + 30, 30)
-            .expect("recent lookup")
-            .is_some()
+        codex_rollout_session_metadata_recent(
+            &runtime_session_id("child-session"),
+            reference_unix + 30,
+            30,
+        )
+        .expect("recent lookup")
+        .is_some()
     );
     assert!(
-        codex_rollout_session_metadata_recent("child-session", reference_unix + 31, 30)
-            .expect("stale lookup")
-            .is_none()
+        codex_rollout_session_metadata_recent(
+            &runtime_session_id("child-session"),
+            reference_unix + 31,
+            30,
+        )
+        .expect("stale lookup")
+        .is_none()
     );
 
     let _ = fs::remove_dir_all(root);
@@ -364,71 +380,71 @@ fn codex_rollout_session_index_lists_root_subagents_and_nested_depth() {
     });
     fs::write(&other, format!("{other_session_meta}\n")).expect("write other rollout");
 
-    let index = codex_rollout_session_index(root_session_id)
+    let index = codex_rollout_session_index(&runtime_session_id(root_session_id))
         .expect("index lookup")
         .expect("index");
-    assert_eq!(index.root_session_id, root_session_id);
-    assert_eq!(index.records.len(), 2);
-    assert_eq!(index.scanned_rollout_count, 3);
+    assert_eq!(index.root_session_id(), root_session_id);
+    assert_eq!(index.records().len(), 2);
+    assert_eq!(index.scanned_rollout_count(), 3);
 
     let child = index
-        .records
+        .records()
         .iter()
-        .find(|record| record.session_id == child_session_id)
+        .find(|record| record.session_id().as_str() == child_session_id)
         .expect("child record");
-    assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
-    assert_eq!(child.thread_source.as_deref(), Some("subagent"));
-    assert_eq!(child.agent_role.as_deref(), Some("asp_explorer"));
     assert_eq!(
-        child.agent_path.as_deref(),
+        child.parent_thread_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(child.thread_source(), Some("subagent"));
+    assert_eq!(child.agent_role(), Some("asp_explorer"));
+    assert_eq!(
+        child.agent_path(),
         Some("/Users/example/.codex/agents/asp-explorer.toml")
     );
-    assert_eq!(child.spawn_depth, Some(1));
-    assert_eq!(child.model.as_deref(), Some("gpt-5.4-mini"));
-    assert_eq!(child.reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(child.spawn_depth(), Some(1));
+    assert_eq!(child.model(), Some("gpt-5.4-mini"));
+    assert_eq!(child.reasoning_effort(), Some("low"));
 
     let nested = index
-        .records
+        .records()
         .iter()
-        .find(|record| record.session_id == nested_session_id)
+        .find(|record| record.session_id().as_str() == nested_session_id)
         .expect("nested record");
-    assert_eq!(nested.parent_thread_id.as_deref(), Some(child_session_id));
-    assert_eq!(nested.agent_role.as_deref(), Some("asp_explorer"));
-    assert_eq!(nested.spawn_depth, Some(2));
-
-    assert_eq!(index.activity_by_session.len(), 3);
-    let root_activity = index
-        .activity_by_session
-        .get(root_session_id)
-        .expect("root activity");
-    assert_eq!(root_activity.status, "active");
     assert_eq!(
-        root_activity.last_running_session_id.as_deref(),
+        nested.parent_thread_id().map(|value| value.as_str()),
         Some(child_session_id)
     );
-    assert!(!root_activity.running_session_closed);
+    assert_eq!(nested.agent_role(), Some("asp_explorer"));
+    assert_eq!(nested.spawn_depth(), Some(2));
+
+    assert_eq!(index.activity_count(), 3);
+    let root_activity = index
+        .activity_for_session(&runtime_session_id(root_session_id))
+        .expect("root activity");
+    assert_eq!(root_activity.status(), "active");
+    assert_eq!(
+        root_activity.last_running_session_id(),
+        Some(child_session_id)
+    );
+    assert!(!root_activity.running_session_closed());
 
     let child_activity = index
-        .activity_by_session
-        .get(child_session_id)
+        .activity_for_session(&runtime_session_id(child_session_id))
         .expect("child activity");
     assert_eq!(
-        child_activity.last_running_session_id.as_deref(),
+        child_activity.last_running_session_id(),
         Some(nested_session_id)
     );
-    assert_eq!(child_activity.scanned_line_count, 3);
+    assert_eq!(child_activity.scanned_line_count(), 3);
 
     let nested_activity = index
-        .activity_by_session
-        .get(nested_session_id)
+        .activity_for_session(&runtime_session_id(nested_session_id))
         .expect("nested activity");
-    assert_eq!(nested_activity.status, "closed");
+    assert_eq!(nested_activity.status(), "closed");
+    assert_eq!(nested_activity.current_turn_id(), Some("nested-turn"));
     assert_eq!(
-        nested_activity.current_turn_id.as_deref(),
-        Some("nested-turn")
-    );
-    assert_eq!(
-        nested_activity.last_terminal_event.as_deref(),
+        nested_activity.last_terminal_event(),
         Some("event_msg:closed")
     );
 
@@ -445,7 +461,7 @@ fn codex_rollout_index_joins_v2_parent_spawn_identity_into_sparse_child_metadata
     ));
     let _ = fs::remove_dir_all(&root);
     let _env = CodexHomeEnvGuard::set(&root);
-    let rollout_dir = root.join("sessions").join("2026").join("07").join("14");
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("02");
     fs::create_dir_all(&rollout_dir).expect("create rollout dir");
 
     let root_rollout = rollout_dir.join(format!("rollout-root-{root_session_id}.jsonl"));
@@ -499,22 +515,28 @@ fn codex_rollout_index_joins_v2_parent_spawn_identity_into_sparse_child_metadata
     )
     .expect("write child rollout");
 
-    let index = codex_rollout_session_index(root_session_id)
+    let index = codex_rollout_session_index(&runtime_session_id(root_session_id))
         .expect("index lookup")
         .expect("index");
     let child = index
-        .records
+        .records()
         .iter()
-        .find(|record| record.session_id == child_session_id)
+        .find(|record| record.session_id().as_str() == child_session_id)
         .expect("joined child record");
-    assert_eq!(child.root_session_id.as_deref(), Some(root_session_id));
-    assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
-    assert_eq!(child.thread_source.as_deref(), Some("subagent"));
-    assert_eq!(child.spawn_depth, Some(1));
-    assert_eq!(child.agent_role.as_deref(), Some("default"));
-    assert_eq!(child.agent_path.as_deref(), Some("/root/asp_explorer"));
-    assert_eq!(child.model.as_deref(), Some("gpt-5.6-sol"));
-    assert_eq!(child.reasoning_effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        child.root_session_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(
+        child.parent_thread_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(child.thread_source(), Some("subagent"));
+    assert_eq!(child.spawn_depth(), Some(1));
+    assert_eq!(child.agent_role(), Some("default"));
+    assert_eq!(child.agent_path(), Some("/root/asp_explorer"));
+    assert_eq!(child.model(), Some("gpt-5.6-sol"));
+    assert_eq!(child.reasoning_effort(), Some("xhigh"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -529,7 +551,7 @@ fn codex_rollout_index_recovers_child_from_root_attributed_session_meta_without_
     ));
     let _ = fs::remove_dir_all(&root);
     let _env = CodexHomeEnvGuard::set(&root);
-    let rollout_dir = root.join("sessions").join("2026").join("07").join("14");
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("02");
     fs::create_dir_all(&rollout_dir).expect("create rollout dir");
 
     let root_rollout = rollout_dir.join(format!("rollout-root-{root_session_id}.jsonl"));
@@ -575,19 +597,22 @@ fn codex_rollout_index_recovers_child_from_root_attributed_session_meta_without_
     )
     .expect("write child rollout");
 
-    let index = codex_rollout_session_index(root_session_id)
+    let index = codex_rollout_session_index(&runtime_session_id(root_session_id))
         .expect("index lookup")
         .expect("root-attributed child index");
     let child = index
-        .records
+        .records()
         .iter()
-        .find(|record| record.session_id == child_session_id)
+        .find(|record| record.session_id().as_str() == child_session_id)
         .expect("root-attributed child record");
-    assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
-    assert_eq!(child.agent_role.as_deref(), Some("default"));
-    assert_eq!(child.agent_path.as_deref(), Some("/root/asp_explorer"));
-    assert_eq!(child.model.as_deref(), Some("gpt-5.6-sol"));
-    assert_eq!(child.reasoning_effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        child.parent_thread_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(child.agent_role(), Some("default"));
+    assert_eq!(child.agent_path(), Some("/root/asp_explorer"));
+    assert_eq!(child.model(), Some("gpt-5.6-sol"));
+    assert_eq!(child.reasoning_effort(), Some("xhigh"));
 
     let _ = fs::remove_dir_all(root);
 }

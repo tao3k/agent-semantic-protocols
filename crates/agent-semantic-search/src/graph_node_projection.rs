@@ -1,4 +1,9 @@
-use serde_json::{Value, json};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use serde_json::Value;
+use serde_json::json;
 
 pub fn stable_graph_node_id(kind: &str, value: &str) -> String {
     let mut rendered = String::with_capacity(kind.len() + value.len() + 1);

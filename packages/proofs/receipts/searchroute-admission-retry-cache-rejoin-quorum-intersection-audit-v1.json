@@ -1,0 +1,58 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme)\n  (accounting :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.PairWeightAccounting policy left.signers\n      right.signers),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy left →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy right →\n      policy.quorumWeight + policy.quorumWeight ≤\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeight policy +\n          accounting.intersectionWeight",
+   "theoremFamily": "accepted-pair-overlap-lower-bound",
+   "rfcClauseIds": ["CRQI-ACCOUNTING", "CRQI-PAIR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.accepted_certificates_establish_overlap_lower_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme)\n  (accounting :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.PairWeightAccounting policy left.signers\n      right.signers)\n  (faultBound : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeight policy + faultBound <\n      policy.quorumWeight + policy.quorumWeight →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy left →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy right →\n        faultBound < accounting.intersectionWeight",
+   "theoremFamily": "fault-bounded-honest-overlap",
+   "rfcClauseIds": ["CRQI-HONEST", "CRQI-PAIR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.threshold_over_fault_bound_forces_honest_overlap",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme)\n  (accounting :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.PairWeightAccounting policy left.signers\n      right.signers),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeight policy <\n      policy.quorumWeight + policy.quorumWeight →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy left →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy right →\n        0 < accounting.intersectionWeight",
+   "theoremFamily": "strict-majority-positive-overlap",
+   "rfcClauseIds": ["CRQI-MAJORITY", "CRQI-PAIR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.strict_weight_majority_forces_positive_overlap",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ totalWeight quorumWeight leftWeight rightWeight intersectionWeight,\n  quorumWeight ≤ leftWeight ∧\n    quorumWeight ≤ rightWeight ∧\n      leftWeight + rightWeight ≤ totalWeight + intersectionWeight ∧\n        quorumWeight + quorumWeight = totalWeight ∧ intersectionWeight = 0",
+   "theoremFamily": "half-threshold-disjoint-counterexample",
+   "rfcClauseIds": ["CRQI-COUNTEREXAMPLE", "CRQI-MAJORITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.half_total_threshold_allows_disjoint_realized_quorums",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ totalWeight quorumWeight leftWeight rightWeight intersectionWeight faultBound,\n  quorumWeight ≤ leftWeight ∧\n    quorumWeight ≤ rightWeight ∧\n      leftWeight + rightWeight ≤ totalWeight + intersectionWeight ∧\n        totalWeight < quorumWeight + quorumWeight ∧ intersectionWeight ≤ faultBound",
+   "theoremFamily": "all-faulty-overlap-counterexample",
+   "rfcClauseIds": ["CRQI-COUNTEREXAMPLE", "CRQI-HONEST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.strict_majority_overlap_can_be_entirely_faulty",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

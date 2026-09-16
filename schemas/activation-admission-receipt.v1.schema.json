@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/activation-admission-receipt.v1.schema.json",
+  "title": "ASP Activation Admission Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "decision",
+    "reason",
+    "gates"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.activation-admission-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "decision": {
+      "enum": [
+        "reuse",
+        "rebuild-and-publish"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "complete-identity",
+        "activation-missing",
+        "artifact-receipt-invalid",
+        "activation-schema-invalid",
+        "project-identity-mismatch",
+        "provider-selection-drift",
+        "repository-candidate-generation-drift"
+      ]
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activationReadable",
+        "artifactReceiptValid",
+        "schemaValid",
+        "projectIdentityMatches",
+        "providerSelectionMatches",
+        "repositoryCandidateGenerationMatches"
+      ],
+      "properties": {
+        "activationReadable": { "type": "boolean" },
+        "artifactReceiptValid": { "type": "boolean" },
+        "schemaValid": { "type": "boolean" },
+        "projectIdentityMatches": { "type": "boolean" },
+        "providerSelectionMatches": { "type": "boolean" },
+        "repositoryCandidateGenerationMatches": { "type": "boolean" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "reuse" }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": { "const": "complete-identity" },
+          "gates": {
+            "properties": {
+              "activationReadable": { "const": true },
+              "artifactReceiptValid": { "const": true },
+              "schemaValid": { "const": true },
+              "projectIdentityMatches": { "const": true },
+              "providerSelectionMatches": { "const": true },
+              "repositoryCandidateGenerationMatches": { "const": true }
+            }
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "properties": {
+            "reason": { "const": "complete-identity" }
+          },
+          "required": ["reason"]
+        }
+      }
+    }
+  ]
+}

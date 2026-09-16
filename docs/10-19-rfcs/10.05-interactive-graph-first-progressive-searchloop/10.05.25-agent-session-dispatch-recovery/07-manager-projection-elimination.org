@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Manager Projection Elimination
+#+property: RFC_ID ASP-10.05.25.07
+#+property: STATUS normative
+
+* Decision
+
+ASP Manager Projection is a legacy architecture and is removed.
+
+ASP MUST NOT render, copy, symlink, synchronize, or mutate host agent profile
+files.  ASP MUST NOT project model, reasoning effort, permission, sandbox, or
+tool capability policy into Codex, Claude, or another host.  The host agent
+registry and the live host lifecycle receipt are the only authorities for
+those fields.
+
+* ASP-owned route registry
+
+ASP retains only the information required to address and supervise a typed
+agent session:
+
+- agent type
+- ASP session name and lifetime
+- ASP roles
+- platform identifier to host agent name
+
+The shared contract is =agent-route-registry.v1=.  Projection paths, source
+profile paths, models, reasoning effort, permissions, sandboxes, and tool
+capabilities are not representable in that schema.
+
+* Removed surfaces
+
+The following are removed rather than deprecated:
+
+- =$ASP_STATE_HOME/agents= as a host-profile publication owner
+- dynamic model/profile rendering in =agent-semantic-config=
+- Codex or Claude profile symlink publication owned by ASP
+- ASP-managed =[agents.*]= injection into host configuration
+- =asp agent config sync=
+- admission or replacement decisions based on an ASP-expected model or
+  reasoning effort
+
+There is no compatibility loader for legacy manager-projection fields.  A
+legacy field is a schema error and fails before lifecycle routing.
+
+* Lifecycle admission
+
+Admission consumes an ASP route and a fresh host lifecycle attestation.  The
+attestation supplies the child identity and canonical target.  Host policy is
+observed for diagnostics only; it is not compared against an ASP shadow copy.
+
+* Counterexample obligation
+
+Any implementation that adds an expected model from an ASP projection can
+reject a valid, fresh host child after the host changes its model.  The Lean
+owner =ASPProof.ManagerProjectionElimination= preserves this counterexample and
+proves route-only admission has no manager-projection input.

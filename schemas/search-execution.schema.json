@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic.protocols/schemas/search-execution",
+  "title": "ASP Search Execution Frame",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "frameSchemaId",
+    "frameSchemaVersion",
+    "requestId",
+    "sessionId",
+    "operation",
+    "context",
+    "cancellationId"
+  ],
+  "properties": {
+    "frameSchemaId": {
+      "const": "asp.search-execution"
+    },
+    "frameSchemaVersion": {
+      "const": "1"
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation": {
+      "enum": ["playbook", "query", "exact"]
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding", "commitDigest"],
+      "properties": {
+        "binding": { "$ref": "https://agent.semantic.protocols/schemas/content-binding" },
+        "commitDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "runtimeBinding": { "$ref": "runtime-execution-binding.v2.schema.json" }
+      }
+    },
+    "selector": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "cancellationId": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "enum": ["query", "exact"]
+          }
+        }
+      },
+      "then": {
+        "required": ["selector"]
+      }
+    }
+  ]
+}

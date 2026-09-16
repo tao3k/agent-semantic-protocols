@@ -1,0 +1,346 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Shortcut Envelope Admission
+#+subtitle: A typed boundary from serialized cache claims to verified replay
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module closes the raw-envelope admission boundary identified by
+[[file:01.19-searchroute-shortcut-commitment-replay.org][01.19]].
+
+It proves the typed control flow from raw input to verified replay or explicit
+chain fallback.  It does not implement a serializer, hash function, signature
+verifier, Rust cache, or Python graph runtime.
+
+* Result
+
+A raw shortcut envelope cannot be replayed directly.
+
+#+name: shortcut-envelope-admission-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "AdmissionGate" =
+  "schemaMatches"
+  and "hashAlgorithmMatches"
+  and "canonicalDigestMatches"
+  and "commitmentMatches"
+  and "directDominanceClaimed" $
+
+$ "RawEnvelope" + "AdmissionWitness"
+  arrow.r "VerifiedCachedShortcut" $
+
+$ "RawEnvelope" + "no witness"
+  arrow.r "ExplicitChainFallback" $
+#+end_src
+
+The verified replay value is derived from the admitted raw commitment and the
+endpoint-dominance proof.  It is not stored as an independent third copy of the
+state.
+
+#+name: verified-shortcut-replay-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "cached.commitment" = "raw.commitment" $
+
+$ "admitted"(r)
+  quad "implies" quad
+  "replayAccepts"("policy.commitment", r) = #true $
+
+$ "replayAccepts"(C, r) = #true
+  quad "implies" quad
+  "StrictDominates"("endpoint", "start") = #true $
+
+$ "context changed"
+  quad "implies" quad
+  "replayAccepts"(C, r) = #false $
+#+end_src
+
+* Typed admission pipeline
+
+** Raw envelope
+
+=RawShortcutEnvelope= is untrusted data containing:
+
+- schema version;
+- hash-algorithm identifier;
+- claimed canonical payload digest;
+- the nine-field shortcut commitment;
+- a Boolean direct-dominance claim.
+
+The Boolean claim is not a proof.
+
+** Admission policy
+
+=ShortcutAdmissionPolicy= supplies:
+
+- the expected schema version;
+- the expected hash-algorithm identifier;
+- a locally recomputed canonical payload digest;
+- the expected nine-field shortcut commitment.
+
+** Gate facts
+
+The executable admission gate is sound and complete with respect to a typed
+=AdmissionGateFacts= record.  Passing the gate proves exact equality of the
+schema, algorithm, canonical digest, and commitment tokens, plus the presence
+of a positive direct-dominance claim.
+
+These gate facts still do not prove endpoint dominance.
+
+** Admission witness
+
+=AdmissionWitness= contains:
+
+- all gate facts;
+- an actual Lean proof of
+  =StrictDominates endpoint start = true=.
+
+The witness lives in =Type= because it is optional proof-carrying data used by
+the admission control flow.
+
+** Verified shortcut
+
+=VerifiedCachedShortcut= stores only:
+
+- the raw envelope;
+- its admission witness.
+
+The replayable =CachedShortcut= is derived from those two fields.  This prevents
+the raw commitment, proof witness, and cached commitment from drifting apart.
+
+* Normative clauses
+
+** SEA-GATE: executable admission is equivalent to typed gate facts
+
+The admission gate MUST compare:
+
+1. schema version;
+2. hash-algorithm identity;
+3. recomputed canonical payload digest;
+4. the complete shortcut commitment;
+5. the direct-dominance claim bit.
+
+Gate success MUST construct the corresponding equality facts.  Complete facts
+MUST reproduce gate success.
+
+** SEA-SCHEMA: schema mismatch blocks admission
+
+If the expected and raw schema versions differ, no =AdmissionWitness= can be
+constructed.
+
+Unknown schema versions MUST fail closed.  They MUST NOT be interpreted by
+dropping unrecognized commitment fields.
+
+** SEA-HASH: hash-algorithm mismatch blocks admission
+
+If the expected and raw hash-algorithm identifiers differ, no admission witness
+exists.
+
+An algorithm identifier is part of the proof input.  Equal digest bytes under
+different algorithms are not equal commitments.
+
+** SEA-CANONICAL: the digest is locally recomputed
+
+The raw envelope's canonical payload digest MUST equal a locally recomputed
+digest under the selected schema and algorithm.
+
+This stage proves equality of digest tokens.  Collision resistance and
+canonical byte encoding remain separate proof obligations.
+
+** SEA-COMMITMENT: the complete replay commitment is admitted
+
+The expected nine-field commitment MUST equal the raw commitment before
+admission.  A canonical payload digest does not replace field-level commitment
+semantics.
+
+** SEA-PROOF: a Boolean claim cannot construct verified replay
+
+=claimedDirectDominance=true= is only a gate fact.  Admission additionally
+requires a verifier-produced Lean proof of the endpoint relation.
+
+The proof may come from:
+
+- explicit-chain replay;
+- a validated theorem/audit receipt;
+- another independently specified proof provider.
+
+The provider boundary must be named in the admission receipt.
+
+** SEA-ADMISSION: optional evidence is proof-carrying data
+
+Lean does not permit a =Prop=-valued admission witness to be carried directly
+inside =Option=.  The witness is therefore an explicit data type containing
+proof fields.
+
+The admission function consumes:
+
+#+begin_example
+Option AdmissionWitness
+#+end_example
+
+and returns either a verified shortcut or an explicit-chain fallback.
+
+** SEA-FALLBACK: missing evidence never fabricates verification
+
+When no admission witness is available, the only result is
+=ExplicitChainFallback=.
+
+Fallback is not an error terminal.  It is a progressive SearchLoop transition
+to explicit chain retrieval or reconstruction.
+
+** SEA-COHERENCE: replay state is derived, not duplicated
+
+The verified type MUST NOT independently store:
+
+- a raw commitment;
+- an admission witness;
+- a separately mutable cached commitment.
+
+Such a structure admits inconsistent values even if its normal constructor
+happens to populate them consistently.
+
+The replay cache MUST be derived from the raw commitment and proof witness so
+the coherence invariant is structural.
+
+** SEA-REPLAY: admission and freshness remain separate
+
+A verified shortcut is accepted under the policy that admitted it.  Replaying
+it against a changed commitment still invokes the 01.19 freshness matcher and
+fails closed.
+
+Verification does not make a cache entry permanently valid across generations.
+
+** SEA-SOUNDNESS: accepted verified replay preserves removal soundness
+
+An accepted verified replay yields:
+
+#+begin_example
+StrictDominates endpoint start = true
+#+end_example
+
+The proof comes from the admission witness carried by the verified value, not
+from the raw Boolean claim.
+
+** SEA-RECEIPT: verified replay remains constant-shape
+
+Verified replay projects a constant number of fields.  Explicit-chain fallback
+grows with chain length.
+
+The proof model establishes that the verified projection is smaller for every
+nonempty chain.  It does not claim that proof admission itself is free.
+
+* SearchLoop implications
+
+** Admission is an internal router phase
+
+The model-facing SearchLoop SHOULD observe one typed result:
+
+#+begin_example
+verified-shortcut
+explicit-chain-fallback
+#+end_example
+
+It does not need separate model turns for schema, algorithm, digest,
+commitment, and proof checks.
+
+** Failure receipts stay compact
+
+A fallback receipt SHOULD include:
+
+- the failed gate identifier;
+- expected and actual generation/digest identifiers where safe;
+- the next explicit-chain action;
+- no full source chain unless requested.
+
+This keeps rejection useful without turning every miss into a large audit
+packet.
+
+** Cache metrics
+
+The system SHOULD measure separately:
+
+- raw envelope lookup;
+- admission-gate pass;
+- proof-witness availability;
+- verified replay acceptance;
+- explicit-chain fallback;
+- model prefix-cache reuse.
+
+** Trust boundary
+
+Only the component capable of constructing =AdmissionWitness= belongs inside
+the proof-admission boundary.  Parsers, caches, and JSON decoders that only
+produce =RawShortcutEnvelope= are outside it.
+
+* Logic findings
+
+** Finding 1: optional proofs are data, not bare propositions
+
+The first model declared =AdmissionWitness : Prop= and then attempted to place
+it in =Option=.  Lean rejected that control-flow representation.
+
+Evidence selected, stored, or transferred by a program must be represented as
+proof-carrying data in =Type=.
+
+** Finding 2: verified-state duplication breaks the invariant
+
+The first verified structure independently stored raw, admission, and cached
+values.  Although the constructor used matching values, callers could build an
+inconsistent structure directly.
+
+Deriving the cached value from raw+witness makes inconsistency unrepresentable.
+
+** Finding 3: gate truth is not endpoint proof
+
+Schema, hash, canonical digest, commitment, and claim-bit equality only prove
+that the envelope matches the expected serialized claim.  They do not prove
+the mathematical dominance relation.
+
+The endpoint proof remains an explicit witness field.
+
+** Finding 4: digest equality still does not prove payload equality
+
+The model assumes a locally recomputed digest token and proves its equality.
+Without a collision-resistance assumption or full canonical-field comparison,
+equal digests do not logically imply equal source payloads.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteShortcutEnvelopeAdmission.lean][SearchRouteShortcutEnvelopeAdmission.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteShortcutEnvelopeAdmission.lean][SearchRouteShortcutEnvelopeAdmission audit]]
+
+The machine-consumable receipt is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-shortcut-envelope-admission-audit-v1.json][searchroute-shortcut-envelope-admission-audit-v1.json]]
+
+The receipt covers sixteen declarations and MUST report:
+
+#+begin_example
+axiomDependentDeclarationCount = 0
+axiomInventory = []
+#+end_example
+
+* Next proof boundary
+
+The next module should formalize canonical payload identity and digest use:
+
+1. define a versioned canonical shortcut payload with ordered fields;
+2. define an injective canonical encoding into a byte/word sequence;
+3. separate full-field replay from digest-compressed replay;
+4. model a digest function and an explicit collision-free-on-admitted-payloads
+   assumption;
+5. prove that digest equality implies payload equality only under that
+   assumption;
+6. prove that full-field replay needs no cryptographic assumption;
+7. keep schema and hash-algorithm identifiers inside the canonical preimage.
+
+Until that closure exists, implementations may use full canonical commitment
+fields for assumption-free replay.  Digest-only replay MUST name its
+collision-resistance assumption and algorithm identity.

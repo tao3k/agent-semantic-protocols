@@ -1,8 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [dependency-groups]
 dev = [
   "jsonschema>=4.23,<5",
-  "python-lang-project-harness",
+  "asp-python",
   "pytest>=9,<10",
+  "reuse[charset-normalizer]==6.2.0",
   "tiktoken>=0.9,<1",
 ]
 
@@ -10,13 +15,13 @@ dev = [
 package = false
 
 [tool.uv.sources]
-python-lang-project-harness = { path = "languages/python-lang-project-harness", editable = true }
+asp-python = { path = "languages/asp-python", editable = true }
 
 [tool.uv.workspace]
 exclude = ["packages/python"]
 members = ["packages/python"]
 
-[tool.python-lang-project-harness]
+[tool.asp-python]
 ignored_dir_names = [
   ".git",
   ".cache",
@@ -41,39 +46,39 @@ ignored_dir_names = [
   "venv",
 ]
 
-[tool.python-lang-project-harness.verification.responsibility_task_kinds]
+[tool.asp-python.verification.responsibility_task_kinds]
 public_api = ["regression"]
 performance = ["performance"]
 cli = ["regression"]
 persistence = ["regression"]
 network = ["stress"]
 
-[[tool.python-lang-project-harness.verification.profile_hints]]
-owner_path = "languages/python-lang-project-harness/src/python_lang_parser/__init__.py"
+[[tool.asp-python.verification.profile_hints]]
+owner_path = "languages/asp-python/src/python_lang_parser/__init__.py"
 responsibilities = ["public_api"]
 rationale = "parser facade exports are a shared provider API boundary"
 
-[[tool.python-lang-project-harness.verification.profile_hints]]
-owner_path = "languages/python-lang-project-harness/src/python_lang_project_harness/__init__.py"
+[[tool.asp-python.verification.profile_hints]]
+owner_path = "languages/asp-python/src/asp_python/__init__.py"
 responsibilities = ["public_api"]
 rationale = "harness facade exports pytest, policy, search, and verification APIs"
 
-[[tool.python-lang-project-harness.verification.profile_hints]]
-owner_path = "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py"
+[[tool.asp-python.verification.profile_hints]]
+owner_path = "packages/python/asp_python_graphs/src/asp_python_graphs/__init__.py"
 responsibilities = ["public_api"]
 rationale = "graph turbo facade is consumed by ASP ranking and cache evidence tools"
 
-[[tool.python-lang-project-harness.verification.profile_hints]]
+[[tool.asp-python.verification.profile_hints]]
 owner_path = "packages/python/tools/src/tools/julia_cache_performance.py"
 responsibilities = ["public_api", "performance"]
 rationale = "cache performance CLI is benchmark-facing evidence"
 
 [tool.pytest.ini_options]
 addopts = [
-  "--python-project-harness",
+  "--asp-python",
 ]
 pythonpath = [
-  "packages/python/asp_graph_turbo/src",
+  "packages/python/asp_python_graphs/src",
   "packages/python/asp_memory_engine/src",
   "packages/python/tools/src",
   "packages/python/src",

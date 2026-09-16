@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Real-trigger evidence and guide-quality behavior tests."""
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ class RealTriggerIngestPipeGuideTests(unittest.TestCase):
                                         "'languageIds': ['rust'],"
                                         "'routes': [{"
                                         "'kind': 'owner',"
-                                        "'argv': ['rs-harness', 'search', 'owner', 'src/lib.rs', '.']"
+                                        "'argv': ['asp-rust', 'search', 'owner', 'src/lib.rs', '.']"
                                         "}],"
                                         "'message': 'Use owner search.'"
                                         "}}))"

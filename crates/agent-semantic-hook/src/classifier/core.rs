@@ -1,24 +1,28 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Hook classifier orchestration for `agent-semantic-hook`.
+
+use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::command::{apply_patch_source_paths, infer_query_from_path, search_json_route};
-
 use super::agent_org_artifacts::with_agent_org_artifact_recovery;
-use super::decision::{allow, deny_for_action};
-use super::prompt_search_flow::classify_prompt_search_flow_feedback;
-use super::recovery::command_line;
-use super::source_access_routes::{
-    SourceReadCommandRequest, classify_direct_read_action, classify_raw_search_command,
-    classify_source_read_command, direct_read_language_ids, direct_read_routes,
-};
-use crate::event_state::missing_search_pipe_after_prime;
-use crate::{
-    ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
-    DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
-    collect_source_selector_matches, collect_tool_actions, payload_string, subject_for_action,
-};
+use super::decision::allow;
+use crate::ClientHookConfig;
+use crate::DecisionKind;
+use crate::HookDecision;
+use crate::HookRuntime;
+use crate::OperationIntent;
+use crate::ReasonKind;
+use crate::ToolAction;
+use crate::agent_dispatch_message::render_collaboration_instruction;
+use crate::collect_tool_actions;
+use crate::payload_string;
+use crate::subject_for_action;
+
+use super::higher_priority_candidate;
 
 /// Named input for hook classification with optional client policy config.
 pub struct HookClassificationRequest<'a> {
@@ -50,106 +54,280 @@ pub fn classify_hook(
     })
 }
 
-/// Classify one hook payload using a named `HookClassificationRequest`.
-pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
-    let decision = if let Some(decision) = classify_non_tool_event(&request) {
-        decision
-    } else {
-        let actions = collect_payload_tool_actions(request.payload);
-        if let Some(decision) = classify_tool_actions(&request, &actions) {
-            decision
-        } else {
-            let subject = actions.first().map(subject_for_action).unwrap_or_default();
-            allow(request.platform, request.event, subject)
-        }
-    };
-    let decision = normalize_source_file_query_routes(decision);
-    let decision = with_selector_only_subagent_message(decision);
-    let decision = with_prompt_scope_fields(decision, request.payload);
-    with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root)
-}
-
-fn with_selector_only_subagent_message(mut decision: HookDecision) -> HookDecision {
-    if decision
-        .message
-        .contains("Return one compact `[asp-search-subagent]` graph-route receipt")
-        && !decision
-            .message
-            .contains("Return selector-only `[asp-search-subagent]` evidence")
-    {
-        decision.message = decision.message.replace(
-            "Return one compact `[asp-search-subagent]` graph-route receipt",
-            "Return selector-only `[asp-search-subagent]` evidence. Return one compact `[asp-search-subagent]` graph-route receipt",
-        );
-    }
+fn dispatch_target_field<'a>(decision: &'a HookDecision, field: &str) -> Option<&'a str> {
     decision
+        .fields
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
 }
 
-fn normalize_source_file_query_routes(mut decision: HookDecision) -> HookDecision {
-    if !matches!(
-        decision.reason_kind,
-        ReasonKind::DirectSourceRead | ReasonKind::BulkSourceDump
-    ) {
+pub(super) fn resolve_dispatch_decision(
+    mut decision: HookDecision,
+    payload: &serde_json::Value,
+) -> HookDecision {
+    if decision.decision == DecisionKind::Allow
+        || decision.reason_kind != ReasonKind::AgentChoiceRequired
+    {
         return decision;
     }
-    for route in &mut decision.routes {
-        if route.kind != DecisionRouteKind::Query {
-            continue;
-        }
-        let argv = &route.argv;
-        if argv.len() < 5 || argv.first().map(String::as_str) != Some("asp") {
-            continue;
-        }
-        let Some(language_id) = argv.get(1).cloned() else {
-            continue;
-        };
-        if argv.get(2).map(String::as_str) != Some("query") {
-            continue;
-        }
-        let Some(selector) = route_option_value(argv, "--selector") else {
-            continue;
-        };
-        if argv.iter().any(|arg| arg == "--content") {
-            continue;
-        }
-        if !argv.iter().any(|arg| arg == "--code") {
-            continue;
-        }
-        if selector.contains("://") {
-            continue;
-        }
-        let owner_selector = selector
-            .split_once(':')
-            .map(|(owner, _)| owner)
-            .unwrap_or(selector);
-
-        let old_command = argv.join(" ");
-        let new_argv = vec![
-            "asp".to_string(),
-            language_id,
-            "search".to_string(),
-            "owner".to_string(),
-            owner_selector.to_string(),
-            "items".to_string(),
-            "--workspace".to_string(),
-            route_option_value(argv, "--workspace")
-                .unwrap_or(".")
-                .to_string(),
-            "--view".to_string(),
-            "seeds".to_string(),
-        ];
-        let new_command = new_argv.join(" ");
-        route.kind = DecisionRouteKind::Owner;
-        route.argv = new_argv;
-        decision.message = decision.message.replace(&old_command, &new_command);
+    let agent_role = payload
+        .get("agent_role")
+        .or_else(|| payload.get("agentRole"))
+        .or_else(|| payload.get("agent_type"))
+        .or_else(|| payload.get("agentType"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let target_agent = dispatch_target_field(&decision, "targetAgent");
+    let agent_matches = target_agent.is_some_and(|target| {
+        agent_role.is_some_and(|role| {
+            role.chars()
+                .map(|ch| if ch == '-' { '_' } else { ch })
+                .eq(target.chars().map(|ch| if ch == '-' { '_' } else { ch }))
+        })
+    });
+    if agent_matches {
+        decision.decision = DecisionKind::Allow;
+        decision.reason_kind = ReasonKind::None;
+        decision.routes.clear();
+        decision.message = format!(
+            "Allowed: this command is already executing inside the Config-selected `{}` Agent; dispatch is idempotent and must not recurse.",
+            agent_role.unwrap_or("agent")
+        );
+        decision.fields.insert(
+            "dispatchSatisfied".to_owned(),
+            serde_json::Value::Bool(true),
+        );
+        decision.fields.insert(
+            "currentAgentRole".to_owned(),
+            serde_json::Value::String(agent_role.unwrap_or_default().to_owned()),
+        );
+        decision.fields.insert(
+            "dispatchAdmission".to_owned(),
+            serde_json::Value::String("config-agent-role".to_owned()),
+        );
+        return decision;
     }
+
+    let target_agent = decision
+        .fields
+        .get("targetAgent")
+        .and_then(serde_json::Value::as_str);
+    let parent_session_id = payload
+        .get("session_id")
+        .or_else(|| payload.get("sessionId"))
+        .and_then(serde_json::Value::as_str);
+    let parent_task = decision.routes.first().map_or_else(
+        || {
+            let tool_name = payload
+                .get("tool_name")
+                .or_else(|| payload.get("toolName"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown-host-tool");
+            let tool_input = payload
+                .get("tool_input")
+                .or_else(|| payload.get("toolInput"))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            format!(
+                "Invoke Host tool `{tool_name}` exactly once with input {}",
+                serde_json::to_string(&tool_input).expect("encode parent Host tool input")
+            )
+        },
+        |route| {
+            format!(
+                "Execute this exact argv once: {}",
+                serde_json::to_string(&route.argv).expect("encode parent route argv")
+            )
+        },
+    );
+    let dispatch_instruction =
+        render_collaboration_instruction(target_agent, parent_session_id, &parent_task);
+    if decision.message.trim().is_empty() {
+        decision.message = dispatch_instruction;
+    } else if !decision.message.contains(&dispatch_instruction) {
+        decision.message = format!("{}\n{dispatch_instruction}", decision.message);
+    }
+    decision.fields.insert(
+        "dispatchGuidance".to_owned(),
+        serde_json::Value::String("delegate-exact-command-to-typed-agent".to_owned()),
+    );
+    decision.fields.insert(
+        "parentDispatchTask".to_owned(),
+        serde_json::Value::String(parent_task),
+    );
     decision
 }
 
-fn route_option_value<'a>(tokens: &'a [String], option: &str) -> Option<&'a str> {
-    tokens
-        .windows(2)
-        .find_map(|window| (window[0] == option).then_some(window[1].as_str()))
+fn is_explicit_host_policy_passthrough(decision: &HookDecision) -> bool {
+    decision.decision == DecisionKind::Allow
+        && decision
+            .fields
+            .get("bypassOwner")
+            .and_then(serde_json::Value::as_str)
+            == Some("hook-matcher")
+        && decision
+            .fields
+            .get("bypassScope")
+            .and_then(serde_json::Value::as_str)
+            == Some("host-policy")
+}
+
+/// Classify one hook payload using a named `HookClassificationRequest`.
+#[cfg(test)]
+#[path = "../../tests/unit/classifier_capability.rs"]
+mod capability_tests;
+
+pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
+    let actions = collect_payload_tool_actions(request.payload);
+    let tool_policy = classify_tool_actions(&request, &actions);
+    if tool_policy
+        .as_ref()
+        .is_some_and(|candidate| is_explicit_host_policy_passthrough(&candidate.decision))
+    {
+        return with_hook_match_receipt(
+            tool_policy
+                .expect("checked explicit bypass candidate")
+                .decision,
+            request.payload,
+            &actions,
+            request.config,
+            request.registry,
+        );
+    }
+    let decision = if let Some(decision) =
+        super::classify_user_prompt(request.platform, request.event, request.payload)
+    {
+        decision
+    } else if request.event == "pre-tool"
+        && let Some(candidate) = tool_policy
+    {
+        candidate.decision
+    } else {
+        let subject = actions.first().map(subject_for_action).unwrap_or_default();
+        allow(request.platform, request.event, subject)
+    };
+    if is_explicit_host_policy_passthrough(&decision) {
+        return with_hook_match_receipt(
+            decision,
+            request.payload,
+            &actions,
+            request.config,
+            request.registry,
+        );
+    }
+    let mut decision = resolve_dispatch_decision(decision, request.payload);
+    if decision.reason_kind == ReasonKind::RegisteredSourceRouteRequired {
+        super::materialize_source_access_deny_message(&mut decision);
+    }
+    let decision = super::with_executable_evidence_subagent_message(decision);
+    let decision = with_prompt_scope_fields(decision, request.payload);
+    let decision =
+        with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
+    with_hook_match_receipt(
+        decision,
+        request.payload,
+        &actions,
+        request.config,
+        request.registry,
+    )
+}
+
+fn with_hook_match_receipt(
+    decision: HookDecision,
+    payload: &Value,
+    actions: &[ToolAction],
+    config: &ClientHookConfig,
+    registry: &HookRuntime,
+) -> HookDecision {
+    let had_agent_action = decision.fields.contains_key("agentAction");
+    let mut decision = with_action_receipt_fields(decision, payload, actions);
+    if let Some(action) = actions.first()
+        && !had_agent_action
+        && decision.language_ids.is_empty()
+        && !decision.fields.contains_key("configRuleId")
+        && !action.paths.is_empty()
+    {
+        let (agent_action_receipt, language_ids) = config.observed_action_receipt(registry, action);
+        decision
+            .fields
+            .insert("agentAction".to_owned(), agent_action_receipt);
+        decision.language_ids = language_ids;
+    }
+    if let Some(command) = payload_command(payload) {
+        // Compound commands are matched per parser-owned stage, but a Hook
+        // receipt must retain the exact Host envelope that was authorized or
+        // denied rather than a re-rendered inner stage.
+        decision.subject.command = Some(command);
+    }
+    if decision.reason_kind == ReasonKind::AgentChoiceRequired
+        && let Some(command) = payload_command(payload)
+        && !decision.message.contains(&command)
+    {
+        decision
+            .message
+            .push_str(&format!("\nDenied command: `{command}`."));
+    }
+    config.attach_hook_policy_receipt(&mut decision);
+    decision
+}
+
+fn payload_command(payload: &Value) -> Option<String> {
+    ["tool_input", "toolInput", "parameters", "input"]
+        .into_iter()
+        .filter_map(|key| payload.get(key))
+        .find_map(|input| {
+            ["cmd", "command"]
+                .into_iter()
+                .find_map(|key| input.get(key).and_then(Value::as_str))
+        })
+        .map(str::to_owned)
+}
+
+pub(super) fn with_action_receipt_fields(
+    mut decision: HookDecision,
+    payload: &Value,
+    actions: &[ToolAction],
+) -> HookDecision {
+    if !decision.fields.contains_key("agentAction")
+        && let Some(action) = actions.first()
+    {
+        decision.fields.insert(
+            "agentAction".to_string(),
+            action.derive_agent_action().receipt_value(),
+        );
+    }
+    let payload_keys = payload
+        .as_object()
+        .map(|object| object.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    decision.fields.insert(
+        "hookPayloadKeys".to_string(),
+        Value::Array(payload_keys.into_iter().map(Value::String).collect()),
+    );
+
+    let normalized_actions = actions
+        .iter()
+        .filter(|action| {
+            !action.tool_name.is_empty()
+                || action.command.is_some()
+                || !action.paths.is_empty()
+                || action.operation != OperationIntent::Unknown
+        })
+        .map(|action| {
+            serde_json::json!({
+                "toolName": action.tool_name,
+                "toolSurface": action.surface.as_str(),
+                "operationIntent": action.operation.as_str(),
+                "paths": action.paths,
+            })
+        })
+        .collect();
+    decision.fields.insert(
+        "normalizedActions".to_string(),
+        Value::Array(normalized_actions),
+    );
+    decision
 }
 
 fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {
@@ -172,7 +350,7 @@ fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> Hook
     decision
 }
 
-fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
+pub(super) fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
     let tool_name = payload_string(payload, "tool_name")
         .or_else(|| payload_string(payload, "toolName"))
         .unwrap_or_default();
@@ -183,670 +361,120 @@ fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
         .or_else(|| payload.get("input"))
         .or_else(|| payload.get("arguments"))
         .unwrap_or(payload);
-    collect_tool_actions(&tool_name, tool_input)
+    let host_action = crate::tool_action_host_binding::plugin_host_action(payload)
+        .unwrap_or(crate::action_ir::HostInvocationKind::Unknown);
+    let mut actions = collect_tool_actions(&tool_name, tool_input);
+    for action in &mut actions {
+        action.host_action = host_action;
+    }
+    actions
 }
 
-fn classify_non_tool_event(request: &HookClassificationRequest<'_>) -> Option<HookDecision> {
-    classify_stop(
-        request.registry,
-        request.platform,
-        request.event,
-        request.payload,
-    )
-    .or_else(|| classify_user_prompt(request.platform, request.event, request.payload))
+/// Normalized lookup key for a wrapped registered-source decision shard.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShellReadSourceKey {
+    pub path: String,
+    pub extension: String,
+    pub command: String,
+    pub command_tokens: Vec<String>,
+    pub tool_name: String,
 }
 
+/// Return every normalized command/path key for a one-action shell read.
+///
+/// A wrapped Host envelope may contain several dotted arguments (for example
+/// an activation artifact and the actual registered source). The published
+/// Binary v1 section index, rather than a lexical first/last-path heuristic,
+/// owns which extensions are registered and therefore admissible fast-path
+/// candidates.
+pub fn shell_read_source_keys(payload: &Value) -> Vec<ShellReadSourceKey> {
+    let actions = collect_payload_tool_actions(payload);
+    shell_read_source_keys_from_actions(&actions)
+}
+
+pub(super) fn shell_read_source_keys_from_actions(
+    actions: &[ToolAction],
+) -> Vec<ShellReadSourceKey> {
+    let mut relevant = actions.iter().filter(|action| {
+        action.surface == crate::tool_action::ToolSurface::CodexShell
+            && action.operation == crate::tool_action::OperationIntent::ShellCommand
+    });
+    let Some(action) = relevant.next() else {
+        return Vec::new();
+    };
+    if relevant.next().is_some() {
+        return Vec::new();
+    }
+    let Some(command) = action.command.clone() else {
+        return Vec::new();
+    };
+    let Some(command_tokens) = action.command_tokens().map(Cow::into_owned) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    action
+        .paths
+        .iter()
+        .filter_map(|path| {
+            let dot = path.rfind('.')?;
+            let extension = path[dot..].to_ascii_lowercase();
+            seen.insert((extension.clone(), path.clone()))
+                .then(|| ShellReadSourceKey {
+                    path: path.clone(),
+                    extension,
+                    command: command.clone(),
+                    command_tokens: command_tokens.clone(),
+                    tool_name: action.tool_name.clone(),
+                })
+        })
+        .collect()
+}
+
+/// Return the first normalized command/path key for compatibility callers.
+pub fn shell_read_source_key(payload: &Value) -> Option<ShellReadSourceKey> {
+    shell_read_source_keys(payload).into_iter().next()
+}
+
+pub(crate) fn default_allow_for_normalized_action(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+) -> HookDecision {
+    allow(platform, event, subject_for_action(action))
+}
+
+/// Evaluate the config-independent provider-binary admission before any
+/// config-compiled command shard. Its priority is higher than user policy, so a
+/// direct provider executable cannot be reinterpreted as a testing profile.
 fn classify_tool_actions(
     request: &HookClassificationRequest<'_>,
     actions: &[ToolAction],
-) -> Option<HookDecision> {
+) -> Option<crate::hook_config::HookPolicyCandidate> {
     let HookClassificationRequest {
         registry,
         config,
         platform,
         event,
-        payload,
+        payload: _,
     } = request;
-    if let Some(decision) = actions
-        .iter()
-        .find_map(|action| config.classify(registry, platform, event, action))
-    {
-        return Some(decision);
-    }
-    if let Some(decision) = actions.iter().find_map(|action| {
-        classify_prompt_search_flow_feedback(
-            registry,
-            platform,
-            event,
-            payload,
-            action,
-            config.asp_command_intent_policy(),
-        )
-    }) {
-        return Some(decision);
-    }
-    if let Some(decision) = actions
-        .iter()
-        .find_map(|action| classify_invalid_asp_facade(registry, platform, event, action))
-    {
-        return Some(decision);
-    }
-
-    if config.semantic_ast_patch_enabled()
-        && let Some(decision) = actions.iter().find_map(|action| {
-            classify_structured_apply_patch_action(registry, platform, event, action)
-        })
-    {
-        return Some(decision);
-    }
-
-    if let Some(decision) = actions.iter().find_map(|action| {
-        classify_direct_read_action(
-            registry,
-            platform,
-            event,
-            action,
-            config.semantic_ast_patch_enabled(),
-            config.recovery_prompt(),
-        )
-    }) {
-        return Some(decision);
-    }
-    if let Some(decision) = actions.iter().find_map(|action| {
-        classify_command_action(
-            registry,
-            platform,
-            event,
-            action,
-            config.semantic_ast_patch_enabled(),
-            config.recovery_prompt(),
-        )
-    }) {
-        return Some(decision);
-    }
-    None
-}
-
-fn classify_invalid_asp_facade(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-) -> Option<HookDecision> {
-    if event != "pre-tool" {
-        return None;
-    }
-    if !action_supports_asp_command_feedback(action) {
-        return None;
-    }
-    action.command.as_deref()?;
-    let command_tokens = action.command_tokens()?;
-    let invalid_facade = invalid_asp_facade_from_tokens(&command_tokens, registry)?;
-    let preferred_language = preferred_language_for_invalid_facade(&invalid_facade, registry);
-    let mut fields = std::collections::BTreeMap::new();
-    fields.insert(
-        "hookFeedback".to_string(),
-        Value::String("invalid-asp-facade".to_string()),
-    );
-    fields.insert(
-        "invalidFacade".to_string(),
-        Value::String(invalid_facade.clone()),
-    );
-    if let Some(language_id) = preferred_language.as_deref() {
-        fields.insert(
-            "languageId".to_string(),
-            Value::String(language_id.to_string()),
-        );
-    }
-    fields.insert(
-        "requiredAction".to_string(),
-        Value::String("send-to-asp-explore".to_string()),
-    );
-    fields.insert(
-        "nextAction".to_string(),
-        Value::String(
-            "translate-to-supported-asp-facade-and-run-in-registered-asp-explore-child".to_string(),
-        ),
-    );
-    fields.insert(
-        "targetAgentName".to_string(),
-        Value::String("asp_explorer".to_string()),
-    );
-    fields.insert(
-        "targetAgentRole".to_string(),
-        Value::String("asp_explorer".to_string()),
-    );
-    fields.insert(
-        "targetAgentSelectionSource".to_string(),
-        Value::String("hook-deny-intent".to_string()),
-    );
-    fields.insert(
-        "targetAgentRegistrySource".to_string(),
-        Value::String("~/.agent-semantic-protocols/agents/config.toml".to_string()),
-    );
-    fields.insert(
-        "forbiddenUntilResolved".to_string(),
-        Value::String("raw-source-fallback".to_string()),
-    );
-    fields.insert(
-        "completionReceipt".to_string(),
-        Value::String("asp-explore-child-command".to_string()),
-    );
-    Some(HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::None,
-        language_ids: preferred_language.iter().cloned().collect(),
-        subject: subject_for_action(action),
-        routes: Vec::new(),
-        message: invalid_asp_facade_message(
-            &invalid_facade,
-            preferred_language.as_deref(),
-            registry,
-        ),
-        fields,
-    })
-}
-
-fn action_supports_asp_command_feedback(action: &ToolAction) -> bool {
-    matches!(
-        action.operation,
-        OperationIntent::ShellCommand | OperationIntent::StdinContinuation
-    )
-}
-
-fn invalid_asp_facade_from_tokens(tokens: &[String], registry: &HookRuntime) -> Option<String> {
-    let asp_index = tokens.iter().enumerate().find_map(|(index, token)| {
-        is_asp_binary_token(token)
-            .then_some(index)
-            .filter(|index| is_asp_invocation_position(tokens, *index))
-    })?;
-    let facade = tokens.get(asp_index + 1)?;
-    if facade.starts_with('-')
-        || is_root_asp_command(facade)
-        || registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == *facade)
-    {
-        return None;
-    }
-    Some(facade.clone())
-}
-
-fn is_asp_binary_token(token: &str) -> bool {
-    token == "asp" || token.ends_with("/asp") || token.ends_with(".bin/asp")
-}
-
-fn is_asp_invocation_position(tokens: &[String], index: usize) -> bool {
-    if index == 0 {
-        return true;
-    }
-    let previous = tokens[index - 1].as_str();
-    if matches!(previous, "&&" | ";" | "|" | "||" | "rtk") {
-        return true;
-    }
-    if tokens[..index].iter().all(|token| is_env_assignment(token)) {
-        return true;
-    }
-    if is_env_assignment(previous) {
-        return true;
-    }
-    index >= 3 && tokens[index - 3] == "direnv" && tokens[index - 2] == "exec"
-}
-
-fn is_env_assignment(token: &str) -> bool {
-    let Some((name, _value)) = token.split_once('=') else {
-        return false;
-    };
-    !name.is_empty()
-        && !name.starts_with('-')
-        && name
-            .chars()
-            .all(|character| character == '_' || character.is_ascii_alphanumeric())
-}
-
-fn is_root_asp_command(value: &str) -> bool {
-    matches!(
-        value,
-        "agent"
-            | "guide"
-            | "providers"
-            | "tools"
-            | "wrap"
-            | "cache"
-            | "cloud"
-            | "hook"
-            | "state"
-            | "plugin"
-            | "install"
-            | "sync"
-            | "paths"
-            | "healthcheck"
-            | "source-access"
-            | "ast-patch"
-            | "graph"
-            | "fd"
-            | "rg"
-            | "search"
-            | "query"
-            | "check"
-    )
-}
-
-fn preferred_language_for_invalid_facade(
-    invalid_facade: &str,
-    registry: &HookRuntime,
-) -> Option<String> {
-    if invalid_facade.eq_ignore_ascii_case("effect")
-        && registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "typescript")
-    {
-        return Some("typescript".to_string());
-    }
-    None
-}
-
-fn invalid_asp_facade_message(
-    invalid_facade: &str,
-    preferred_language: Option<&str>,
-    registry: &HookRuntime,
-) -> String {
-    let active_languages = registry
-        .providers
-        .iter()
-        .map(|provider| provider.language_id.as_str())
-        .collect::<Vec<_>>()
-        .join(",");
-    let mut lines = vec![
-        format!("ASP hook denied unknown ASP facade `{invalid_facade}`."),
-        "ASP facades are language IDs, not package or library names.".to_string(),
-        format!("Active language facades: {active_languages}."),
-    ];
-    if let Some(language_id) = preferred_language {
-        lines.push(format!("Suggested matching facade: {language_id}."));
-    }
-    lines.extend([String::new(), "## Run Next".to_string()]);
-    if let Some(language_id) = preferred_language {
-        lines.push(format!(
-            "Choose the narrowest `asp {language_id}` route from the current evidence state: owner/reasoning/query for known anchors, `search prime --workspace . --view seeds` only when the owner map is unknown, and `search pipe '<question-or-feature-term>' --workspace . --view seeds` only for ambiguous query refinement."
-        ));
-    } else {
-        lines.extend([
-            "asp providers".to_string(),
-            "asp fd -query '<path-or-language-term>' '.'".to_string(),
-            "asp rg -query '<feature-term>' '<bounded-scope>'".to_string(),
-        ]);
-    }
-    lines.extend([
-        String::new(),
-        "## Rules".to_string(),
-        "Only run `asp <language> search|query` when the facade is listed and matches the target language.".to_string(),
-        "Do not switch to an unrelated active facade just because it is the only provider in this repository.".to_string(),
-        "For unsupported target-language files, use provider-neutral finder commands or install/activate a matching provider.".to_string(),
-        "For the Effect package, use the TypeScript facade: `asp typescript ...`."
-            .to_string(),
-    ]);
-    lines.join("\n")
-}
-
-fn classify_user_prompt(platform: &str, event: &str, payload: &Value) -> Option<HookDecision> {
-    if event != "user-prompt" {
-        return None;
-    }
-    let prompt = payload_string(payload, "prompt").unwrap_or_default();
-    let mut decision = allow(platform, event, DecisionSubject::default());
-    if prompt_is_locator_only(&prompt) {
-        decision.fields.insert(
-            "promptWorkflow".to_string(),
-            Value::String("locator-only".to_string()),
-        );
-    }
-    Some(decision)
-}
-
-fn prompt_is_locator_only(prompt: &str) -> bool {
-    let prompt = prompt.to_ascii_lowercase();
-    (prompt.contains("where ")
-        || prompt.contains("locate")
-        || prompt.contains("located")
-        || prompt.contains("selecting files")
-        || prompt.contains("before selecting"))
-        && !prompt.contains("show code")
-        && !prompt.contains("read code")
-        && !prompt.contains("extract code")
-}
-
-fn classify_stop(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    payload: &Value,
-) -> Option<HookDecision> {
-    if event != "stop" {
-        return None;
-    }
-    let session_id =
-        payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
-    let transcript_path = payload_string(payload, "transcript_path")
-        .or_else(|| payload_string(payload, "transcriptPath"));
-    let feedback = missing_search_pipe_after_prime(
-        std::path::Path::new(&registry.project_root),
-        session_id.as_deref(),
-        transcript_path.as_deref(),
-    )
-    .ok()
-    .flatten()?;
-    let mut fields = std::collections::BTreeMap::new();
-    fields.insert(
-        "hookFeedback".to_string(),
-        Value::String("search-pipe-required".to_string()),
-    );
-    fields.insert(
-        "languageId".to_string(),
-        Value::String(feedback.language_id.clone()),
-    );
-    Some(HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Block,
-        reason_kind: ReasonKind::None,
-        language_ids: vec![feedback.language_id.clone()],
-        subject: DecisionSubject::default(),
-        routes: Vec::new(),
-        message: search_pipe_required_stop_message(&feedback.language_id),
-        fields,
-    })
-}
-
-fn search_pipe_required_stop_message(language_id: &str) -> String {
-    [
-        "ASP hook blocked Stop because this prompt ran `search prime` but has not shown final evidence beyond the prime map."
-            .to_string(),
-        "The prime packet is only a project/owner map; answer from a justified route frontier, not from prime alone."
-            .to_string(),
-        String::new(),
-        "## Run Next".to_string(),
-        "Choose the narrowest ASP route justified by the current evidence state.".to_string(),
-        String::new(),
-        "## Rules".to_string(),
-        "Follow `recommendedNext` or `nextCommand` when the prime packet supplied one."
-            .to_string(),
-        format!(
-            "Run `asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds` only when the evidence is still ambiguous and needs query refinement."
-        ),
-        "If an owner, symbol, dependency, test/failure, or exact selector is already known, skip pipe and use the narrower owner/reasoning/query route."
-            .to_string(),
-        "Do not repeat `search prime`. Do not answer from prime alone.".to_string(),
-    ]
-    .join("\n")
-}
-
-fn classify_command_action(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    semantic_ast_patch_enabled: bool,
-    recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
-) -> Option<HookDecision> {
-    let command = action.command.as_deref()?;
-    let tokens = action.command_tokens()?;
-    if action_is_known_asp_command(registry, action, &tokens) {
-        return None;
-    }
-    let apply_patch_decision = semantic_ast_patch_enabled
-        .then(|| classify_apply_patch_command(registry, platform, event, action, command))
-        .flatten();
-    apply_patch_decision
-        .or_else(|| classify_search_json_command(registry, platform, event, action, &tokens))
-        .or_else(|| {
-            classify_source_read_command(SourceReadCommandRequest {
-                registry,
-                platform,
-                event,
-                action,
-                command,
-                tokens: &tokens,
-                semantic_ast_patch_enabled,
-                recovery_prompt,
-            })
-        })
-        .or_else(|| {
-            classify_raw_search_command(
-                registry,
-                platform,
-                event,
-                action,
-                &tokens,
-                semantic_ast_patch_enabled,
-                recovery_prompt,
-            )
-        })
-}
-
-fn action_is_known_asp_command(
-    registry: &HookRuntime,
-    action: &ToolAction,
-    tokens: &[String],
-) -> bool {
-    if !action_supports_asp_command_feedback(action) {
-        return false;
-    }
-    let Some(asp_index) = tokens.iter().enumerate().find_map(|(index, token)| {
-        is_asp_binary_token(token)
-            .then_some(index)
-            .filter(|index| is_asp_invocation_position(tokens, *index))
-    }) else {
-        return false;
-    };
-    let Some(facade) = tokens.get(asp_index + 1) else {
-        return true;
-    };
-    is_root_asp_command(facade)
-        || registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == *facade)
-}
-
-fn classify_apply_patch_command(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    command: &str,
-) -> Option<HookDecision> {
-    let patch_paths = apply_patch_source_paths(&action.tool_name, command);
-    if patch_paths.is_empty() {
-        return None;
-    }
-    classify_apply_patch_paths(registry, platform, event, action, patch_paths)
-}
-
-fn classify_structured_apply_patch_action(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-) -> Option<HookDecision> {
-    if action.operation != OperationIntent::ApplyPatch || action.paths.is_empty() {
-        return None;
-    }
-    classify_apply_patch_paths(registry, platform, event, action, action.paths.clone())
-}
-
-fn classify_apply_patch_paths(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    patch_paths: Vec<String>,
-) -> Option<HookDecision> {
-    let matches =
-        collect_source_selector_matches(registry, patch_paths.iter().map(String::as_str), |_| true);
-    if matches.is_empty() {
-        return None;
-    }
-
-    let routes = direct_read_routes(&matches);
-    let mut subject = subject_for_action(action);
-    subject.paths = patch_paths;
-    let languages = direct_read_language_ids(&matches);
-
-    if let Some(command) = action.command.as_deref() {
-        let patch_digest = source_apply_patch_digest(command);
-        let authorization_path = source_apply_patch_authorization_path(registry, &patch_digest);
-        if authorization_path.is_file() {
-            let mut decision = allow(platform, event, subject);
-            decision.language_ids = languages;
-            decision.message = format!(
-                "source apply_patch allowed by controlled maintenance authorization {}",
-                authorization_path.display()
-            );
-            decision.fields.insert(
-                "toolSurface".to_string(),
-                Value::String(action.surface.as_str().to_string()),
-            );
-            decision.fields.insert(
-                "operationIntent".to_string(),
-                Value::String(action.operation.as_str().to_string()),
-            );
-            decision.fields.insert(
-                "maintenancePolicy".to_string(),
-                Value::String("source-apply-patch-authorization".to_string()),
-            );
-            decision
-                .fields
-                .insert("patchDigest".to_string(), Value::String(patch_digest));
-            decision.fields.insert(
-                "authorizationPath".to_string(),
-                Value::String(authorization_path.display().to_string()),
-            );
-            return Some(decision);
+    let mut highest_denial = None;
+    let mut highest_allow = None;
+    for action in actions {
+        let config_candidate = config.classify_candidate(registry, platform, event, action);
+        let Some(candidate) = config_candidate else {
+            continue;
+        };
+        if candidate.decision.decision == crate::DecisionKind::Allow && candidate.terminal {
+            return Some(candidate);
+        }
+        match candidate.decision.decision {
+            crate::DecisionKind::Allow => {
+                highest_allow = higher_priority_candidate(highest_allow, Some(candidate));
+            }
+            crate::DecisionKind::Block | crate::DecisionKind::Deny => {
+                highest_denial = higher_priority_candidate(highest_denial, Some(candidate));
+            }
         }
     }
-
-    let language = languages
-        .first()
-        .map(String::as_str)
-        .unwrap_or("<language>");
-    let project_root = routes
-        .first()
-        .and_then(|route| route.argv.last())
-        .filter(|arg| !arg.starts_with('-'))
-        .map(String::as_str)
-        .unwrap_or(".");
-    let route_guide = routes
-        .iter()
-        .map(|route| command_line(&route.argv))
-        .collect::<Vec<_>>()
-        .join("; ");
-    let message = format!(
-        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Locator route: {route_guide}. Treat path-only locator output as a frontier/read-plan, not patch preimage; exact patch context must come from normal selector/code stdout: `asp {language} query --selector <path:start:end> --workspace {project_root} --code`. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
-    );
-    Some(deny_for_action(
-        platform,
-        event,
-        ReasonKind::SemanticAstPatchRequired,
-        action,
-        languages,
-        subject,
-        routes,
-        message,
-    ))
-}
-
-fn classify_search_json_command(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    tokens: &[String],
-) -> Option<HookDecision> {
-    if !tokens.iter().any(|token| token == "--json") {
-        return None;
-    }
-    let (provider, argv) = search_json_route(registry, tokens)?;
-    if !provider.policy.blocks_agent_search_json() {
-        return None;
-    }
-    let route = search_json_decision_route(provider, argv);
-    let message = format!(
-        "agent-search-json denied; route: {}",
-        command_line(&route.argv)
-    );
-    let routes = vec![route];
-    Some(deny_for_action(
-        platform,
-        event,
-        ReasonKind::AgentSearchJson,
-        action,
-        vec![provider.language_id.clone()],
-        subject_for_action(action),
-        routes,
-        message,
-    ))
-}
-
-fn search_json_decision_route(provider: &ActivatedProvider, argv: Vec<String>) -> DecisionRoute {
-    if let Some(path) = search_json_owner_path(&argv).map(str::to_string) {
-        let query = infer_query_from_path(&path);
-        return provider.route_from_template(
-            DecisionRouteKind::Owner,
-            &provider.routes.owner,
-            Some(&path),
-            query.as_deref(),
-        );
-    }
-    DecisionRoute {
-        language_id: provider.language_id.clone(),
-        provider_id: provider.provider_id.clone(),
-        binary: "asp".to_string(),
-        kind: DecisionRouteKind::Lexical,
-        argv: provider.agent_facade_argv_from_provider_argv(argv),
-        stdin_mode: None,
-    }
-}
-
-fn search_json_owner_path(argv: &[String]) -> Option<&str> {
-    if argv.get(1).map(String::as_str) != Some("search") {
-        return None;
-    }
-    if argv.get(2).map(String::as_str) != Some("owner") {
-        return None;
-    }
-    let path = argv.get(3)?.as_str();
-    if path == "." || path.starts_with('-') {
-        return None;
-    }
-    Some(path)
-}
-
-fn source_apply_patch_digest(command: &str) -> String {
-    let digest = <sha2::Sha256 as sha2::Digest>::digest(command.as_bytes());
-    format!("{digest:x}")
-}
-
-fn source_apply_patch_authorization_path(
-    registry: &HookRuntime,
-    patch_digest: &str,
-) -> std::path::PathBuf {
-    std::path::Path::new(&registry.project_root)
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("source-apply-patch")
-        .join(format!("{patch_digest}.json"))
+    highest_denial.or(highest_allow)
 }

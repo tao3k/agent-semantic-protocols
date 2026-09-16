@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schemas.agent-semantic-protocols.dev/provider-install-register.schema.json",
+  "schemaId": "agent.semantic-protocols.provider-install-register",
+  "schemaVersion": "1",
+  "providers": [
+    {
+      "languageId": "rust",
+      "providerId": "asp-rust",
+      "binary": "asp-rust",
+      "sourceRoot": "languages/asp-rust",
+      "workspaceInstall": "provider/asp-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "typescript",
+      "providerId": "asp-typescript",
+      "binary": "asp-typescript",
+      "sourceRoot": "languages/asp-typescript",
+      "workspaceInstall": "provider/asp-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "python",
+      "providerId": "asp-python",
+      "binary": "asp-python",
+      "sourceRoot": "languages/asp-python",
+      "workspaceInstall": "provider/asp-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "julia",
+      "providerId": "asp-julia",
+      "binary": "asp-julia",
+      "sourceRoot": "languages/AspJulia.jl",
+      "workspaceInstall": "juliac/asp-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "gerbil-scheme",
+      "providerId": "asp-gerbil-scheme",
+      "binary": "asp-gerbil-scheme",
+      "sourceRoot": "languages/asp-gerbil-scheme",
+      "workspaceInstall": "provider/asp-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    }
+  ]
+}

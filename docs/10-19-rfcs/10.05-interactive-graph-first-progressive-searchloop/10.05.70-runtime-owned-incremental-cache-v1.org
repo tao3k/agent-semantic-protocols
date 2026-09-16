@@ -1,0 +1,261 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime-owned incremental search cache v1
+#+startup: overview
+
+Parent architecture: [[file:../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Status
+
+This document is the canonical v1 contract for cold search admission, warm
+search publication, and incremental cache mutation.  It does not introduce a
+v2 protocol.  Any implementation or draft that requires an Agent to run
+=asp cache import= or =asp cache source-index refresh= before searching is a
+legacy compatibility path and is non-conforming.
+
+* Problem
+
+The historical cache commands predate the Runtime Server.  They model cache
+construction as a client operation and accidentally couple a generation
+builder to the lifetime of the initiating IPC request.  In the resident
+architecture this produces three invalid behaviours:
+
+1. a first query cannot read source until a separate cache command succeeds;
+2. returning a =Rebuilding= receipt can drop the request and cancel the shared
+   generation builder;
+3. cache status, generation state, source-index state, and projection
+   capability can disagree because they are published by independent ledgers.
+
+Increasing a timeout or teaching an Agent to retry the cache command does not
+repair any of these ownership errors.
+
+* Normative authority
+
+The Runtime Server is the only owner of an admitted workspace's incremental
+search state.  One resident workspace entry owns:
+
+- the serialized mutation queue;
+- the workspace Merkle root and immutable generation pointer;
+- the projection-capability manifest and receipt;
+- the mmap search locator;
+- the source-index generation;
+- the build task, cancellation token, and terminal state stream.
+
+CLI, Hook, provider, SearchLoop, and Agent processes never open the cache
+database, create a generation builder, or own a cancellation token.  They send
+typed v1 requests and subscribe to immutable receipts.
+
+The lifetime of an initiating request is not the lifetime of a build.  Client
+disconnect, timeout, dropped future, and cancellation of a query waiter MUST
+NOT cancel the resident build.  A build may be cancelled only by Runtime
+shutdown or by a newer admitted mutation that explicitly supersedes it.  Both
+paths MUST publish a terminal =Failed= or =Cancelled= receipt before releasing
+the task.
+
+* Query-triggered admission
+
+Search is the admission trigger.  A query against an unknown workspace sends a
+single =DemandAdmission= message to the resident cache-entry actor owned by the
+ASP Server writer lane.  Canonical workspace identity and requested snapshot
+select the entry; they do not allocate a separate flight, waiter map, or
+request-owned coordination object.  The query observes the entry state stream;
+it never invokes a cache CLI subcommand and never polls files or processes.
+
+Repeated queries for covered targets resolve against the same resident entry
+state.  An uncovered target is merged into the entry mailbox and causes at
+most one successor transition after the active =Building= transition reaches
+a terminal state.  It is not silently treated as covered and does not allocate
+a second writer or coordination layer.  A =Ready= generation accumulates the
+target coverage of its successful transitions; only that coverage, or an
+explicitly complete generation, is reusable.  Queries do not spawn providers,
+duplicate file walks, extend a timeout, or amplify database work.
+
+The immediate response is the existing
+=agent.semantic-protocols.workspace-generation-required= v1 receipt with
+=state=in-progress=, =admissionTrigger=query-demand=,
+=buildOwner=runtime-server=, and =requestLifetimeIndependent=true=.  It contains
+the preserved query argv and directs the caller only to retry after Runtime
+progress.  ChoicePlane, Agent Session registration, cache commands, and
+provider build commands are not recovery fields and MUST NOT appear as the
+next action.  A previous =Failed= attempt remains terminal evidence for that
+attempt but is eligible for a new Runtime-owned query-demand flight.
+
+Hook remains a millisecond local policy kernel and is not part of this
+admission lifecycle.
+
+* Cold query layer
+
+Cold search is the first performance gate, not an error-recovery prelude to
+warm search.  A first-ever workspace must become queryable without building a
+complete semantic database.
+
+The cold algorithm is:
+
+1. resolve the canonical workspace identity and published provider artifacts;
+2. construct or reuse a bounded file inventory and Merkle root without opening
+   Turso from the client;
+3. select the smallest candidate owner set needed by the incoming query;
+4. parse those owners with already-published provider artifacts;
+5. publish an immutable queryable generation containing the proven facts and
+   an exact projection-capability subset;
+6. continue background expansion through successor generations.
+
+Missing provider artifacts fail immediately with a typed installation or
+publication receipt.  Cold admission MUST NOT compile a provider, repair an
+installation, wait on a Cargo target lock, bootstrap a database schema, or
+perform a complete workspace parse.
+
+A selector outside the published capability subset triggers targeted
+incremental admission.  It does not invalidate already queryable selectors and
+does not turn the entire workspace into =Missing=.
+
+* Incremental Merkle algorithm
+
+Every admitted mutation carries a normalized change set:
+
+- added owner paths;
+- changed owner paths;
+- removed owner paths;
+- the previous admitted Merkle root;
+- the requested successor root.
+
+The writer lane hashes and parses only added or changed owners.  Removed owner
+facts are deleted by structural owner identity.  Unchanged Merkle branches,
+owner facts, relations, and projection packets are structurally shared with
+the previous immutable generation.
+
+The successor root is computed from canonical path and content digest leaves.
+Selector-generation synthetic leaves are derived from their owner generation
+and cannot become a second root authority.  Full reconstruction is permitted
+only when there is no admitted base root or when validation proves the base is
+corrupt; it is not a routine fallback.
+
+* Atomic publication
+
+A generation becomes visible through one atomic publication bundle containing
+the same workspace identity, epoch, generation digest, source root, provider
+catalog digest, projection-capability receipt, source-index generation, and
+mmap locator.
+
+Readers observe either the previous complete bundle or the successor complete
+bundle.  They never observe a =Ready= cache receipt paired with a missing,
+building, failed, or differently rooted source index.  Publication validates
+all identities before switching the resident watch value.
+
+The immutable provider catalog is part of the Runtime generation authority.
+When a global provider install publishes a new catalog generation, the install
+control plane releases its publication lock, drains an already resident
+Runtime, starts one replacement owner, and waits for its Ready endpoint before
+returning.  An unchanged catalog does no lifecycle work, and provider install
+does not start a Runtime that was previously absent.  Manual Runtime restart is
+not a provider-catalog recovery step.
+
+Warm queries read only the immutable mmap generation.  They perform zero
+client-side database opens, zero provider invocations, zero publication locks, and
+zero filesystem discovery.
+
+* Unified coverage, lexical, and graph pipeline
+
+The v1 search generation has three execution roles, not three cache
+authorities:
+
+1. =rg= coverage is a bounded cold-path/change-path accelerator.  Runtime may
+   consume an =rg --vimgrep --null= stream only after every record is verified
+   against the admitted owner path, owner content digest, workspace Merkle
+   root, provider digest, and generation digest.  It never runs as a warm-query
+   fallback and it never publishes a generation.  The durable lexical key
+   projection uses the same byte-oriented identifier coverage in-process over
+   already-admitted owner bytes, so generation construction does not require a
+   subprocess merely to tokenize content.  External =rg= output remains
+   coverage evidence, not a second index.
+2. lexical retrieval is the resident first-stage query owner.  Its immutable
+   token/path table is published in the generation mmap and returns a bounded
+   candidate frontier without a process, socket, filesystem, or database read.
+3. =asp-python-graphs= is the Runtime-owned graph computation service.  It may
+   rank or expand only the relation projection published in the same
+   generation as the lexical frontier.  Its long-lived gRPC session is a
+   computation transport, not a graph cache or publication authority.
+
+All three roles bind the same workspace identity, source root, provider
+digest, schema digest, analyzer digest, and generation digest.  A mismatched
+coverage receipt, lexical projection, relation set, or graph result fails
+closed as =stale-generation=; it is never merged by label, activation counter,
+path heuristic, or retry.
+
+Generation construction derives the lexical keys and graph relation fragment
+for each changed owner once.  Unchanged owner fragments are structurally
+shared by content digest.  A removed owner publishes one tombstone that removes
+its lexical keys, relations, exact selectors, and coverage evidence in the
+same successor commit.  Query execution therefore does not serially launch
+=rg=, a language parser, and Python.  It reads the resident lexical frontier
+first and invokes the already-resident graph service only for an operation
+whose shared search contract requests graph ranking.
+
+The complete immutable generation graph is opened in =asp-python-graphs= once
+per workspace generation and retained after a query lease reaches zero
+references.  Its canonical graph payload digest is compared on every later
+lease; a different payload under the same generation identity is rejected.
+Warm requests do not clone, hash, serialize, or resend that graph.  They send
+only the bounded lexical-owner seed set and ranking parameters.  A
+generation-admission index owns the canonical owner-node membership set, so a
+warm query validates only its bounded seed frontier; it never traverses all
+graph nodes to rediscover membership.  The membership index is bound to the
+same source root, leaf count, and owner count as the open graph payload.  A
+graph-required operation fails with one typed terminal when the graph service
+is unavailable or returns a different generation.  It must not silently
+degrade to lexical-only output.  A lexical-only operation remains a zero-I/O
+mmap read.  Both forms preserve one ASP Server publication authority and one
+ClientFrame terminal.
+
+The existing =agent.semantic-protocols.rg-coverage-receipt= schemaVersion =1=
+and graph-turbo v1 request/result contracts remain authoritative.  This
+architecture does not introduce an =rg-coverage-receipt.v2= shadow contract.
+
+* Cache CLI boundary
+
+=asp cache status= is a diagnostic projection of the resident atomic bundle.
+=invalidate= and =flush= are explicit operator mutations submitted to the
+Runtime writer lane.
+
+=import= and =source-index refresh= are not v1 cache commands.  They MUST NOT
+appear as search recovery, Agent guidance, aliases, or direct build owners.
+Explicit operator mutations use =invalidate= and are submitted to the same
+Runtime writer lane.
+
+* Required scenario gates
+
+The v1 implementation is not complete without executable coverage for:
+
+1. first query on an unknown workspace publishes a queryable generation
+   without a preceding cache command;
+2. dropping the initiating request does not cancel the entry-owned build;
+3. concurrent cold queries converge on one Server-owned cache entry and publish
+   one epoch without allocating a flight or waiter registry;
+4. Runtime shutdown cancels the build and publishes a terminal receipt;
+5. a superseding change set cancels only the obsolete build;
+6. one-file edit reparses only that owner and structurally shares unchanged
+   Merkle branches;
+7. deletion removes owner facts and selector capabilities atomically;
+8. failed successor construction leaves the previous generation readable;
+9. cache status, capability, source index, and mmap locator always report the
+   same epoch and root;
+10. warm query performs zero database opens and zero provider invocations;
+11. missing provider artifacts fail immediately and never start a build;
+12. no prompt-facing recovery receipt recommends =cache import= or
+    =source-index refresh=.
+
+* Migration order
+
+1. introduce the resident build owner and request-independent task lifetime;
+2. route query miss to =DemandAdmission=;
+3. publish the atomic generation bundle;
+4. move file-change handling to Merkle successor mutations;
+5. migrate cache CLI to diagnostic or explicit operator requests;
+6. delete direct-open, duplicate-ledger, full-rebuild fallback, and Agent
+   recovery guidance.
+
+All steps retain the existing v1 schema identifiers.  New fields, when needed,
+are added compatibly to v1 and validated by the same authority; no v2 shadow
+contract is introduced.

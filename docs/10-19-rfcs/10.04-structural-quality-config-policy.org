@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Structural Quality Harness & Config Policy — config as engineered decision, not escape hatch
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
 #+RFC: 004
 #+DEPENDS: docs/10-19-rfcs/10.01-cargo-execution-lanes.org (001), docs/10-19-rfcs/10.02-evidence-layer-architecture.org (002), docs/10-19-rfcs/10.03-code-intelligence-lane.org (003)
-#+SEE_ALSO: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005) — the CLI-first agent UX that enforces
+#+SEE_ALSO: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005) — the ASP Server-first agent protocol that enforces
 #+  the config-as-decision model through hooks and validate-config.
 
 * One-sentence summary
@@ -42,7 +46,7 @@ The harness already builds parser facts for: Cargo manifest dependencies,
 source/test/bench/example targets, Rust module tree, owner namespace,
 import summary, local owner dependencies, child edges, shadow/orphan state.
 
-=RustHarnessConfig= already exposes structured fields: ignored dirs,
+=AspRustConfig= already exposes structured fields: ignored dirs,
 blocking severities, disabled rules, rule severity overrides, source/test
 scope, scope explanation, advice allow explanation, verification policy.
 
@@ -98,7 +102,7 @@ These are already partially enforced by existing rules:
 
 ** Current state (strong foundation)
 
-=RustHarnessConfig= already:
+=AspRustConfig= already:
 - Discovers Cargo-backed source/test/target coverage automatically — agent
   cannot shrink the scan surface by passing a smaller config
 - Requires =with_source_path(path, explanation)= for custom paths
@@ -250,7 +254,7 @@ Profiles are /engineering intent/, not toggle collections:
 API sketch:
 
 #+begin_src rust
-pub enum RustHarnessProjectProfile {
+pub enum AspRustProjectProfile {
     Library,
     Cli,
     Service,
@@ -261,18 +265,18 @@ pub enum RustHarnessProjectProfile {
     PerformanceCritical,
 }
 
-pub fn rust_harness_profile(profile: RustHarnessProjectProfile) -> RustHarnessConfig {
+pub fn asp_rust_profile(profile: AspRustProjectProfile) -> AspRustConfig {
     match profile {
-        RustHarnessProjectProfile::Library =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Library =>
+            default_asp_rust_config()
                 .with_rule_pack_severity(RustRulePack::AgentPolicy, RustDiagnosticSeverity::Info)
                 .with_required_public_api_docs(),
-        RustHarnessProjectProfile::Cli =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Cli =>
+            default_asp_rust_config()
                 .with_entrypoint_adapter_policy()
                 .with_cli_arg_boundary_policy(),
-        RustHarnessProjectProfile::Service =>
-            default_rust_harness_config()
+        AspRustProjectProfile::Service =>
+            default_asp_rust_config()
                 .with_network_boundary_policy()
                 .with_verification_responsibility_task_kinds(
                     RustOwnerResponsibility::LatencySensitive,
@@ -288,12 +292,12 @@ pub fn rust_harness_profile(profile: RustHarnessProjectProfile) -> RustHarnessCo
 Every config choice should be a typed decision, not a string:
 
 #+begin_src rust
-pub struct RustHarnessConfigDecision {
+pub struct AspRustConfigDecision {
     pub id: String,
-    pub kind: RustHarnessConfigDecisionKind,
+    pub kind: AspRustConfigDecisionKind,
     pub owner_path: Option<PathBuf>,
     pub rule_ids: Vec<String>,
-    pub evidence: Vec<RustHarnessConfigEvidence>,
+    pub evidence: Vec<AspRustConfigEvidence>,
     pub rationale: String,
     pub expires: Option<String>,
 }
@@ -303,7 +307,7 @@ Agent uses:
 
 #+begin_src rust
 .with_config_decision(
-    RustHarnessConfigDecision::lower_rule_severity(
+    AspRustConfigDecision::lower_rule_severity(
         "generated-code-docs",
         ["AGENT-R001", "AGENT-R002"],
         RustDiagnosticSeverity::Info,
@@ -393,7 +397,7 @@ disable noisy rule → pass
 A new renderer, sidecar only, not default diagnostic:
 
 #+begin_src rust
-render_rust_harness_config_advice(&report, &profile_index)
+render_asp_rust_config_advice(&report, &profile_index)
 #+end_src
 
 Output shape:
@@ -502,6 +506,14 @@ Rust Project Structural Harness
     └── closeout
 #+end_example
 
+* Build-gate derived artifact cache
+
+A Rust project-harness build gate MAY reuse a previously published clean receipt only when the current invocation recomputes the complete monitored-source snapshot and derives the same content-addressed artifact identity from the snapshot root, canonical harness policy and config, harness/schema version, run scope, verification obligations, and dependency-baseline inputs. The cache is a disposable proof projection, not policy authority: a hit MUST re-emit the recorded Cargo rerun inputs and re-assert the typed report, verification, and baseline obligations; missing, stale, corrupt, partial, or mismatched receipts MUST execute the full analysis. Implementations MUST NOT key reuse by timestamps, target-directory freshness, package name alone, or a previous pass boolean, and MUST NOT share one receipt across member policies whose effective inputs differ.
+
+Discovery and snapshot collection MUST apply the same filesystem-boundary policy. The Rust project harness does not follow symbolic links during source discovery or cache-key acquisition; a symlink is not monitored source evidence and cannot escape the project root or introduce traversal cycles. A cached record MUST bind a canonical integrity digest over its report, verification plan, downstream receipt, and baseline receipts in addition to its input key; any payload mismatch is a cold miss.
+
+This artifact attests parser-owned structural analysis, not compiler execution. Its cacheable computation reads the complete project snapshot, canonical harness policy and config, and dependency-baseline declarations; it does not read Rust or Cargo toolchain identity, target, profile, feature, or =RUSTFLAGS= state. Toolchain identity therefore MUST NOT fragment this cache unless a future version adds a toolchain-dependent computation, in which case that version must add the new input to its artifact key. =CARGO_MANIFEST_DIR= selects the canonical project root and =XDG_CACHE_HOME=/=HOME= selects storage only; neither is proof payload.
+
 * The bottom line
 
 Config is not an escape hatch.  Config is the /codified expression of
@@ -524,11 +536,11 @@ engineering structure."
 
 * References
 
-- [[file:../../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]] — file role contracts, parser boundary, self-apply policy
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]] — existing structural rules
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]] — config model, cargo-test embedding, scope policy
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]] — configurable verification surface
-- [[file:../../languages/rust-lang-project-harness/src/model.rs][model.rs]] — =RustHarnessConfig=, =RustRulePack=, builder API
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/source_scope.rs][source_scope.rs]] — =RUST-PROJ-R013=, =RUST-PROJ-R014=
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/verification_integration.rs][verification_integration.rs]] — =RUST-PROJ-R015=
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/build_gate.rs][build_gate.rs]] — =RUST-PROJ-R012=
+- [[file:../../languages/asp-rust/docs/01_core/101_harness_boundary.md][Harness Boundary]] — file role contracts, parser boundary, self-apply policy
+- [[file:../../languages/asp-rust/docs/03_features/201_rule_catalog.md][Rule Catalog]] — existing structural rules
+- [[file:../../languages/asp-rust/docs/03_features/202_runner_modes.md][Runner Modes]] — config model, cargo-test embedding, scope policy
+- [[file:../../languages/asp-rust/docs/03_features/204_verification_policy.md][Verification Policy]] — configurable verification surface
+- [[file:../../languages/asp-rust/src/model.rs][model.rs]] — =AspRustConfig=, =RustRulePack=, builder API
+- [[file:../../languages/asp-rust/src/rules/project_policy/source_scope.rs][source_scope.rs]] — =RUST-PROJ-R013=, =RUST-PROJ-R014=
+- [[file:../../languages/asp-rust/src/rules/project_policy/verification_integration.rs][verification_integration.rs]] — =RUST-PROJ-R015=
+- [[file:../../languages/asp-rust/src/rules/project_policy/build_gate.rs][build_gate.rs]] — =RUST-PROJ-R012=

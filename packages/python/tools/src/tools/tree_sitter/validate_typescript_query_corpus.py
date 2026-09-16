@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate TypeScript tree-sitter-compatible query corpus fixtures."""
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from .contract import assert_asp_tree_sitter_contract
 SEPARATOR = "=" * 80
 EXPECTED_SEPARATOR = "-" * 80
 REPO_ROOT = repo_root()
-PROVIDER_ROOT = REPO_ROOT / "languages" / "typescript-lang-project-harness"
+PROVIDER_ROOT = REPO_ROOT / "languages" / "asp-typescript"
 GRAMMAR_ROOT = PROVIDER_ROOT / "tree-sitter" / "tree-sitter-typescript"
 CORPUS_ROOT = GRAMMAR_ROOT / "test" / "corpus"
 PROFILE_PATH = GRAMMAR_ROOT / "grammar-profile.json"

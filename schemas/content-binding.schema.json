@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic.protocols/schemas/content-binding",
+  "title": "ASP Content Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "runtimeArtifactDigest", "workspaceSnapshotDigest", "sourceGenerationDigest", "sourceIndexDigest", "schemaDigest", "providerCatalogDigest", "authorityStamp"],
+  "properties": {
+    "schemaId": {"const": "asp.content-binding"},
+    "schemaVersion": {"const": "1"},
+    "runtimeArtifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "workspaceSnapshotDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "sourceGenerationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "sourceIndexDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "schemaDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "providerCatalogDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "authorityStamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "canonicalDigest", "signature"],
+      "properties": {
+        "keyId": {"type": "string", "minLength": 1},
+        "canonicalDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "signature": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

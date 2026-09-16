@@ -1,0 +1,129 @@
+{"sourcePath": "ASPProof/AgentSessionRuntimeServerBoundary.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.AgentSessionRuntimeServerBoundary",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.runtimeServer\n  ASPProof.AgentSessionRuntimeServerBoundary.Authority.indexWrite",
+   "theoremFamily": "runtime-server-index-authority",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-RUNTIME"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.runtime_server_owns_index_write",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.runtimeServer\n  ASPProof.AgentSessionRuntimeServerBoundary.Authority.generationPublish",
+   "theoremFamily": "runtime-server-generation-authority",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-RUNTIME"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.runtime_server_owns_generation_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.agentSession\n    ASPProof.AgentSessionRuntimeServerBoundary.Authority.indexWrite",
+   "theoremFamily": "session-index-authority-exclusion",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-DISJOINT"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.agent_session_has_no_index_write_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.residentSubagent\n    ASPProof.AgentSessionRuntimeServerBoundary.Authority.generationPublish",
+   "theoremFamily": "subagent-generation-authority-exclusion",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-DISJOINT"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.resident_subagent_has_no_generation_publish_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.runtimeServer\n    ASPProof.AgentSessionRuntimeServerBoundary.Authority.subagentBinding",
+   "theoremFamily": "server-subagent-authority-exclusion",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-DISJOINT"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.runtime_server_has_no_subagent_binding_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.agentSession\n  ASPProof.AgentSessionRuntimeServerBoundary.Authority.subagentBinding",
+   "theoremFamily": "session-subagent-binding-authority",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-SESSION"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.agent_session_owns_subagent_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.hostRuntime\n  ASPProof.AgentSessionRuntimeServerBoundary.Authority.nativeDispatch",
+   "theoremFamily": "host-native-dispatch-authority",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-HOST"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.host_runtime_owns_native_dispatch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.AgentSessionRuntimeServerBoundary.MayRequestQuery\n    ASPProof.AgentSessionRuntimeServerBoundary.Principal.agentSession ∧\n  ¬ASPProof.AgentSessionRuntimeServerBoundary.Owns ASPProof.AgentSessionRuntimeServerBoundary.Principal.agentSession\n      ASPProof.AgentSessionRuntimeServerBoundary.Authority.queryLeaseIssue",
+   "theoremFamily": "query-capability-nonownership",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-CAPABILITY"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.query_request_does_not_confer_lease_issue_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (parserOwned exactBounded grammarValid languageMatches : Bool),\n  ASPProof.AgentSessionRuntimeServerBoundary.chooseHookRoute true parserOwned exactBounded grammarValid\n      languageMatches =\n    ASPProof.AgentSessionRuntimeServerBoundary.HookRoute.nativeSubagent",
+   "theoremFamily": "live-subagent-native-route",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-ROUTE"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.live_session_subagent_routes_natively",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (parserOwned exactBounded languageMatches : Bool),\n  ASPProof.AgentSessionRuntimeServerBoundary.chooseHookRoute false parserOwned exactBounded false languageMatches =\n    ASPProof.AgentSessionRuntimeServerBoundary.HookRoute.reject",
+   "theoremFamily": "invalid-next-command-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-ROUTE"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.invalid_recommended_next_is_rejected_without_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (parserOwned exactBounded grammarValid : Bool),\n  ASPProof.AgentSessionRuntimeServerBoundary.chooseHookRoute false parserOwned exactBounded grammarValid false =\n    ASPProof.AgentSessionRuntimeServerBoundary.HookRoute.reject",
+   "theoremFamily": "owner-language-mismatch-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-ROUTE"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.owner_language_mismatch_is_rejected_without_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (sessionBound : Bool), ¬ASPProof.AgentSessionRuntimeServerBoundary.DispatchAdmissible false sessionBound",
+   "theoremFamily": "host-attestation-dispatch-gate",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-DISPATCH"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.dispatch_requires_host_attestation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (hostAttested : Bool), ¬ASPProof.AgentSessionRuntimeServerBoundary.DispatchAdmissible hostAttested false",
+   "theoremFamily": "session-binding-dispatch-gate",
+   "rfcClauseIds": ["ASP-RFC-10.05-ASRS-DISPATCH"],
+   "name":
+   "ASPProof.AgentSessionRuntimeServerBoundary.dispatch_requires_session_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

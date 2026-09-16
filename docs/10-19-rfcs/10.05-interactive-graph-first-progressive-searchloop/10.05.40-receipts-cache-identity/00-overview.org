@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Receipts, cache, and semantic identity
+#+PROPERTY: rfc_layer receipts-cache-identity
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Ownership
+
+This layer owns evidence receipts, artifact ledgers, semantic cache keys,
+invalidation, model-cache identity, calibration history, and recovery state.
+Search-result reuse and model prefix-cache reuse are separate mechanisms and
+must remain separately observable.
+
+It does not own SearchLoop transition order or graph traversal policy.
+
+Each admitted phase is attempt-bound and has one start plus exactly one
+completed, failed, or cancelled terminal.  Receipt replay may recover evidence;
+it never repairs Runtime lifecycle or advances generation authority.
+
+* Foundational canonical RFCs
+
+- [[file:00.63-orthogonal-cache-credit-ledger.org][Orthogonal cache credit ledger]]
+- [[file:00.25-searchroute-certified-search-ledger.org][SearchRoute certified search ledger]]
+
+- [[file:00.04-semantic-cache-hierarchy.org][Semantic cache hierarchy]]
+- [[file:00.05-artifact-ledger-and-improvement-state.org][Artifact ledger and improvement state]]
+- [[file:00.14-searchloop-cache-invalidation-identity.org][SearchLoop cache invalidation identity]]
+- [[file:00.15-searchloop-cache-minimal-identity-refinement.org][SearchLoop cache minimal identity refinement]]

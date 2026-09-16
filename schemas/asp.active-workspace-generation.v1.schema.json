@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "asp.active-workspace-generation.v1",
+  "title": "ASP Active Workspace Generation V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "languageId",
+    "providerId",
+    "workspaceIdentityDigest",
+    "workspaceRootDigest",
+    "rootDepth",
+    "generationDigest",
+    "fixtureDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "generationDirectory",
+    "providerEnvelopePath",
+    "graphTopologyFixturePath",
+    "exactSelectorFixturePath",
+    "ownerCount",
+    "leafCount",
+    "selectorCount"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.active-workspace-generation.v1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceIdentityDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "workspaceRootDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "rootDepth": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "Depth one selects the stable indexed/Merkle projection; zero selects the high-change active load-once Memory Search projection."
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "fixtureDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "parserIdentityDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "queryPackDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "generationDirectory": {
+      "$ref": "#/$defs/relativeArtifactPath"
+    },
+    "providerEnvelopePath": {
+      "$ref": "#/$defs/relativeArtifactPath"
+    },
+    "graphTopologyFixturePath": {
+      "$ref": "#/$defs/relativeArtifactPath",
+      "description": "Language-neutral owner, caller, dependency, and topology facts committed by the same generation and loaded once by the rootDepth=0 Memory Search projection."
+    },
+    "exactSelectorFixturePath": {
+      "$ref": "#/$defs/relativeArtifactPath"
+    },
+    "ownerCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "leafCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "selectorCount": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relativeArtifactPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

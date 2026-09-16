@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-artifact-execution-closure-member.v1.schema.json",
+  "title": "Runtime Artifact Execution Closure Member V1",
+  "description": "One canonical member of the immutable Runtime execution closure. The bundle binding contains the BLAKE3 digest of each complete member document.",
+  "oneOf": [
+    {"$ref": "#/$defs/providerRegistration"},
+    {"$ref": "#/$defs/providerArtifactSet"},
+    {"$ref": "#/$defs/evaluatorPolicy"},
+    {"$ref": "#/$defs/evaluatorAbi"},
+    {"$ref": "#/$defs/schemaBundle"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+      "properties": {
+        "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+        "schemaVersion": {"const": "1"}
+      }
+    },
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "minLength": 1},
+    "providerRegistrationEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "languageId", "registrationDigest", "artifactMember"],
+      "properties": {
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "languageId": {"$ref": "#/$defs/identifier"},
+        "registrationDigest": {"$ref": "#/$defs/digest"},
+        "artifactMember": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "providerArtifactEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "artifactMember", "artifactDigest"],
+      "properties": {
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "artifactMember": {"$ref": "#/$defs/identifier"},
+        "artifactDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "namedDigestEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "digest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "namedDigestEntries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/namedDigestEntry"}
+    },
+    "languageSchemaEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "schemaDigest"],
+      "properties": {
+        "languageId": {"$ref": "#/$defs/identifier"},
+        "schemaDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "providerRegistration": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+          "properties": {
+            "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+            "schemaVersion": {"const": "1"},
+            "memberKind": {"const": "provider-registration"},
+            "entries": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/providerRegistrationEntry"}}
+          }
+        }
+      ]
+    },
+    "providerArtifactSet": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+          "properties": {
+            "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+            "schemaVersion": {"const": "1"},
+            "memberKind": {"const": "provider-artifact-set"},
+            "entries": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/providerArtifactEntry"}}
+          }
+        }
+      ]
+    },
+    "evaluatorPolicy": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+          "properties": {
+            "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+            "schemaVersion": {"const": "1"},
+            "memberKind": {"const": "evaluator-policy"},
+            "entries": {"$ref": "#/$defs/namedDigestEntries"}
+          }
+        }
+      ]
+    },
+    "evaluatorAbi": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+          "properties": {
+            "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+            "schemaVersion": {"const": "1"},
+            "memberKind": {"const": "evaluator-abi"},
+            "entries": {"$ref": "#/$defs/namedDigestEntries"}
+          }
+        }
+      ]
+    },
+    "schemaBundle": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "memberKind", "entries"],
+          "properties": {
+            "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-execution-closure-member"},
+            "schemaVersion": {"const": "1"},
+            "memberKind": {"const": "schema-bundle"},
+            "entries": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/languageSchemaEntry"}}
+          }
+        }
+      ]
+    }
+  }
+}

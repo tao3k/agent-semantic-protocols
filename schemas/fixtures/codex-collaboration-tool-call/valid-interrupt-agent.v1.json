@@ -1,0 +1,9 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "interrupt_agent",
+  "toolInput": {
+    "target": "/root/asp_testing"
+  }
+}

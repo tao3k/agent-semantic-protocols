@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/lexical-generation-plan.v1.schema.json",
+  "title": "Lexical generation plan V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "analyzerDigest",
+    "inventoryDigest",
+    "admittedOwnerDigest",
+    "lexicalFactDigest",
+    "entries",
+    "retiredArtifactDigests",
+    "planDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.lexical-generation-plan"},
+    "schemaVersion": {"const": "1"},
+    "analyzerDigest": {"$ref": "#/$defs/digest"},
+    "inventoryDigest": {"$ref": "#/$defs/digest"},
+    "admittedOwnerDigest": {"$ref": "#/$defs/digest"},
+    "lexicalFactDigest": {"$ref": "#/$defs/digest"},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    },
+    "retiredArtifactDigests": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/digest"},
+      "uniqueItems": true
+    },
+    "planDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "contentDigest",
+        "shardKey",
+        "disposition",
+        "priorArtifactDigest",
+        "queryKeys"
+      ],
+      "properties": {
+        "ownerPath": {"type": "string", "minLength": 1},
+        "contentDigest": {"$ref": "#/$defs/digest"},
+        "shardKey": {"$ref": "#/$defs/digest"},
+        "disposition": {"enum": ["reuse", "rebuild"]},
+        "priorArtifactDigest": {
+          "oneOf": [
+            {"$ref": "#/$defs/digest"},
+            {"type": "null"}
+          ]
+        },
+        "queryKeys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-source-snapshot-descriptor.v1.schema.json",
+  "title": "ASP Provider Source Snapshot Descriptor v1",
+  "description": "Required provider declaration for live Merkle source authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "descriptorId",
+    "descriptorVersion",
+    "languageId",
+    "packetSchemaId",
+    "exactSourcePacketSchemaId",
+    "sourceSnapshotEnvelopeSchemaId",
+    "derivedArtifactEvidenceSchemaId",
+    "algorithm",
+    "authority",
+    "exactSelectorResolution",
+    "overlayMode"
+  ],
+  "properties": {
+    "descriptorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "descriptorVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packetSchemaId": {
+      "const": "asp.source-snapshot.v1"
+    },
+    "exactSourcePacketSchemaId": {
+      "const": "asp.exact-source-query-result.v1"
+    },
+    "sourceSnapshotEnvelopeSchemaId": {
+      "const": "asp.exact-source-snapshot-envelope.v1"
+    },
+    "derivedArtifactEvidenceSchemaId": {
+      "const": "asp.derived-source-artifact-evidence.v1"
+    },
+    "algorithm": {
+      "const": "blake3-merkle-v1"
+    },
+    "authority": {
+      "const": "live-parser"
+    },
+    "exactSelectorResolution": {
+      "const": "pinned-live-module-graph"
+    },
+    "overlayMode": {
+      "const": "merkle-delta"
+    }
+  }
+}

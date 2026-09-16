@@ -1,0 +1,23 @@
+{
+  "schemaId": "agent.semantic-protocols.progressive-search-turn.v1",
+  "schemaVersion": "1",
+  "turnKind": "selection",
+  "semanticDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceSnapshotDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "exposureBudget": 10,
+  "selectionBudget": 3,
+  "visibleCandidates": [
+    { "candidateId": "c1", "nodeRef": "node:1", "provenanceDigest": "blake3-256:2111111111111111111111111111111111111111111111111111111111111111", "features": { "pathLength": 1 } },
+    { "candidateId": "c2", "nodeRef": "node:2", "provenanceDigest": "blake3-256:3111111111111111111111111111111111111111111111111111111111111111", "features": { "pathLength": 2 } },
+    { "candidateId": "c3", "nodeRef": "node:3", "provenanceDigest": "blake3-256:4111111111111111111111111111111111111111111111111111111111111111", "features": { "pathLength": 2 } },
+    { "candidateId": "c4", "nodeRef": "node:4", "provenanceDigest": "blake3-256:5111111111111111111111111111111111111111111111111111111111111111", "features": { "pathLength": 3 } }
+  ],
+  "selectedCandidateIds": ["c1", "c2", "c4"],
+  "omittedItemCount": 7,
+  "obligationState": "partial",
+  "continuation": {
+    "continuationId": "continuation:1",
+    "semanticDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "omissionCertificateDigest": "blake3-256:6111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

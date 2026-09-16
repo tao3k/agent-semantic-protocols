@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use crate::command::semantic_shell_tokens;
 
 #[test]
@@ -9,23 +13,73 @@ fn bash_ast_tokens_strip_quotes_from_source_dump_range() {
 }
 
 #[test]
-fn bash_ast_tokens_unwrap_login_shell_script() {
+fn bash_ast_tokens_surface_outer_and_nested_wrapper_stages() {
     assert_eq!(
         semantic_shell_tokens("bash -lc \"sed -n '1,40p' src/lib.rs\""),
-        vec!["sed", "-n", "1,40p", "src/lib.rs"]
+        vec![
+            "bash",
+            "-lc",
+            "sed -n '1,40p' src/lib.rs",
+            "sed",
+            "-n",
+            "1,40p",
+            "src/lib.rs"
+        ]
     );
 }
 
 #[test]
-fn bash_ast_tokens_preserve_pipeline_separator() {
+fn bash_ast_tokens_preserve_absolute_shell_and_nested_command_modes() {
+    for command in [
+        "/bin/bash -c 'cargo test -p agent-semantic-hook'",
+        "/bin/bash -lc 'cargo test -p agent-semantic-hook'",
+        "/usr/bin/env /bin/zsh -c 'cargo test -p agent-semantic-hook'",
+    ] {
+        assert_eq!(
+            semantic_shell_tokens(command),
+            if command.starts_with("/usr/bin/env") {
+                vec![
+                    "/usr/bin/env",
+                    "/bin/zsh",
+                    "-c",
+                    "cargo test -p agent-semantic-hook",
+                    "cargo",
+                    "test",
+                    "-p",
+                    "agent-semantic-hook",
+                ]
+            } else {
+                vec![
+                    "/bin/bash",
+                    if command.contains(" -lc ") {
+                        "-lc"
+                    } else {
+                        "-c"
+                    },
+                    "cargo test -p agent-semantic-hook",
+                    "cargo",
+                    "test",
+                    "-p",
+                    "agent-semantic-hook",
+                ]
+            },
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn bash_ast_tokens_keep_playbook_stage_and_following_pipeline_words() {
+    let expression = "(search (producers (language rust)) (intersect (rg \"workspace\" \".\") (tantivy \"title:workspace^2 OR body:identity\")))";
     assert_eq!(
-        semantic_shell_tokens("asp rust search prime . | rg HookDecision src/lib.rs"),
+        semantic_shell_tokens(&format!(
+            "asp search playbook '{expression}' | rg HookDecision src/lib.rs"
+        )),
         vec![
             "asp",
-            "rust",
             "search",
-            "prime",
-            ".",
+            "playbook",
+            expression,
             "|",
             "rg",
             "HookDecision",
@@ -91,22 +145,11 @@ fn bash_ast_tokens_surface_nested_command_stages() {
 }
 
 #[test]
-fn bash_ast_tokens_keep_quoted_search_pipe_stage() {
+fn bash_ast_tokens_keep_quoted_search_playbook_stage() {
+    let expression = "(search (producers (language typescript)) (intersect (rg \"Effect concurrency Fiber\" \".\") (tantivy \"title:Effect^2 OR body:Fiber\")))";
     assert_eq!(
-        semantic_shell_tokens(
-            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
-        ),
-        vec![
-            "asp",
-            "typescript",
-            "search",
-            "pipe",
-            "Effect concurrency Fiber",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ]
+        semantic_shell_tokens(&format!("asp search playbook '{expression}'")),
+        vec!["asp", "search", "playbook", expression]
     );
 }
 

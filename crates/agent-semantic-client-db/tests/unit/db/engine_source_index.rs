@@ -1,35 +1,57 @@
-use std::{
-    fs,
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion,
-};
-use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
-    ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImportAssemblyRequest,
-    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorPayloadProof, ClientDbSourceIndexSource, build_source_index_import,
-    source_index_import_with_file_hashes,
-};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-#[path = "engine_source_index/language_projection.rs"]
-mod language_projection;
+use crate::source_index_fixture::build_fixture_source_index_import;
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_core::ProviderId;
+use agent_semantic_client_core::SemanticSchemaId;
+use agent_semantic_client_core::SemanticSchemaVersion;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID;
+use agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION;
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbSourceIndexImportAssemblyRequest;
+use agent_semantic_client_db::ClientDbSourceIndexImportFile;
+use agent_semantic_client_db::ClientDbSourceIndexImportRequest;
+use agent_semantic_client_db::ClientDbSourceIndexLookupState;
+use agent_semantic_client_db::ClientDbSourceIndexPath;
+use agent_semantic_client_db::ClientDbSourceIndexQueryKey;
+use agent_semantic_client_db::ClientDbSourceIndexRefreshRequest;
+use agent_semantic_client_db::ClientDbSourceIndexScopeFile;
+use agent_semantic_client_db::ClientDbSourceIndexSelector;
+use agent_semantic_client_db::ClientDbSourceIndexSource;
+use agent_semantic_client_db::source_index_import_with_file_hashes;
+
+pub use agent_semantic_client_db::ClientDbSourceIndexImport;
+
+#[path = "engine_source_index/merkle_overlay_refresh.rs"]
+mod merkle_overlay_refresh;
+#[path = "engine_source_index/schema_rebuild.rs"]
+mod schema_rebuild;
+
+#[path = "engine_source_index/snapshot_helper.rs"]
+mod snapshot_helper;
+#[cfg(unix)]
+use snapshot_helper::client_dir_snapshot;
 
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_control() {
     let client_dir = temp_root("db-engine-source-index-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-project");
-    let first_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
+    let first_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-active-turso-1"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -42,23 +64,35 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             mtime_ms: 11,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_active_turso.rs",
+                "rust://src/source_index_active_turso.rs#item/function/source_index_active_turso_fixture",
+                "source_index_active_turso_fixture",
+                b"pub fn source_index_active_turso_fixture() {}\n",
+            )],
         }],
     })
     .expect("build first Turso source-index import");
-    let first = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: first_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh source-index through active Turso DB Engine path");
-    assert_eq!(first.generation_id.as_str(), "source-index-active-turso-1");
+    let active_source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_active_turso.rs",
+        b"pub fn source_index_active_turso_fixture() {}\n".as_slice(),
+    )]);
+    let first = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: first_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &active_source_blobs,
+        )
+        .expect("refresh source-index through active Turso DB Engine path");
+    assert!(first.generation_id.as_str().starts_with("source-index-"));
     assert!(!first.reused_generation);
     assert_eq!(first.file_count, 1);
     assert_eq!(first.owner_count, 1);
@@ -68,8 +102,9 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
     assert_eq!(inspect.source_index_owner_count, 1);
     assert_eq!(inspect.source_index_selector_count, 1);
 
-    let second_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: CacheGenerationId::from("source-index-active-turso-2"),
+    let second_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
+        generation_id: CacheGenerationId::from("source-index-active-turso-1"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
         schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
@@ -81,23 +116,31 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             mtime_ms: 11,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_active_turso.rs",
+                "rust://src/source_index_active_turso.rs#item/function/source_index_active_turso_fixture",
+                "source_index_active_turso_fixture",
+                b"pub fn source_index_active_turso_fixture() {}\n",
+            )],
         }],
     })
     .expect("build second Turso source-index import");
-    let second = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: second_import,
-            file_count: 1,
-        },
-    )
-    .expect("reuse source-index generation through active Turso DB Engine path");
-    assert_eq!(second.generation_id.as_str(), "source-index-active-turso-1");
+    let second = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: second_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &active_source_blobs,
+        )
+        .expect("reuse source-index generation through active Turso DB Engine path");
+    assert_eq!(second.generation_id, first.generation_id);
     assert!(second.reused_generation);
     assert_eq!(second.file_count, 1);
     assert_eq!(second.owner_count, 1);
@@ -106,6 +149,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
     let rust_language_id = LanguageId::from("rust");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &first.source_snapshot,
         "source_index_active_turso_fixture",
         Some(&rust_language_id),
         8,
@@ -117,11 +161,11 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         lookup.candidates.iter().any(|candidate| candidate.path
             == "src/source_index_active_turso.rs"
             && candidate.language_id.as_ref().map(|id| id.as_str()) == Some("rust")
-            && candidate.provider_id.as_ref().map(|id| id.as_str()) == Some("rs-harness")
+            && candidate.provider_id.as_ref().map(|id| id.as_str()) == Some("asp-rust")
             && candidate.source_kind.as_str() == "turso-source-index"),
         "lookup={lookup:?}"
     );
-    assert!(client_dir.join("client.turso").exists());
+    assert!(client_dir.join("facts.turso").exists());
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
 }
@@ -129,10 +173,14 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_candidate() {
     let client_dir = temp_root("db-engine-source-index-proof-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-proof-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let selector =
         "rust://src/source_index_payload_proof.rs#item/function/source_index_payload_proof_fixture";
-    let mut source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-payload-proof-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -145,37 +193,41 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
             mtime_ms: 17,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_payload_proof.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_payload_proof_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_payload_proof.rs",
+                selector,
+                "source_index_payload_proof_fixture",
+                b"pub fn source_index_payload_proof_fixture() {}\n",
+            )],
         }],
     })
     .expect("build Turso source-index payload proof import");
-    source_index_import.selectors[0].selector_id = selector.to_string();
-    source_index_import.selectors[0].symbol =
-        Some("source_index_payload_proof_fixture".to_string());
-    source_index_import.selectors[0].kind = Some("function".to_string());
-    source_index_import.selectors[0].payload_proof =
-        Some(ClientDbSourceIndexSelectorPayloadProof {
-            structural_selector: selector.to_string(),
-            payload_kind: "code".to_string(),
-            bounded: true,
-        });
+    let source = b"pub fn source_index_payload_proof_fixture() {}\n";
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_payload_proof.rs",
+        source.as_slice(),
+    )]);
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh source-index payload proof import");
+    let refresh = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("refresh source-index payload proof import");
 
     let rust_language_id = LanguageId::from("rust");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &refresh.source_snapshot,
         "source_index_payload_proof_fixture",
         Some(&rust_language_id),
         8,
@@ -188,16 +240,21 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
         .find(|candidate| candidate.path == "src/source_index_payload_proof.rs")
         .expect("source-index payload proof candidate");
     let proof = candidate
-        .selector_proof
+        .selector_projection
         .as_ref()
         .expect("candidate payload proof");
-    assert_eq!(proof.structural_selector, selector);
-    assert_eq!(proof.payload_kind, "code");
-    assert!(proof.bounded);
+    assert_eq!(proof.proof.structural_selector(), selector);
+    assert_eq!(
+        proof.proof.projection_mode(),
+        &agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
+    );
+    assert_eq!(proof.source_byte_range, 0..source.len() as u64);
+    assert_eq!(proof.projection_payload, source);
 
     let other_language_id = LanguageId::from("gerbil-scheme");
     let other_language_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &refresh.source_snapshot,
         "source_index_scope_payload_proof_fixture",
         Some(&other_language_id),
         8,
@@ -213,7 +270,10 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_candidate() {
     let client_dir = temp_root("db-engine-source-index-scope-proof-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-scope-proof-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let source_path = project_root.join("src/source_index_scope_payload_proof.rs");
     fs::create_dir_all(source_path.parent().expect("source parent")).expect("create source dir");
     fs::write(
@@ -222,6 +282,10 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
     )
     .expect("write source fixture");
     let selector = "rust://src/source_index_scope_payload_proof.rs#item/function/source_index_scope_payload_proof_fixture";
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_scope_payload_proof.rs",
+        b"pub fn source_index_scope_payload_proof_fixture() {}\n".as_slice(),
+    )]);
     let import = source_index_import_with_file_hashes(
         ClientDbSourceIndexImportAssemblyRequest {
             generation_id: CacheGenerationId::from("source-index-scope-payload-proof-turso"),
@@ -230,33 +294,47 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
             schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
             selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             file_text_bytes_limit: 4096,
-            previous_file_hashes: None,
             registry_fingerprint: "scope-payload-proof-registry".to_string(),
             extra_scope_dirs: Vec::new(),
             files: vec![ClientDbSourceIndexScopeFile {
+                relations: Vec::new(),
                 path: source_path,
                 language_id: LanguageId::from("rust"),
-                provider_id: ProviderId::from("rs-harness"),
+                provider_id: ProviderId::from("asp-rust"),
+                projection_coverage:
+                    agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
+                projection_diagnostic: None,
                 selector_receipts: vec![ClientDbSourceIndexSelector {
                     owner_path: ClientDbSourceIndexPath::from(
                         "src/source_index_scope_payload_proof.rs",
                     ),
-                    selector_id: selector.to_string(),
-                    symbol: Some("source_index_scope_payload_proof_fixture".to_string()),
-                    kind: Some("function".to_string()),
-                    start_line: 1,
-                    end_line: 1,
+                    provider_id: ProviderId::from("asp-rust"),
+                    selector_id: selector.into(),
+                    symbol: Some("source_index_scope_payload_proof_fixture".into()),
+                    kind: Some("function".into()),
                     source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
                     query_keys: vec![ClientDbSourceIndexQueryKey::from(
                         "source_index_scope_payload_proof_fixture",
                     )],
-                    payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                        structural_selector: selector.to_string(),
-                        payload_kind: "code".to_string(),
-                        bounded: true,
-                    }),
+                    derived_projections: Vec::new(),
+                    projection_record: crate::projection_fixture::projection_record(
+                        crate::projection_fixture::ProjectionFixtureInput {
+                            language_id: "rust",
+                            provider_id: "asp-rust",
+                            owner_path: "src/source_index_scope_payload_proof.rs",
+                            structural_selector: selector,
+                            item_kind: "function",
+                            item_name: "source_index_scope_payload_proof_fixture",
+                            source: b"pub fn source_index_scope_payload_proof_fixture() {}\n",
+                            source_byte_start: 0,
+                            source_byte_end:
+                                b"pub fn source_index_scope_payload_proof_fixture() {}\n".len()
+                                    as u64,
+                        },
+                    ),
                 }],
             }],
+            source_blobs: source_blobs.clone(),
         },
         vec![ClientCacheFileHash {
             path: "src/source_index_scope_payload_proof.rs".to_string(),
@@ -267,18 +345,21 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
     )
     .expect("assemble source-index scope payload proof import");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh source-index scope payload proof import");
+    let refresh = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("refresh source-index scope payload proof import");
 
     let rust_language_id = LanguageId::from("rust");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &refresh.source_snapshot,
         "source_index_scope_payload_proof_fixture",
         Some(&rust_language_id),
         8,
@@ -289,11 +370,17 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
         .candidates
         .iter()
         .find(|candidate| candidate.path == "src/source_index_scope_payload_proof.rs")
-        .and_then(|candidate| candidate.selector_proof.as_ref())
+        .and_then(|candidate| candidate.selector_projection.as_ref())
         .expect("scope payload proof candidate");
-    assert_eq!(proof.structural_selector, selector);
-    assert_eq!(proof.payload_kind, "code");
-    assert!(proof.bounded);
+    assert_eq!(proof.proof.structural_selector(), selector);
+    assert_eq!(
+        proof.proof.projection_mode(),
+        &agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
+    );
+    assert_eq!(
+        proof.source_byte_range,
+        0..b"pub fn source_index_scope_payload_proof_fixture() {}\n".len() as u64
+    );
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
@@ -302,8 +389,12 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generations() {
     let client_dir = temp_root("db-engine-source-index-dedup-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-dedup-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
+    let mut active_source_snapshot = None;
 
     for (generation_id, text, sha_prefix, mtime_ms) in [
         (
@@ -319,41 +410,57 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
             22,
         ),
     ] {
-        let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-            generation_id: CacheGenerationId::from(generation_id),
-            project_root: project_root.clone(),
-            schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-            schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-            selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
-            file_hashes: vec![ClientCacheFileHash {
-                path: "src/source_index_dedup.rs".to_string(),
-                sha256: sha_prefix.repeat(4),
-                byte_len: text.len() as u64,
-                mtime_ms,
-            }],
-            files: vec![ClientDbSourceIndexImportFile {
-                relative_path: "src/source_index_dedup.rs".to_string(),
-                language_id: rust_language_id.clone(),
-                provider_id: ProviderId::from("rs-harness"),
-                text: text.to_string(),
-                selectors: Vec::new(),
-            }],
-        })
-        .expect("build Turso source-index import");
-        let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-            &client_dir,
-            ClientDbSourceIndexRefreshRequest {
-                import: source_index_import,
-                file_count: 1,
-            },
-        )
-        .expect("refresh source-index through active Turso DB Engine path");
-        assert_eq!(refresh.generation_id.as_str(), generation_id);
+        let source_index_import =
+            build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+                source_blobs: Default::default(),
+                generation_id: CacheGenerationId::from(generation_id),
+                project_root: project_root.clone(),
+                schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+                schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+                selector_source: ClientDbSourceIndexSource::from(
+                    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID,
+                ),
+                file_hashes: vec![ClientCacheFileHash {
+                    path: "src/source_index_dedup.rs".to_string(),
+                    sha256: sha_prefix.repeat(4),
+                    byte_len: text.len() as u64,
+                    mtime_ms,
+                }],
+                files: vec![ClientDbSourceIndexImportFile {
+                    relations: Vec::new(),
+                    relative_path: "src/source_index_dedup.rs".to_string(),
+                    language_id: rust_language_id.clone(),
+                    provider_id: ProviderId::from("asp-rust"),
+                    text: text.to_string(),
+                    selectors: Vec::new(),
+                }],
+            })
+            .expect("build Turso source-index import");
+        let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+            "src/source_index_dedup.rs",
+            text.as_bytes(),
+        )]);
+        let refresh = fixture
+            .commit_source_index_generation(
+                ClientDbSourceIndexRefreshRequest {
+                    import: source_index_import,
+                    file_count: 1,
+                    source_snapshot: source_snapshot.clone(),
+                },
+                &source_blobs,
+            )
+            .expect("refresh source-index through active Turso DB Engine path");
+        assert!(refresh.generation_id.as_str().starts_with("source-index-"));
+        assert_ne!(refresh.generation_id.as_str(), generation_id);
         assert!(!refresh.reused_generation);
+        active_source_snapshot = Some(refresh.source_snapshot);
     }
 
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        active_source_snapshot
+            .as_ref()
+            .expect("latest committed source-index generation snapshot"),
         "source_index_dedup_fixture",
         Some(&rust_language_id),
         8,
@@ -387,9 +494,13 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_import_does_not_populate_turso_fts_search_documents() {
     let client_dir = temp_root("db-engine-source-index-fts-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-fts-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-fts-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -402,43 +513,54 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
             mtime_ms: 44,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_fts.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n"
                 .to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_fts.rs",
+                "rust://src/source_index_fts.rs#item/function/source_index_fts_fixture",
+                "source_index_fts_fixture",
+                b"pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n",
+            )],
         }],
     })
     .expect("build Turso source-index FTS import");
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_fts.rs",
+        b"pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n".as_slice(),
+    )]);
 
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import.clone(),
-            file_count: 1,
-        },
-    )
-    .expect("refresh source-index through Turso FTS search lane");
+    let refresh = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import.clone(),
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("refresh source-index through Turso FTS search lane");
     assert_eq!(refresh.owner_count, 1);
     assert_eq!(refresh.selector_count, 1);
 
-    let hits = ClientDbEngine::search_source_index_documents_from_client_dir(
-        &client_dir,
-        "source_index_fts_fixture",
-        8,
-    )
-    .expect("search source-index documents through Turso stable search lane");
-    assert!(hits.is_empty(), "hits={hits:?}");
+    assert!(
+        !client_dir.join("search-projection.turso").exists(),
+        "source-index commit must not bootstrap or populate the retired FTS projection lane"
+    );
 
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "source_index_fts_fixture",
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect("lookup source-index read model after Turso FTS smoke");
+    let lookup = fixture
+        .read_source_index(
+            project_root.clone(),
+            project_root.clone(),
+            refresh.source_snapshot.clone(),
+            "source_index_fts_fixture".to_owned(),
+            Some(rust_language_id.clone()),
+            8,
+        )
+        .expect("lookup source-index read model after Turso FTS smoke");
     assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
     assert!(
         lookup
@@ -455,9 +577,13 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_file_locks() {
     let client_dir = temp_root("db-engine-source-index-concurrent-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-concurrent-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-concurrent-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -470,28 +596,37 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             mtime_ms: 33,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_concurrent.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_concurrent_fixture() {}\n".to_string(),
             selectors: Vec::new(),
         }],
     })
     .expect("build concurrent Turso source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh concurrent source-index fixture");
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_concurrent.rs",
+        b"pub fn source_index_concurrent_fixture() {}\n".as_slice(),
+    )]);
+    let refresh = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("refresh concurrent source-index fixture");
+    let source_snapshot = refresh.source_snapshot;
 
     let shared_client_dir = Arc::new(client_dir.clone());
     let handles = (0..12)
         .map(|worker| {
             let client_dir = Arc::clone(&shared_client_dir);
             let rust_language_id = rust_language_id.clone();
+            let source_snapshot = source_snapshot.clone();
             std::thread::spawn(move || -> Result<(), String> {
                 if worker % 2 == 0 {
                     let inspect = ClientDbEngine::inspect_client_dir(client_dir.as_ref());
@@ -507,6 +642,7 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
                 let lookup = runtime.block_on(
                     ClientDbEngine::lookup_source_index_read_model_from_client_dir(
                         client_dir.as_ref(),
+                        &source_snapshot,
                         "source_index_concurrent_fixture",
                         Some(&rust_language_id),
                         8,
@@ -536,9 +672,13 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
     use std::os::unix::fs::PermissionsExt;
 
     let client_dir = temp_root("db-engine-source-index-read-only-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-read-only-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-read-only-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -551,22 +691,29 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
             mtime_ms: 44,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_read_only.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_read_only_fixture() {}\n".to_string(),
             selectors: Vec::new(),
         }],
     })
     .expect("build read-only Turso source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh read-only source-index fixture");
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_read_only.rs",
+        b"pub fn source_index_read_only_fixture() {}\n".as_slice(),
+    )]);
+    let refresh = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("refresh read-only source-index fixture");
 
     let before = client_dir_snapshot(&client_dir);
     let entries = fs::read_dir(&client_dir)
@@ -582,13 +729,14 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
         .expect("make client directory read-only");
 
     let lookup_started_at = std::time::Instant::now();
-    let lookup_result = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "source_index_read_only_fixture",
-        Some(&rust_language_id),
+    let lookup_result = fixture.read_source_index(
+        project_root.clone(),
+        project_root.clone(),
+        refresh.source_snapshot.clone(),
+        "source_index_read_only_fixture".to_owned(),
+        Some(rust_language_id.clone()),
         8,
-    )
-    .await;
+    );
     let lookup_elapsed = lookup_started_at.elapsed();
 
     fs::set_permissions(&client_dir, fs::Permissions::from_mode(0o755))
@@ -613,11 +761,15 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_lock_errors() {
+async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lock_errors() {
     let client_dir = temp_root("db-engine-source-index-pressure-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-pressure-project");
     let rust_language_id = LanguageId::from("rust");
-    let initial_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let initial_source_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(1);
+    let initial_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-pressure-turso-initial"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -630,37 +782,49 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
             mtime_ms: 1,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_pressure.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_pressure_fixture() { let initial = true; }\n".to_string(),
             selectors: Vec::new(),
         }],
     })
     .expect("build initial pressure source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: initial_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh initial pressure source-index fixture");
+    let initial_source_blobs = crate::projection_fixture::source_blobs_fixture([(
+        "src/source_index_pressure.rs",
+        b"pub fn source_index_pressure_fixture() { let initial = true; }\n".as_slice(),
+    )]);
+    fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: initial_import,
+                file_count: 1,
+                source_snapshot: initial_source_snapshot.clone(),
+            },
+            &initial_source_blobs,
+        )
+        .expect("refresh initial pressure source-index fixture");
 
     let shared_client_dir = Arc::new(client_dir.clone());
     let shared_project_root = Arc::new(project_root.clone());
     let completed_lookup_count = Arc::new(AtomicUsize::new(0));
-    let busy_lookup_count = Arc::new(AtomicUsize::new(0));
 
-    let writer_client_dir = Arc::clone(&shared_client_dir);
+    let writer_fixture = fixture.clone();
     let writer_project_root = Arc::clone(&shared_project_root);
     let writer_language_id = rust_language_id.clone();
-    let writer = std::thread::spawn(move || -> Result<(), String> {
+    let writer = std::thread::spawn(move || {
+        let mut committed_snapshot = None;
         for round in 0_u64..6 {
             let text = format!(
                 "pub fn source_index_pressure_fixture() {{ let generation_{round} = true; }}\n"
             );
-            let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+            let source_blobs = crate::projection_fixture::source_blobs_fixture([(
+                "src/source_index_pressure.rs",
+                text.as_bytes(),
+            )]);
+            let import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+                source_blobs: Default::default(),
                 generation_id: CacheGenerationId::from(format!(
                     "source-index-pressure-turso-{round}"
                 )),
@@ -677,30 +841,35 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     mtime_ms: round + 2,
                 }],
                 files: vec![ClientDbSourceIndexImportFile {
+                    relations: Vec::new(),
                     relative_path: "src/source_index_pressure.rs".to_string(),
                     language_id: writer_language_id.clone(),
-                    provider_id: ProviderId::from("rs-harness"),
+                    provider_id: ProviderId::from("asp-rust"),
                     text,
                     selectors: Vec::new(),
                 }],
             })?;
-            ClientDbEngine::refresh_source_index_import_from_client_dir(
-                writer_client_dir.as_ref(),
+            let report = writer_fixture.commit_source_index_generation(
                 ClientDbSourceIndexRefreshRequest {
                     import,
                     file_count: 1,
+                    source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
+                        round + 2,
+                    ),
                 },
+                &source_blobs,
             )?;
+            committed_snapshot = Some(report.source_snapshot);
         }
-        Ok(())
+        Ok::<_, String>(committed_snapshot.expect("writer must commit at least one generation"))
     });
 
     let readers = (0..8)
         .map(|_| {
             let client_dir = Arc::clone(&shared_client_dir);
             let rust_language_id = rust_language_id.clone();
+            let source_snapshot = initial_source_snapshot.clone();
             let completed_lookup_count = Arc::clone(&completed_lookup_count);
-            let busy_lookup_count = Arc::clone(&busy_lookup_count);
             std::thread::spawn(move || -> Result<(), String> {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -710,6 +879,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     let lookup = runtime.block_on(
                         ClientDbEngine::lookup_source_index_read_model_from_client_dir(
                             client_dir.as_ref(),
+                            &source_snapshot,
                             "source_index_pressure_fixture",
                             Some(&rust_language_id),
                             8,
@@ -718,15 +888,16 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     match lookup.state {
                         ClientDbSourceIndexLookupState::Hit
                         | ClientDbSourceIndexLookupState::Miss
-                        | ClientDbSourceIndexLookupState::Busy => {
+                        | ClientDbSourceIndexLookupState::ColdRequired => {
                             completed_lookup_count.fetch_add(1, Ordering::Relaxed);
-                            if lookup.state == ClientDbSourceIndexLookupState::Busy {
-                                busy_lookup_count.fetch_add(1, Ordering::Relaxed);
-                            }
+                        }
+                        ClientDbSourceIndexLookupState::Busy => {
+                            return Err(format!(
+                                "pressure lookup exposed writer contention: {lookup:?}"
+                            ));
                         }
                         ClientDbSourceIndexLookupState::MissingDb
-                        | ClientDbSourceIndexLookupState::EmptyIndex
-                        | ClientDbSourceIndexLookupState::ColdRequired => {
+                        | ClientDbSourceIndexLookupState::EmptyIndex => {
                             return Err(format!(
                                 "pressure lookup saw invalid state after initial refresh: {lookup:?}"
                             ));
@@ -738,7 +909,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
         })
         .collect::<Vec<_>>();
 
-    writer
+    let final_source_snapshot = writer
         .join()
         .expect("pressure source-index writer panicked")
         .expect("pressure source-index writer failed");
@@ -753,113 +924,29 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
         completed_lookup_count.load(Ordering::Relaxed) >= 8,
         "pressure test should complete concurrent lookup attempts"
     );
-    let final_lookup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    let final_lookup = loop {
-        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-            &client_dir,
-            "source_index_pressure_fixture",
-            Some(&rust_language_id),
-            8,
-        )
-        .await
-        .expect("final pressure lookup should not fail");
-        if lookup.state != ClientDbSourceIndexLookupState::Busy {
-            break lookup;
-        }
-        assert!(
-            std::time::Instant::now() < final_lookup_deadline,
-            "final pressure lookup remained busy past the test deadline"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    };
-    assert_eq!(final_lookup.state, ClientDbSourceIndexLookupState::Hit);
-    assert!(
-        busy_lookup_count.load(Ordering::Relaxed) <= completed_lookup_count.load(Ordering::Relaxed),
-        "busy count must be bounded by completed lookups"
-    );
-
-    let _ = fs::remove_dir_all(client_dir);
-    let _ = fs::remove_dir_all(project_root);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_lookup_converges_historical_graph_entity_schema() {
-    let client_dir = temp_root("db-engine-source-index-graph-migration-client");
-    let project_root = temp_root("db-engine-source-index-graph-migration-project");
-    fs::create_dir_all(&client_dir).expect("create client dir");
-    let db_path = client_dir.join("client.turso");
-    {
-        let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
-            .experimental_index_method(true)
-            .build()
-            .await
-            .expect("create historical graph entity fixture database");
-        let connection = database
-            .connect()
-            .expect("connect historical graph entity fixture database");
-        connection
-            .execute(
-                "CREATE TABLE asp_graph_entity (
-                    id TEXT PRIMARY KEY,
-                    kind TEXT NOT NULL,
-                    label TEXT NOT NULL
-                )",
-                (),
-            )
-            .await
-            .expect("create historical graph entity schema");
-    }
-
-    let rust_language_id = LanguageId::from("rust");
-    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &client_dir,
-            indexed_project_root: &project_root,
-            language_id: Some(&rust_language_id),
-            query_keys: vec![ClientDbSourceIndexQueryKey::from(
-                "source_index_graph_migration_fixture",
-            )],
-            limit: 8,
-        },
+    let final_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        &final_source_snapshot,
+        "source_index_pressure_fixture",
+        Some(&rust_language_id),
+        8,
     )
-    .expect("lookup source-index should converge historical graph entity schema");
-    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::EmptyIndex);
-    assert!(lookup.candidates.is_empty());
-    {
-        let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
-            .experimental_index_method(true)
-            .build()
-            .await
-            .expect("reopen historical graph entity fixture database");
-        let connection = database
-            .connect()
-            .expect("connect historical graph entity fixture database after lookup");
-        let mut rows = connection
-            .query("PRAGMA table_list", ())
-            .await
-            .expect("inspect source-index tables after read-only lookup");
-        let mut found_source_index_table = false;
-        while let Some(row) = rows.next().await.expect("read table list row") {
-            let table_name = row.get::<String>(1).expect("read table list name");
-            if table_name.starts_with("asp_source_index_") {
-                found_source_index_table = true;
-                break;
-            }
-        }
-        assert!(
-            !found_source_index_table,
-            "source-index lookup must not bootstrap source-index tables"
-        );
-    }
+    .await
+    .expect("final pressure lookup should complete once without retry");
+    assert_eq!(final_lookup.state, ClientDbSourceIndexLookupState::Hit);
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
 }
 
 fn temp_root(label: &str) -> PathBuf {
-    let mut root = std::env::temp_dir();
+    let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+        .expect("discover owner-backed source-index test repository with Gix");
+    let mut root = repository
+        .worktree()
+        .expect("source-index tests require a non-bare owner checkout")
+        .base()
+        .join("target/asp-live-project-fixtures");
     let unique = format!(
         "asp-client-db-{label}-{}-{}",
         std::process::id(),
@@ -873,70 +960,36 @@ fn temp_root(label: &str) -> PathBuf {
     root
 }
 
-#[cfg(unix)]
-fn client_dir_snapshot(root: &std::path::Path) -> Vec<(String, u64, std::time::SystemTime)> {
-    let mut snapshot = fs::read_dir(root)
-        .expect("read client directory snapshot")
-        .map(|entry| {
-            let entry = entry.expect("read client directory entry");
-            let metadata = entry.metadata().expect("read client entry metadata");
-            (
-                entry.file_name().to_string_lossy().into_owned(),
-                metadata.len(),
-                metadata.modified().expect("read client entry mtime"),
-            )
-        })
-        .collect::<Vec<_>>();
-    snapshot.sort_by(|left, right| left.0.cmp(&right.0));
-    snapshot
+pub(crate) fn rust_selector_fixture(
+    owner_path: &str,
+    selector: &str,
+    symbol: &str,
+    source: &[u8],
+) -> ClientDbSourceIndexSelector {
+    ClientDbSourceIndexSelector {
+        owner_path: owner_path.into(),
+        provider_id: ProviderId::from("asp-rust"),
+        selector_id: selector.into(),
+        symbol: Some(symbol.into()),
+        kind: Some("function".into()),
+        source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        query_keys: vec![symbol.into()],
+        derived_projections: Vec::new(),
+        projection_record: crate::projection_fixture::projection_record(
+            crate::projection_fixture::ProjectionFixtureInput {
+                language_id: "rust",
+                provider_id: "asp-rust",
+                owner_path,
+                structural_selector: selector,
+                item_kind: "function",
+                item_name: symbol,
+                source,
+                source_byte_start: 0,
+                source_byte_end: source.len() as u64,
+            },
+        ),
+    }
 }
-#[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_bootstrap_creates_canonical_snapshot_schema() {
-    let client_dir = temp_root("db-engine-source-index-legacy-fact-schema-client");
-    let project_root = temp_root("db-engine-source-index-legacy-fact-schema-project");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: CacheGenerationId::from("source-index-legacy-fact-schema-turso"),
-        project_root: project_root.clone(),
-        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
-        file_hashes: vec![ClientCacheFileHash {
-            path: "src/legacy_fact_schema.rs".to_string(),
-            sha256: "5555555555555555".repeat(4),
-            byte_len: 1,
-            mtime_ms: 55,
-        }],
-        files: vec![ClientDbSourceIndexImportFile {
-            relative_path: "src/legacy_fact_schema.rs".to_string(),
-            language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
-            text: "fn legacy_fact_schema() {}\n".to_string(),
-            selectors: Vec::new(),
-        }],
-    })
-    .expect("build legacy source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-        },
-    )
-    .expect("bootstrap legacy source-index schema");
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "legacy_fact_schema",
-        Some(&LanguageId::from("rust")),
-        1,
-    )
-    .await
-    .expect("lookup after legacy schema bootstrap");
-    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
-    let _ = fs::remove_dir_all(client_dir);
-    let _ = fs::remove_dir_all(project_root);
-}
+
 #[path = "engine_source_index/active_fact.rs"]
 mod active_fact;
-
-#[path = "engine_source_index/bootstrap_migration.rs"]
-mod bootstrap_migration;
