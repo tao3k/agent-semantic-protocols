@@ -145,19 +145,8 @@ impl PreparedActiveProviderReconciliation {
             ),
         ];
         abi.sort_by(|left, right| left.id.cmp(&right.id));
-        let mut schemas = [
-            include_str!("../../../../../languages/asp-rust/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/asp-typescript/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/asp-python/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/AspJulia.jl/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/asp-gerbil-scheme/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/orgize/provider/org/schemas/.asp-schema-manager-membership.json"),
-            include_str!("../../../../../languages/orgize/provider/md/schemas/.asp-schema-manager-membership.json"),
-        ]
-        .into_iter()
-        .map(schema_closure_entry)
-        .collect::<Result<Vec<_>, _>>()?;
-        schemas.sort_by(|left, right| left.language_id.cmp(&right.language_id));
+        let schemas = agent_semantic_runtime_server::RuntimeSchemaBundleCatalog::load_embedded()?
+            .execution_closure_entries()?;
         let closure = RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
             &bundle_members,
             policy,
@@ -208,35 +197,6 @@ fn named_digest(
             bytes,
         ),
     }
-}
-
-fn schema_closure_entry(
-    bytes: &str,
-) -> Result<
-    agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry,
-    String,
-> {
-    let value: serde_json::Value = serde_json::from_str(bytes)
-        .map_err(|error| format!("decode embedded Schema Manager membership: {error}"))?;
-    let language_id = value
-        .get("languageId")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "embedded Schema Manager membership omitted languageId".to_owned())?;
-    let bundle_digest = value
-        .get("bundleDigest")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "embedded Schema Manager membership omitted bundleDigest".to_owned())?;
-    Ok(
-        agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry {
-            language_id: language_id.to_owned(),
-            schema_digest:
-                agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                    bundle_digest,
-                )?,
-        },
-    )
 }
 
 impl Drop for PreparedActiveProviderReconciliation {

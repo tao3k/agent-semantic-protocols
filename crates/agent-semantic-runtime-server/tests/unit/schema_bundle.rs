@@ -24,3 +24,28 @@ fn embedded_bundle_binding_is_v1_deterministic_and_complete() {
         "{missing}"
     );
 }
+
+#[test]
+fn execution_closure_entries_come_from_the_embedded_runtime_catalog() {
+    let catalog = RuntimeSchemaBundleCatalog::load_embedded().expect("embedded schema catalog");
+    let entries = catalog
+        .execution_closure_entries()
+        .expect("Runtime execution closure entries");
+    let language_ids = entries
+        .iter()
+        .map(|entry| entry.language_id.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        language_ids,
+        [
+            "gerbil-scheme",
+            "julia",
+            "md",
+            "org",
+            "python",
+            "rust",
+            "typescript",
+        ]
+    );
+}

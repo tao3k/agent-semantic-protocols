@@ -1,0 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ServerDerivedSchemaDistribution
+
+#print axioms ASPProof.ServerDerivedSchemaDistribution.shared_closure_is_not_package_local
+#print axioms ASPProof.ServerDerivedSchemaDistribution.provider_semantics_remain_package_local
+#print axioms ASPProof.ServerDerivedSchemaDistribution.server_cannot_invent_shared_schema
+#print axioms ASPProof.ServerDerivedSchemaDistribution.exact_canonical_shared_schema_is_projectable
+#print axioms ASPProof.ServerDerivedSchemaDistribution.provider_schema_cannot_be_reclassified_as_server_projection
+#print axioms ASPProof.ServerDerivedSchemaDistribution.target_removes_language_multiplier
+#print axioms ASPProof.ServerDerivedSchemaDistribution.legacy_replication_never_smaller_when_language_exists

@@ -324,6 +324,7 @@ import ASPProof.SearchAcquisitionIntersection
 import ASPProof.EnhancedSyntaxQueryPlan
 import ASPProof.Audit.EnhancedSyntaxQueryPlan
 import ASPProof.ResidentGrepCost
+import ASPProof.ServerDerivedSchemaDistribution
 import ASPProof.Audit.ResidentGrepCost
 import ASPProof.LiveCorpusPredicateRoute
 import ASPProof.Audit.LiveCorpusPredicateRoute

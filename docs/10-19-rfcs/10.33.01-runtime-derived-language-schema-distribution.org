@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.33.01 - Runtime-Derived Language Schema Distribution V1
+#+LANGUAGE: en
+#+DATE: 2026-09-16
+#+FILETAGS: :asp:rfc:schema:runtime:language:v1:
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Architecture candidate implemented incrementally on the existing V1
+=asp.schema.bundle= transport.  This RFC does not introduce a V2 schema.
+
+* Problem
+
+The canonical =schemas/= tree is already the source authority, and Runtime can
+compile an immutable catalog from it.  Nevertheless, the legacy materializer
+copies the same shared closure into every Language package.  Provider install
+then reads seven package-local membership files to reconstruct a closure that
+the Runtime catalog already owns.  For =L= languages and =S= shared schemas,
+that layout creates =L * S= mutable projections and makes an unrelated shared
+schema edit dirty every Language directory.
+
+* Ownership decision
+
+Schema distribution has three disjoint classes:
+
+| Class | Byte authority | Package-local state | Distribution owner |
+|-
+| language semantic | Language/provider source | retained | provider build |
+| client bootstrap | shared V1 client protocol | one bootstrap contract or generated binding | client build |
+| shared closure | canonical root =schemas/= | forbidden as a Language copy | Runtime Server |
+
+Runtime Server dynamically *projects and distributes* shared schemas.  It does
+not dynamically invent schema semantics.  Every returned document is an exact
+canonical build input, and every response is bound to the registered
+=languageId=, ordered =rootSetIds=, entry digests, and =bundleDigest=.
+
+The existing V1 response remains sufficient:
+
+- =Ready= carries the complete document set when the client has no matching
+  digest;
+- =Unchanged= carries no documents when =knownBundleDigest= matches;
+- =Failed= is the only result for an unknown language or root-set mismatch.
+
+No filename scan, package-local receipt, current-directory lookup, or fallback
+materialization may participate in serving admission.
+
+#+begin_src mermaid :exports results
+flowchart LR
+  C[canonical schemas/] --> B[build-time closure resolver]
+  P[provider-owned schemas] --> PB[provider build]
+  B --> R[immutable Runtime catalog]
+  R --> D[asp.schema.bundle V1]
+  D --> L[Language client cache by bundleDigest]
+  PB --> A[provider artifact]
+  C -. exact digest binding .-> A
+#+end_src
+
+* Cost model
+
+Let =P= be the total provider-owned documents and =B= the bootstrap documents.
+The legacy replica count and target package-local count are:
+
+#+begin_src typst :exports results
+$ R_(legacy)(L,S,P,B) = L dot S + P + L dot B $
+$ R_(target)(L,S,P,B) = P + B $
+$ R_(legacy) - R_(target) = L dot S + (L - 1) dot B $
+#+end_src
+
+The Runtime artifact still carries one content-addressed shared closure.  The
+optimization removes duplicated mutable package projections; it does not make
+the Runtime depend on a source checkout at startup.
+
+* Admission invariants
+
+1. A Language package may own provider semantics but cannot become the source
+   of a shared schema.
+2. Runtime catalog compilation resolves only canonical roots and fails on an
+   unresolved reference, duplicate identity, or digest drift.
+3. The installer consumes schema closure entries from the same embedded catalog
+   served by Runtime; it cannot rebuild them from Language directories.
+4. A server projection is valid only when every emitted document digest equals
+   the catalog entry and the ordered entry set reproduces =bundleDigest=.
+5. A client cache hit is identity-only: it returns =Unchanged= and performs no
+   document transfer.
+6. Removing package-local shared copies is admitted only after provider build,
+   CI, and workspace install no longer read those copies.
+
+* Migration slices
+
+1. Replace installer =include_str!= reads of package membership with Runtime
+   catalog-derived closure entries.
+2. Replace provider workspace =materialize= with canonical resolution plus an
+   exact check of the one package-local protocol/bootstrap schema.
+3. Make =verify= reject shared package copies and retain only provider-owned and
+   bootstrap files.
+4. Remove generated shared copies from Language trees and CI materialization.
+5. Qualify =Ready=, =Unchanged=, unknown-language, root-set drift, and digest
+   corruption through the real Runtime socket.
+
+* Formal model
+
+The executable ownership and replica-count model is
+=packages/proofs/ASPProof/ServerDerivedSchemaDistribution.lean=.

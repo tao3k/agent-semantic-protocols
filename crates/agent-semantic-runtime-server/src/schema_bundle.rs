@@ -185,6 +185,34 @@ impl RuntimeSchemaBundleCatalog {
         Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
     }
 
+    /// Project the same immutable bundle identities served by the public V1
+    /// route into Runtime artifact execution-closure entries.
+    pub fn execution_closure_entries(
+        &self,
+    ) -> Result<
+        Vec<agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry>,
+        String,
+    >{
+        let mut language_ids = self.bundles.keys().collect::<Vec<_>>();
+        language_ids.sort_unstable();
+        language_ids
+            .into_iter()
+            .map(|language_id| {
+                let bundle = self
+                    .bundles
+                    .get(language_id)
+                    .expect("language identity came from this immutable catalog");
+                Ok(agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry {
+                    language_id: language_id.clone(),
+                    schema_digest:
+                        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                            &bundle.bundle_digest,
+                        )?,
+                })
+            })
+            .collect()
+    }
+
     pub async fn load(workspace_root: impl Into<PathBuf>) -> Result<Self, String> {
         let workspace_root = workspace_root.into();
         let manager = SchemaManager::new(&workspace_root);

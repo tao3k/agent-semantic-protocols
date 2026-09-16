@@ -137,12 +137,15 @@ request, Query Playbook materialization request, and Query Playbook
 materialization receipt schemas. Entry identifiers are stable contract names;
 their digests are computed from the exact embedded schema bytes.
 
-The schema-bundle member is derived from the seven Schema Manager membership
-receipts embedded by the client build: Rust, TypeScript, Python, Julia, Gerbil
-Scheme, Org, and Markdown. The client does not walk provider directories during
-installation. A schema source change first changes its Schema Manager receipt;
-rebuilding the client then changes the embedded closure input. This makes the
-build graph, rather than a mutable installation registry, the refresh trigger.
+The schema-bundle member is projected from the same immutable Runtime schema
+catalog that serves the seven registered language bundles: Rust, TypeScript,
+Python, Julia, Gerbil Scheme, Org, and Markdown.  The catalog is compiled from
+canonical Schema Manager roots at Runtime artifact build time.  The installer
+does not read Language package membership receipts or walk provider directories
+to reconstruct it. A canonical schema source change therefore changes the
+embedded Runtime catalog, its execution-closure entries, and the enclosing
+artifact digest in one build graph.  The public V1 =asp.schema.bundle= route and
+the installer closure cannot drift because they consume the same catalog.
 
 The provider-registration member is derived from the build-resolved built-in
 provider register, while provider-artifact-set is derived from the exact
