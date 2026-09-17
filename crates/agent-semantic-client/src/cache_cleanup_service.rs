@@ -17,6 +17,8 @@ use agent_semantic_artifacts::RetentionLease;
 use agent_semantic_artifacts::RetentionObjectKind;
 use agent_semantic_artifacts::StagedStateHomeRemoval;
 use agent_semantic_artifacts::StateHomeLayout;
+use agent_semantic_artifacts::WorkspaceTopologyObservation;
+use agent_semantic_artifacts::WorkspaceTopologyState;
 use agent_semantic_client_db::StateHomeCatalog;
 
 use agent_semantic_runtime::state_core::ResolvedState;
@@ -33,7 +35,7 @@ pub(crate) async fn apply_cache_cleanup(
     let state = ResolvedState::resolve_with_state_home(project_root, state_home)?;
     let layout = StateHomeLayout::new(&state.state_home);
     let canonical_workspaces = layout.materialized_workspaces()?;
-    let (catalog_generation, catalog_plan) =
+    let (catalog_generation, catalog_plan, workspace_topology) =
         admit_cleanup_with_catalog(&state, &canonical_workspaces, grace_period_ms, args).await?;
 
     let selected_object_ids = catalog_plan
@@ -90,8 +92,18 @@ pub(crate) async fn apply_cache_cleanup(
     }
 
     println!(
-        "[asp-state-home-clean] status=applied retainedForDays={} catalogGeneration={} canonicalWorkspacesDeleted={} deletedBytes={}",
-        args.day, committed_catalog_generation, canonical_deleted, catalog_plan.deleted_bytes,
+        "[asp-state-home-clean] status=applied retainedForDays={} catalogGeneration={} canonicalWorkspacesDeleted={} deletedBytes={} reachableWorktrees={} invalidWorktrees={} unverifiableWorktrees={}",
+        args.day,
+        committed_catalog_generation,
+        canonical_deleted,
+        catalog_plan.deleted_bytes,
+        count_topology(&workspace_topology, WorkspaceTopologyState::Reachable),
+        count_topology(&workspace_topology, WorkspaceTopologyState::Missing)
+            + count_topology(
+                &workspace_topology,
+                WorkspaceTopologyState::IdentityMismatch
+            ),
+        count_topology(&workspace_topology, WorkspaceTopologyState::Unverifiable),
     );
     if receipt_json {
         let receipt = serde_json::to_string(&serde_json::json!({
@@ -101,6 +113,7 @@ pub(crate) async fn apply_cache_cleanup(
             "retainedForDays": args.day,
             "catalogGeneration": committed_catalog_generation,
             "canonicalWorkspacesDeleted": canonical_deleted,
+            "workspaceTopology": workspace_topology,
             "catalogPlan": catalog_plan,
         }))
         .map_err(|error| format!("failed to serialize workspace cleanup receipt: {error}"))?;
@@ -156,14 +169,19 @@ async fn admit_cleanup_with_catalog(
     canonical_workspaces: &[agent_semantic_artifacts::MaterializedWorkspaceState],
     grace_period_ms: u64,
     args: &CacheCleanArgs,
-) -> Result<(u64, CleanupPlan), String> {
+) -> Result<(u64, CleanupPlan, Vec<WorkspaceTopologyObservation>), String> {
     let evaluated_at_ms = now_ms()?;
     let layout = StateHomeLayout::new(&state.state_home);
     let catalog = StateHomeCatalog::open(layout.catalog()).await?;
     let mut observations = Vec::with_capacity(canonical_workspaces.len());
     let active_binding = state.project_binding()?;
-    for workspace in canonical_workspaces {
+    let workspace_topology =
+        inspect_workspace_topology(canonical_workspaces.to_vec(), state.state_home.clone()).await?;
+    for (workspace, topology) in canonical_workspaces.iter().zip(&workspace_topology) {
         let object_id = canonical_workspace_object_id(&workspace.binding);
+        let is_active = workspace.binding.repo.digest == active_binding.repo.digest
+            && workspace.binding.workspace.digest == active_binding.workspace.digest;
+        let must_fail_closed = topology.state == WorkspaceTopologyState::Unverifiable;
         observations.push(CatalogObservation {
             binding: workspace.binding.clone(),
             object: RetainedObject {
@@ -172,11 +190,20 @@ async fn admit_cleanup_with_catalog(
                 last_observed_at_ms: workspace.last_observed_at_ms,
                 byte_count: workspace.byte_count,
             },
-            leases: (workspace.binding.workspace.digest == active_binding.workspace.digest)
+            leases: (is_active || must_fail_closed)
                 .then(|| RetentionLease {
-                    lease_id: format!("active-workspace:{object_id}"),
+                    lease_id: if is_active {
+                        format!("active-workspace:{object_id}")
+                    } else {
+                        format!("gix-topology-unverifiable:{object_id}")
+                    },
                     object_id,
-                    owner: "runtime-workspace-resolution".to_string(),
+                    owner: if is_active {
+                        "runtime-workspace-resolution"
+                    } else {
+                        "gix-topology-unverifiable"
+                    }
+                    .to_string(),
                     expires_at_ms: None,
                 })
                 .into_iter()
@@ -193,7 +220,79 @@ async fn admit_cleanup_with_catalog(
     let plan = catalog
         .plan_cleanup_selected(evaluated_at_ms, grace_period_ms, selection)
         .await?;
-    Ok((generation.get(), plan))
+    Ok((generation.get(), plan, workspace_topology))
+}
+
+async fn inspect_workspace_topology(
+    workspaces: Vec<agent_semantic_artifacts::MaterializedWorkspaceState>,
+    state_home: std::path::PathBuf,
+) -> Result<Vec<WorkspaceTopologyObservation>, String> {
+    tokio::task::spawn_blocking(move || {
+        workspaces
+            .iter()
+            .map(|workspace| inspect_one_workspace_topology(workspace, &state_home))
+            .collect()
+    })
+    .await
+    .map_err(|error| format!("gix workspace topology task failed: {error}"))
+}
+
+fn inspect_one_workspace_topology(
+    workspace: &agent_semantic_artifacts::MaterializedWorkspaceState,
+    state_home: &Path,
+) -> WorkspaceTopologyObservation {
+    let binding = &workspace.binding;
+    let object_id = canonical_workspace_object_id(binding);
+    let canonical_root = binding.workspace.canonical_root.clone();
+    let (state, reason) = match canonical_root.try_exists() {
+        Ok(false) => (
+            WorkspaceTopologyState::Missing,
+            "canonical-worktree-root-missing".to_string(),
+        ),
+        Err(error) => (
+            WorkspaceTopologyState::Unverifiable,
+            format!("canonical-worktree-root-unavailable:{error}"),
+        ),
+        Ok(true) => match ResolvedState::resolve_with_state_home(&canonical_root, state_home)
+            .and_then(|resolved| resolved.project_binding())
+        {
+            Ok(current)
+                if current.repo.digest == binding.repo.digest
+                    && current.workspace.digest == binding.workspace.digest =>
+            {
+                (
+                    WorkspaceTopologyState::Reachable,
+                    "gix-project-binding-exact".to_string(),
+                )
+            }
+            Ok(_) => (
+                WorkspaceTopologyState::IdentityMismatch,
+                "gix-project-binding-drift".to_string(),
+            ),
+            Err(error) => (
+                WorkspaceTopologyState::Unverifiable,
+                format!("gix-project-binding-unavailable:{error}"),
+            ),
+        },
+    };
+    WorkspaceTopologyObservation {
+        object_id,
+        repository_digest: binding.repo.digest.to_string(),
+        workspace_digest: binding.workspace.digest.to_string(),
+        canonical_root,
+        state,
+        reason,
+    }
+}
+
+fn count_topology(
+    observations: &[WorkspaceTopologyObservation],
+    state: WorkspaceTopologyState,
+) -> usize {
+    observations
+        .iter()
+        .filter(|observation| observation.state == state)
+        .count()
 }
 
 fn cleanup_selection(
@@ -239,3 +338,7 @@ fn cleanup_selection(
 fn canonical_workspace_object_id(binding: &ProjectBinding) -> String {
     format!("workspace:{}", binding.workspace.digest)
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/cache_cleanup_service.rs"]
+mod tests;

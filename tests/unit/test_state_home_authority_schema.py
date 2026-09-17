@@ -107,6 +107,16 @@ def test_cleanup_receipt_has_one_canonical_workspace_authority() -> None:
         "retainedForDays": 1,
         "catalogGeneration": 2,
         "canonicalWorkspacesDeleted": 0,
+        "workspaceTopology": [
+            {
+                "objectId": "workspace:blake3-256:" + "b" * 64,
+                "repositoryDigest": "blake3-256:" + "a" * 64,
+                "workspaceDigest": "blake3-256:" + "b" * 64,
+                "canonicalRoot": "/workspace/reachable",
+                "state": "reachable",
+                "reason": "gix-project-binding-exact",
+            }
+        ],
         "catalogPlan": {
             "schemaId": "agent.semantic-protocols.state-home-retention-plan",
             "schemaVersion": 1,

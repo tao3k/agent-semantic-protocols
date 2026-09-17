@@ -799,11 +799,26 @@ single-flight map from this key to =Building=, bounded =Ready=, or typed
 clause execution outside the request plane; the claimant and coalesced callers
 subscribe to the same retained completion event and receive the same semantic
 terminal.  =Building= is internal lifecycle state and MUST NOT be serialized as
-a successful or failed Search response.  Generation replacement creates a fresh map, so
-neither success nor failure crosses a generation boundary.  The settlement
+a successful or failed Search response.  Replacement by a *different*
+generation identity creates a fresh map, so neither success nor failure crosses
+a content boundary.  Reopening or republishing a Runtime handle for the exact
+same generation identity is not a replacement: it MUST retain the resident
+lexical terminal, any in-flight lexical builder, Search and Query
+materialization maps, and request-topology authority.  A client session
+boundary, observer refresh, or equivalent-handle publication MUST NOT turn an
+admitted generation into a new Tantivy build or Search materialization.  The settlement
 decision identity is the materialization key, making the cached semantic value
 independent of whichever request first claimed it.  Each warm frame still owns
 its current request identity and request-plane receipt.
+
+Here “same generation identity” is the complete admitted product, not a bare
+Git URL or content hash.  Repository and concrete worktree identity come from
+the Host's =gix=-derived =ProjectWorkspaceBinding + worktreeInstanceId=; the
+Runtime publication additionally binds source/content generation, provider and
+schema evidence, Runtime artifact, and policy.  Remote URL is only a reviewed
+repository alias/provenance field.  Two linked worktrees may share repository
+identity, but they never share a process-local resident authority unless their
+complete worktree and Runtime publication identities are equal.
 
 Query Playbook owns a separate stable V1 key with the same construction and
 the domain =agent.semantic-protocols.workspace-query-materialization.v1=.  Its
@@ -839,6 +854,17 @@ request. Release evidence includes 10 sequential requests, a 32-request
 concurrent burst, at least two simultaneously active workspaces, exact terminal
 counts, isolation assertions, and p50/p95/p99/max observations for Search and
 Query separately.
+
+The sub-millisecond resident class is measured from Runtime request admission
+to the generation-bound terminal.  Starting a new =asp= process, resolving Host
+context, establishing a client session, and rendering terminal output are
+separate lifecycle observations and MUST NOT be reported as Search-engine time.
+Conversely, a fast Runtime receipt does not qualify the public interactive
+workflow when every expression creates a new process or connection.  The
+interactive Search Loop therefore owns one content-bound handoff and reuses its
+transport/session for multiple Scheme expressions; its scenario records both
+Runtime resident p50/p95/p99 and public loop p50/p95/p99 without subtracting an
+unmeasured constant.
 
 The Live Corpus matrix is the executable cross-workspace gate. Every selected
 case owns one isolated workspace and one Tokio task because a case performs

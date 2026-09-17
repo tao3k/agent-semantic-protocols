@@ -33,7 +33,10 @@ fn same_content_generation_upgrade_shares_in_flight_completed_and_topology_autho
     .unwrap_or_else(|_| panic!("fresh test generation must have one owner"));
     upgraded
         .inherit_generation_local_authorities(&first)
-        .unwrap();
+        .expect("same generation authority inheritance")
+        .then_some(())
+        .expect("same generation must be recognized as an equivalent handle");
+    first.publish_lexical_attachment_terminal();
     first
         .publish_search_materialization("plan".into(), Ok(serde_json::json!({"ready": true})))
         .unwrap();
@@ -52,6 +55,10 @@ fn same_content_generation_upgrade_shares_in_flight_completed_and_topology_autho
         upgraded.query_materialization("source\0selector").unwrap(),
         Some(RuntimeQueryMaterializationState::Ready(value)) if value["ready"] == true
     ));
+    assert!(
+        *upgraded.lexical_attachment_completion.borrow(),
+        "equivalent handle must observe the previous handle's lexical terminal"
+    );
     let retained_topology = upgraded.project_topology_attachment.lock().unwrap();
     let retained_topology = retained_topology
         .as_ref()

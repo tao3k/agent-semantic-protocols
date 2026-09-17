@@ -122,7 +122,10 @@ impl RuntimeQueryGenerationAuthority {
         })?;
         resident
             .search_generation_authority()
-            .validate_binding(key.project_id().as_str(), key.workspace_id().as_str())
+            .validate_binding(
+                key.routing_project_id().as_str(),
+                key.routing_workspace_id().as_str(),
+            )
             .map_err(|error| {
                 format!(
                     "state=query-not-ready reasonKind=resident-generation-binding-invalid {error}"
@@ -154,9 +157,9 @@ impl RuntimeQueryGenerationAuthority {
             && generation_token <= current.generation_token()
         {
             return Err(format!(
-                "state=stale-generation reasonKind=non-monotonic-query-generation-publication projectId={} workspaceId={} token={generation_token} currentToken={}",
-                key.project_id().as_str(),
-                key.workspace_id().as_str(),
+                "state=stale-generation reasonKind=non-monotonic-query-generation-publication repositoryDigest={} workspaceDigest={} token={generation_token} currentToken={}",
+                key.repository_digest(),
+                key.workspace_digest(),
                 current.generation_token()
             ));
         }
@@ -229,9 +232,9 @@ impl RuntimeQueryGenerationAuthority {
             .map_err(|_| "query generation publication lock poisoned".to_owned())?;
         if self.sender.borrow().contains_key(key) {
             return Err(format!(
-                "state=cache-state-conflict reasonKind=cold-build-workspace-already-published projectId={} workspaceId={}",
-                key.project_id().as_str(),
-                key.workspace_id().as_str()
+                "state=cache-state-conflict reasonKind=cold-build-workspace-already-published repositoryDigest={} workspaceDigest={}",
+                key.repository_digest(),
+                key.workspace_digest()
             ));
         }
         Ok(())
@@ -250,9 +253,9 @@ impl RuntimeQueryGenerationAuthority {
         let generations = self.sender.borrow();
         let Some(RuntimeQueryGenerationState::Ready(generation)) = generations.get(key) else {
             return Err(format!(
-                "state=query-not-ready reasonKind=resident-generation-missing projectId={} workspaceId={}",
-                key.project_id().as_str(),
-                key.workspace_id().as_str()
+                "state=query-not-ready reasonKind=resident-generation-missing repositoryDigest={} workspaceDigest={}",
+                key.repository_digest(),
+                key.workspace_digest()
             ));
         };
         validate_ready_identity(
@@ -276,9 +279,9 @@ impl RuntimeQueryGenerationAuthority {
         let mut generations = self.sender.borrow().as_ref().clone();
         let Some(RuntimeQueryGenerationState::Ready(generation)) = generations.get(key) else {
             return Err(format!(
-                "state=query-not-ready reasonKind=resident-generation-missing projectId={} workspaceId={}",
-                key.project_id().as_str(),
-                key.workspace_id().as_str()
+                "state=query-not-ready reasonKind=resident-generation-missing repositoryDigest={} workspaceDigest={}",
+                key.repository_digest(),
+                key.workspace_digest()
             ));
         };
         validate_ready_identity(
@@ -378,18 +381,22 @@ impl RuntimeQueryGenerationAuthority {
         .await;
         match reopened {
             Ok(mut generation) if generation.generation_digest() == expected_generation_digest => {
-                if let Some(previous) = previous_generation.as_ref() {
-                    generation.inherit_generation_local_authorities(previous)?;
-                }
+                let inherited_generation_authorities = previous_generation
+                    .as_ref()
+                    .map(|previous| generation.inherit_generation_local_authorities(previous))
+                    .transpose()?
+                    .unwrap_or(false);
                 let generation = Arc::new(generation);
                 self.reserve_generation_token(&generation);
                 self.publish_ready(key.clone(), Arc::clone(&generation))?;
-                self.schedule_generation_attachments(
-                    key.clone(),
-                    project_root.to_path_buf(),
-                    Arc::clone(&generation),
-                    previous_generation,
-                );
+                if !inherited_generation_authorities {
+                    self.schedule_generation_attachments(
+                        key.clone(),
+                        project_root.to_path_buf(),
+                        Arc::clone(&generation),
+                        previous_generation,
+                    );
+                }
                 Ok(generation)
             }
             Ok(generation) => {
@@ -505,9 +512,11 @@ impl RuntimeQueryGenerationAuthority {
                 self.builder.task_scope(),
             )?,
         };
-        if let Some(previous) = previous_generation.as_ref() {
-            generation.inherit_generation_local_authorities(previous)?;
-        }
+        let inherited_generation_authorities = previous_generation
+            .as_ref()
+            .map(|previous| generation.inherit_generation_local_authorities(previous))
+            .transpose()?
+            .unwrap_or(false);
         let generation = Arc::new(generation);
         if generation.generation_digest() != expected_generation_digest {
             return Err(format!(
@@ -518,12 +527,14 @@ impl RuntimeQueryGenerationAuthority {
         }
         self.reserve_generation_token(&generation);
         self.publish_ready(key.clone(), Arc::clone(&generation))?;
-        self.schedule_generation_attachments(
-            key.clone(),
-            project_root.to_path_buf(),
-            Arc::clone(&generation),
-            previous_generation,
-        );
+        if !inherited_generation_authorities {
+            self.schedule_generation_attachments(
+                key.clone(),
+                project_root.to_path_buf(),
+                Arc::clone(&generation),
+                previous_generation,
+            );
+        }
         Ok(generation)
     }
 }

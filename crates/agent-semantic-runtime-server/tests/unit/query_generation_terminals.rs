@@ -18,11 +18,19 @@ use crate::runtime_query_generation::RuntimeSearchTerminalState;
 use crate::runtime_query_generation_model::RuntimeProjectTopologyCacheEntry;
 
 fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
-    RuntimeProjectWorkspaceKey::new(
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        format!("gix-common-dir:{project_id}"),
+        format!("/tmp/{workspace_id}"),
+    )
+    .expect("test Gix project binding");
+    RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
         agent_semantic_client_protocol::ClientProjectId::new(project_id).expect("test ProjectId"),
         agent_semantic_client_protocol::ClientWorkspaceIdentity::new(workspace_id)
             .expect("test WorkspaceId"),
     )
+    .expect("test Runtime authority key")
 }
 
 fn authority() -> RuntimeQueryGenerationAuthority {

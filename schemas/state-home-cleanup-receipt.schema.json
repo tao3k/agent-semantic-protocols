@@ -11,6 +11,7 @@
     "retainedForDays",
     "catalogGeneration",
     "canonicalWorkspacesDeleted",
+    "workspaceTopology",
     "catalogPlan"
   ],
   "properties": {
@@ -20,6 +21,31 @@
     "retainedForDays": { "type": "integer", "minimum": 1 },
     "catalogGeneration": { "type": "integer", "minimum": 0 },
     "canonicalWorkspacesDeleted": { "type": "integer", "minimum": 0 },
+    "workspaceTopology": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "objectId",
+          "repositoryDigest",
+          "workspaceDigest",
+          "canonicalRoot",
+          "state",
+          "reason"
+        ],
+        "properties": {
+          "objectId": { "type": "string", "minLength": 1 },
+          "repositoryDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+          "workspaceDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+          "canonicalRoot": { "type": "string", "minLength": 1 },
+          "state": {
+            "enum": ["reachable", "missing", "identity-mismatch", "unverifiable"]
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "catalogPlan": {
       "type": "object",
       "required": [

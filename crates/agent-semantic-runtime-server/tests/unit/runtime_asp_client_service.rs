@@ -5,7 +5,7 @@
 use super::workspace_search_providers_from_provider_register;
 
 #[test]
-fn initialized_workspace_retains_parser_owned_project_workspace_binding() {
+fn initialized_workspace_retains_gix_runtime_key_and_parser_host_binding() {
     let directory = tempfile::tempdir().expect("temporary project root");
     let project_root = directory.path().to_path_buf();
     let manifest_binding = agent_semantic_content_identity::ProjectWorkspaceBinding::new(
@@ -26,14 +26,32 @@ fn initialized_workspace_retains_parser_owned_project_workspace_binding() {
             .map_err(|error| error.to_string())
         });
 
-    let initialized =
-        super::InitializedWorkspace::from_project_root(directory.path().to_path_buf(), &resolver)
-            .expect("manifest-admitted initialized workspace");
+    let initialized = super::InitializedWorkspace::from_project_root(
+        directory.path().to_path_buf(),
+        &resolver,
+        "route-project",
+        "route-workspace",
+    )
+    .expect("manifest-admitted initialized workspace");
 
     assert_eq!(initialized.host_workspace.project_workspace(), &expected);
     assert_eq!(
         initialized.host_workspace.worktree_instance_id(),
         "worktree:test"
+    );
+    assert_eq!(
+        initialized
+            .runtime_workspace_key
+            .routing_project_id()
+            .as_str(),
+        "route-project"
+    );
+    assert_eq!(
+        initialized
+            .runtime_workspace_key
+            .routing_workspace_id()
+            .as_str(),
+        "route-workspace"
     );
 }
 

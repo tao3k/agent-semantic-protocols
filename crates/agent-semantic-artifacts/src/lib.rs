@@ -122,6 +122,8 @@ pub use state_home_retention::RetainedObject;
 pub use state_home_retention::RetentionLease;
 pub use state_home_retention::RetentionObjectKind;
 pub use state_home_retention::RetentionPlanner;
+pub use state_home_retention::WorkspaceTopologyObservation;
+pub use state_home_retention::WorkspaceTopologyState;
 
 #[cfg(test)]
 #[path = "../tests/unit/state_home_binding.rs"]

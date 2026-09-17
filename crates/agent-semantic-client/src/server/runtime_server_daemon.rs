@@ -393,11 +393,34 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             let publication = generation_publications.borrow().clone();
             match publication {
                 Some(publication) => {
-                    let project_workspace_key =
-                        agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::new(
+                    let project_binding = match agent_semantic_runtime::state_core::ResolvedState::resolve(
+                        &publication.project_root,
+                    )
+                    .and_then(|resolved| resolved.project_binding())
+                    {
+                        Ok(binding) => binding,
+                        Err(error) => {
+                            eprintln!(
+                                "[runtime-query-generation-observer] state=failed reasonKind=gix-project-binding-unavailable error={error}"
+                            );
+                            continue;
+                        }
+                    };
+                    let project_workspace_key = match
+                        agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::from_project_binding(
+                            &project_binding,
                             publication.project_id.clone(),
                             publication.workspace_id.clone(),
-                        );
+                        )
+                    {
+                        Ok(key) => key,
+                        Err(error) => {
+                            eprintln!(
+                                "[runtime-query-generation-observer] state=failed reasonKind=gix-project-workspace-key-invalid error={error}"
+                            );
+                            continue;
+                        }
+                    };
                     let resident = query_generation_workspace_registry.resident_read_client(
                         publication.workspace_id.as_str(),
                         &publication.project_root,

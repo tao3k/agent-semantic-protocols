@@ -38,6 +38,7 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) resident:
         Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>,
     pub(super) topology_scope: BTreeSet<String>,
+    pub(super) lexical_wait_micros: u128,
     pub(super) retrieval_micros: u128,
     pub(super) owner_materialization_micros: u128,
     pub(super) structural_micros: u128,
@@ -113,6 +114,7 @@ pub(super) async fn execute_progressive_search_clauses(
         agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
     >,
 ) -> Result<ProgressiveSearchEvidence, AspClientOperationError> {
+    let lexical_wait_started = std::time::Instant::now();
     if !plan.axes.tantivy.is_empty() {
         generation
             .await_lexical_attachment()
@@ -132,6 +134,7 @@ pub(super) async fn execute_progressive_search_clauses(
                 )
             })?;
     }
+    let lexical_wait_micros = lexical_wait_started.elapsed().as_micros();
     let execution_budget =
         crate::runtime_search_execution_budget::RuntimeSearchExecutionBudget::derive(
             generation.as_ref(),
@@ -495,6 +498,7 @@ pub(super) async fn execute_progressive_search_clauses(
         execution_budget,
         resident,
         topology_scope,
+        lexical_wait_micros,
         retrieval_micros,
         owner_materialization_micros,
         structural_micros,

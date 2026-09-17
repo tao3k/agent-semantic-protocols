@@ -32,6 +32,7 @@ pub(super) async fn synthesize_progressive_search_projection(
         execution_budget,
         resident,
         topology_scope,
+        lexical_wait_micros,
         retrieval_micros,
         owner_materialization_micros,
         structural_micros,
@@ -187,7 +188,7 @@ pub(super) async fn synthesize_progressive_search_projection(
     let structural_admitted_memory_bytes =
         structural_resource_receipt.map_or(0, |receipt| receipt.admitted_memory_bytes);
     eprintln!(
-        "[runtime-search-stage-wall] key={request_id} retrievalMicros={retrieval_micros} retrievalQueueMicros={} retrievalAdmittedMemoryBytes={} ownerMaterializationMicros={owner_materialization_micros} structuralMicros={structural_micros} structuralQueueMicros={structural_queue_micros} structuralAdmittedMemoryBytes={structural_admitted_memory_bytes} graphMicros={graph_micros} resultMicros={result_micros} topologyMicros={topology_micros} settlementMicros={settlement_micros}",
+        "[runtime-search-stage-wall] key={request_id} lexicalWaitMicros={lexical_wait_micros} retrievalMicros={retrieval_micros} retrievalQueueMicros={} retrievalAdmittedMemoryBytes={} ownerMaterializationMicros={owner_materialization_micros} structuralMicros={structural_micros} structuralQueueMicros={structural_queue_micros} structuralAdmittedMemoryBytes={structural_admitted_memory_bytes} graphMicros={graph_micros} resultMicros={result_micros} topologyMicros={topology_micros} settlementMicros={settlement_micros}",
         retrieval_resource_receipt.queue_wait_micros,
         retrieval_resource_receipt.admitted_memory_bytes,
     );

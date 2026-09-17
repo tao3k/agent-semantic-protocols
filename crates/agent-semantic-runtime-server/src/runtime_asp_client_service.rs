@@ -160,6 +160,7 @@ pub fn workspace_search_providers_from_provider_register(
 #[derive(Clone)]
 pub(super) struct InitializedWorkspace {
     pub(super) project_root: std::path::PathBuf,
+    pub(super) runtime_workspace_key: crate::RuntimeProjectWorkspaceKey,
     pub(super) host_workspace: agent_semantic_content_identity::HostWorkspaceInitializationBinding,
 }
 
@@ -176,13 +177,24 @@ impl InitializedWorkspace {
     fn from_project_root(
         project_root: std::path::PathBuf,
         resolver: &HostWorkspaceInitializationBindingResolver,
+        routing_project_id: &str,
+        routing_workspace_id: &str,
     ) -> Result<Self, String> {
         let host_workspace = resolver(&project_root)?;
         host_workspace
             .validate()
             .map_err(|error| format!("invalid Host workspace initialization binding: {error}"))?;
+        let project_binding =
+            agent_semantic_runtime::state_core::ResolvedState::resolve(&project_root)?
+                .project_binding()?;
+        let runtime_workspace_key = crate::RuntimeProjectWorkspaceKey::from_project_binding(
+            &project_binding,
+            agent_semantic_client_protocol::ClientProjectId::new(routing_project_id)?,
+            agent_semantic_client_protocol::ClientWorkspaceIdentity::new(routing_workspace_id)?,
+        )?;
         Ok(Self {
             project_root,
+            runtime_workspace_key,
             host_workspace,
         })
     }
@@ -331,11 +343,13 @@ pub fn build_frame_service(
                     "blake3-256:{}",
                     blake3::hash(format!("{project_id}\0{workspace_id}").as_bytes()).to_hex()
                 );
-                let key = (project_id, workspace_id, session_id);
                 let initialized = InitializedWorkspace::from_project_root(
                     project_root.clone(),
                     &host_workspace_resolver,
+                    &project_id,
+                    &workspace_id,
                 )?;
+                let key = (project_id, workspace_id, session_id);
                 let mut workspaces = initialized_workspaces
                     .lock()
                     .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?;

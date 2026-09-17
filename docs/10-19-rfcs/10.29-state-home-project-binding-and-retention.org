@@ -95,6 +95,24 @@ lease/observation generation is unchanged, moves eligible objects to =trash=
 inside one mutation transaction, publishes a typed receipt, and only then
 reaps content. Failure preserves the previous catalog and live paths.
 
+Before planning, cleanup MUST re-resolve every materialized Git workspace
+through =gix= and compare the complete =ProjectBinding= stored by the catalog.
+The V1 receipt records one topology observation per workspace:
+
+- =reachable= when repository and worktree identity still match exactly;
+- =missing= when the canonical worktree root no longer exists;
+- =identity-mismatch= when the path now resolves to another repository or
+  worktree, including a broken or replaced private Git directory;
+- =unverifiable= when topology cannot be proved safely.
+
+An unverifiable workspace receives a protective cleanup lease. Missing and
+identity-mismatched workspaces remain subject to the declared retention window;
+topology failure is evidence of invalidation, not permission to bypass age,
+catalog-generation, Runtime-reference, or lease checks. Cleanup never invokes
+=git clean=, =git worktree remove=, or any Git mutation. Branch, HEAD, index,
+and overlay changes are generation invalidations and MUST NOT classify a
+worktree as a different workspace.
+
 =--day N= is only the minimum inactivity window.  Cleanup selection is an
 independent typed axis.  The public command supports exactly one of:
 

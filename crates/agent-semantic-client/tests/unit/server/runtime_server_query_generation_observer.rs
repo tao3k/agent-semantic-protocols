@@ -11,10 +11,18 @@ async fn failed_terminal_publishes_exact_generation_failure() {
         .expect("project identity");
     let workspace_id = agent_semantic_client_protocol::ClientWorkspaceIdentity::new("workspace")
         .expect("workspace identity");
-    let key = agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::new(
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        "gix-common-dir:/project/.git",
+        "/project",
+    )
+    .expect("test Gix project binding");
+    let key = agent_semantic_runtime_server::query_generation::RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
         project_id.clone(),
         workspace_id.clone(),
-    );
+    )
+    .expect("test Runtime authority key");
     let publication =
         agent_semantic_client_db::runtime_server_publication::WorkspaceGenerationPublished {
             project_id,

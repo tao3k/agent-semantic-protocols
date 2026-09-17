@@ -1124,6 +1124,28 @@ no owner, selector, or Relation fact, so its result is independent of overlay
 contents.  An empty cut never replaces or enlarges the positive request scope;
 all non-empty reuse still requires exact topology-source and scope identity.
 
+The same rule applies to the lexical attachment and completed Search/Query
+materializations.  An equivalent handle shares the previous resident read
+authority and lexical completion event; if the build is in flight it joins that
+flight, and if it is terminal it performs no scheduling or resource admission.
+Only a different generation digest may allocate a new lexical attachment.
+Generation identity, not client-process or observer lifetime, is therefore the
+cache invalidation boundary.
+
+This generation identity is nested under the =gix=-derived repository and
+worktree axes.  Canonical common Git directory identifies the local repository;
+canonical worktree root plus worktree-private Git directory identifies the
+concrete worktree.  Remote URL remains an alias, not an identity key.  Reuse
+requires the exact Runtime execution publication, so equal file bytes in two
+worktrees or under two Runtime/provider products cannot alias resident state.
+
+Gix resolution and =ProjectBinding= validation occur exactly once at client
+workspace initialization.  The admitted Runtime key is retained with that
+initialized session.  Search and Query request dispatch MUST NOT canonicalize
+paths, rediscover Git, or revalidate a filesystem-backed =ProjectBinding=;
+their hot lookup consumes only the already validated repository/worktree
+digests.
+
 A completed resident Search materialization owns two views of one V1 result:
 the typed immutable JSON tree used by in-process admission and one lazily
 memoized canonical JSON byte representation used by the protobuf envelope.
@@ -1142,6 +1164,12 @@ Performance work is complete only if the real =search playbook= route reduces
 end-to-end p95/p99 or expands the safely admitted corpus under the same Host
 budget.  A faster microbenchmark with unchanged or slower ClientFrame-to-result
 latency is diagnostic evidence, not closure.
+
+Real-route reporting separates three non-overlapping clocks: Runtime
+request-plane, persistent interactive transport/session, and one-shot CLI
+process lifecycle.  A one-shot =/usr/bin/time asp search ...= sample cannot be
+used as a Runtime Search latency claim.  The persistent Search Loop is the
+public low-latency surface; one-shot CLI startup remains independently gated.
 
 * Recommended implementation order
 

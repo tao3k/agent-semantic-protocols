@@ -21,11 +21,19 @@ use crate::runtime_query_generation::RuntimeSearchTerminalState;
 mod materialization_retention;
 
 fn key(project_id: &str, workspace_id: &str) -> RuntimeProjectWorkspaceKey {
-    RuntimeProjectWorkspaceKey::new(
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        format!("gix-common-dir:{project_id}"),
+        format!("/tmp/{workspace_id}"),
+    )
+    .expect("test Gix project binding");
+    RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
         agent_semantic_client_protocol::ClientProjectId::new(project_id).expect("test ProjectId"),
         agent_semantic_client_protocol::ClientWorkspaceIdentity::new(workspace_id)
             .expect("test WorkspaceId"),
     )
+    .expect("test Runtime authority key")
 }
 
 fn authority() -> RuntimeQueryGenerationAuthority {
@@ -39,6 +47,73 @@ fn authority() -> RuntimeQueryGenerationAuthority {
         ),
     )
     .expect("test query generation authority")
+}
+
+#[test]
+fn gix_project_binding_not_client_aliases_owns_runtime_partition() {
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve_with_private_git_dir(
+        None,
+        "gix-common-dir:/repo/.git",
+        "/repo/worktrees/feature",
+        Some("/repo/.git/worktrees/feature"),
+    )
+    .expect("Gix project binding");
+    let first = RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
+        agent_semantic_client_protocol::ClientProjectId::new("route-project-a").unwrap(),
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("route-workspace-a").unwrap(),
+    )
+    .unwrap();
+    let second = RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
+        agent_semantic_client_protocol::ClientProjectId::new("route-project-b").unwrap(),
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("route-workspace-b").unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        first, second,
+        "routing aliases cannot partition Runtime state"
+    );
+    assert_ne!(
+        first.routing_project_id(),
+        second.routing_project_id(),
+        "fixture must prove equal authority under different routing aliases"
+    );
+}
+
+#[test]
+fn linked_worktrees_share_repository_but_keep_distinct_runtime_partitions() {
+    let main = agent_semantic_artifacts::ProjectBinding::resolve_with_private_git_dir(
+        None,
+        "gix-common-dir:/repo/.git",
+        "/repo/main",
+        Some("/repo/.git"),
+    )
+    .unwrap();
+    let linked = agent_semantic_artifacts::ProjectBinding::resolve_with_private_git_dir(
+        None,
+        "gix-common-dir:/repo/.git",
+        "/repo/feature",
+        Some("/repo/.git/worktrees/feature"),
+    )
+    .unwrap();
+    let route_project =
+        agent_semantic_client_protocol::ClientProjectId::new("route-project").unwrap();
+    let route_workspace =
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("route-workspace").unwrap();
+    let main_key = RuntimeProjectWorkspaceKey::from_project_binding(
+        &main,
+        route_project.clone(),
+        route_workspace.clone(),
+    )
+    .unwrap();
+    let linked_key =
+        RuntimeProjectWorkspaceKey::from_project_binding(&linked, route_project, route_workspace)
+            .unwrap();
+
+    assert_eq!(main_key.repository_digest(), linked_key.repository_digest());
+    assert_ne!(main_key, linked_key);
 }
 
 #[test]

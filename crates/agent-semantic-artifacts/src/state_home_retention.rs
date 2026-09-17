@@ -10,6 +10,28 @@ use serde::Serialize;
 pub const RETENTION_PLAN_SCHEMA_ID: &str = "agent.semantic-protocols.state-home-retention-plan";
 pub const RETENTION_PLAN_SCHEMA_VERSION: u32 = 1;
 
+/// Gix-derived liveness of one materialized workspace at cleanup admission.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceTopologyState {
+    Reachable,
+    Missing,
+    IdentityMismatch,
+    Unverifiable,
+}
+
+/// Exact GitOps topology evidence carried by the V1 cleanup receipt.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceTopologyObservation {
+    pub object_id: String,
+    pub repository_digest: String,
+    pub workspace_digest: String,
+    pub canonical_root: std::path::PathBuf,
+    pub state: WorkspaceTopologyState,
+    pub reason: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum CleanupSelection {

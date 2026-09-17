@@ -30,8 +30,36 @@ impl RuntimeQueryGeneration {
     pub(super) fn inherit_generation_local_authorities(
         &mut self,
         previous: &Self,
-    ) -> Result<(), String> {
-        if previous.generation_digest == self.generation_digest {
+    ) -> Result<bool, String> {
+        let execution_identity_matches = match (
+            previous.execution_publication.as_deref(),
+            self.execution_publication.as_deref(),
+        ) {
+            (Some(previous), Some(incoming)) => {
+                previous.publication_digest == incoming.publication_digest
+                    && previous.runtime_execution_binding.project_workspace
+                        == incoming.runtime_execution_binding.project_workspace
+                    && previous.runtime_execution_binding.worktree_instance_id
+                        == incoming.runtime_execution_binding.worktree_instance_id
+            }
+            // Synthetic generations without execution publications exist only
+            // in focused unit authorities. Production generation admission
+            // always compares the complete publication above.
+            (None, None) => true,
+            _ => false,
+        };
+        if previous.generation_digest == self.generation_digest && execution_identity_matches {
+            // An equivalent handle is not a new generation.  Keep the exact
+            // resident object so its OnceLock-backed lexical accelerator and
+            // completion channel remain one authority across observer refresh.
+            // The publication comparison includes the parser-owned Project
+            // Workspace and Host-local Gix worktree identity, so equal content
+            // in a different worktree can never share this process authority.
+            self.resident = previous.resident.as_ref().map(Arc::clone);
+            self.lexical_attachment_completion = previous.lexical_attachment_completion.clone();
+            if let Some(receipt) = previous.build_resource_receipt.get().cloned() {
+                let _ = self.build_resource_receipt.set(receipt);
+            }
             self.search_materializations = Arc::clone(&previous.search_materializations);
             self.query_materializations = Arc::clone(&previous.query_materializations);
             self.materialization_tasks = Arc::clone(&previous.materialization_tasks);
@@ -42,8 +70,9 @@ impl RuntimeQueryGeneration {
                     .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
                     .clone(),
             );
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     pub(crate) fn contains_provider_targets(

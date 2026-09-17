@@ -284,10 +284,24 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         let request_plane_telemetry_sender = telemetry_sender.clone();
         Box::pin(async move {
             let dispatch_started = tokio::time::Instant::now();
-            let project_workspace_key = RuntimeProjectWorkspaceKey::new(
-                request.project_id.clone(),
-                request.workspace_id.clone(),
-            );
+            let project_workspace_key = initialized_workspaces
+                .lock()
+                .map_err(|_| AspClientDispatchError {
+                    reason_kind: "runtime-workspace-authority-unavailable".to_owned(),
+                    message: "ASP client workspace-root registry poisoned".to_owned(),
+                    details: None,
+                })?
+                .get(&(
+                    request.project_id.as_str().to_owned(),
+                    request.workspace_id.as_str().to_owned(),
+                    request.session_id.as_str().to_owned(),
+                ))
+                .map(|initialized| initialized.runtime_workspace_key.clone())
+                .ok_or_else(|| AspClientDispatchError {
+                    reason_kind: "runtime-workspace-authority-unavailable".to_owned(),
+                    message: "ASP client request requires an initialized workspace root".to_owned(),
+                    details: None,
+                })?;
             let request_plane_generation_key = project_workspace_key.clone();
             let operation = async {
                 if request.method == agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD {

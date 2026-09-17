@@ -12,6 +12,21 @@ use super::dispatch_budget_for_method;
 use super::enforce_completed_dispatch_budget;
 use super::query_generation_not_ready_error;
 
+fn runtime_workspace_key(project: &str, workspace: &str) -> crate::RuntimeProjectWorkspaceKey {
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        format!("gix-common-dir:{project}"),
+        format!("/tmp/{workspace}"),
+    )
+    .expect("test Gix project binding");
+    crate::RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
+        agent_semantic_client_protocol::ClientProjectId::new(project).unwrap(),
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new(workspace).unwrap(),
+    )
+    .expect("test Runtime authority key")
+}
+
 fn generation_without_resident_authority(
     digest: &str,
 ) -> std::sync::Arc<crate::RuntimeQueryGeneration> {
@@ -130,16 +145,9 @@ async fn first_computation_deadline_is_absolute_not_restarted_at_a_later_stage()
 
 #[tokio::test]
 async fn generation_wait_retains_failure_and_does_not_accept_another_workspace() {
-    use crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey;
     use std::{collections::HashMap, sync::Arc};
-    let key = RuntimeProjectWorkspaceKey::new(
-        agent_semantic_client_protocol::ClientProjectId::new("project-test").unwrap(),
-        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("workspace-test").unwrap(),
-    );
-    let other = RuntimeProjectWorkspaceKey::new(
-        key.project_id().clone(),
-        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("other-workspace").unwrap(),
-    );
+    let key = runtime_workspace_key("project-test", "workspace-test");
+    let other = runtime_workspace_key("project-test", "other-workspace");
     let failed = crate::RuntimeQueryGenerationState::Failed {
         expected_generation_digest: Arc::from("expected"),
         reason: Arc::from("source binding changed"),
@@ -163,10 +171,7 @@ async fn generation_wait_retains_failure_and_does_not_accept_another_workspace()
 
 #[tokio::test]
 async fn missing_generation_with_closed_publication_is_terminal() {
-    let key = crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey::new(
-        agent_semantic_client_protocol::ClientProjectId::new("project-test").unwrap(),
-        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("workspace-test").unwrap(),
-    );
+    let key = runtime_workspace_key("project-test", "workspace-test");
     let (sender, receiver) =
         tokio::sync::watch::channel(std::sync::Arc::new(std::collections::HashMap::new()));
     drop(sender);
@@ -181,10 +186,7 @@ async fn missing_generation_with_closed_publication_is_terminal() {
 
 #[tokio::test]
 async fn targeted_wait_does_not_accept_a_ready_generation_without_its_authority() {
-    let key = crate::runtime_query_generation_key::RuntimeProjectWorkspaceKey::new(
-        agent_semantic_client_protocol::ClientProjectId::new("project-test").unwrap(),
-        agent_semantic_client_protocol::ClientWorkspaceIdentity::new("workspace-test").unwrap(),
-    );
+    let key = runtime_workspace_key("project-test", "workspace-test");
     let stale = crate::RuntimeQueryGenerationState::Ready(generation_without_resident_authority(
         "stale-generation",
     ));

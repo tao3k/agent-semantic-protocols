@@ -248,8 +248,22 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
         selectors: vec![selector.to_owned()],
         projection: "source".into(),
     };
+    let project_binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        "gix-common-dir:process-cold-fixture",
+        &project_root,
+    )
+    .expect("process-cold Gix project binding");
     let initialized = super::InitializedWorkspace {
         project_root,
+        runtime_workspace_key: crate::RuntimeProjectWorkspaceKey::from_project_binding(
+            &project_binding,
+            agent_semantic_client_protocol::ClientProjectId::new("process-cold-project")
+                .expect("process-cold project id"),
+            agent_semantic_client_protocol::ClientWorkspaceIdentity::new(workspace_identity)
+                .expect("process-cold workspace id"),
+        )
+        .expect("process-cold Runtime workspace key"),
         host_workspace,
     };
     let (resource_supervisor, task_scope) = process_cold_resources();

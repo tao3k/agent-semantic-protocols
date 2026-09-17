@@ -351,6 +351,50 @@ theorem search_materialization_cannot_cross_generation
   intro equal
   exact different (SearchMaterializationKey.mk.inj equal).1
 
+structure WorkspaceGenerationIdentity where
+  repositoryIdentity : Nat
+  worktreeIdentity : Nat
+  contentIdentity : Nat
+  runtimeProductIdentity : Nat
+  deriving DecidableEq, Repr
+
+structure GenerationResidentAuthorities where
+  generationIdentity : WorkspaceGenerationIdentity
+  lexicalAuthority : Nat
+  searchMaterializationAuthority : Nat
+  queryMaterializationAuthority : Nat
+  topologyAuthority : Nat
+  deriving DecidableEq, Repr
+
+def refreshGenerationHandle
+    (current incoming : GenerationResidentAuthorities) :
+    GenerationResidentAuthorities :=
+  if current.generationIdentity = incoming.generationIdentity then
+    { incoming with
+      lexicalAuthority := current.lexicalAuthority
+      searchMaterializationAuthority := current.searchMaterializationAuthority
+      queryMaterializationAuthority := current.queryMaterializationAuthority
+      topologyAuthority := current.topologyAuthority }
+  else incoming
+
+theorem same_generation_handle_refresh_retains_all_resident_authorities
+    (current incoming : GenerationResidentAuthorities)
+    (same : current.generationIdentity = incoming.generationIdentity) :
+    let refreshed := refreshGenerationHandle current incoming
+    refreshed.lexicalAuthority = current.lexicalAuthority ∧
+      refreshed.searchMaterializationAuthority =
+        current.searchMaterializationAuthority ∧
+      refreshed.queryMaterializationAuthority =
+        current.queryMaterializationAuthority ∧
+      refreshed.topologyAuthority = current.topologyAuthority := by
+  simp [refreshGenerationHandle, same]
+
+theorem different_generation_handle_cannot_inherit_resident_authorities
+    (current incoming : GenerationResidentAuthorities)
+    (different : current.generationIdentity ≠ incoming.generationIdentity) :
+    refreshGenerationHandle current incoming = incoming := by
+  simp [refreshGenerationHandle, different]
+
 inductive SearchMaterializationState where
   | missing | building | ready | failed
   deriving DecidableEq, Repr

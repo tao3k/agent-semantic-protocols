@@ -55,6 +55,74 @@ theorem host_reference_does_not_change_workspace_identity
       (resolveBinding rightHost repoIdentity workspaceIdentity).workspaceIdentity := by
   rfl
 
+/- Gix owns repository/worktree topology.  Branch and content state are a
+   separate generation axis and therefore cannot allocate another workspace. -/
+structure GixWorkspaceIdentity where
+  commonGitDir : String
+  canonicalRoot : String
+  privateGitDir : String
+  deriving DecidableEq, Repr
+
+structure SourceGenerationIdentity where
+  head : String
+  index : String
+  overlay : String
+  deriving DecidableEq, Repr
+
+structure GixWorkspaceSnapshot where
+  workspace : GixWorkspaceIdentity
+  generation : SourceGenerationIdentity
+  deriving DecidableEq, Repr
+
+theorem generation_mutation_preserves_gix_workspace
+    (workspace : GixWorkspaceIdentity)
+    (before after : SourceGenerationIdentity) :
+    ({ workspace, generation := before } : GixWorkspaceSnapshot).workspace =
+      ({ workspace, generation := after } : GixWorkspaceSnapshot).workspace := by
+  rfl
+
+inductive GixWorkspaceTopology where
+  | reachable
+  | missing
+  | identityMismatch
+  | unverifiable
+  deriving DecidableEq, Repr
+
+def topologyProtectsCleanup : GixWorkspaceTopology → Bool
+  | .unverifiable => true
+  | .reachable | .missing | .identityMismatch => false
+
+def topologyRetireEligible
+    (topology : GixWorkspaceTopology)
+    (now retainFor : Nat)
+    (object : RetainedObject)
+    (leases : List Lease) : Bool :=
+  !topologyProtectsCleanup topology && retireEligible now retainFor object leases
+
+theorem unverifiable_gix_topology_fails_closed
+    (now retainFor : Nat)
+    (object : RetainedObject)
+    (leases : List Lease) :
+    topologyRetireEligible .unverifiable now retainFor object leases = false := by
+  simp [topologyRetireEligible, topologyProtectsCleanup]
+
+theorem missing_worktree_does_not_bypass_retention_window
+    (now retainFor : Nat)
+    (object : RetainedObject)
+    (leases : List Lease)
+    (tooYoung : now < object.lastObservedAt + retainFor) :
+    topologyRetireEligible .missing now retainFor object leases = false := by
+  simp [topologyRetireEligible, topologyProtectsCleanup, retireEligible]
+  omega
+
+theorem identity_mismatch_does_not_bypass_active_lease
+    (now retainFor : Nat)
+    (object : RetainedObject)
+    (leases : List Lease)
+    (hProtected : isProtectedByLease now object leases = true) :
+    topologyRetireEligible .identityMismatch now retainFor object leases = false := by
+  simp [topologyRetireEligible, topologyProtectsCleanup, retireEligible, hProtected]
+
 structure WorkspaceCatalogProjection where
   canonicalRoot : String
   derivedIdentity : String

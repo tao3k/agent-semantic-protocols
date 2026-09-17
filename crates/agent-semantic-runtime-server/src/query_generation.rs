@@ -449,8 +449,8 @@ impl RuntimeSearchGenerationBuilder {
         self.build_operation_and_wait(RuntimeSearchGenerationBuildOperation {
             name: "search-generation-lexical-build",
             identity: RuntimeSearchDerivedAttachmentIdentity {
-                project_id: key.project_id().as_str().to_owned(),
-                workspace_id: key.workspace_id().as_str().to_owned(),
+                project_id: key.repository_digest().to_owned(),
+                workspace_id: key.workspace_digest().to_owned(),
                 generation_token,
                 content_generation_digest: content_generation_digest.clone(),
                 attachment: RuntimeSearchDerivedAttachmentKind::Tantivy,
