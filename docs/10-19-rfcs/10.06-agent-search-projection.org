@@ -423,6 +423,14 @@ or its typed =source-syntax-unavailable= receipt before publication.  Search
 MUST NOT repair this admission gap by starting a provider or parsing an owner
 on the request path.
 
+Before opening the durable source-index database for recovery, generation
+construction MUST compare the newly computed source snapshot with the compact,
+validated active mmap authority.  A content mismatch is a conclusive recovery
+miss and performs zero durable database reads.  Only an exact content hit may
+pay the detailed Turso recovery validation needed to reuse the prior canonical
+generation.  Thus a changed workspace cannot inherit durable-recovery startup
+cost merely to prove a mismatch already present in the active V1 authority.
+
 Generation construction probes the content-addressed parser artifact store
 before starting a provider.  A complete cache hit performs zero provider
 lifecycle operations.  Only a typed =provider-parser-runtime-required= miss may
@@ -430,6 +438,16 @@ start the matching resident provider; after it becomes Ready, the same immutable
 request is projected and admitted.  This is generation construction, not a
 Search retry.  The admitted generation subsequently serves byte-to-selector
 grounding only from its content-bound Topology anchors.
+
+The cache probe and the post-readiness projection share the Runtime Server's
+bounded parser-artifact resident cache.  Before a provider is Ready, the probe
+first checks content-addressed artifact presence without decoding durable
+payloads.  If any content key is absent, it returns the typed miss immediately;
+the post-readiness phase then validates each unchanged persistent artifact
+exactly once and parses only the missing owner cut.  A provider-runtime miss
+therefore has work
+= O(validated owners + missing owner projection)= across both phases, rather
+than two durable reads of the complete owner set.
 
 * Projection contract
 
@@ -714,6 +732,16 @@ The implementation may use an interval-search equivalent of this bound.
 =depth(m)= is the number of nested anchors intersecting the match, not the
 number of owners or repository nodes.  A benchmark that measures only feature
 posting lookup does not qualify this end-to-end grounding path.
+
+For a Search expression without an explicit =graph= clause, topology
+settlement is exact-selector-first.  After Top-K is fixed, Runtime projects
+only those selected selectors, their owners, and relations whose two endpoints
+are inside that selector cut.  It MUST NOT rebuild every parser node belonging
+to a matched owner merely to render the selected result.  Thus ordinary Search
+topology work is bounded by the public evidence cut and selected incident
+relations, not by the largest source file or Workspace node count.  An explicit
+=graph= clause may request the broader owner-scoped Project Topology closure;
+that distinct cost is accounted to the graph stage.
 
 Parser completion publishes an internal
 =workspace-owner-topology-rebind= transaction with =schemaVersion=1=.  It binds

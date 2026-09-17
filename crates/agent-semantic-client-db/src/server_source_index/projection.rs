@@ -57,6 +57,7 @@ pub async fn project_generation_skeleton_with_resident_runtime(
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     auxiliary_owners: &BTreeMap<String, Vec<ProviderProjectionOwner>>,
     artifact_root: &Path,
+    resident_cache: super::parser_artifact_store::ParserArtifactResidentCache,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     project_generation_with_resident_runtime_and_artifact_store(
         runtime,
@@ -67,7 +68,7 @@ pub async fn project_generation_skeleton_with_resident_runtime(
         source_blobs,
         auxiliary_owners,
         artifact_root,
-        None,
+        Some(resident_cache),
     )
     .await
 }
@@ -235,6 +236,40 @@ async fn project_provider(
         .iter()
         .map(|(_, identity)| (identity.owner_path.clone(), identity.clone()))
         .collect::<BTreeMap<_, _>>();
+    if matches!(&executor, ProviderProjectionExecutor::Resident(None))
+        && let Some(store) = artifact_store.cloned()
+    {
+        let presence_started = std::time::Instant::now();
+        let presence_identities = artifact_identities
+            .iter()
+            .map(|(_, identity)| identity.clone())
+            .collect::<Vec<_>>();
+        let presence = stream::iter(presence_identities.into_iter().map(|identity| {
+            let store = store.clone();
+            async move { store.is_present(&identity).await }
+        }))
+        .buffer_unordered(32)
+        .collect::<Vec<_>>()
+        .await;
+        let present = presence
+            .iter()
+            .filter(|result| matches!(result, Ok(true)))
+            .count();
+        let missing = presence.len().saturating_sub(present);
+        if let Some(error) = presence.into_iter().find_map(Result::err) {
+            return Err(error);
+        }
+        eprintln!(
+            "[parser-artifact-presence] providerId={} present={} missing={} durableReadCount=0 elapsedMicros={}",
+            provider.provider_id,
+            present,
+            missing,
+            presence_started.elapsed().as_micros(),
+        );
+        if missing > 0 {
+            return Err("state=cache-miss reasonKind=provider-parser-runtime-required".to_owned());
+        }
+    }
     let cache_started = std::time::Instant::now();
     let cached = if let Some(store) = artifact_store.cloned() {
         stream::iter(

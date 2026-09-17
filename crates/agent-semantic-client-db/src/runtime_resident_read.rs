@@ -78,6 +78,44 @@ impl RuntimeResidentReadClient {
         }
     }
 
+    /// Resolve only an already selected exact-selector cut. This is the
+    /// ordinary non-graph Search topology source and never scans all selectors
+    /// belonging to a large owner.
+    pub fn topology_source_segments_for_selector_scope(
+        &self,
+        selectors: &std::collections::BTreeSet<String>,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        let mut by_owner = std::collections::BTreeMap::<
+            String,
+            crate::runtime_server_workspace::WorkspaceTopologySourceSegment,
+        >::new();
+        for selector in selectors {
+            let hit = match (&self.exact_projection, &self.resident_lease) {
+                (Some(_), None) => self.search_projection.exact_topology_selector(selector),
+                (None, Some(lease)) => lease.exact_topology_selector(selector)?,
+                _ => return Err("Runtime resident read authority is inconsistent".to_owned()),
+            }
+            .ok_or_else(|| format!("selected topology selector is unavailable: {selector}"))?;
+            let entry = by_owner.entry(hit.owner_path.clone()).or_insert_with(|| {
+                crate::runtime_server_workspace::WorkspaceTopologySourceSegment {
+                    owner_path: hit.owner_path.clone(),
+                    content_digest: hit.owner_content_digest.clone(),
+                    authority: None,
+                    selectors: Vec::new(),
+                    relations: Vec::new(),
+                }
+            });
+            if entry.content_digest != hit.owner_content_digest {
+                return Err(format!(
+                    "selected topology owner content drift: {}",
+                    hit.owner_path
+                ));
+            }
+            entry.selectors.push(selector.clone());
+        }
+        Ok(by_owner.into_values().collect())
+    }
+
     pub fn owner_paths_for_graph_entry_node_ids<'a>(
         &self,
         node_ids: impl IntoIterator<Item = &'a str>,

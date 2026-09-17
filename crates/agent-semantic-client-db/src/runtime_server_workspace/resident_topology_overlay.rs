@@ -130,7 +130,40 @@ pub(super) fn resolve_topology_anchor(
     base()
 }
 
+pub(super) fn resolve_topology_selector(
+    head: Option<&ResidentTopologyDeltaLayer>,
+    owner_path: &str,
+    selector: &str,
+    base: impl FnOnce() -> Option<WorkspaceTopologyHit>,
+) -> Option<WorkspaceTopologyHit> {
+    let mut layer = head;
+    while let Some(current) = layer {
+        if current.shadowed_owner_paths.contains(owner_path) {
+            return current
+                .index
+                .as_ref()
+                .and_then(|index| index.exact_selector(selector));
+        }
+        layer = current.previous.as_deref();
+    }
+    base()
+}
+
 impl ResidentOverlaySnapshot {
+    pub(super) fn resolve_topology_selector(
+        &self,
+        owner_path: &str,
+        selector: &str,
+        base: impl FnOnce() -> Option<WorkspaceTopologyHit>,
+    ) -> Option<WorkspaceTopologyHit> {
+        resolve_topology_selector(
+            self.state.topology_delta_head.as_deref(),
+            owner_path,
+            selector,
+            base,
+        )
+    }
+
     pub(super) fn resolve_topology_anchor(
         &self,
         owner_path: &str,

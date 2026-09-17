@@ -422,6 +422,18 @@ theorem complete_parser_artifact_cache_starts_no_provider :
     generationProviderLifecycleCalls true = 0 := by
   rfl
 
+/-- Non-graph Search settles only the already selected exact selectors.  Large
+owners cannot re-enter the request cost after the public Top-K cut. -/
+def exactSelectorTopologySettlementWork
+    (selectedSelectors selectedIncidentRelations : Nat) : Nat :=
+  selectedSelectors + selectedIncidentRelations
+
+theorem exact_selector_topology_settlement_excludes_owner_and_workspace_cardinality
+    (selectedSelectors selectedIncidentRelations _ownerSelectors _workspaceNodes : Nat) :
+    exactSelectorTopologySettlementWork selectedSelectors selectedIncidentRelations =
+      selectedSelectors + selectedIncidentRelations := by
+  rfl
+
 /-- Rebinding topology pays only for changed owner paths and node cardinality;
 the number of languages and workspace owners is not a work term. -/
 def topologyShardRebindWork (changedNodes changedPathBytes : Nat) : Nat :=

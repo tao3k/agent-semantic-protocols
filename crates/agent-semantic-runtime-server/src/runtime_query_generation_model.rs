@@ -43,6 +43,7 @@ pub struct RuntimeQueryGeneration {
 pub(super) struct RuntimeProjectTopologyCacheEntry {
     topology_source_generation_digest: String,
     owner_scope: BTreeSet<String>,
+    selector_scope: Option<BTreeSet<String>>,
     pub(super) attachment:
         Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, Arc<str>>,
     _memory_permit: Option<Arc<agent_semantic_workspace_scheduler::RuntimeServerResourcePermit>>,
@@ -52,6 +53,7 @@ impl RuntimeProjectTopologyCacheEntry {
     pub(super) fn new(
         topology_source_generation_digest: String,
         owner_scope: BTreeSet<String>,
+        selector_scope: Option<BTreeSet<String>>,
         attachment: Result<
             Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>,
             Arc<str>,
@@ -61,6 +63,7 @@ impl RuntimeProjectTopologyCacheEntry {
         Self {
             topology_source_generation_digest,
             owner_scope,
+            selector_scope,
             attachment,
             _memory_permit: memory_permit.map(Arc::new),
         }
@@ -70,18 +73,24 @@ impl RuntimeProjectTopologyCacheEntry {
         &self,
         topology_source_generation_digest: &str,
         requested: &BTreeSet<String>,
+        requested_selectors: Option<&BTreeSet<String>>,
     ) -> bool {
         self.topology_source_generation_digest == topology_source_generation_digest
             && self.owner_scope == *requested
+            && self.selector_scope.as_ref() == requested_selectors
     }
 
     pub(super) fn matches_request(
         &self,
         topology_source_generation_digest: &str,
         requested: &BTreeSet<String>,
+        requested_selectors: Option<&BTreeSet<String>>,
     ) -> bool {
-        self.matches(topology_source_generation_digest, requested)
-            || (requested.is_empty() && self.attachment.is_ok())
+        self.matches(
+            topology_source_generation_digest,
+            requested,
+            requested_selectors,
+        ) || (requested.is_empty() && self.attachment.is_ok())
     }
 }
 

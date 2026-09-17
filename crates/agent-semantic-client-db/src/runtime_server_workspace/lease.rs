@@ -332,6 +332,23 @@ impl WorkspaceGenerationLease {
         )
     }
 
+    pub(crate) fn exact_topology_selector(
+        &self,
+        selector: &str,
+    ) -> Result<Option<super::WorkspaceTopologyHit>, String> {
+        let parsed =
+            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                selector.to_owned(),
+            )?;
+        let owner_path = parsed.owner_path()?;
+        let base = self.backend.search_data_plane();
+        Ok(self
+            .overlay
+            .resolve_topology_selector(&owner_path, selector, || {
+                base.exact_topology_selector(selector)
+            }))
+    }
+
     pub fn read_runtime_selector(
         &self,
         projection_kind: super::ExactProjectionKind,

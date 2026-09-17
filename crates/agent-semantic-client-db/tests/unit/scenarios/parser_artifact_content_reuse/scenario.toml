@@ -15,6 +15,7 @@ generation_proof_is_separate = true
 
 [gate]
 unchanged_owner_provider_process_count = 0
+duplicated_persistent_read_count = 0
 changed_owner_cache_miss_count = 1
 unrelated_owner_invalidation_count = 0
 auxiliary_bytes_hashes_per_generation = 2

@@ -97,7 +97,8 @@ pub use search_generation_authority::WorkspaceSearchGenerationAuthority;
 pub use search_generation_authority::read_search_generation_authority_fixture;
 pub(crate) use search_generation_authority::{
     WorkspaceSearchGenerationAuthorityPublisher, WorkspaceSearchGenerationAuthorityReader,
-    publish_search_generation_authority_segment, workspace_search_generation_authority_channel,
+    publish_search_generation_authority_segment, read_search_generation_authority_segment,
+    workspace_search_generation_authority_channel,
 };
 
 #[cfg(test)]

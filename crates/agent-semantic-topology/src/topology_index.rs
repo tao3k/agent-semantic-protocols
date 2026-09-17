@@ -109,6 +109,7 @@ pub struct TopologyAnchorHitV1 {
 /// Immutable postings over directories, owners, and parser-native nodes.
 pub struct TopologyIndexV1 {
     postings: BTreeMap<String, Arc<[TopologyHitV1]>>,
+    exact_selector_hits: BTreeMap<String, TopologyHitV1>,
     owner_shard_digests: BTreeMap<String, String>,
     owner_anchors: BTreeMap<String, Arc<[TopologyAnchorHitV1]>>,
     node_count: usize,
@@ -119,6 +120,7 @@ impl TopologyIndexV1 {
     /// Build deterministic owner shards and rarest-first feature postings.
     pub fn build(owners: impl IntoIterator<Item = TopologyOwnerV1>) -> Result<Self, String> {
         let mut postings = BTreeMap::<String, Vec<TopologyHitV1>>::new();
+        let mut exact_selector_hits = BTreeMap::new();
         let mut owner_shard_digests = BTreeMap::new();
         let mut owner_anchors = BTreeMap::new();
         let mut node_count = 0usize;
@@ -184,6 +186,20 @@ impl TopologyIndexV1 {
             for node in &owner.nodes {
                 node_count = node_count.saturating_add(1);
                 parser_native_node_count = parser_native_node_count.saturating_add(1);
+                let exact_hit = TopologyHitV1 {
+                    owner_path: owner.owner_path.clone(),
+                    owner_content_digest: owner.owner_content_digest.clone(),
+                    topology_locator: node.structural_selector.clone(),
+                    kind: node.kind.clone(),
+                    structural_selector: Some(node.structural_selector.clone()),
+                    matched_features: Vec::new(),
+                };
+                if exact_selector_hits
+                    .insert(node.structural_selector.clone(), exact_hit)
+                    .is_some()
+                {
+                    return Err("topology index contains a duplicate exact selector".to_owned());
+                }
                 add_postings(
                     &mut postings,
                     &owner,
@@ -208,6 +224,7 @@ impl TopologyIndexV1 {
                     (feature, Arc::from(hits))
                 })
                 .collect(),
+            exact_selector_hits,
             owner_shard_digests,
             owner_anchors,
             node_count,
@@ -262,6 +279,12 @@ impl TopologyIndexV1 {
     #[must_use]
     pub fn owner_shard_digest(&self, owner_path: &str) -> Option<&str> {
         self.owner_shard_digests.get(owner_path).map(String::as_str)
+    }
+
+    /// Resolve one already-known canonical selector in logarithmic time.
+    #[must_use]
+    pub fn exact_selector(&self, selector: &str) -> Option<TopologyHitV1> {
+        self.exact_selector_hits.get(selector).cloned()
     }
 
     /// Resolve one exact byte match to its smallest enclosing parser node.

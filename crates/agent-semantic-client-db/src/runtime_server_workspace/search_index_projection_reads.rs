@@ -26,6 +26,14 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         self.topology_index.node_count()
     }
 
+    #[must_use]
+    pub fn exact_topology_selector(
+        &self,
+        selector: &str,
+    ) -> Option<agent_semantic_topology::TopologyHitV1> {
+        self.topology_index.exact_selector(selector)
+    }
+
     pub fn smallest_enclosing_topology_anchor(
         &self,
         owner_path: &str,

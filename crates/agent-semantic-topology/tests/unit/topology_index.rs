@@ -53,6 +53,16 @@ fn indexes_repository_paths_symbols_and_document_headings_as_topology() {
     );
     assert_eq!(index.parser_native_node_count(), 3);
     assert!(index.node_count() > index.parser_native_node_count());
+    let exact = index
+        .exact_selector("rust://src/runtime/lib.rs#item/function/commit")
+        .expect("exact selector posting");
+    assert_eq!(exact.owner_path, "src/runtime/lib.rs");
+    assert_eq!(exact.kind, parser_kind("rust", "function"));
+    assert!(
+        index
+            .exact_selector("rust://src/runtime/lib.rs#item/function/missing")
+            .is_none()
+    );
 }
 
 #[test]

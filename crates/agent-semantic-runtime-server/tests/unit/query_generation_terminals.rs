@@ -288,22 +288,45 @@ fn project_topology_cache_identity_requires_source_generation_and_owner_scope() 
     let first = RuntimeProjectTopologyCacheEntry::new(
         "overlay-generation-a".to_owned(),
         std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
+        Some(std::collections::BTreeSet::from([
+            "rust://src/a.rs#item/function/a".to_owned(),
+        ])),
         Err(std::sync::Arc::from("fixture")),
         None,
     );
     assert!(first.matches(
         "overlay-generation-a",
-        &std::collections::BTreeSet::from(["src/a.rs".to_owned()])
+        &std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
+        Some(&std::collections::BTreeSet::from([
+            "rust://src/a.rs#item/function/a".to_owned(),
+        ]))
     ));
     assert!(!first.matches(
         "overlay-generation-b",
-        &std::collections::BTreeSet::from(["src/a.rs".to_owned()])
+        &std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
+        Some(&std::collections::BTreeSet::from([
+            "rust://src/a.rs#item/function/a".to_owned(),
+        ]))
     ));
     assert!(!first.matches(
         "overlay-generation-a",
-        &std::collections::BTreeSet::from(["src/b.rs".to_owned()])
+        &std::collections::BTreeSet::from(["src/b.rs".to_owned()]),
+        Some(&std::collections::BTreeSet::from([
+            "rust://src/a.rs#item/function/a".to_owned(),
+        ]))
     ));
-    assert!(!first.matches_request("overlay-generation-a", &std::collections::BTreeSet::new()));
+    assert!(!first.matches(
+        "overlay-generation-a",
+        &std::collections::BTreeSet::from(["src/a.rs".to_owned()]),
+        Some(&std::collections::BTreeSet::from([
+            "rust://src/a.rs#item/function/other".to_owned(),
+        ])),
+    ));
+    assert!(!first.matches_request(
+        "overlay-generation-a",
+        &std::collections::BTreeSet::new(),
+        Some(&std::collections::BTreeSet::new()),
+    ));
 }
 
 #[tokio::test]

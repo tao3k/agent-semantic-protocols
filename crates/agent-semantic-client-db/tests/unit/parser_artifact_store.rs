@@ -101,6 +101,13 @@ async fn validated_artifact_becomes_a_bounded_resident_hit() {
             .expect("persistent evicted artifact"),
         ParserArtifactReuse::Persistent(_)
     ));
+    assert!(matches!(
+        store
+            .read(&first)
+            .await
+            .expect("promoted resident artifact"),
+        ParserArtifactReuse::Resident(_)
+    ));
 }
 
 #[tokio::test]

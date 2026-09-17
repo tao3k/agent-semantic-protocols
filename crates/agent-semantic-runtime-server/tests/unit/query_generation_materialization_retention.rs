@@ -22,6 +22,9 @@ fn same_content_generation_upgrade_shares_in_flight_completed_and_topology_autho
         crate::runtime_query_generation_model::RuntimeProjectTopologyCacheEntry::new(
             "blake3-256:topology-source".to_owned(),
             std::collections::BTreeSet::from(["src/lib.rs".to_owned()]),
+            Some(std::collections::BTreeSet::from([
+                "rust://src/lib.rs#item/function/fixture".to_owned(),
+            ])),
             Err(std::sync::Arc::from("retained-fixture")),
             None,
         ),
@@ -66,6 +69,9 @@ fn same_content_generation_upgrade_shares_in_flight_completed_and_topology_autho
     assert!(retained_topology.matches(
         "blake3-256:topology-source",
         &std::collections::BTreeSet::from(["src/lib.rs".to_owned()]),
+        Some(&std::collections::BTreeSet::from([
+            "rust://src/lib.rs#item/function/fixture".to_owned(),
+        ])),
     ));
     assert!(matches!(
         retained_topology.attachment.as_ref(),

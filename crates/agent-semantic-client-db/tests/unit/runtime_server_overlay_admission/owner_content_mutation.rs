@@ -65,6 +65,15 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             .structural_selector,
         "rust://src/lib.rs#item/function/previous_symbol"
     );
+    assert_eq!(
+        old_resident
+            .topology_source_segments_for_selector_scope(&std::collections::BTreeSet::from([
+                "rust://src/lib.rs#item/function/previous_symbol".to_owned(),
+            ]))
+            .expect("old exact-selector topology cut")[0]
+            .selectors,
+        ["rust://src/lib.rs#item/function/previous_symbol"]
+    );
     let base_generation_digest = old_lease.generation().generation_digest.clone();
     let pointer_path =
         agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
@@ -179,6 +188,14 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
     );
     assert!(
         resident
+            .topology_source_segments_for_selector_scope(&std::collections::BTreeSet::from([
+                "rust://src/lib.rs#item/function/previous_symbol".to_owned(),
+            ]))
+            .is_err(),
+        "content mutation must shadow the stale exact-selector posting"
+    );
+    assert!(
+        resident
             .smallest_enclosing_topology_anchor("src/lib.rs", 3, 7,)
             .expect("content mutation shadows the previous anchor shard")
             .is_none()
@@ -284,6 +301,17 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             .structural_selector,
         "rust://src/lib.rs#item/function/next_symbol"
     );
+    let exact_cut = rebound
+        .topology_source_segments_for_selector_scope(&std::collections::BTreeSet::from([
+            "rust://src/lib.rs#item/function/next_symbol".to_owned(),
+        ]))
+        .expect("rebound exact-selector topology cut");
+    assert_eq!(exact_cut.len(), 1);
+    assert_eq!(
+        exact_cut[0].selectors,
+        ["rust://src/lib.rs#item/function/next_symbol"]
+    );
+    assert!(exact_cut[0].relations.is_empty());
     assert!(
         rebound
             .read_topology_index("previous_symbol", 8)

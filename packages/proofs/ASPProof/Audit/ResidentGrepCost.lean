@@ -118,5 +118,6 @@ open ASPProof.ResidentGrepCost
 #check byte_only_generation_cannot_admit_grounded_search
 #check search_core_ready_requires_current_topology_skeleton
 #check complete_parser_artifact_cache_starts_no_provider
+#check exact_selector_topology_settlement_excludes_owner_and_workspace_cardinality
 
 end ASPProof.Audit.ResidentGrepCost

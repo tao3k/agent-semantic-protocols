@@ -243,7 +243,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                         ]
                     },
                     {
-                        label: "provider-free-generation-rebind",
+                        label: "persistent-to-resident-generation-retry",
                         argv: [
                             "cargo",
                             "test",

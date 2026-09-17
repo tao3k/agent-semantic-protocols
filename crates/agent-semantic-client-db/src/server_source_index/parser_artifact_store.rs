@@ -284,6 +284,22 @@ impl ParserArtifactStore {
         Ok(ParserArtifactReuse::Persistent(owner))
     }
 
+    pub(super) async fn is_present(
+        &self,
+        identity: &ParserArtifactIdentity,
+    ) -> Result<bool, String> {
+        let key_digest = identity.key_digest()?;
+        if let Some(cache) = &self.resident_cache
+            && cache.get(&key_digest, identity)?.is_some()
+        {
+            return Ok(true);
+        }
+        let path = self.path_for_digest(&key_digest)?;
+        tokio::fs::try_exists(&path)
+            .await
+            .map_err(|error| format!("inspect parser artifact `{}`: {error}", path.display()))
+    }
+
     pub(super) async fn publish(
         &self,
         identity: ParserArtifactIdentity,

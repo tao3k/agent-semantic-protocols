@@ -191,7 +191,8 @@ async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
         .await
         .expect("shutdown provider runtime");
 
-    let reused = super::prepare_runtime_server_resident_owner_projections_async(
+    let resident_cache = crate::server_source_index::ParserArtifactResidentCache::new(8 * 1024, 2);
+    let reused = super::prepare_runtime_server_resident_owner_projections_with_cache_async(
         None,
         project_root.clone(),
         "workspace-resident-projection-rebound".to_owned(),
@@ -199,10 +200,28 @@ async fn unchanged_owner_reuses_parser_artifact_without_provider_runtime() {
         vec![auxiliary_snapshot(auxiliary)],
         provider_projection(),
         artifact_root.path().to_path_buf(),
+        Some(resident_cache.clone()),
     )
     .await
     .expect("unchanged content reuses parser artifact without provider");
     assert_eq!(reused, first);
+    assert_eq!(provider_calls.load(Ordering::Acquire), 1);
+
+    std::fs::remove_dir_all(artifact_root.path()).expect("remove persistent artifact root");
+    let resident_reused =
+        super::prepare_runtime_server_resident_owner_projections_with_cache_async(
+            None,
+            project_root.clone(),
+            "workspace-resident-projection-resident-retry".to_owned(),
+            vec![owner_snapshot(source)],
+            vec![auxiliary_snapshot(auxiliary)],
+            provider_projection(),
+            artifact_root.path().to_path_buf(),
+            Some(resident_cache),
+        )
+        .await
+        .expect("post-readiness retry reuses promoted resident artifact");
+    assert_eq!(resident_reused, first);
     assert_eq!(provider_calls.load(Ordering::Acquire), 1);
 
     let changed = b"pub fn changed() {}\n";

@@ -226,6 +226,7 @@ impl RuntimeQueryGeneration {
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
         owner_scope: &BTreeSet<String>,
+        selector_scope: Option<&BTreeSet<String>>,
     ) -> Result<Arc<agent_semantic_topology::RuntimeProjectTopologyAttachment>, String> {
         let topology_source_generation_digest = resident.topology_source_generation_digest()?;
         if let Some(stored) = self
@@ -234,7 +235,11 @@ impl RuntimeQueryGeneration {
             .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
             .as_ref()
             .filter(|stored| {
-                stored.matches_request(&topology_source_generation_digest, owner_scope)
+                stored.matches_request(
+                    &topology_source_generation_digest,
+                    owner_scope,
+                    selector_scope,
+                )
             })
             .cloned()
         {
@@ -247,14 +252,18 @@ impl RuntimeQueryGeneration {
             .map_err(|_| "Runtime Project Topology cache poisoned".to_owned())?
             .as_ref()
             .filter(|stored| {
-                stored.matches_request(&topology_source_generation_digest, owner_scope)
+                stored.matches_request(
+                    &topology_source_generation_digest,
+                    owner_scope,
+                    selector_scope,
+                )
             })
             .cloned()
         {
             return stored.attachment.map_err(|error| error.to_string());
         }
         let built = self
-            .build_project_topology(project_root, resident, owner_scope)
+            .build_project_topology(project_root, resident, owner_scope, selector_scope)
             .await;
         let (stored, memory_permit) = match built {
             Ok((attachment, permit)) => (Ok(Arc::new(attachment)), Some(permit)),
@@ -270,6 +279,7 @@ impl RuntimeQueryGeneration {
             .replace(RuntimeProjectTopologyCacheEntry::new(
                 topology_source_generation_digest,
                 owner_scope.clone(),
+                selector_scope.cloned(),
                 stored,
                 memory_permit,
             ));
@@ -317,6 +327,7 @@ impl RuntimeQueryGeneration {
         project_root: &std::path::Path,
         resident: &RuntimeResidentReadClient,
         owner_scope: &BTreeSet<String>,
+        selector_scope: Option<&BTreeSet<String>>,
     ) -> Result<
         (
             agent_semantic_topology::RuntimeProjectTopologyAttachment,
@@ -335,7 +346,12 @@ impl RuntimeQueryGeneration {
             return Err("reasonKind=runtime-project-topology-manifest-binding-mismatch".to_owned());
         }
 
-        let source = resident.topology_source_segments_for_owner_scope(owner_scope)?;
+        let source = match selector_scope {
+            Some(selector_scope) => {
+                resident.topology_source_segments_for_selector_scope(selector_scope)?
+            }
+            None => resident.topology_source_segments_for_owner_scope(owner_scope)?,
+        };
         if source.is_empty() && !owner_scope.is_empty() {
             return Err("reasonKind=runtime-project-topology-source-empty".to_owned());
         }

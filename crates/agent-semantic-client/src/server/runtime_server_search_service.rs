@@ -444,6 +444,7 @@ pub(super) async fn serve_runtime_search_requests(
                 });
             }
             RuntimeSearchServiceRequest::ProviderGenerationSkeleton { request, response } => {
+                let parser_artifact_cache = parser_artifact_cache.clone();
                 let agent_semantic_client_db::runtime_search_service::RuntimeGenerationSkeletonRequest {
                     workspace_identity,
                     project_root,
@@ -498,6 +499,7 @@ pub(super) async fn serve_runtime_search_requests(
                                     &source_blobs,
                                     &auxiliary_owners,
                                     &parser_artifact_root,
+                                    parser_artifact_cache,
                                 )
                                 .await
                         }

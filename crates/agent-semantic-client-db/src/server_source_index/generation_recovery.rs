@@ -37,6 +37,42 @@ pub(super) async fn recover_unchanged_generation(
     };
     let schema_id = super::config::SOURCE_INDEX_SCHEMA_ID.into();
     let schema_version = super::config::SOURCE_INDEX_SCHEMA_VERSION.into();
+    let mmap_probe_started = std::time::Instant::now();
+    let generation_pointer = crate::runtime_server_workspace::workspace_generation_pointer_path(
+        request.parser_artifact_root,
+        workspace_identity,
+        request.index_root,
+    )?;
+    if let Some(pointer) =
+        crate::runtime_server_workspace::WorkspaceGenerationPointerReader::open_optional(
+            &generation_pointer,
+        )
+        .await?
+    {
+        let pointer = pointer.read()?;
+        pointer.validate()?;
+        let resolved =
+            agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?;
+        let project_id = resolved.repo.repo_id.to_string();
+        let authority = crate::runtime_server_workspace::read_search_generation_authority_segment(
+            &generation_pointer,
+            pointer.active_epoch,
+            &project_id,
+            workspace_identity,
+        )
+        .await?;
+        if authority.source_snapshot != *source_snapshot {
+            eprintln!(
+                "[base-generation-recovery-stage] phase=mmap-identity-probe state=content-miss durableDbReadCount=0 elapsedMicros={}",
+                mmap_probe_started.elapsed().as_micros(),
+            );
+            return Ok(None);
+        }
+        eprintln!(
+            "[base-generation-recovery-stage] phase=mmap-identity-probe state=content-hit durableDbReadCount=0 elapsedMicros={}",
+            mmap_probe_started.elapsed().as_micros(),
+        );
+    }
     eprintln!("[base-generation-recovery-stage] phase=identity-probe state=started");
     let Some(stats) = crate::engine::latest_turso_source_index_stats(
         db_path,
