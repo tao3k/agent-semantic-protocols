@@ -688,6 +688,35 @@ analyzer was centralized in the Index package, the 2026-09-17 replay measured
 4.334us p99 with zero source-body inputs.  These measured values are evidence,
 not constants in the algorithm.
 
+** Selector provenance is not owner membership
+
+A ranked-text owner hit MUST NOT be expanded into every parser selector owned
+by that file.  Owner scope and exact-selector evidence are different carrier
+types: =title= predicates may reduce the owner universe, while only a proven
+positive =body= symbol branch may emit parser selectors.  Runtime projects the
+admitted Tantivy grammar into a bounded disjunctive set of positive symbol-key
+conjunctions.  Each conjunction executes through the resident Symbol Skeleton
+Index and its hits are intersected with the complete Tantivy owner result.
+
+Projection fails closed.  Prefix, range, set, exists, regex, negative-body, or
+an over-budget Boolean expansion may still produce a valid owner scope through
+Tantivy, but it produces no exact selector until a provider-native structural
+clause or RG line grounding supplies one.  Runtime never restores completeness
+by enumerating all selectors in the owner.
+
+#+begin_src typst
+#let exact(T, B) = T.intersection(B)
+$ ExactSelectors(q) = Owners_T(q) intersection
+  union_(c in PositiveBodyDNF(q)) Symbols(c) $
+$ PositiveBodyDNF(q) = emptyset arrow ExactSelectors(q) = emptyset $
+#+end_src
+
+For a fused RG/Tantivy scope, RG contributes only selectors that enclose real
+matched byte ranges.  Trigram candidates without a verified line match and
+Tantivy title-only owners remain acquisition evidence, not fabricated item
+evidence.  This preserves compact Top-K output and prevents one owner hit from
+charging every callable in that file to the Agent context.
+
 * Required evidence
 
 Closure requires all of the following:

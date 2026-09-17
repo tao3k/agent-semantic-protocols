@@ -48,6 +48,7 @@ pub use memory_search::MemorySearchSourceLeaf;
 mod progressive_query;
 mod provider_candidate_annotations;
 pub mod provider_relation_memory;
+mod ranked_text_selector_carrier;
 #[cfg(feature = "tantivy-accelerator")]
 mod resident_byte_coverage;
 mod resident_graph_search;
@@ -232,6 +233,7 @@ pub use provider_candidate_annotations::compact_provider_fact_value;
 pub use provider_candidate_annotations::provider_candidate_annotation_nodes;
 pub use provider_candidate_annotations::provider_facts_envelope_from_stdout;
 pub use provider_candidate_annotations::provider_facts_envelope_from_value;
+pub use ranked_text_selector_carrier::ranked_text_selector_candidates;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_byte_coverage::RESIDENT_BYTE_GRAM_WIDTH;
 #[cfg(feature = "tantivy-accelerator")]
@@ -391,6 +393,9 @@ mod merkle_search_generation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_candidate_annotations.rs"]
 mod provider_candidate_annotations_tests;
+#[cfg(test)]
+#[path = "../tests/unit/ranked_text_selector_carrier.rs"]
+mod ranked_text_selector_carrier_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;

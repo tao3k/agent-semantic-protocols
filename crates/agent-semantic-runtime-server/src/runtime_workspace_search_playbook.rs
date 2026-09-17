@@ -313,8 +313,6 @@ pub(super) async fn execute_progressive_search_clauses(
                 candidate.relation = "native-parser:rg-tantivy-fused".to_owned();
             } else if !candidate.hit.rg.is_empty() {
                 candidate.relation = "native-parser:rg-grounded".to_owned();
-            } else if !candidate.hit.tantivy.is_empty() {
-                candidate.relation = "native-parser:tantivy-owner-scope".to_owned();
             }
         }
         if let Some(clause) = retrieval.clauses.iter_mut().find(|clause| {
@@ -323,7 +321,7 @@ pub(super) async fn execute_progressive_search_clauses(
                 WorkspaceSearchAxisKind::Rg | WorkspaceSearchAxisKind::Tantivy
             )
         }) {
-            clause.syntax_candidates = syntax_candidates;
+            clause.syntax_candidates.extend(syntax_candidates);
         }
     }
     let mut clause_executions = retrieval.clauses;
@@ -609,6 +607,7 @@ fn execute_default_retrieval_layout(
             generation,
             None,
             budget.lexical_owner_limit(),
+            budget.syntax_selector_limit(),
         )?;
         if retrieval_composition == RetrievalCompositionKind::Intersect {
             result.require_complete_fused_scope()?;
@@ -779,7 +778,7 @@ fn execute_default_retrieval_layout(
                     truncated: result.truncated,
                 },
             ),
-            syntax_candidates: Vec::new(),
+            syntax_candidates: result.syntax_candidates,
         });
     }
     Ok(RetrievalLayoutExecution {
@@ -834,6 +833,7 @@ fn resident_grep_candidate_scope(
 
 struct TantivyClauseResult {
     owners: Vec<String>,
+    syntax_candidates: Vec<WorkspaceSearchSyntaxCandidate>,
     truncated: bool,
 }
 
@@ -862,6 +862,7 @@ fn execute_tantivy_block(
     generation: &RuntimeQueryGeneration,
     exact_owner_scope: Option<&[String]>,
     limit: u32,
+    selector_limit: usize,
 ) -> Result<TantivyClauseResult, AspClientOperationError> {
     let mut owners = Vec::new();
     let mut seen = BTreeSet::new();
@@ -903,7 +904,35 @@ fn execute_tantivy_block(
             }
         }
     }
-    Ok(TantivyClauseResult { owners, truncated })
+    let owner_scope = owners.iter().cloned().collect::<BTreeSet<_>>();
+    let admitted_languages = routes
+        .iter()
+        .map(|route| route.language_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut symbol_hits = Vec::new();
+    if analysis.selector_projection_complete {
+        for selector_query in &analysis.selector_queries {
+            symbol_hits.extend(
+                generation
+                    .resident()
+                    .read_symbol_skeleton(selector_query, selector_limit.saturating_add(1))
+                    .map_err(AspClientOperationError::Message)?,
+            );
+        }
+    }
+    let syntax_candidates = agent_semantic_search::ranked_text_selector_candidates(
+        &expression,
+        &owner_scope,
+        &admitted_languages,
+        symbol_hits,
+        selector_limit,
+    )
+    .map_err(AspClientOperationError::Message)?;
+    Ok(TantivyClauseResult {
+        owners,
+        syntax_candidates,
+        truncated,
+    })
 }
 
 fn complete_receipt(

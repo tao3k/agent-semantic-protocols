@@ -368,6 +368,29 @@ theorem matching_content_mutation_exposes_no_shadowed_selector
   simp [observeGenerationAfterContentMutation, applyOwnerContentMutation, baseMatches,
     publish, shadowed]
 
+/-- Ranked-text owner membership is acquisition evidence only.  Exact item
+evidence must arrive through a distinct selector-provenance carrier. -/
+structure RankedTextCarrier where
+  owners : List OwnerPath
+  provenSelectors : List (OwnerPath × StructuralSelector)
+  deriving DecidableEq, Repr
+
+def exactSelectorsFromRankedText (carrier : RankedTextCarrier) :
+    List (OwnerPath × StructuralSelector) :=
+  carrier.provenSelectors.filter (fun selector => selector.1 ∈ carrier.owners)
+
+theorem owner_scope_alone_cannot_manufacture_exact_selectors
+    (owners : List OwnerPath) :
+    exactSelectorsFromRankedText { owners, provenSelectors := [] } = [] := by
+  simp [exactSelectorsFromRankedText]
+
+theorem ranked_text_exact_selector_is_owner_bound
+    (carrier : RankedTextCarrier)
+    (selector : OwnerPath × StructuralSelector)
+    (present : selector ∈ exactSelectorsFromRankedText carrier) :
+    selector.1 ∈ carrier.owners := by
+  simpa [exactSelectorsFromRankedText] using (List.mem_filter.mp present).2
+
 /-- Admission acceptance and generation readiness are distinct lifecycle
 states. PreToolUse may release an exact query only after the typed ensure
 receipt carries the complete active generation. -/

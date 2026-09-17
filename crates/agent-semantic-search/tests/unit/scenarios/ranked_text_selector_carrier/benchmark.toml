@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+schema = "agent.semantic-protocols.search-benchmark-receipt"
+version = 1
+scenario = "ranked-text-selector-carrier"
+measured_at = "2026-09-17"
+
+[workload]
+candidate_count = 30
+samples = 512
+unproven_sibling_count = 4096
+
+[observed]
+p99_nanos = 71666
+result_count = 30
+unproven_sibling_results = 0
+
+[qualification]
+maximum_p99_nanos = 1000000
+passed = true

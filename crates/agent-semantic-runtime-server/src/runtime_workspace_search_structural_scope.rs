@@ -168,7 +168,13 @@ pub(crate) fn syntax_candidates_enclosing_rg_matches<'a>(
     matches: impl IntoIterator<Item = &'a RuntimeGrepMatch>,
 ) -> Result<Vec<WorkspaceSearchSyntaxCandidate>, AspClientOperationError> {
     let matches = matches.into_iter().cloned().collect::<Vec<_>>();
-    let owners = owner_paths.iter().cloned().collect::<Vec<_>>();
+    let owners = matches
+        .iter()
+        .map(|matched| matched.owner_path.clone())
+        .filter(|owner| owner_paths.contains(owner))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
     if owners.is_empty() {
         return Ok(Vec::new());
     }
@@ -192,30 +198,7 @@ pub(crate) fn syntax_candidates_enclosing_rg_matches<'a>(
         line_ranges.insert(owner.clone(), source_line_ranges(&snapshot.bytes));
     }
 
-    let matched_owners = matches
-        .iter()
-        .map(|item| item.owner_path.clone())
-        .collect::<BTreeSet<_>>();
     let mut candidates = BTreeMap::<(String, String), WorkspaceSearchSyntaxCandidate>::new();
-    for owner in owner_paths.difference(&matched_owners) {
-        let Some(projection) = projections.get(owner) else {
-            continue;
-        };
-        for selector in &projection.selectors {
-            candidates.insert(
-                (owner.clone(), selector.selector.clone()),
-                WorkspaceSearchSyntaxCandidate {
-                    owner: owner.clone(),
-                    selector: selector.selector.clone(),
-                    relation: "native-parser:owner-scope".to_owned(),
-                    hit: agent_semantic_search::WorkspaceSearchHitProjection {
-                        native: true,
-                        ..Default::default()
-                    },
-                },
-            );
-        }
-    }
     for item in matches {
         let Some((line_start, line_end)) = line_ranges
             .get(&item.owner_path)

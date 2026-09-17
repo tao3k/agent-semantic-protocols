@@ -6,7 +6,9 @@
 
 use std::collections::BTreeSet;
 
-use tantivy_query_grammar::{Delimiter, UserInputAst, UserInputLeaf};
+use tantivy_query_grammar::{Delimiter, Occur, UserInputAst, UserInputLeaf};
+
+const SELECTOR_PROJECTION_BRANCH_LIMIT: usize = 32;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TantivyQueryDiagnostic {
@@ -36,6 +38,12 @@ pub struct TantivyQueryAnalysis {
     pub syntax_diagnostics: Vec<TantivyQueryDiagnostic>,
     pub unsupported_fields: Vec<String>,
     pub missing_features: Vec<&'static str>,
+    /// Positive parser-symbol conjunctions that can soundly ground exact
+    /// selectors. Owner/title predicates never appear in this carrier.
+    pub selector_queries: Vec<String>,
+    /// False means the owner query is still valid, but some body predicate is
+    /// not representable by the exact Symbol Skeleton Index.
+    pub selector_projection_complete: bool,
 }
 
 impl TantivyQueryAnalysis {
@@ -91,6 +99,7 @@ pub fn analyze_tantivy_query(expression: &str) -> TantivyQueryAnalysis {
     {
         missing_features.push("phrase-boost-or-structured-predicate");
     }
+    let selector_projection = selector_projection(ast);
     TantivyQueryAnalysis {
         expression: expression.to_owned(),
         fields: fields.into_iter().collect(),
@@ -98,7 +107,141 @@ pub fn analyze_tantivy_query(expression: &str) -> TantivyQueryAnalysis {
         syntax_diagnostics,
         unsupported_fields,
         missing_features,
+        selector_queries: selector_projection
+            .branches
+            .into_iter()
+            .map(|branch| branch.join(" "))
+            .collect(),
+        selector_projection_complete: selector_projection.complete,
     }
+}
+
+#[derive(Debug)]
+struct SelectorProjection {
+    branches: Vec<Vec<String>>,
+    complete: bool,
+}
+
+fn selector_projection(ast: &UserInputAst) -> SelectorProjection {
+    let mut projection = selector_projection_inner(ast);
+    for branch in &mut projection.branches {
+        branch.sort_unstable();
+        branch.dedup();
+    }
+    projection.branches.retain(|branch| !branch.is_empty());
+    projection.branches.sort_unstable();
+    projection.branches.dedup();
+    if projection.branches.len() > SELECTOR_PROJECTION_BRANCH_LIMIT {
+        projection.branches.clear();
+        projection.complete = false;
+    }
+    projection
+}
+
+fn selector_projection_inner(ast: &UserInputAst) -> SelectorProjection {
+    match ast {
+        UserInputAst::Boost(child, _) => selector_projection_inner(child),
+        UserInputAst::Leaf(leaf) => selector_leaf_projection(leaf),
+        UserInputAst::Clause(clauses) => {
+            let mut must = vec![Vec::<String>::new()];
+            let mut must_has_body = false;
+            let mut should = Vec::new();
+            let mut complete = true;
+            for (occur, child) in clauses {
+                let child = selector_projection_inner(child);
+                complete &= child.complete;
+                match occur.unwrap_or(Occur::Should) {
+                    Occur::MustNot => {
+                        if !child.branches.is_empty() {
+                            complete = false;
+                        }
+                    }
+                    Occur::Must => {
+                        if !child.branches.is_empty() {
+                            must_has_body = true;
+                            must = conjunction_product(must, child.branches, &mut complete);
+                        }
+                    }
+                    Occur::Should => should.extend(child.branches),
+                }
+            }
+            SelectorProjection {
+                branches: if must_has_body { must } else { should },
+                complete,
+            }
+        }
+    }
+}
+
+fn selector_leaf_projection(leaf: &UserInputLeaf) -> SelectorProjection {
+    match leaf {
+        UserInputLeaf::Literal(literal)
+            if literal
+                .field_name
+                .as_deref()
+                .is_none_or(|field| field == "body")
+                && !literal.prefix
+                && !literal.phrase.trim().is_empty() =>
+        {
+            SelectorProjection {
+                branches: vec![vec![literal.phrase.clone()]],
+                complete: true,
+            }
+        }
+        UserInputLeaf::Literal(literal)
+            if literal
+                .field_name
+                .as_deref()
+                .is_some_and(|field| field != "body") =>
+        {
+            SelectorProjection {
+                branches: Vec::new(),
+                complete: true,
+            }
+        }
+        UserInputLeaf::All => SelectorProjection {
+            branches: Vec::new(),
+            complete: true,
+        },
+        UserInputLeaf::Exists { field } if field != "body" => SelectorProjection {
+            branches: Vec::new(),
+            complete: true,
+        },
+        UserInputLeaf::Range { field, .. }
+        | UserInputLeaf::Set { field, .. }
+        | UserInputLeaf::Regex { field, .. }
+            if field.as_deref().is_some_and(|field| field != "body") =>
+        {
+            SelectorProjection {
+                branches: Vec::new(),
+                complete: true,
+            }
+        }
+        _ => SelectorProjection {
+            branches: Vec::new(),
+            complete: false,
+        },
+    }
+}
+
+fn conjunction_product(
+    left: Vec<Vec<String>>,
+    right: Vec<Vec<String>>,
+    complete: &mut bool,
+) -> Vec<Vec<String>> {
+    if left.len().saturating_mul(right.len()) > SELECTOR_PROJECTION_BRANCH_LIMIT {
+        *complete = false;
+        return Vec::new();
+    }
+    left.into_iter()
+        .flat_map(|left_branch| {
+            right.iter().map(move |right_branch| {
+                let mut branch = left_branch.clone();
+                branch.extend(right_branch.iter().cloned());
+                branch
+            })
+        })
+        .collect()
 }
 
 fn measure(
@@ -160,5 +303,35 @@ fn record_field(
     if let Some(field) = field {
         metrics.fielded_leaf_count += 1;
         fields.insert(field.to_owned());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyze_tantivy_query;
+
+    #[test]
+    fn title_or_body_projects_only_the_positive_symbol_branch() {
+        let analysis = analyze_tantivy_query("title:runtime^2 OR body:owner_snapshot");
+        assert_eq!(analysis.selector_queries, ["owner_snapshot"]);
+        assert!(analysis.selector_projection_complete);
+    }
+
+    #[test]
+    fn body_conjunction_remains_one_symbol_posting_intersection() {
+        let analysis = analyze_tantivy_query("title:runtime AND body:owner AND body:snapshot");
+        assert_eq!(analysis.selector_queries, ["owner snapshot"]);
+        assert!(analysis.selector_projection_complete);
+    }
+
+    #[test]
+    fn negative_or_structured_body_fails_closed_for_selector_projection() {
+        let negative = analyze_tantivy_query("title:runtime AND -body:legacy");
+        assert!(negative.selector_queries.is_empty());
+        assert!(!negative.selector_projection_complete);
+
+        let regex = analyze_tantivy_query("title:runtime OR body:/owner.*/");
+        assert!(regex.selector_queries.is_empty());
+        assert!(!regex.selector_projection_complete);
     }
 }

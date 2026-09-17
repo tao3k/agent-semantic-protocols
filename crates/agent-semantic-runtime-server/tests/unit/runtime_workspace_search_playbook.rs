@@ -226,12 +226,14 @@ fn truncated_tantivy_scope_cannot_authorize_an_empty_intersection() {
             .take(1)
             .map(|path| (*path).to_owned())
             .collect(),
+        syntax_candidates: Vec::new(),
         truncated: true,
     };
     assert!(fused_file_context_scope(&grep, &scope.owners.iter().cloned().collect()).is_empty());
     assert!(scope.require_complete_fused_scope().is_err());
     let complete = super::TantivyClauseResult {
         owners: ranked.iter().map(|path| (*path).to_owned()).collect(),
+        syntax_candidates: Vec::new(),
         truncated: false,
     };
     assert!(complete.require_complete_fused_scope().is_ok());
