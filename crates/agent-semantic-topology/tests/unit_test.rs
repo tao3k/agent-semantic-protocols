@@ -20,3 +20,5 @@ mod project_topology_program_binding;
 mod project_topology_source_program;
 #[path = "unit/runtime_project_topology_attachment.rs"]
 mod runtime_project_topology_attachment;
+#[path = "unit/topology_index.rs"]
+mod topology_index;

@@ -15,7 +15,7 @@ use crate::ResidentSearchAuthority;
 use crate::ResidentSourceDocument;
 use crate::ResidentSourceIndex;
 use crate::resident_navigation_keys;
-use crate::resident_skeleton_coverage_keys;
+use crate::resident_topology_coverage_features;
 
 fn build_resources() -> ResidentIndexBuildResources {
     ResidentIndexBuildResources::new(
@@ -240,7 +240,7 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
 }
 
 #[test]
-fn native_tantivy_fields_are_path_and_parser_symbol_skeleton_only() {
+fn native_tantivy_fields_are_path_and_parser_topology_only() {
     let rust = authority("rust", "asp-rust");
     let index = ResidentSourceIndex::new(
         BTreeMap::from([(
@@ -282,7 +282,7 @@ fn native_tantivy_fields_are_path_and_parser_symbol_skeleton_only() {
             .unwrap()
             .hits
             .is_empty(),
-        "owner bytes must never enter the symbol-skeleton body field"
+        "owner bytes must never enter the topology-index body field"
     );
 }
 
@@ -509,8 +509,8 @@ fn durable_navigation_keys_are_path_shallow_and_never_source_text() {
 }
 
 #[test]
-fn symbol_skeleton_coverage_contains_paths_and_parser_keys_but_not_body_tokens() {
-    let keys = resident_skeleton_coverage_keys(
+fn topology_coverage_contains_paths_and_parser_features_but_not_body_tokens() {
+    let keys = resident_topology_coverage_features(
         "src/runtime_server_admission.rs",
         ["rust://src/runtime_server_admission.rs#item/method/compare_candidate".to_owned()],
     );
@@ -526,8 +526,8 @@ fn symbol_skeleton_coverage_contains_paths_and_parser_keys_but_not_body_tokens()
 }
 
 #[test]
-fn symbol_skeleton_budget_is_bounded_without_source_token_expansion() {
-    let keys = resident_skeleton_coverage_keys(
+fn topology_feature_budget_is_bounded_without_source_token_expansion() {
+    let keys = resident_topology_coverage_features(
         "src/large.rs",
         (0..5_000).map(|index| format!("symbol_{index}")),
     );

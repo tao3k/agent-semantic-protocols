@@ -3,16 +3,17 @@
 
 schema = "agent.semantic-protocols.search-scenario"
 version = 1
-name = "ranked-text-selector-carrier"
+name = "topology-selector-carrier"
 
 [query]
-scheme = """(search (producers (language rust)) (tantivy "title:lib^2 OR body:proven"))"""
+scheme = """(search (producers (language rust) (documents org markdown typst)) (tantivy "title:lib^2 OR body:proven"))"""
 expected_selector = "rust://src/lib.rs#item/function/proven"
 
 [model]
 candidate_count = 30
 owner_scope_count = 1
 unproven_sibling_count = 4096
+indexed_node_kinds = ["Directory", "Owner", "Function", "Heading"]
 
 [benchmark]
 samples = 512
@@ -20,5 +21,6 @@ maximum_p99_nanos = 1000000
 
 [invariants]
 owner_scope_is_not_selector_evidence = true
-body_symbol_hits_are_content_bound = true
+topology_feature_hits_are_content_bound = true
+symbol_is_not_index_identity = true
 over_budget_fails_closed = true

@@ -33,7 +33,6 @@ members = [
     "crates/agent-semantic-schema-manager",
     "crates/agent-semantic-scheme-syntax",
     "crates/agent-semantic-shell-parser",
-    "crates/agent-semantic-symbol-index",
     "crates/agent-semantic-tree-sitter",
     "crates/agent-semantic-workspace-scheduler",
 ]
@@ -67,7 +66,7 @@ agent-semantic-content-identity = { path = "crates/agent-semantic-content-identi
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 agent-semantic-http-json = { path = "crates/agent-semantic-http-json" }
 agent-semantic-mrr = { path = "crates/agent-semantic-mrr" }
-agent-semantic-symbol-index = { path = "crates/agent-semantic-symbol-index" }
+agent-semantic-topology = { path = "crates/agent-semantic-topology" }
 agent-semantic-workspace-scheduler = { path = "crates/agent-semantic-workspace-scheduler" }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["net", "sync"] }

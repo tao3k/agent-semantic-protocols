@@ -2,15 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 [scenario]
-id = "symbol-skeleton-index-v1"
-title = "Cross-language Merkle-bound Symbol Skeleton Index"
-package = "agent-semantic-symbol-index"
+id = "topology-index-v1"
+title = "Cross-language Merkle-bound repository Topology Index"
+package = "agent-semantic-topology"
 phase = "resident-search-admission"
-intent = "index every provider-owned symbol and owner path without indexing function bodies"
+intent = "index directories, owners, symbols, modules, and document headings without indexing source or prose bodies"
 
 [gate]
 source_body_input_count = 0
 language_specific_index_implementation_count = 0
 owner_content_digest_binding_count = 1
 canonical_selector_binding_count = 1
+symbol_as_index_identity_count = 0
 full_workspace_rebuild_on_owner_change_count = 0

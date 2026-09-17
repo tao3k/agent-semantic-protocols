@@ -14,5 +14,8 @@ agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
 agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 serde = { workspace = true, features = ["derive"] }
 
+[dev-dependencies]
+toml.workspace = true
+
 [build-dependencies]
 asp-rust-project-harness-policy = { workspace = true }

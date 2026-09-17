@@ -30,8 +30,14 @@ pub(crate) use resident_overlay::{ResidentOverlaySnapshot, ResidentOverlayStore}
 mod pointer;
 pub(crate) use pointer::ACTIVE_WORKSPACE_GENERATION_REQUIRED;
 mod registry;
+mod resident_content_overlay;
+mod resident_grep_overlay;
+mod resident_native_projection;
 mod resident_overlay;
+mod resident_overlay_state;
 mod resident_ready;
+mod resident_tantivy_overlay;
+mod resident_topology_overlay;
 mod restore;
 mod scope_path;
 mod search_generation_authority;
@@ -70,13 +76,13 @@ pub use model::{
     ExactProjectionKind, RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID, RuntimeDataPlaneCounters,
     RuntimeProjectionScope, RuntimeServerShutdownReceipt,
     WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID,
-    WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID,
+    WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID,
     WorkspaceAuxiliaryOwnerSnapshot, WorkspaceDataPlanePerformanceReceipt,
     WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationSnapshot,
     WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerContentMutationReceiptV1,
     WorkspaceOwnerContentMutationV1, WorkspaceOwnerContentRemovalV1, WorkspaceOwnerContentUpsertV1,
     WorkspaceOwnerProjection, WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot,
-    WorkspaceOwnerSnapshot, WorkspaceOwnerSymbolRebindReceiptV1, WorkspaceOwnerSymbolRebindV1,
+    WorkspaceOwnerSnapshot, WorkspaceOwnerTopologyRebindReceiptV1, WorkspaceOwnerTopologyRebindV1,
     WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead,
     WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead, WorkspaceRuntimeSelectorOverlay,
     WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
@@ -99,7 +105,7 @@ pub(crate) use search_generation_authority::{
 pub(crate) mod test_fixture;
 pub use search_index_projection::{
     RuntimeDerivedAttachmentBuildTiming, WorkspaceSearchGenerationDataPlaneClient,
-    WorkspaceSymbolSkeletonHit, encode_workspace_search_generation_segment,
+    WorkspaceTopologyHit, encode_workspace_search_generation_segment,
     workspace_search_generation_segment_path,
 };
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};

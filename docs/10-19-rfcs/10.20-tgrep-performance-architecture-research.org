@@ -1474,21 +1474,23 @@ observe a new identity with old postings, or new postings with old bytes.
 Failure to validate one receipt rejects only its declared owners and schedules
 owner reacquisition.  It does not fall back to =CompleteGeneration=.
 
-The P0 ranked index is the language-neutral Symbol Skeleton Index defined by
-RFC 10.06: file/owner navigation keys plus parser-owned symbols for every
-language.  It never indexes function-body text.  The existing V1 Tantivy
-grammar is only the ranked query language for that skeleton: =title= is the
-owner path/file field and =body= is the parser-owned symbol-key field.  Runtime
-must never hydrate =body= from captured owner bytes, and it must not add a
-parallel public symbol-search command.  The byte-search overlay
+The P0 ranked index is the language-neutral Topology Index defined by RFC
+10.06 and owned by =agent-semantic-topology=: directory/file navigation plus
+every parser-owned node kind, including language symbols and document
+headings.  Symbol is a node feature, never the identity of the index.  It never
+indexes function or prose body text.  The existing V1 Tantivy grammar is only
+the ranked query language for that repository skeleton: =title= is the
+directory/owner navigation field and =body= is the parser-owned topology
+feature field.  Runtime must never hydrate =body= from captured owner bytes,
+and it must not add a parallel public symbol- or topology-search command.  The byte-search overlay
 follows tgrep's useful separation: changed-owner grams
 are built from the captured bytes outside the publication lock, then an
 immutable overlay handle is swapped by the writer.  Base mmap candidates whose
 owners occur in the overlay are shadowed; current overlay candidates are added;
 exact matching always reads the same overlay snapshot.  Tantivy uses the same
-delete-old/add-current owner transaction through immutable skeleton delta
+delete-old/add-current owner transaction through immutable topology delta
 segments: each segment indexes only changed paths and subsequently rebound
-parser symbols for =C=, carries the complete shadow set for =C=, and
+parser-native nodes for =C=, carries the complete shadow set for =C=, and
 links to the previous segment.  Query visits newest to oldest and excludes all
 shadowed base/older documents.  Segment construction is CPU work outside Tokio
 workers; the writer publishes the segment handle with bytes and Merkle root.

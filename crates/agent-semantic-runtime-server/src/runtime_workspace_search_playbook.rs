@@ -907,24 +907,24 @@ fn execute_tantivy_block(
     let owner_scope = owners.iter().cloned().collect::<BTreeSet<_>>();
     let admitted_languages = routes
         .iter()
-        .map(|route| route.language_id.as_str())
+        .map(|route| route.language_id.clone())
         .collect::<BTreeSet<_>>();
-    let mut symbol_hits = Vec::new();
+    let mut topology_hits = Vec::new();
     if analysis.selector_projection_complete {
         for selector_query in &analysis.selector_queries {
-            symbol_hits.extend(
+            topology_hits.extend(
                 generation
                     .resident()
-                    .read_symbol_skeleton(selector_query, selector_limit.saturating_add(1))
+                    .read_topology_index(selector_query, selector_limit.saturating_add(1))
                     .map_err(AspClientOperationError::Message)?,
             );
         }
     }
-    let syntax_candidates = agent_semantic_search::ranked_text_selector_candidates(
+    let syntax_candidates = agent_semantic_search::ranked_text_topology_selector_candidates(
         &expression,
         &owner_scope,
         &admitted_languages,
-        symbol_hits,
+        topology_hits,
         selector_limit,
     )
     .map_err(AspClientOperationError::Message)?;

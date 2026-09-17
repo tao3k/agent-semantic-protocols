@@ -12,10 +12,10 @@ pub const WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-owner-content-mutation";
 pub const WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-owner-content-mutation-receipt";
-pub const WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID: &str =
-    "agent.semantic-protocols.workspace-owner-symbol-rebind";
-pub const WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.workspace-owner-symbol-rebind-receipt";
+pub const WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID: &str =
+    "agent.semantic-protocols.workspace-owner-topology-rebind";
+pub const WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.workspace-owner-topology-rebind-receipt";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -122,7 +122,7 @@ impl WorkspaceOwnerContentMutationReceiptV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceOwnerSymbolRebindV1 {
+pub struct WorkspaceOwnerTopologyRebindV1 {
     pub schema_id: String,
     pub schema_version: String,
     pub rebind_id: String,
@@ -131,28 +131,29 @@ pub struct WorkspaceOwnerSymbolRebindV1 {
     pub relations: Vec<crate::ClientDbSourceIndexOwnedRelation>,
 }
 
-impl WorkspaceOwnerSymbolRebindV1 {
+impl WorkspaceOwnerTopologyRebindV1 {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID
+        if self.schema_id != WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID
             || self.schema_version != "1"
             || self.rebind_id.trim().is_empty()
             || !self.base_generation_digest.starts_with("blake3-256:")
             || self.owners.is_empty()
         {
-            return Err("workspace owner symbol rebind identity is invalid".to_owned());
+            return Err("workspace owner topology rebind identity is invalid".to_owned());
         }
         validate_owners(&self.owners)?;
         let mut owners = std::collections::BTreeSet::new();
         for owner in &self.owners {
             if !owners.insert(owner.owner_path.as_str()) {
-                return Err("workspace owner symbol rebind owners must be unique".to_owned());
+                return Err("workspace owner topology rebind owners must be unique".to_owned());
             }
         }
         for relation in &self.relations {
             relation.relation.validate()?;
             if !owners.contains(relation.owner_path.as_str()) {
                 return Err(
-                    "workspace owner symbol rebind relation is outside owner membership".to_owned(),
+                    "workspace owner topology rebind relation is outside owner membership"
+                        .to_owned(),
                 );
             }
         }
@@ -162,7 +163,7 @@ impl WorkspaceOwnerSymbolRebindV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceOwnerSymbolRebindReceiptV1 {
+pub struct WorkspaceOwnerTopologyRebindReceiptV1 {
     pub schema_id: String,
     pub schema_version: String,
     pub rebind_id: String,
@@ -170,13 +171,13 @@ pub struct WorkspaceOwnerSymbolRebindReceiptV1 {
     pub base_generation_digest: String,
     pub resident_generation_digest: String,
     pub rebound_owner_count: usize,
-    pub symbol_count: usize,
+    pub topology_node_count: usize,
     pub relation_count: usize,
 }
 
-impl WorkspaceOwnerSymbolRebindReceiptV1 {
+impl WorkspaceOwnerTopologyRebindReceiptV1 {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID
+        if self.schema_id != WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID
             || self.schema_version != "1"
             || self.rebind_id.trim().is_empty()
             || self.workspace_identity.trim().is_empty()
@@ -184,7 +185,7 @@ impl WorkspaceOwnerSymbolRebindReceiptV1 {
             || !self.resident_generation_digest.starts_with("blake3-256:")
             || self.rebound_owner_count == 0
         {
-            return Err("workspace owner symbol rebind receipt is invalid".to_owned());
+            return Err("workspace owner topology rebind receipt is invalid".to_owned());
         }
         Ok(())
     }

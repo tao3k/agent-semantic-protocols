@@ -233,7 +233,7 @@ pub use provider_candidate_annotations::compact_provider_fact_value;
 pub use provider_candidate_annotations::provider_candidate_annotation_nodes;
 pub use provider_candidate_annotations::provider_facts_envelope_from_stdout;
 pub use provider_candidate_annotations::provider_facts_envelope_from_value;
-pub use ranked_text_selector_carrier::ranked_text_selector_candidates;
+pub use ranked_text_selector_carrier::ranked_text_topology_selector_candidates;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_byte_coverage::RESIDENT_BYTE_GRAM_WIDTH;
 #[cfg(feature = "tantivy-accelerator")]
@@ -285,21 +285,21 @@ pub use resident_source_index::ResidentIndexBuildStrategy;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentSearchAuthority;
 #[cfg(feature = "tantivy-accelerator")]
-pub use resident_source_index::ResidentSkeletonCoverageInput;
-#[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentSourceDocument;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentSourceIndex;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::ResidentTantivyDeltaIndex;
 #[cfg(feature = "tantivy-accelerator")]
+pub use resident_source_index::ResidentTopologyCoverageInput;
+#[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::resident_index_engine_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use resident_source_index::resident_navigation_keys;
 #[cfg(feature = "tantivy-accelerator")]
-pub use resident_source_index::resident_skeleton_coverage_batch;
+pub use resident_source_index::resident_topology_coverage_batch;
 #[cfg(feature = "tantivy-accelerator")]
-pub use resident_source_index::resident_skeleton_coverage_keys;
+pub use resident_source_index::resident_topology_coverage_features;
 pub use runtime_search_receipt::RUNTIME_SEARCH_SELECTOR_OWNER_LIMIT;
 pub use runtime_search_receipt::RUNTIME_SEARCH_SOURCE_CAPACITY;
 pub use runtime_search_receipt::RUNTIME_SEARCH_SOURCE_LIMIT;
@@ -393,9 +393,6 @@ mod merkle_search_generation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_candidate_annotations.rs"]
 mod provider_candidate_annotations_tests;
-#[cfg(test)]
-#[path = "../tests/unit/ranked_text_selector_carrier.rs"]
-mod ranked_text_selector_carrier_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;

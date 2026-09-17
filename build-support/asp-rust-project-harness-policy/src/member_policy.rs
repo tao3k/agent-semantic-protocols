@@ -177,10 +177,10 @@ const SEARCH_PROJECTION_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     },
 ];
 
-const SYMBOL_INDEX_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
+const TOPOLOGY_INDEX_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/symbol_skeleton_index.rs",
-        rationale: "rarest-first cross-language symbol posting intersection is a resident Search hot path",
+        path: "src/topology_index.rs",
+        rationale: "rarest-first cross-language topology feature intersection is a resident Search hot path",
     },
 ];
 
@@ -364,13 +364,13 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-symbol-index",
-        crate_root: "crates/agent-semantic-symbol-index",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-symbol-index cargo-check advice; owner=language-neutral symbol skeleton index gate; finding_category=advisory policy findings; why_safe_now=the isolated index keeps advisory findings visible while warning and error findings fail the build; cleanup_trigger=clear the symbol index advisory backlog and remove this allowance",
-        verification_label: Some("symbol skeleton index"),
+        package_name: "agent-semantic-topology",
+        crate_root: "crates/agent-semantic-topology",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-topology cargo-check advice; owner=language-neutral project topology and resident index gate; finding_category=advisory policy findings; why_safe_now=the topology authority keeps advisory findings visible while warning and error findings fail the build; cleanup_trigger=clear the topology advisory backlog and remove this allowance",
+        verification_label: Some("project topology index"),
         rule_severity_overrides: &[],
         criterion_performance_verification: false,
-        latency_sensitive_performance_owners: SYMBOL_INDEX_LATENCY_OWNERS,
+        latency_sensitive_performance_owners: TOPOLOGY_INDEX_LATENCY_OWNERS,
         availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {

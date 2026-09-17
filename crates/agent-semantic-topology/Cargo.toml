@@ -7,7 +7,7 @@ name = "agent-semantic-topology"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
-description = "Reusable Project Topology identity, admission, and incremental generation contracts for ASP"
+description = "Reusable Project Topology identity, resident index, admission, and incremental generation contracts for ASP"
 
 [dependencies]
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
@@ -21,8 +21,12 @@ tokio.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+toml.workspace = true
 
 [build-dependencies]
+# Topology Index is a latency-sensitive Style-policy atom. This package runs
+# ASP Rust at its build boundary; Runtime and Search consume typed output.
+asp-rust.workspace = true
 asp-rust-project-harness-policy.workspace = true
 
 [lints]

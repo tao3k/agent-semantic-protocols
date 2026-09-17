@@ -8,6 +8,7 @@ use crate::AspRustProjectHarnessScenarioPackage;
 
 use crate::canonical_replacement_search_scenario::canonical_replacement_resident_first_scenario;
 use crate::owner_content_mutation_search_scenario::owner_content_mutation_scenario;
+use crate::topology_index_search_scenario::topology_index_scenario;
 
 /// Package name for ASP search scenario gates.
 pub const ASP_SEARCH_SCENARIO_PACKAGE_NAME: &str = "agent-semantic-search";
@@ -362,24 +363,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
             ),
             canonical_replacement_resident_first_scenario(),
             owner_content_mutation_scenario(),
-            crate::asp_rust_project_harness_scenario!(
-                name: "symbol-skeleton-index-v1",
-                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
-                description: "All language providers contribute Merkle-bound owner paths and parser symbols to one body-free skeleton index.",
-                fixture_root: "crates/agent-semantic-symbol-index/tests/scenarios/symbol_skeleton_index_v1",
-                tags: ["search", "symbol", "skeleton", "merkle", "cross-language", "performance"],
-                commands: [
-                    {
-                        label: "symbol-skeleton-index",
-                        argv: [
-                            "cargo",
-                            "test",
-                            "-p",
-                            "agent-semantic-symbol-index",
-                        ]
-                    },
-                ],
-            ),
+            topology_index_scenario(),
             crate::asp_rust_project_harness_scenario!(
                 name: CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID,
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,

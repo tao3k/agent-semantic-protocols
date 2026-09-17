@@ -354,92 +354,114 @@ theorem tantivy_delta_build_excludes_workspace_cardinality
       changedOwnerBytes + tokenizedTerms := by
   rfl
 
-/-- The cross-language P0 index contains only navigation and parser-owned
-symbol units. Function-body tokens belong to neither constructor. -/
-inductive SkeletonIndexUnit where
-  | ownerPath
-  | parserSymbol
+/-- The cross-language P0 index is repository topology. A parser-native node
+may be a function, module, heading, or any provider-owned kind. -/
+inductive TopologyIndexNode where
+  | directory
+  | owner
+  | parserNative
   deriving DecidableEq, Repr
 
-def skeletonIndexAdmits : SkeletonIndexUnit → Bool
-  | .ownerPath => true
-  | .parserSymbol => true
+def topologyIndexAdmits : TopologyIndexNode → Bool
+  | .directory => true
+  | .owner => true
+  | .parserNative => true
 
-theorem skeleton_index_has_only_path_or_symbol_units
-    (unit : SkeletonIndexUnit) : skeletonIndexAdmits unit = true := by
-  cases unit <;> rfl
+theorem topology_index_admits_every_repository_skeleton_node
+    (node : TopologyIndexNode) : topologyIndexAdmits node = true := by
+  cases node <;> rfl
 
-/-- Rebinding symbols pays only for the changed owners' symbol cardinality;
-the number of languages and workspace owners is not a work term. -/
-def symbolShardRebindWork (changedSymbols changedPathBytes : Nat) : Nat :=
-  changedSymbols + changedPathBytes
+/-- Symbol and heading are searchable features of parser-native nodes; neither
+is allowed to redefine the identity of the index. Body text has no constructor. -/
+inductive TopologyNodeFeature where
+  | name
+  | symbol
+  | heading
+  | scope
+  deriving DecidableEq, Repr
 
-theorem symbol_shard_rebind_excludes_workspace_and_language_cardinality
-    (changedSymbols changedPathBytes _workspaceOwners _languageCount : Nat) :
-    symbolShardRebindWork changedSymbols changedPathBytes =
-      changedSymbols + changedPathBytes := by
+def featureNodeKind (_feature : TopologyNodeFeature) : TopologyIndexNode :=
+  .parserNative
+
+theorem symbol_is_a_parser_native_node_feature :
+    featureNodeKind .symbol = .parserNative := by
   rfl
 
-/-- A symbol rebind has exactly one visibility point.  Validation failure
+theorem heading_is_a_parser_native_node_feature :
+    featureNodeKind .heading = .parserNative := by
+  rfl
+
+/-- Rebinding topology pays only for changed owner paths and node cardinality;
+the number of languages and workspace owners is not a work term. -/
+def topologyShardRebindWork (changedNodes changedPathBytes : Nat) : Nat :=
+  changedNodes + changedPathBytes
+
+theorem topology_shard_rebind_excludes_workspace_and_language_cardinality
+    (changedNodes changedPathBytes _workspaceOwners _languageCount : Nat) :
+    topologyShardRebindWork changedNodes changedPathBytes =
+      changedNodes + changedPathBytes := by
+  rfl
+
+/-- A topology rebind has exactly one visibility point.  Validation failure
 retains the old shard; success exposes the prepared content-bound shard. -/
-inductive SymbolRebindVisibility where
+inductive TopologyRebindVisibility where
   | oldShard
   | preparedShard
   deriving DecidableEq, Repr
 
-def publishSymbolRebind
-    (identityValid ownerContentMatches : Bool) : SymbolRebindVisibility :=
+def publishTopologyRebind
+    (identityValid ownerContentMatches : Bool) : TopologyRebindVisibility :=
   if identityValid && ownerContentMatches then
     .preparedShard
   else
     .oldShard
 
-theorem invalid_symbol_rebind_cannot_publish
+theorem invalid_topology_rebind_cannot_publish
     (ownerContentMatches : Bool) :
-    publishSymbolRebind false ownerContentMatches = .oldShard := by
-  simp [publishSymbolRebind]
+    publishTopologyRebind false ownerContentMatches = .oldShard := by
+  simp [publishTopologyRebind]
 
-theorem content_drift_cannot_publish_symbol_rebind
+theorem content_drift_cannot_publish_topology_rebind
     (identityValid : Bool) :
-    publishSymbolRebind identityValid false = .oldShard := by
-  cases identityValid <;> simp [publishSymbolRebind]
+    publishTopologyRebind identityValid false = .oldShard := by
+  cases identityValid <;> simp [publishTopologyRebind]
 
-theorem valid_symbol_rebind_has_one_new_visibility :
-    publishSymbolRebind true true = .preparedShard := by
+theorem valid_topology_rebind_has_one_new_visibility :
+    publishTopologyRebind true true = .preparedShard := by
   rfl
 
-/-- The one V1 symbol-rebind visibility point covers both physical views: the
+/-- The one V1 topology-rebind visibility point covers both physical views: the
 exact-selector postings and the Tantivy-backed ranked Scheme leaf. -/
-structure SymbolRebindViews where
+structure TopologyRebindViews where
   exactSelectorVisible : Bool
   rankedTextVisible : Bool
   deriving DecidableEq, Repr
 
-def publishSymbolRebindViews
-    (identityValid ownerContentMatches : Bool) : SymbolRebindViews :=
+def publishTopologyRebindViews
+    (identityValid ownerContentMatches : Bool) : TopologyRebindViews :=
   if identityValid && ownerContentMatches then
     ⟨true, true⟩
   else
     ⟨false, false⟩
 
-theorem symbol_rebind_cannot_split_exact_and_ranked_views
+theorem topology_rebind_cannot_split_exact_and_ranked_views
     (identityValid ownerContentMatches : Bool) :
-    (publishSymbolRebindViews identityValid ownerContentMatches).exactSelectorVisible =
-      (publishSymbolRebindViews identityValid ownerContentMatches).rankedTextVisible := by
+    (publishTopologyRebindViews identityValid ownerContentMatches).exactSelectorVisible =
+      (publishTopologyRebindViews identityValid ownerContentMatches).rankedTextVisible := by
   cases identityValid <;> cases ownerContentMatches <;>
-    simp [publishSymbolRebindViews]
+    simp [publishTopologyRebindViews]
 
-/-- Multi-term symbol lookup starts from the rarest posting list and retains
+/-- Multi-term topology-feature lookup starts from the rarest posting list and retains
 only that bounded candidate frontier. It never materializes every broad-term
 posting as a request-local set. -/
-def rarestFirstSymbolQueryWork
+def rarestFirstTopologyQueryWork
     (rarestPosting retainedCandidates remainingTerms topK : Nat) : Nat :=
   rarestPosting + retainedCandidates * remainingTerms + topK
 
-theorem rarest_first_symbol_query_excludes_workspace_cardinality
+theorem rarest_first_topology_query_excludes_workspace_cardinality
     (rarestPosting retainedCandidates remainingTerms topK
       _workspaceOwners _languageCount : Nat) :
-    rarestFirstSymbolQueryWork rarestPosting retainedCandidates remainingTerms topK =
+    rarestFirstTopologyQueryWork rarestPosting retainedCandidates remainingTerms topK =
       rarestPosting + retainedCandidates * remainingTerms + topK := by
   rfl
 

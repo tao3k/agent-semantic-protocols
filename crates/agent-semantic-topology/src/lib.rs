@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Project-wide topology identity and admission boundary.
+//! Project-wide topology identity, resident index, and admission boundary.
 #![forbid(unsafe_code)]
 
 mod agent_org_topology_overlay;
@@ -17,6 +17,7 @@ mod project_topology_manifest;
 mod project_topology_program_binding;
 mod project_topology_source_program;
 mod runtime_project_topology_attachment;
+mod topology_index;
 
 pub use agent_org_topology_overlay::{
     AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_ID, AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_VERSION,
@@ -56,4 +57,9 @@ pub use runtime_project_topology_attachment::{
     RUNTIME_PROJECT_TOPOLOGY_ATTACHMENT_SCHEMA_ID,
     RUNTIME_PROJECT_TOPOLOGY_ATTACHMENT_SCHEMA_VERSION, RuntimeProjectTopologyAttachment,
     RuntimeProjectTopologyAttachmentCandidate, RuntimeProjectTopologyAttachmentError,
+};
+pub use topology_index::{
+    RankedTextTopologySelectorHitV1, TopologyHitV1, TopologyIndexV1, TopologyNodeKindV1,
+    TopologyNodeV1, TopologyOwnerV1, ranked_text_topology_selector_carrier, topology_feature_terms,
+    topology_navigation_features,
 };

@@ -8,7 +8,7 @@ use super::{
 };
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
 use agent_semantic_client_db::runtime_server_workspace::{
-    WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID, WorkspaceOwnerSymbolRebindV1,
+    WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID, WorkspaceOwnerTopologyRebindV1,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -50,11 +50,11 @@ async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_iden
     let delta_bytes = b"fn delta() {}\n";
 
     let error = registry
-        .publish_resident_owner_symbol_rebind(
+        .publish_resident_owner_topology_rebind(
             workspace_identity,
             &root,
-            WorkspaceOwnerSymbolRebindV1 {
-                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+            WorkspaceOwnerTopologyRebindV1 {
+                schema_id: WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID.to_owned(),
                 schema_version: "1".to_owned(),
                 rebind_id: "reject-owner-outside-canonical-content".to_owned(),
                 base_generation_digest,
@@ -114,11 +114,11 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
     let selector = "rust://src/lib.rs#item/function/resident";
 
     let receipt = registry
-        .publish_resident_owner_symbol_rebind(
+        .publish_resident_owner_topology_rebind(
             workspace_identity,
             &root,
-            WorkspaceOwnerSymbolRebindV1 {
-                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+            WorkspaceOwnerTopologyRebindV1 {
+                schema_id: WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID.to_owned(),
                 schema_version: "1".to_owned(),
                 rebind_id: "resident-parser-rebind".to_owned(),
                 base_generation_digest: base_generation_digest.clone(),
@@ -227,11 +227,11 @@ async fn resident_parser_delta_preserves_a_valid_empty_projection() {
         .clone();
 
     registry
-        .publish_resident_owner_symbol_rebind(
+        .publish_resident_owner_topology_rebind(
             workspace_identity,
             &root,
-            WorkspaceOwnerSymbolRebindV1 {
-                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+            WorkspaceOwnerTopologyRebindV1 {
+                schema_id: WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID.to_owned(),
                 schema_version: "1".to_owned(),
                 rebind_id: "resident-empty-parser-rebind".to_owned(),
                 base_generation_digest,

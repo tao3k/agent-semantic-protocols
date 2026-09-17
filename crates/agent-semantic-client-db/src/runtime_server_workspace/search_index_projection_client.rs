@@ -218,8 +218,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         let owner_search_started = std::time::Instant::now();
         let (source_documents, callable_selector_by_owner) =
             build_admitted_owner_search_indexes(&owner_directory_records)?;
-        let symbol_skeleton_index =
-            super::search_index_projection::build_symbol_skeleton_index(&owner_directory_records)?;
+        let topology_index =
+            super::search_index_projection::build_topology_index(&owner_directory_records)?;
         let provider_authorities = provider_authorities(&source_documents);
         let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
         let owner_search_micros = elapsed_micros(owner_search_started);
@@ -274,7 +274,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
-            symbol_skeleton_index,
+            topology_index,
             graph_entry_owner_by_node_id,
             owner_bytes_range: None,
             merkle_owner_records,
@@ -380,8 +380,8 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             owned_relation_index(&owner_directory_records, &graph_relations)?;
         let (source_documents, callable_selector_by_owner) =
             build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
-        let symbol_skeleton_index =
-            super::search_index_projection::build_symbol_skeleton_index(&owner_directory_records)?;
+        let topology_index =
+            super::search_index_projection::build_topology_index(&owner_directory_records)?;
         let provider_authorities = provider_authorities(&source_documents);
         let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
         let graph_generation = Arc::new(tokio::sync::OnceCell::new());
@@ -401,7 +401,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             resident_byte_coverage,
             resident_grep_corpus,
             callable_selector_by_owner,
-            symbol_skeleton_index,
+            topology_index,
             graph_entry_owner_by_node_id,
             owner_bytes_range: Some(owner_bytes_range),
             merkle_owner_records,

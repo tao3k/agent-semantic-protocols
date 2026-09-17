@@ -252,20 +252,20 @@ impl RuntimeResidentReadClient {
             .read_source_index(query, authority, limit)
     }
 
-    pub fn read_symbol_skeleton(
+    pub fn read_topology_index(
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceSymbolSkeletonHit>, String> {
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologyHit>, String> {
         let hits = self
             .search_projection
-            .read_symbol_skeleton(query, self.search_projection.symbol_skeleton_count().max(1));
+            .read_topology_index(query, self.search_projection.topology_node_count().max(1));
         match (&self.exact_projection, &self.resident_lease) {
             (Some(_), None) => Ok(hits.into_iter().take(limit).collect()),
             (None, Some(lease)) => Ok(lease
-                .merge_symbol_skeleton_hits(hits, query, limit)
+                .merge_topology_hits(hits, query, limit)
                 .into_iter()
-                .filter(|hit| lease.symbol_skeleton_hit_is_current(hit))
+                .filter(|hit| lease.topology_hit_is_current(hit))
                 .take(limit)
                 .collect()),
             _ => Err("Runtime resident read authority is inconsistent".to_owned()),
@@ -273,8 +273,8 @@ impl RuntimeResidentReadClient {
     }
 
     #[must_use]
-    pub fn symbol_skeleton_count(&self) -> usize {
-        self.search_projection.symbol_skeleton_count()
+    pub fn topology_node_count(&self) -> usize {
+        self.search_projection.topology_node_count()
     }
 
     pub fn read_source_index_for_owner_scope(

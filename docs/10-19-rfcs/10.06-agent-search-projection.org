@@ -600,80 +600,95 @@ are removed or moved into =agent-semantic-search=.  Tests must distinguish
 parser-fact completeness from Search orchestration and must reject any provider
 registry containing =search/*=.
 
-* V1 language-neutral Symbol Skeleton Index
+* V1 language-neutral Topology Index
 
-The P0 lexical authority is a language-neutral symbol skeleton, not a source-
-body index.  Every admitted language provider already returns V1 projected
-items with =kind=, =name=, canonical =selector=, =identity.symbol=, and scope
-symbols.  Runtime normalizes those fields into one index whose postings are:
+The P0 resident authority is the existing Project Topology, not a separate
+Symbol Index and not a source-body index.  A symbol is only one searchable
+feature of a parser-owned topology node.  Files, normalized owner paths,
+directory ancestry, language modules and declarations, and document structure
+such as Org/Markdown/Typst headings are peers in one repository skeleton.
+Every admitted provider already returns V1 projected items with =kind=,
+=name=, canonical =selector=, =identity.symbol=, scope symbols, and
+=queryKeys=.  Runtime normalizes those facts into topology-node features:
 
 #+begin_src typst
-$ P(term) = set((ownerPath, ownerContentDigest, canonicalSelector, languageId)) $
-$ shard(o) = H(ownerPath_o, contentDigest_o, sort(symbols_o)) $
+$ P(feature) = set((ownerPath, ownerContentDigest, nodeKind, canonicalSelector?)) $
+$ shard(o) = H(ownerPath_o, contentDigest_o, sort(nodes_o)) $
 #+end_src
 
-The index also admits file names and normalized owner paths as shallow
-navigation keys.  It MUST NOT tokenize or retain function bodies.  GREP owns
-byte/regex truth over current owner bytes; exact Query owns detailed parser
-projection.  The public V1 =(tantivy ...)= leaf is the ranked query language
-for this same skeleton and is not a source-body search surface: =title= denotes
-the normalized owner path/file name and =body= denotes parser-owned symbol
-keys.  Tantivy may be the physical accelerator for those skeleton fields, but
-its input is limited to path/navigation keys and parser-owned symbol keys.  A
-Runtime implementation that fills =body= from owner bytes violates V1 even if
-its result happens to contain the requested owner.
+The index derives directory and owner navigation nodes from the admitted owner
+inventory and admits every canonical provider selector as a parser-native
+topology node.  Its kind remains provider-owned: =Function= and =Module= for
+Rust, =Heading= for Org/Markdown/Typst, and future kinds are not collapsed into
+"symbol".  It MUST NOT tokenize or retain function bodies or prose bodies.
+This resident index is the bounded Search projection of Project Topology, not a
+second topology generation: canonical nodes, owner-local relations, inferred
+edges, coverage, and closure remain owned by =agent-semantic-topology=.  The
+index adds only deterministic feature postings and directory/owner navigation
+witnesses needed to reach those nodes without scanning the repository.
+GREP owns byte/regex truth over current owner bytes; exact Query owns detailed
+parser projection.  The public V1 =(tantivy ...)= leaf is the ranked query
+language for this same repository skeleton and is not a source-body search
+surface: =title= denotes normalized directory/owner navigation features and
+=body= denotes parser-owned topology-node features.  Tantivy may be the
+physical accelerator for those fields, but filling =body= from owner bytes
+violates V1 even when the result happens to contain the requested owner.
 
-There is no second public =(symbol ...)= leaf.  Adding one would duplicate the
-ranked-text axis instead of making its authority precise.  The Scheme
+There is no public =(symbol ...)= or =(topology-index ...)= leaf.  Adding one
+would duplicate the ranked-text axis instead of making its authority precise.
+The Scheme
 composition remains stable: =rg= proves current byte/regex predicates,
-=tantivy= ranks skeleton identities, =syntax= evaluates provider-native
+=tantivy= ranks topology identities, =syntax= evaluates provider-native
 structural predicates, =native-syntax= consumes a known exact selector, and
 Query materializes that selector.  An intersection is valid only when the
 author deliberately requests the conjunction of those distinct predicates.
 
 This contract applies uniformly to Rust, TypeScript, Python, Julia, Scheme,
-Org, and every future provider.  Rust is only an acceptance corpus.  Providers
-do not own ranking or a second Search API; they own complete parser fact
-production.  Runtime owns the cross-language postings, ranking, Top-K, and
-generation binding.
+Org, Markdown, Typst, and every future provider.  Rust symbols are only one
+acceptance corpus.  Providers do not own ranking or a second Search API; they
+own complete parser fact production.  The =agent-semantic-topology= package is
+the only owner of cross-language topology indexing.  Runtime owns publication,
+ranking, Top-K, and generation binding.  A separate Symbol Index package or
+compatibility alias is forbidden.
 
 An owner edit changes its Merkle leaf immediately and atomically tombstones the
-old symbol shard.  Until the provider binds a new symbol shard to that exact
-leaf digest, path search and GREP may find the owner but symbol search cannot
-return stale selectors.  Unchanged owner shards are structurally shared.  The
+old topology shard.  Until the provider binds a new topology shard to that
+exact leaf digest, path search and GREP may find the owner but parser-native
+topology search cannot return stale selectors.  Unchanged owner shards are
+structurally shared.  The
 edit equation is independent of workspace and language cardinality:
 
 #+begin_src typst
 $ W_(edit)(C) = O(sum_(o in C) (bytes_o + path_o)) $
-$ W_(symbol-rebind)(C) = O(sum_(o in C) symbols_o) $
+$ W_(topology-rebind)(C) = O(sum_(o in C) nodes_o + pathDepth_o) $
 $ forall o notin C: shard'(o) = shard(o) $
 #+end_src
 
-The existing V1 selector =queryKeys= field carries =name=,
-=identity.symbol=, and enclosing scope symbols; no V2 schema or compatibility
-payload is introduced.
+The existing V1 selector =queryKeys= field carries searchable node features,
+including =name=, =identity.symbol=, heading text, and enclosing scope names.
+The selector itself supplies canonical language and native node kind.  No V2
+schema or compatibility payload is introduced.
 
 Parser completion publishes an internal
-=workspace-owner-symbol-rebind= transaction with =schemaVersion=1=.  It binds
+=workspace-owner-topology-rebind= transaction with =schemaVersion=1=.  It binds
 one non-empty owner set to the canonical content generation digest and carries
 only exact owner snapshots plus owner-local relations.  Runtime MUST build the
-immutable symbol postings outside the Tokio writer, then the single writer
+immutable topology postings outside the Tokio writer, then the single writer
 validates each owner against the current resident bytes/content digest and
 atomically swaps both the exact-selector postings shard and the Tantivy
-skeleton delta that implements the public ranked-text leaf.  Publishing only
+topology delta that implements the public ranked-text leaf.  Publishing only
 one of those views is forbidden because it creates two Search truths for the
 same resident generation.  Generic content mutation is not a legal
-symbol-rebind path.
+topology-rebind path.
 Rebind returns a typed V1 receipt containing the base digest, new resident
-digest, owner count, symbol count, and relation count.  A stale base, changed
-owner bytes, duplicate owner, or relation outside the rebound membership fails
-before visibility.
+digest, owner count, topology-node count, and relation count.  A stale base,
+changed owner bytes, duplicate owner, or relation outside the rebound
+membership fails before visibility.
 
 Multi-term lookup orders posting lists by ascending cardinality.  It clones
 only the rarest posting frontier, then binary-intersects each remaining sorted
 posting list and applies Top-K.  It MUST NOT build a request-local set from a
-broad token such as =symbol= before considering the selective token
-=symbol_2048=:
+broad feature before considering a selective feature:
 
 #+begin_src typst
 $ W_q = O(p_min + sum_(i=2)^m k_(i-1) log p_i + K) $
@@ -683,9 +698,9 @@ $ M_q = O(p_min + K) $
 Here =p_min= is the rarest posting cardinality and =k_i <= p_min= is the
 retained frontier.  A 4,096-owner, six-language Scenario exposed a 42.15ms p99
 for broad-posting materialization; rarest-first intersection first reduced the
-same 512-sample p99 to 21.459us.  After the shared snake/kebab/CamelCase symbol
-analyzer was centralized in the Index package, the 2026-09-17 replay measured
-4.334us p99 with zero source-body inputs.  These measured values are evidence,
+same 512-sample p99 to 21.459us.  After the shared snake/kebab/CamelCase feature
+analyzer was centralized in the Topology package, the 2026-09-17 replay measured
+1.625us p99 with zero source-body inputs.  These measured values are evidence,
 not constants in the algorithm.
 
 ** Selector provenance is not owner membership
@@ -693,10 +708,11 @@ not constants in the algorithm.
 A ranked-text owner hit MUST NOT be expanded into every parser selector owned
 by that file.  Owner scope and exact-selector evidence are different carrier
 types: =title= predicates may reduce the owner universe, while only a proven
-positive =body= symbol branch may emit parser selectors.  Runtime projects the
-admitted Tantivy grammar into a bounded disjunctive set of positive symbol-key
-conjunctions.  Each conjunction executes through the resident Symbol Skeleton
-Index and its hits are intersected with the complete Tantivy owner result.
+positive =body= topology-feature branch may emit parser selectors.  Runtime
+projects the admitted Tantivy grammar into a bounded disjunctive set of
+positive feature conjunctions.  Each conjunction executes through the resident
+Topology Index and its parser-native hits are intersected with the complete
+Tantivy owner result.
 
 Projection fails closed.  Prefix, range, set, exists, regex, negative-body, or
 an over-budget Boolean expansion may still produce a valid owner scope through
@@ -707,7 +723,7 @@ by enumerating all selectors in the owner.
 #+begin_src typst
 #let exact(T, B) = T.intersection(B)
 $ ExactSelectors(q) = Owners_T(q) intersection
-  union_(c in PositiveBodyDNF(q)) Symbols(c) $
+  union_(c in PositiveBodyDNF(q)) TopologyNodes(c) $
 $ PositiveBodyDNF(q) = emptyset arrow ExactSelectors(q) = emptyset $
 #+end_src
 

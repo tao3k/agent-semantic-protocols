@@ -30,12 +30,12 @@ pub struct ResidentSearchAuthority {
 /// belong to owner-local dynamic projections keyed by the owner content digest.
 #[must_use]
 pub fn resident_navigation_keys(owner_path: &str) -> Vec<String> {
-    agent_semantic_symbol_index::symbol_skeleton_navigation_keys(owner_path)
+    agent_semantic_topology::topology_navigation_features(owner_path)
 }
 
 const RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT: usize = 4_096;
 
-pub struct ResidentSkeletonCoverageInput<'a> {
+pub struct ResidentTopologyCoverageInput<'a> {
     pub owner_path: &'a str,
     pub parser_query_keys: Vec<String>,
 }
@@ -62,7 +62,7 @@ pub fn resident_index_engine_digest() -> String {
     identity.update(env!("CARGO_PKG_VERSION").as_bytes());
     identity.update(&[0]);
     identity.update(
-        b"tantivy-0.26.1\0parallel-segments-no-merge\0indexed-owner-id\0symbol-skeleton-fields-only\0",
+        b"tantivy-0.26.1\0parallel-segments-no-merge\0indexed-owner-id\0topology-index-fields-only\0",
     );
     identity.update(crate::search_projection_analyzer_digest().as_bytes());
     identity.update(&[0]);
@@ -129,8 +129,8 @@ impl ResidentIndexBuildResources {
 /// This is the generation-construction API used by production and performance
 /// qualification. Query execution never calls it.
 #[must_use]
-pub fn resident_skeleton_coverage_batch(
-    inputs: &[ResidentSkeletonCoverageInput<'_>],
+pub fn resident_topology_coverage_batch(
+    inputs: &[ResidentTopologyCoverageInput<'_>],
 ) -> Vec<Vec<String>> {
     if inputs.is_empty() {
         return Vec::new();
@@ -148,7 +148,7 @@ pub fn resident_skeleton_coverage_batch(
                     chunk
                         .iter()
                         .map(|input| {
-                            resident_skeleton_coverage_keys(
+                            resident_topology_coverage_features(
                                 input.owner_path,
                                 input.parser_query_keys.iter().cloned(),
                             )
@@ -163,12 +163,12 @@ pub fn resident_skeleton_coverage_batch(
     })
 }
 
-/// Derive the P0 skeleton index from owner/file navigation keys and
-/// parser-owned symbol keys. Function-body tokens are deliberately excluded;
+/// Derive the P0 Topology Index from owner/file navigation keys and
+/// parser-owned topology features. Function-body tokens are deliberately excluded;
 /// byte/regex truth remains the resident GREP plane and detailed structure is
 /// materialized by exact Query.
 #[must_use]
-pub fn resident_skeleton_coverage_keys(
+pub fn resident_topology_coverage_features(
     owner_path: &str,
     parser_query_keys: impl IntoIterator<Item = String>,
 ) -> Vec<String> {
@@ -176,13 +176,13 @@ pub fn resident_skeleton_coverage_keys(
     keys.sort_unstable();
     keys.dedup();
     keys.truncate(RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT);
-    let mut symbol_terms = BTreeSet::new();
+    let mut topology_feature_terms = BTreeSet::new();
     for key in parser_query_keys {
-        symbol_terms.extend(agent_semantic_symbol_index::symbol_skeleton_terms(&key));
+        topology_feature_terms.extend(agent_semantic_topology::topology_feature_terms(&key));
     }
-    symbol_terms.retain(|term| keys.binary_search(term).is_err());
+    topology_feature_terms.retain(|term| keys.binary_search(term).is_err());
     let remaining = RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT.saturating_sub(keys.len());
-    keys.extend(symbol_terms.into_iter().take(remaining));
+    keys.extend(topology_feature_terms.into_iter().take(remaining));
     keys.sort_unstable();
     keys
 }
@@ -192,7 +192,7 @@ pub struct ResidentSourceDocument {
     pub owner_path: String,
     pub owner_content_digest: String,
     pub line_count: u32,
-    /// Normalized file-navigation and parser-owned symbol keys only.
+    /// Normalized file-navigation and parser-owned topology features only.
     /// Source/function bodies are deliberately not representable.
     pub query_keys: Vec<String>,
     pub authority: Option<ResidentSearchAuthority>,
@@ -765,7 +765,7 @@ fn lexical_documents(
             |(document, exact_terms)| crate::tantivy_lexical::TantivyLexicalDocument {
                 exact_terms: exact_terms.clone(),
                 title: document.owner_path.clone(),
-                symbol_body: document.query_keys.join(" "),
+                topology_body: document.query_keys.join(" "),
             },
         )
         .collect()

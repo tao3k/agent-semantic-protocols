@@ -19,10 +19,10 @@ pub use core::{
 };
 pub use mutation::{
     WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID,
-    WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID,
+    WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID,
     WorkspaceOwnerContentMutationReceiptV1, WorkspaceOwnerContentMutationV1,
     WorkspaceOwnerContentRemovalV1, WorkspaceOwnerContentUpsertV1,
-    WorkspaceOwnerSymbolRebindReceiptV1, WorkspaceOwnerSymbolRebindV1,
+    WorkspaceOwnerTopologyRebindReceiptV1, WorkspaceOwnerTopologyRebindV1,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
     WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind,
 };

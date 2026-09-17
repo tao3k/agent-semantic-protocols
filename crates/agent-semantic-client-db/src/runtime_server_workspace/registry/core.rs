@@ -108,8 +108,8 @@ pub(super) enum WorkspaceWriteCommand {
         owner: WorkspaceOwnerSnapshot,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
-    PublishResidentOwnerSymbolRebind(
-        super::writer_publication::PublishResidentOwnerSymbolRebindCommand,
+    PublishResidentOwnerTopologyRebind(
+        super::writer_publication::PublishResidentOwnerTopologyRebindCommand,
     ),
     PublishOwnerContentMutation(super::writer_publication::PublishOwnerContentMutationCommand),
     PublishSelectorOverlay {
@@ -775,8 +775,8 @@ async fn workspace_writer_lane(
                 }
                 let _ = reply.send(result);
             }
-            WorkspaceWriteCommand::PublishResidentOwnerSymbolRebind(command) => {
-                super::writer_publication::publish_resident_owner_symbol_rebind_command(command)
+            WorkspaceWriteCommand::PublishResidentOwnerTopologyRebind(command) => {
+                super::writer_publication::publish_resident_owner_topology_rebind_command(command)
                     .await;
             }
             WorkspaceWriteCommand::PublishOwnerContentMutation(command) => {

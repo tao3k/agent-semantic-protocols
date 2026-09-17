@@ -3,7 +3,7 @@
 
 schema = "agent.semantic-protocols.search-benchmark-receipt"
 version = 1
-scenario = "ranked-text-selector-carrier"
+scenario = "topology-selector-carrier"
 measured_at = "2026-09-17"
 
 [workload]
@@ -12,7 +12,7 @@ samples = 512
 unproven_sibling_count = 4096
 
 [observed]
-p99_nanos = 71666
+p99_nanos = 16875
 result_count = 30
 unproven_sibling_results = 0
 

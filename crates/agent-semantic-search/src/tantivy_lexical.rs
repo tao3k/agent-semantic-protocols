@@ -38,8 +38,8 @@ pub(crate) struct TantivyLexicalDocument {
     pub(crate) exact_terms: Vec<String>,
     /// V1 `title`: normalized owner path and file name.
     pub(crate) title: String,
-    /// V1 `body`: parser-owned symbol keys, never owner source bytes.
-    pub(crate) symbol_body: String,
+    /// V1 `body`: parser-owned topology features, never owner source bytes.
+    pub(crate) topology_body: String,
 }
 
 pub(crate) struct TantivyLexicalIndex {
@@ -370,7 +370,7 @@ fn owner_document(
         document.add_text(term_field, term);
     }
     document.add_text(title_field, &source.title);
-    document.add_text(body_field, &source.symbol_body);
+    document.add_text(body_field, &source.topology_body);
     document
 }
 

@@ -63,13 +63,13 @@ pub(super) async fn publish_staged_overlay_generation(
 }
 
 #[derive(Debug)]
-pub(super) struct PublishResidentOwnerSymbolRebindCommand {
+pub(super) struct PublishResidentOwnerTopologyRebindCommand {
     pub(super) target: super::core::WorkspaceWriteTarget,
     pub(super) workspace_identity: String,
-    pub(super) rebind: crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindV1,
-    pub(super) prepared: super::super::resident_overlay::PreparedOwnerSymbolRebind,
+    pub(super) rebind: crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindV1,
+    pub(super) prepared: super::super::resident_overlay::PreparedOwnerTopologyRebind,
     pub(super) reply: tokio::sync::oneshot::Sender<
-        Result<crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindReceiptV1, String>,
+        Result<crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindReceiptV1, String>,
     >,
 }
 
@@ -80,10 +80,10 @@ pub(super) struct PublishResidentOwnerSymbolRebindCommand {
 /// would turn one candidate parser miss into an O(workspace bytes) Search
 /// barrier, so restart recovery deliberately rehydrates this overlay from the
 /// parser artifact store instead.
-pub(super) async fn publish_resident_owner_symbol_rebind_command(
-    command: PublishResidentOwnerSymbolRebindCommand,
+pub(super) async fn publish_resident_owner_topology_rebind_command(
+    command: PublishResidentOwnerTopologyRebindCommand,
 ) {
-    let PublishResidentOwnerSymbolRebindCommand {
+    let PublishResidentOwnerTopologyRebindCommand {
         target,
         workspace_identity,
         rebind,
@@ -94,21 +94,23 @@ pub(super) async fn publish_resident_owner_symbol_rebind_command(
         let base = current_generation(&target.current, &workspace_identity)?;
         rebind.validate()?;
         if rebind.base_generation_digest != base.generation().generation_digest {
-            return Err("workspace owner symbol rebind base generation digest mismatch".to_owned());
+            return Err(
+                "workspace owner topology rebind base generation digest mismatch".to_owned(),
+            );
         }
         let rebind_id = rebind.rebind_id.clone();
         let base_generation_digest = rebind.base_generation_digest.clone();
         let rebound_owner_count = rebind.owners.len();
         let relation_count = rebind.relations.len();
-        let (staged, symbol_count) =
+        let (staged, topology_node_count) =
             target
                 .overlays
-                .publish_owner_symbol_rebind(base.generation(), rebind, prepared)?;
+                .publish_owner_topology_rebind(base.generation(), rebind, prepared)?;
         let resident_generation_digest = staged.generation_digest().to_owned();
         target.overlays.commit(staged);
-        let receipt = crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindReceiptV1 {
+        let receipt = crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindReceiptV1 {
             schema_id:
-                crate::runtime_server_workspace::WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID
+                crate::runtime_server_workspace::WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID
                     .to_owned(),
             schema_version: "1".to_owned(),
             rebind_id,
@@ -116,7 +118,7 @@ pub(super) async fn publish_resident_owner_symbol_rebind_command(
             base_generation_digest,
             resident_generation_digest,
             rebound_owner_count,
-            symbol_count,
+            topology_node_count,
             relation_count,
         };
         receipt.validate()?;

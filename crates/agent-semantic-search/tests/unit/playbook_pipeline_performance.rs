@@ -24,9 +24,9 @@ use crate::ResidentGraphSearchWork;
 use crate::ResidentIndexBuildResources;
 use crate::ResidentIndexBuildStrategy;
 use crate::ResidentSearchAuthority;
-use crate::ResidentSkeletonCoverageInput;
 use crate::ResidentSourceDocument;
 use crate::ResidentSourceIndex;
+use crate::ResidentTopologyCoverageInput;
 use crate::SEARCH_GENERATION_GRAPH_RECEIPT_SCHEMA_ID;
 use crate::SearchGenerationGraphReceipt;
 use crate::SearchGenerationGraphRequest;
@@ -37,7 +37,7 @@ use crate::build_resident_graph_generation;
 use crate::build_source_byte_acquisition_stage;
 use crate::canonical_blake3_digest;
 use crate::rank_resident_graph_generation;
-use crate::resident_skeleton_coverage_batch;
+use crate::resident_topology_coverage_batch;
 use crate::stable_graph_node_id;
 
 const OWNER_COUNT: usize = 4_096;
@@ -191,12 +191,12 @@ fn large_source_documents(
     let coverage_started = Instant::now();
     let coverage_inputs = owners
         .iter()
-        .map(|owner| ResidentSkeletonCoverageInput {
+        .map(|owner| ResidentTopologyCoverageInput {
             owner_path: &owner.path,
             parser_query_keys: vec![owner.selector.clone(), owner.cohort.clone()],
         })
         .collect::<Vec<_>>();
-    let coverage = resident_skeleton_coverage_batch(&coverage_inputs);
+    let coverage = resident_topology_coverage_batch(&coverage_inputs);
     let mut documents = BTreeMap::new();
     for (owner, query_keys) in owners.iter().zip(coverage) {
         documents.insert(

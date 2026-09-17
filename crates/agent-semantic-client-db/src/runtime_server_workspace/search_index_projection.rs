@@ -41,32 +41,33 @@ pub(super) struct SearchMerkleOwnerRecord {
         Vec<agent_semantic_content_identity::exact_selector_merkle::MerkleInclusionStepV1>,
 }
 
-pub use agent_semantic_symbol_index::SymbolSkeletonHitV1 as WorkspaceSymbolSkeletonHit;
+pub use agent_semantic_topology::TopologyHitV1 as WorkspaceTopologyHit;
 
-pub(super) fn build_symbol_skeleton_index(
+pub(super) fn build_topology_index(
     owners: &BTreeMap<String, Arc<SearchOwnerRecord>>,
-) -> Result<agent_semantic_symbol_index::SymbolSkeletonIndexV1, String> {
-    agent_semantic_symbol_index::SymbolSkeletonIndexV1::build(owners.values().map(|owner| {
-        agent_semantic_symbol_index::SymbolSkeletonOwnerV1 {
-            owner_path: owner.owner_path.clone(),
-            owner_content_digest: owner.content_digest.clone(),
-            language_id: owner
-                .authority
-                .as_ref()
-                .map(|authority| authority.language_id.as_str().to_owned()),
-            symbols: owner
+) -> Result<agent_semantic_topology::TopologyIndexV1, String> {
+    let topology_owners = owners
+        .values()
+        .map(|owner| {
+            let nodes = owner
                 .selectors
                 .iter()
                 .filter(|selector| !selector.query_keys.is_empty())
-                .map(
-                    |selector| agent_semantic_symbol_index::SymbolSkeletonRecordV1 {
-                        structural_selector: selector.selector.clone(),
-                        keys: selector.query_keys.clone(),
-                    },
-                )
-                .collect(),
-        }
-    }))
+                .map(|selector| {
+                    agent_semantic_topology::TopologyNodeV1::from_selector(
+                        selector.selector.clone(),
+                        selector.query_keys.clone(),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(agent_semantic_topology::TopologyOwnerV1 {
+                owner_path: owner.owner_path.clone(),
+                owner_content_digest: owner.content_digest.clone(),
+                nodes,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    agent_semantic_topology::TopologyIndexV1::build(topology_owners)
 }
 
 #[derive(Debug)]
@@ -82,7 +83,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
     pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
-    pub(super) symbol_skeleton_index: agent_semantic_symbol_index::SymbolSkeletonIndexV1,
+    pub(super) topology_index: agent_semantic_topology::TopologyIndexV1,
     pub(super) graph_entry_owner_by_node_id: BTreeMap<String, String>,
     pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
     pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
@@ -163,7 +164,7 @@ pub(super) fn build_merkle_search_generation(
     let coverage_inputs = owners
         .iter()
         .map(
-            |owner| agent_semantic_search::ResidentSkeletonCoverageInput {
+            |owner| agent_semantic_search::ResidentTopologyCoverageInput {
                 owner_path: &owner.owner_path,
                 parser_query_keys: owner
                     .selectors
@@ -174,7 +175,7 @@ pub(super) fn build_merkle_search_generation(
         )
         .collect::<Vec<_>>();
     let lexical_coverage =
-        agent_semantic_search::resident_skeleton_coverage_batch(&coverage_inputs);
+        agent_semantic_search::resident_topology_coverage_batch(&coverage_inputs);
     let changes = owners
         .into_iter()
         .zip(lexical_coverage)

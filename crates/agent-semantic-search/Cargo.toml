@@ -41,7 +41,7 @@ globset.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
-agent-semantic-symbol-index.workspace = true
+agent-semantic-topology.workspace = true
 agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }

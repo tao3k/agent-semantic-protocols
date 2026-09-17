@@ -21,7 +21,7 @@ agent-semantic-runtime-observability.workspace = true
 agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-search = { path = "../agent-semantic-search" }
-agent-semantic-symbol-index.workspace = true
+agent-semantic-topology.workspace = true
 memmap2.workspace = true
 postcard.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }

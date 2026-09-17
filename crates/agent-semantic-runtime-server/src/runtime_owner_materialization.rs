@@ -253,13 +253,13 @@ impl RuntimeOwnerMaterializer {
         let validation_micros = validation_started.elapsed().as_micros();
         let publication_started = std::time::Instant::now();
         registry
-            .publish_resident_owner_symbol_rebind(
+            .publish_resident_owner_topology_rebind(
                 workspace_identity.to_owned(),
                 project_root,
-                agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSymbolRebindV1 {
-                    schema_id: agent_semantic_client_db::runtime_server_workspace::WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerTopologyRebindV1 {
+                    schema_id: agent_semantic_client_db::runtime_server_workspace::WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID.to_owned(),
                     schema_version: "1".to_owned(),
-                    rebind_id: format!("{request_id}:owner-symbol-rebind"),
+                    rebind_id: format!("{request_id}:owner-topology-rebind"),
                     base_generation_digest: generation_digest.to_owned(),
                     owners: delta_owners,
                     relations: delta_relations,

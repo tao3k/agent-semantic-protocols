@@ -334,25 +334,26 @@ impl RuntimeServerWorkspaceRegistry {
     /// resident generation without minting or durably rewriting a full source
     /// generation. The content-addressed parser artifact is the restart
     /// authority; this overlay is the request-serving read model.
-    pub async fn publish_resident_owner_symbol_rebind(
+    pub async fn publish_resident_owner_topology_rebind(
         &self,
         workspace_identity: impl Into<String>,
         project_root: &std::path::Path,
-        rebind: crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindV1,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindReceiptV1, String> {
+        rebind: crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindV1,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindReceiptV1, String>
+    {
         let workspace_identity = workspace_identity.into();
         let prepare_input = rebind.clone();
         let prepared = tokio::task::spawn_blocking(move || {
-            super::super::resident_overlay::prepare_owner_symbol_rebind(&prepare_input)
+            super::super::resident_overlay::prepare_owner_topology_rebind(&prepare_input)
         })
         .await
-        .map_err(|error| format!("owner symbol rebind preparation task failed: {error}"))??;
+        .map_err(|error| format!("owner topology rebind preparation task failed: {error}"))??;
         let entry = self.entry(&workspace_identity, project_root).await?;
         let (reply, receive) = oneshot::channel();
         entry
             .writer
-            .send(WorkspaceWriteCommand::PublishResidentOwnerSymbolRebind(
-                super::writer_publication::PublishResidentOwnerSymbolRebindCommand {
+            .send(WorkspaceWriteCommand::PublishResidentOwnerTopologyRebind(
+                super::writer_publication::PublishResidentOwnerTopologyRebindCommand {
                     target: entry.write_target(),
                     workspace_identity,
                     rebind,

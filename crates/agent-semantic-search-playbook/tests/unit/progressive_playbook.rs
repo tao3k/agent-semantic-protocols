@@ -103,6 +103,22 @@ fn regex_ranked_text_and_structural_queries_do_not_require_a_partner() {
 }
 
 #[test]
+fn topology_index_scenario_carries_one_valid_scheme_search_expression() {
+    let scenario = toml::from_str::<toml::Value>(include_str!(
+        "../../../agent-semantic-topology/tests/unit/scenarios/topology_selector_carrier/scenario.toml"
+    ))
+    .expect("Topology Index Scenario TOML");
+    let scheme = scenario["query"]["scheme"]
+        .as_str()
+        .expect("Topology Index Scenario Scheme query");
+    let request = parse_progressive_search_playbook_args(&command(scheme))
+        .expect("Topology Index Scenario must remain valid V1 Scheme");
+    assert_eq!(request.language.as_deref(), Some("rust"));
+    assert_eq!(request.documents.as_deref(), Some("org|markdown|typst"));
+    assert_eq!(request.tantivy.len(), 1);
+}
+
+#[test]
 fn byte_identical_predicates_are_rejected_before_runtime_work() {
     let error = parse_progressive_search_playbook_args(&command(
         r#"(search (producers (language rust))

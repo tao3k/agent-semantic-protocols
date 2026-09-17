@@ -4,8 +4,8 @@
 
 use super::{RuntimeServerWorkspaceRegistry, WorkspaceOwnerSnapshot, WorkspaceRecoverySource};
 use agent_semantic_client_db::runtime_server_workspace::{
-    WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID, WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID,
-    WorkspaceOwnerContentMutationV1, WorkspaceOwnerContentUpsertV1, WorkspaceOwnerSymbolRebindV1,
+    WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID, WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID,
+    WorkspaceOwnerContentMutationV1, WorkspaceOwnerContentUpsertV1, WorkspaceOwnerTopologyRebindV1,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -52,8 +52,8 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
         .expect("open old resident read");
     assert_eq!(
         old_resident
-            .read_symbol_skeleton("previous_symbol", 8)
-            .expect("old symbol skeleton hit")
+            .read_topology_index("previous_symbol", 8)
+            .expect("old topology index hit")
             .len(),
         1
     );
@@ -171,8 +171,8 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
     );
     assert!(
         resident
-            .read_symbol_skeleton("previous_symbol", 8)
-            .expect("stale symbol shard is rejected after owner mutation")
+            .read_topology_index("previous_symbol", 8)
+            .expect("stale topology shard is rejected after owner mutation")
             .is_empty()
     );
     assert_eq!(
@@ -201,7 +201,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
                 None,
                 8,
             )
-            .expect("function body tokens stay outside skeleton index")
+            .expect("function body tokens stay outside Topology Index")
             .is_empty()
     );
     assert!(
@@ -217,11 +217,11 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
     );
 
     let rebind_receipt = registry
-        .publish_resident_owner_symbol_rebind(
+        .publish_resident_owner_topology_rebind(
             workspace_identity,
             &root,
-            WorkspaceOwnerSymbolRebindV1 {
-                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+            WorkspaceOwnerTopologyRebindV1 {
+                schema_id: WORKSPACE_OWNER_TOPOLOGY_REBIND_SCHEMA_ID.to_owned(),
                 schema_version: "1".to_owned(),
                 rebind_id: "parser-rebind-1".to_owned(),
                 base_generation_digest: base_generation_digest.clone(),
@@ -245,23 +245,26 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             },
         )
         .await
-        .expect("publish V1 owner symbol rebind");
+        .expect("publish V1 owner topology rebind");
     rebind_receipt.validate().expect("valid V1 rebind receipt");
     assert_eq!(rebind_receipt.rebound_owner_count, 1);
-    assert_eq!(rebind_receipt.symbol_count, 1);
+    assert_eq!(
+        rebind_receipt.topology_node_count, 3,
+        "src directory, owner, and parser-native function are peer topology nodes"
+    );
     let rebound = registry
         .resident_read_client(workspace_identity, &root)
         .expect("read rebound resident symbols");
     assert_eq!(
         rebound
-            .read_symbol_skeleton("next_symbol", 8)
+            .read_topology_index("next_symbol", 8)
             .expect("new parser symbol is resident")
             .len(),
         1
     );
     assert!(
         rebound
-            .read_symbol_skeleton("previous_symbol", 8)
+            .read_topology_index("previous_symbol", 8)
             .expect("old symbol remains shadowed")
             .is_empty()
     );
@@ -273,7 +276,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
                 None,
                 8,
             )
-            .expect("V1 Scheme Tantivy axis observes the rebound symbol skeleton"),
+            .expect("V1 Scheme Tantivy axis observes the rebound topology index"),
         ["src/lib.rs"]
     );
     assert!(
@@ -284,7 +287,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
                 None,
                 8,
             )
-            .expect("function body remains outside the rebound symbol skeleton")
+            .expect("function body remains outside the rebound topology index")
             .is_empty()
     );
     assert_eq!(

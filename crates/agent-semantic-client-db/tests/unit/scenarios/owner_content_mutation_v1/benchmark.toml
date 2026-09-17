@@ -16,8 +16,8 @@ stale_base_grep_hit_count = 0
 stale_base_tantivy_hit_count = 0
 source_body_tantivy_hit_count = 0
 rebound_symbol_tantivy_hit_count = 1
-symbol_rebind_writer_commit_count = 1
-symbol_rebind_physical_view_count = 2
+topology_rebind_writer_commit_count = 1
+topology_rebind_physical_view_count = 2
 
 [interpretation]
 compile_link_wall_time_is_separate = true

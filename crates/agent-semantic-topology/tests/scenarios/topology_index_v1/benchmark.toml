@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 [benchmark]
-id = "symbol-skeleton-index-v1"
-scenario = "symbol-skeleton-index-v1"
+id = "topology-index-v1"
+scenario = "topology-index-v1"
 clock = "std::time::Instant"
 statistic = "lookup-elapsed-nanos"
 
 [work_metrics]
 owner_count = 4096
-symbol_count = 4096
+parser_native_node_count = 4096
 sample_count = 512
 source_body_input_count = 0
 workspace_scan_count = 0
@@ -17,8 +17,12 @@ query_filesystem_read_count = 0
 query_provider_call_count = 0
 
 [observed]
-p99_nanos = 4334
+p99_nanos = 1625
 source_body_input_count = 0
+
+[qualification]
+maximum_p99_nanos = 1000000
+passed = true
 
 [interpretation]
 work_metrics_are_acceptance_authority = true

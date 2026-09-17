@@ -294,10 +294,7 @@ impl WorkspaceGenerationLease {
         )
     }
 
-    pub(crate) fn symbol_skeleton_hit_is_current(
-        &self,
-        hit: &super::WorkspaceSymbolSkeletonHit,
-    ) -> bool {
+    pub(crate) fn topology_hit_is_current(&self, hit: &super::WorkspaceTopologyHit) -> bool {
         self.overlay
             .owner_snapshot(self.generation(), &hit.owner_path)
             .is_some_and(|owner| owner.content_digest == hit.owner_content_digest)
@@ -306,14 +303,13 @@ impl WorkspaceGenerationLease {
                 .semantic_owner_materialized(&self.backend, &hit.owner_path)
     }
 
-    pub(crate) fn merge_symbol_skeleton_hits(
+    pub(crate) fn merge_topology_hits(
         &self,
-        base_hits: Vec<super::WorkspaceSymbolSkeletonHit>,
+        base_hits: Vec<super::WorkspaceTopologyHit>,
         query: &str,
         limit: usize,
-    ) -> Vec<super::WorkspaceSymbolSkeletonHit> {
-        self.overlay
-            .merge_symbol_skeleton_hits(base_hits, query, limit)
+    ) -> Vec<super::WorkspaceTopologyHit> {
+        self.overlay.merge_topology_hits(base_hits, query, limit)
     }
 
     pub fn read_runtime_selector(
