@@ -1037,6 +1037,38 @@ rewriting three complete copies per generation is forbidden.  Unchanged owner
 bytes reuse their source and parser artifacts, while a new generation writes
 only its proof/manifest and changed components.
 
+The same invariant applies before publication.  When Runtime already owns a
+validated candidate =M_(n+1)=, canonical replacement MUST NOT restore and
+decode the old durable payload =D_n= merely to construct the resident entry.
+It reads only the fixed-size atomic pointer metadata, inherits its epoch, and
+linearizes the query authority as follows:
+
+#+begin_src text
+read-pointer-metadata(D_n)
+  -> validate-and-build-resident(M_(n+1), epoch(D_n) + 1)
+  -> atomic Arc publication: Query := M_(n+1)
+  -> background persist(M_(n+1))
+  -> atomic durable pointer publication: D_(n+1)
+#+end_src
+
+Therefore the resident-ready critical-path cost excludes
+=decode(general(D_n))=, =decode(exact(D_n))=, and =decode(search(D_n))=.  The
+ordinary restart path still performs the complete mmap validation and decode;
+replacement is allowed to bypass it only because the new materialization has
+already passed the canonical content/provider/scope identity gates.  A corrupt
+old payload cannot block replacement, but an invalid new materialization still
+fails closed.  Epoch continuity comes from the validated pointer metadata, not
+from reconstructing the old backend.  Until =D_(n+1)= commits, old segment
+files remain untouched so existing leases and restart recovery keep their
+previous authority.
+
+This is the ASP form of =tgrep-core/src/hybrid.rs=: a request snapshots an
+immutable =Arc=, in-flight readers retain it, and a completed builder swaps the
+reader while persistence proceeds outside the read critical section.  ASP's
+generation identity, exact selector proofs, parser overlay and typed durability
+receipts remain stricter; the architectural lesson is the separation of reader
+publication from checkpoint restoration, not adoption of tgrep's protocol.
+
 The parser lookup order is part of that invariant: artifact validation precedes
 provider readiness.  Starting a language process and then discovering a cache
 hit is an architectural miss because it destroys process-cold recovery.  On a
@@ -1400,3 +1432,84 @@ its coverage includes every owner in =F=.  A partial parser/Relation overlay
 MUST NOT demote owners absent from that overlay.  Until that coverage witness
 exists, Graph may rerank the already admitted projection for Agent output but
 cannot choose which owners receive first materialization.
+
+* PostToolUse owner transaction, not Scope reconstruction
+
+An authenticated =PostToolUse= receipt for =Edit=, =Write=, or =apply_patch=
+is a content-delta accelerator.  It is not permission to rediscover, deduplicate,
+rehash, reparse, or republish every owner in the workspace.  Let =G= be the
+currently admitted resident generation, =C= the exact normalized owner paths
+carried by the Host receipt, and =delta_C= the bytes acquired after the tool
+completed.  The only legal synchronous transition is:
+
+#+begin_src typst
+$ T(G, delta_C) = cases(
+  commit(G, owner-delta(delta_C)), "if base(G) = receipt.base and digest(delta_C) = disk(C)",
+  reject(C), "otherwise"
+) $
+$ forall o notin C: identity_(T(G, delta_C))(o) = identity_G(o) $
+$ W_T = O(sum_(o in C) abs(bytes_o) + sum_(o in C) abs(path_o)) $
+#+end_src
+
+The path term is the radix-Merkle copy path.  It is independent of workspace
+owner cardinality.  =WorkspacePathMerkleTreeIncrementalV1= therefore stores the
+source blob digest at the terminal persistent radix node.  Applying a delta
+copies only the nodes on the changed owner paths.  A side =BTreeMap= clone of
+all leaves, even when the root nodes are structurally shared, is a forbidden
+hidden full-Scope operation and MUST report neither atomicity nor incremental
+cost.
+
+The resident owner map follows the same rule.  Its current-owner overlay is a
+persistent byte-radix trie whose terminal is =Present(owner, grams)= or
+=Removed=.  A lease shares the old root; one mutation path-copies only bytes of
+=C=.  Cloning a cumulative =HashMap<owner, snapshot>= before every edit is the
+same forbidden O(dirty-owner-count) operation in a different container.
+
+One resident writer command validates all of the following before its single
+visibility point: mutation id, base generation digest, normalized disjoint
+owner paths, previous owner digests, acquired post-tool bytes, new content
+digests, parser-artifact invalidations, relation tombstones, and search-index
+deltas.  Readers observe either =G= or the complete successor =G'=; they never
+observe a new identity with old postings, or new postings with old bytes.
+Failure to validate one receipt rejects only its declared owners and schedules
+owner reacquisition.  It does not fall back to =CompleteGeneration=.
+
+The P0 ranked index is the language-neutral Symbol Skeleton Index defined by
+RFC 10.06: file/owner navigation keys plus parser-owned symbols for every
+language.  It never indexes function-body text.  The existing V1 Tantivy
+grammar is only the ranked query language for that skeleton: =title= is the
+owner path/file field and =body= is the parser-owned symbol-key field.  Runtime
+must never hydrate =body= from captured owner bytes, and it must not add a
+parallel public symbol-search command.  The byte-search overlay
+follows tgrep's useful separation: changed-owner grams
+are built from the captured bytes outside the publication lock, then an
+immutable overlay handle is swapped by the writer.  Base mmap candidates whose
+owners occur in the overlay are shadowed; current overlay candidates are added;
+exact matching always reads the same overlay snapshot.  Tantivy uses the same
+delete-old/add-current owner transaction through immutable skeleton delta
+segments: each segment indexes only changed paths and subsequently rebound
+parser symbols for =C=, carries the complete shadow set for =C=, and
+links to the previous segment.  Query visits newest to oldest and excludes all
+shadowed base/older documents.  Segment construction is CPU work outside Tokio
+workers; the writer publishes the segment handle with bytes and Merkle root.
+Bounded size-tiered compaction may replace several delta segments only after a
+CAS against their head identity; compaction is never on the Hook or query
+critical path.  Parser artifacts remain separately
+content-addressed: a changed owner becomes structurally unavailable until its
+new parser artifact is bound, while unchanged owners retain their selectors and
+relations without recomputation.
+
+PostToolUse itself only normalizes the Host receipt and submits this transaction
+to the resident writer.  The one-second Host Hook budget MUST NOT contain parser
+execution or full generation durability.  A subsequent Search that overlaps a
+pending owner mutation joins that mutation's terminal event before reading; it
+must not return the previous bytes and must not require a second invocation.
+Hook loss remains fail-closed: normal Search admission compares current gix
+worktree evidence and owner identity, invalidates the affected owner, and uses
+the same owner transaction.  The Hook is a latency accelerator, never the sole
+freshness authority.
+
+This is an internal V1 refinement.  It adds no V2 schema, compatibility mode,
+client-side generation owner, or alternative workspace identity.  Repository,
+worktree, and project identity remain gix-derived; the delta receipt only names
+content owners inside that admitted identity.

@@ -41,6 +41,34 @@ pub(super) struct SearchMerkleOwnerRecord {
         Vec<agent_semantic_content_identity::exact_selector_merkle::MerkleInclusionStepV1>,
 }
 
+pub use agent_semantic_symbol_index::SymbolSkeletonHitV1 as WorkspaceSymbolSkeletonHit;
+
+pub(super) fn build_symbol_skeleton_index(
+    owners: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+) -> Result<agent_semantic_symbol_index::SymbolSkeletonIndexV1, String> {
+    agent_semantic_symbol_index::SymbolSkeletonIndexV1::build(owners.values().map(|owner| {
+        agent_semantic_symbol_index::SymbolSkeletonOwnerV1 {
+            owner_path: owner.owner_path.clone(),
+            owner_content_digest: owner.content_digest.clone(),
+            language_id: owner
+                .authority
+                .as_ref()
+                .map(|authority| authority.language_id.as_str().to_owned()),
+            symbols: owner
+                .selectors
+                .iter()
+                .filter(|selector| !selector.query_keys.is_empty())
+                .map(
+                    |selector| agent_semantic_symbol_index::SymbolSkeletonRecordV1 {
+                        structural_selector: selector.selector.clone(),
+                        keys: selector.query_keys.clone(),
+                    },
+                )
+                .collect(),
+        }
+    }))
+}
+
 #[derive(Debug)]
 pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) mapping: Option<Arc<Mmap>>,
@@ -54,6 +82,7 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
     pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
+    pub(super) symbol_skeleton_index: agent_semantic_symbol_index::SymbolSkeletonIndexV1,
     pub(super) graph_entry_owner_by_node_id: BTreeMap<String, String>,
     pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
     pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
@@ -86,25 +115,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     pub(super) fn lexical_source_documents(
         &self,
     ) -> Result<BTreeMap<String, agent_semantic_search::ResidentSourceDocument>, String> {
-        let mut documents = self
+        let documents = self
             .source_documents
             .iter()
             .cloned()
             .map(|document| (document.owner_path.clone(), document))
             .collect::<BTreeMap<_, _>>();
-        for document in documents.values_mut() {
-            let record = self
-                .owner_directory_records
-                .get(&document.owner_path)
-                .ok_or_else(|| {
-                    format!(
-                        "Tantivy attachment owner record is missing: {}",
-                        document.owner_path
-                    )
-                })?;
-            document.lexical_body =
-                Some(String::from_utf8_lossy(self.resident_owner_bytes(record)?).into_owned());
-        }
         Ok(documents)
     }
 }
@@ -147,9 +163,8 @@ pub(super) fn build_merkle_search_generation(
     let coverage_inputs = owners
         .iter()
         .map(
-            |owner| agent_semantic_search::ResidentLexicalCoverageInput {
+            |owner| agent_semantic_search::ResidentSkeletonCoverageInput {
                 owner_path: &owner.owner_path,
-                source: &owner.bytes,
                 parser_query_keys: owner
                     .selectors
                     .iter()
@@ -158,7 +173,8 @@ pub(super) fn build_merkle_search_generation(
             },
         )
         .collect::<Vec<_>>();
-    let lexical_coverage = agent_semantic_search::resident_lexical_coverage_batch(&coverage_inputs);
+    let lexical_coverage =
+        agent_semantic_search::resident_skeleton_coverage_batch(&coverage_inputs);
     let changes = owners
         .into_iter()
         .zip(lexical_coverage)
@@ -468,7 +484,6 @@ pub(super) fn build_admitted_owner_search_indexes(
             owner_content_digest: record.content_digest.clone(),
             line_count: record.line_count,
             query_keys: record.query_keys.clone(),
-            lexical_body: None,
         });
     }
     Ok((source_documents, callable_selectors))
@@ -519,7 +534,6 @@ pub(super) fn build_owner_search_indexes(
                 owner_content_digest: record.content_digest.clone(),
                 line_count: record.line_count,
                 query_keys: record.query_keys.clone(),
-                lexical_body: None,
             },
         );
         changes.push(agent_semantic_search::SearchOwnerChange::Added {

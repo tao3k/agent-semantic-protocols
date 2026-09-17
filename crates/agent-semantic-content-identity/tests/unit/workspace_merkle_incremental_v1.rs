@@ -35,6 +35,19 @@ fn one_owner_update_rewrites_only_the_owner_path() {
     assert_eq!(metrics.written_node_count, "src/lib.rs".len() + 1);
     assert!(metrics.reused_node_count > 0);
     assert_eq!(metrics.full_merkle_rebuilds, 0);
+    assert_eq!(tree.source_blob_digest("src/lib.rs"), Some(&digest('1')));
+    assert_eq!(
+        tree.source_blob_digest("src/sibling.rs"),
+        Some(&digest('2'))
+    );
+    assert_eq!(
+        successor.source_blob_digest("src/lib.rs"),
+        Some(&digest('3'))
+    );
+    assert_eq!(
+        successor.source_blob_digest("src/sibling.rs"),
+        Some(&digest('2'))
+    );
 }
 
 #[test]

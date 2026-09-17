@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "owner-content-mutation-v1"
+scenario = "owner-content-mutation-v1"
+clock = "std::time::Instant"
+statistic = "transaction-and-query-elapsed-micros"
+
+[work_metrics]
+changed_owner_count = 1
+full_scope_scan_count = 0
+full_merkle_rebuild_count = 0
+canonical_generation_publication_count = 0
+stale_base_grep_hit_count = 0
+stale_base_tantivy_hit_count = 0
+source_body_tantivy_hit_count = 0
+rebound_symbol_tantivy_hit_count = 1
+symbol_rebind_writer_commit_count = 1
+symbol_rebind_physical_view_count = 2
+
+[interpretation]
+compile_link_wall_time_is_separate = true
+transaction_timing_is_diagnostic = true
+work_metrics_are_acceptance_authority = true
+background_parser_rebind_is_outside_transaction_timing = true
+runtime_test_elapsed_is_separate_from_compile_link_wall_time = true

@@ -26,7 +26,14 @@ pub(super) fn generation(
     epoch: u64,
     bytes: &[u8],
 ) -> WorkspaceMemoryGeneration {
-    generation_with_selectors(workspace_identity, project_root, epoch, bytes, Vec::new())
+    generation_with_authority_and_selectors(
+        workspace_identity,
+        project_root,
+        epoch,
+        bytes,
+        None,
+        Vec::new(),
+    )
 }
 
 pub(super) fn generation_with_selectors(
@@ -34,6 +41,24 @@ pub(super) fn generation_with_selectors(
     project_root: &std::path::Path,
     epoch: u64,
     bytes: &[u8],
+    selectors: Vec<agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot>,
+) -> WorkspaceMemoryGeneration {
+    generation_with_authority_and_selectors(
+        workspace_identity,
+        project_root,
+        epoch,
+        bytes,
+        None,
+        selectors,
+    )
+}
+
+pub(super) fn generation_with_authority_and_selectors(
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    epoch: u64,
+    bytes: &[u8],
+    authority: Option<agent_semantic_search::ResidentSearchAuthority>,
     selectors: Vec<agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot>,
 ) -> WorkspaceMemoryGeneration {
     let content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
@@ -81,7 +106,7 @@ pub(super) fn generation_with_selectors(
             project_resolutions: Vec::new(),
             auxiliary_owners: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
-                authority: None,
+                authority,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),

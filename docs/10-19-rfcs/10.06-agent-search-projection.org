@@ -600,6 +600,94 @@ are removed or moved into =agent-semantic-search=.  Tests must distinguish
 parser-fact completeness from Search orchestration and must reject any provider
 registry containing =search/*=.
 
+* V1 language-neutral Symbol Skeleton Index
+
+The P0 lexical authority is a language-neutral symbol skeleton, not a source-
+body index.  Every admitted language provider already returns V1 projected
+items with =kind=, =name=, canonical =selector=, =identity.symbol=, and scope
+symbols.  Runtime normalizes those fields into one index whose postings are:
+
+#+begin_src typst
+$ P(term) = set((ownerPath, ownerContentDigest, canonicalSelector, languageId)) $
+$ shard(o) = H(ownerPath_o, contentDigest_o, sort(symbols_o)) $
+#+end_src
+
+The index also admits file names and normalized owner paths as shallow
+navigation keys.  It MUST NOT tokenize or retain function bodies.  GREP owns
+byte/regex truth over current owner bytes; exact Query owns detailed parser
+projection.  The public V1 =(tantivy ...)= leaf is the ranked query language
+for this same skeleton and is not a source-body search surface: =title= denotes
+the normalized owner path/file name and =body= denotes parser-owned symbol
+keys.  Tantivy may be the physical accelerator for those skeleton fields, but
+its input is limited to path/navigation keys and parser-owned symbol keys.  A
+Runtime implementation that fills =body= from owner bytes violates V1 even if
+its result happens to contain the requested owner.
+
+There is no second public =(symbol ...)= leaf.  Adding one would duplicate the
+ranked-text axis instead of making its authority precise.  The Scheme
+composition remains stable: =rg= proves current byte/regex predicates,
+=tantivy= ranks skeleton identities, =syntax= evaluates provider-native
+structural predicates, =native-syntax= consumes a known exact selector, and
+Query materializes that selector.  An intersection is valid only when the
+author deliberately requests the conjunction of those distinct predicates.
+
+This contract applies uniformly to Rust, TypeScript, Python, Julia, Scheme,
+Org, and every future provider.  Rust is only an acceptance corpus.  Providers
+do not own ranking or a second Search API; they own complete parser fact
+production.  Runtime owns the cross-language postings, ranking, Top-K, and
+generation binding.
+
+An owner edit changes its Merkle leaf immediately and atomically tombstones the
+old symbol shard.  Until the provider binds a new symbol shard to that exact
+leaf digest, path search and GREP may find the owner but symbol search cannot
+return stale selectors.  Unchanged owner shards are structurally shared.  The
+edit equation is independent of workspace and language cardinality:
+
+#+begin_src typst
+$ W_(edit)(C) = O(sum_(o in C) (bytes_o + path_o)) $
+$ W_(symbol-rebind)(C) = O(sum_(o in C) symbols_o) $
+$ forall o notin C: shard'(o) = shard(o) $
+#+end_src
+
+The existing V1 selector =queryKeys= field carries =name=,
+=identity.symbol=, and enclosing scope symbols; no V2 schema or compatibility
+payload is introduced.
+
+Parser completion publishes an internal
+=workspace-owner-symbol-rebind= transaction with =schemaVersion=1=.  It binds
+one non-empty owner set to the canonical content generation digest and carries
+only exact owner snapshots plus owner-local relations.  Runtime MUST build the
+immutable symbol postings outside the Tokio writer, then the single writer
+validates each owner against the current resident bytes/content digest and
+atomically swaps both the exact-selector postings shard and the Tantivy
+skeleton delta that implements the public ranked-text leaf.  Publishing only
+one of those views is forbidden because it creates two Search truths for the
+same resident generation.  The generic
+=workspace-generation-delta.v2= surface is not a legal symbol-rebind path.
+Rebind returns a typed V1 receipt containing the base digest, new resident
+digest, owner count, symbol count, and relation count.  A stale base, changed
+owner bytes, duplicate owner, or relation outside the rebound membership fails
+before visibility.
+
+Multi-term lookup orders posting lists by ascending cardinality.  It clones
+only the rarest posting frontier, then binary-intersects each remaining sorted
+posting list and applies Top-K.  It MUST NOT build a request-local set from a
+broad token such as =symbol= before considering the selective token
+=symbol_2048=:
+
+#+begin_src typst
+$ W_q = O(p_min + sum_(i=2)^m k_(i-1) log p_i + K) $
+$ M_q = O(p_min + K) $
+#+end_src
+
+Here =p_min= is the rarest posting cardinality and =k_i <= p_min= is the
+retained frontier.  A 4,096-owner, six-language Scenario exposed a 42.15ms p99
+for broad-posting materialization; rarest-first intersection first reduced the
+same 512-sample p99 to 21.459us.  After the shared snake/kebab/CamelCase symbol
+analyzer was centralized in the Index package, the 2026-09-17 replay measured
+4.334us p99 with zero source-body inputs.  These measured values are evidence,
+not constants in the algorithm.
+
 * Required evidence
 
 Closure requires all of the following:

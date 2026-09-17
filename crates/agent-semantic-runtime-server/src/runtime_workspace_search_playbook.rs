@@ -638,6 +638,7 @@ fn execute_default_retrieval_layout(
         })?;
         let result = execute_runtime_resident_grep_blocks(
             generation.resident().resident_grep_corpus(),
+            generation.resident().indexed_owner_count(),
             std::slice::from_ref(block),
             budget.rg_match_limit(),
             |candidate_plan, limit| {
@@ -647,6 +648,7 @@ fn execute_default_retrieval_layout(
                         .resident_grep_candidate_owner_paths(candidate_plan, limit)
                 })
             },
+            |owner_path| generation.resident().resident_owner_bytes(owner_path),
         )
         .map_err(|message| {
             let reason_kind = message
@@ -880,32 +882,24 @@ fn execute_tantivy_block(
         .max(1);
     for route in routes {
         let language = agent_semantic_client_core::LanguageId::from(route.language_id.as_str());
-        let result = if let Some(owner_scope) = exact_owner_scope {
-            generation.resident().read_tantivy_for_language_owner_scope(
+        let result = generation
+            .resident()
+            .resident_tantivy_owner_paths(
                 &expression,
                 &language,
-                owner_scope,
-                generation_owner_limit,
+                exact_owner_scope,
+                generation_owner_limit as usize,
             )
-        } else {
-            generation.resident().read_tantivy_for_language(
-                &expression,
-                &language,
-                generation_owner_limit,
-            )
-        }
-        .map_err(AspClientOperationError::Message)?;
-        for hit in &result.hits {
-            if generation
-                .resident()
-                .contains_indexed_owner(&hit.owner_path)
-                && seen.insert(hit.owner_path.clone())
+            .map_err(AspClientOperationError::Message)?;
+        for owner_path in result {
+            if generation.resident().contains_indexed_owner(&owner_path)
+                && seen.insert(owner_path.clone())
             {
                 if owners.len() == limit as usize {
                     truncated = true;
                     break;
                 }
-                owners.push(hit.owner_path.clone());
+                owners.push(owner_path);
             }
         }
     }

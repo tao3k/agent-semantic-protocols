@@ -245,6 +245,204 @@ theorem external_rg_is_confined_to_reference_qualification :
     grepQualificationProcessCount .residentNormal = 0 := by
   decide
 
+/-- A validated replacement generation is already the next query authority.
+Restoring the old checkpoint is recovery work and cannot belong to the
+ResidentReady critical path. -/
+def replacementReadyCost (validateNew buildResident : Nat) : Nat :=
+  validateNew + buildResident
+
+def restoreThenReplaceCost
+    (restoreOld validateNew buildResident : Nat) : Nat :=
+  restoreOld + replacementReadyCost validateNew buildResident
+
+theorem replacement_bypass_never_increases_ready_cost
+    (restoreOld validateNew buildResident : Nat) :
+    replacementReadyCost validateNew buildResident ≤
+      restoreThenReplaceCost restoreOld validateNew buildResident := by
+  simp [replacementReadyCost, restoreThenReplaceCost]
+
+theorem replacement_bypass_strictly_reduces_ready_cost
+    (restoreOld validateNew buildResident : Nat)
+    (oldRestoreHasWork : 0 < restoreOld) :
+    replacementReadyCost validateNew buildResident <
+      restoreThenReplaceCost restoreOld validateNew buildResident := by
+  simp only [replacementReadyCost, restoreThenReplaceCost]
+  omega
+
+/-- Pointer metadata supplies monotone epoch continuity without decoding the
+old generation payload. -/
+def replacementEpoch (durableEpoch : Nat) : Nat := durableEpoch + 1
+
+theorem replacement_epoch_advances (durableEpoch : Nat) :
+    durableEpoch < replacementEpoch durableEpoch := by
+  simp [replacementEpoch]
+
+/-- An owner-local Hook delta changes identities only inside its declared
+change set.  The Rust writer must establish this premise from normalized paths,
+captured bytes, and the base-generation CAS before publication. -/
+def applyOwnerIdentityDelta
+    (before replacement : OwnerId → Nat)
+    (changed : OwnerId → Bool) : OwnerId → Nat :=
+  fun owner => if changed owner then replacement owner else before owner
+
+theorem owner_delta_preserves_unchanged_identity
+    (before replacement : OwnerId → Nat) (changed : OwnerId → Bool) (owner : OwnerId)
+    (unchanged : changed owner = false) :
+    applyOwnerIdentityDelta before replacement changed owner = before owner := by
+  simp [applyOwnerIdentityDelta, unchanged]
+
+/-- One file edit pays for captured bytes plus the persistent radix paths of
+declared owners; workspace cardinality is intentionally absent. -/
+def ownerDeltaWork (changedBytes changedPathBytes : Nat) : Nat :=
+  changedBytes + changedPathBytes
+
+theorem owner_delta_work_independent_of_workspace_cardinality
+    (changedBytes changedPathBytes _workspaceOwners : Nat) :
+    ownerDeltaWork changedBytes changedPathBytes =
+      changedBytes + changedPathBytes := by
+  rfl
+
+inductive OwnerTransactionVisibility where
+  | before
+  | after
+  deriving DecidableEq, Repr
+
+/-- A reader can select the old or fully committed successor snapshot.  There
+is no public state representing a partially updated identity/index pair. -/
+def visibleOwnerState
+    (before after : OwnerSet) : OwnerTransactionVisibility → OwnerSet
+  | .before => before
+  | .after => after
+
+theorem owner_transaction_has_no_partial_visibility
+    (before after : OwnerSet) (visibility : OwnerTransactionVisibility) :
+    visibleOwnerState before after visibility = before ∨
+      visibleOwnerState before after visibility = after := by
+  cases visibility <;> simp [visibleOwnerState]
+
+/-- A stale base digest rejects the delta instead of widening recovery to a
+full workspace rebuild. -/
+def ownerDeltaCas (base receiptBase : Nat) : Bool := base == receiptBase
+
+theorem stale_owner_delta_base_is_rejected
+    (base receiptBase : Nat) (stale : base ≠ receiptBase) :
+    ownerDeltaCas base receiptBase = false := by
+  simp [ownerDeltaCas, stale]
+
+/-- Newest-owner shadowing is shared by GREP and Tantivy delta layers.  A base
+hit for a changed owner is never visible, whether or not the new bytes match. -/
+def deltaShadowedSearchHit
+    (ownerChanged deltaHit baseHit : Bool) : Bool :=
+  if ownerChanged then deltaHit else baseHit
+
+theorem changed_owner_rejects_stale_base_hit :
+    deltaShadowedSearchHit true false true = false := by
+  rfl
+
+theorem changed_owner_exposes_current_delta_hit :
+    deltaShadowedSearchHit true true false = true := by
+  rfl
+
+/-- Building one immutable Tantivy delta segment consumes only the changed
+owner bytes.  Workspace owner cardinality remains outside the edit equation. -/
+def tantivyDeltaBuildWork (changedOwnerBytes tokenizedTerms : Nat) : Nat :=
+  changedOwnerBytes + tokenizedTerms
+
+theorem tantivy_delta_build_excludes_workspace_cardinality
+    (changedOwnerBytes tokenizedTerms _workspaceOwners : Nat) :
+    tantivyDeltaBuildWork changedOwnerBytes tokenizedTerms =
+      changedOwnerBytes + tokenizedTerms := by
+  rfl
+
+/-- The cross-language P0 index contains only navigation and parser-owned
+symbol units. Function-body tokens belong to neither constructor. -/
+inductive SkeletonIndexUnit where
+  | ownerPath
+  | parserSymbol
+  deriving DecidableEq, Repr
+
+def skeletonIndexAdmits : SkeletonIndexUnit → Bool
+  | .ownerPath => true
+  | .parserSymbol => true
+
+theorem skeleton_index_has_only_path_or_symbol_units
+    (unit : SkeletonIndexUnit) : skeletonIndexAdmits unit = true := by
+  cases unit <;> rfl
+
+/-- Rebinding symbols pays only for the changed owners' symbol cardinality;
+the number of languages and workspace owners is not a work term. -/
+def symbolShardRebindWork (changedSymbols changedPathBytes : Nat) : Nat :=
+  changedSymbols + changedPathBytes
+
+theorem symbol_shard_rebind_excludes_workspace_and_language_cardinality
+    (changedSymbols changedPathBytes _workspaceOwners _languageCount : Nat) :
+    symbolShardRebindWork changedSymbols changedPathBytes =
+      changedSymbols + changedPathBytes := by
+  rfl
+
+/-- A symbol rebind has exactly one visibility point.  Validation failure
+retains the old shard; success exposes the prepared content-bound shard. -/
+inductive SymbolRebindVisibility where
+  | oldShard
+  | preparedShard
+  deriving DecidableEq, Repr
+
+def publishSymbolRebind
+    (identityValid ownerContentMatches : Bool) : SymbolRebindVisibility :=
+  if identityValid && ownerContentMatches then
+    .preparedShard
+  else
+    .oldShard
+
+theorem invalid_symbol_rebind_cannot_publish
+    (ownerContentMatches : Bool) :
+    publishSymbolRebind false ownerContentMatches = .oldShard := by
+  simp [publishSymbolRebind]
+
+theorem content_drift_cannot_publish_symbol_rebind
+    (identityValid : Bool) :
+    publishSymbolRebind identityValid false = .oldShard := by
+  cases identityValid <;> simp [publishSymbolRebind]
+
+theorem valid_symbol_rebind_has_one_new_visibility :
+    publishSymbolRebind true true = .preparedShard := by
+  rfl
+
+/-- The one V1 symbol-rebind visibility point covers both physical views: the
+exact-selector postings and the Tantivy-backed ranked Scheme leaf. -/
+structure SymbolRebindViews where
+  exactSelectorVisible : Bool
+  rankedTextVisible : Bool
+  deriving DecidableEq, Repr
+
+def publishSymbolRebindViews
+    (identityValid ownerContentMatches : Bool) : SymbolRebindViews :=
+  if identityValid && ownerContentMatches then
+    ⟨true, true⟩
+  else
+    ⟨false, false⟩
+
+theorem symbol_rebind_cannot_split_exact_and_ranked_views
+    (identityValid ownerContentMatches : Bool) :
+    (publishSymbolRebindViews identityValid ownerContentMatches).exactSelectorVisible =
+      (publishSymbolRebindViews identityValid ownerContentMatches).rankedTextVisible := by
+  cases identityValid <;> cases ownerContentMatches <;>
+    simp [publishSymbolRebindViews]
+
+/-- Multi-term symbol lookup starts from the rarest posting list and retains
+only that bounded candidate frontier. It never materializes every broad-term
+posting as a request-local set. -/
+def rarestFirstSymbolQueryWork
+    (rarestPosting retainedCandidates remainingTerms topK : Nat) : Nat :=
+  rarestPosting + retainedCandidates * remainingTerms + topK
+
+theorem rarest_first_symbol_query_excludes_workspace_cardinality
+    (rarestPosting retainedCandidates remainingTerms topK
+      _workspaceOwners _languageCount : Nat) :
+    rarestFirstSymbolQueryWork rarestPosting retainedCandidates remainingTerms topK =
+      rarestPosting + retainedCandidates * remainingTerms + topK := by
+  rfl
+
 def applyOrderedGlobRule (current isMatch isInclude : Bool) : Bool :=
   if isMatch then isInclude else current
 

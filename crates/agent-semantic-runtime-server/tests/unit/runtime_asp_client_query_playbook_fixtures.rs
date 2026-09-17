@@ -102,7 +102,13 @@ pub(super) fn process_cold_generation(
                     selector: selector.to_owned(),
                     byte_start: 0,
                     byte_end: source.len(),
-                    query_keys: Vec::new(),
+                    query_keys: vec![
+                        selector
+                            .rsplit('/')
+                            .next()
+                            .expect("process-cold selector symbol")
+                            .to_owned(),
+                    ],
                     derived_projections: Vec::new(),
                 }],
             }],

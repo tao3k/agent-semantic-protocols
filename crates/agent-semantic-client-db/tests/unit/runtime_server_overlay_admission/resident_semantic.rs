@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    RuntimeServerWorkspaceRegistry, WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WorkspaceGenerationDelta,
-    WorkspaceOwnerSnapshot, WorkspaceRecoverySource, fixture_root, generation,
-    generation_with_selectors,
+    RuntimeServerWorkspaceRegistry, WorkspaceOwnerSnapshot, WorkspaceRecoverySource, fixture_root,
+    generation, generation_with_selectors,
 };
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
+use agent_semantic_client_db::runtime_server_workspace::{
+    WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID, WorkspaceOwnerSymbolRebindV1,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_identity() {
@@ -48,12 +50,13 @@ async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_iden
     let delta_bytes = b"fn delta() {}\n";
 
     let error = registry
-        .publish_resident_owner_delta(
+        .publish_resident_owner_symbol_rebind(
             workspace_identity,
             &root,
-            WorkspaceGenerationDelta {
-                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "2".to_owned(),
+            WorkspaceOwnerSymbolRebindV1 {
+                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                rebind_id: "reject-owner-outside-canonical-content".to_owned(),
                 base_generation_digest,
                 owners: vec![WorkspaceOwnerSnapshot {
                     authority: None,
@@ -63,7 +66,6 @@ async fn resident_semantic_delta_rejects_an_owner_outside_canonical_content_iden
                     native_syntax_diagnostic: None,
                     selectors: Vec::new(),
                 }],
-                tombstones: Vec::new(),
                 relations: Vec::new(),
             },
         )
@@ -111,13 +113,14 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
     let counters_before = registry.data_plane_counters();
     let selector = "rust://src/lib.rs#item/function/resident";
 
-    let resident_digest = registry
-        .publish_resident_owner_delta(
+    let receipt = registry
+        .publish_resident_owner_symbol_rebind(
             workspace_identity,
             &root,
-            WorkspaceGenerationDelta {
-                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "2".to_owned(),
+            WorkspaceOwnerSymbolRebindV1 {
+                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                rebind_id: "resident-parser-rebind".to_owned(),
                 base_generation_digest: base_generation_digest.clone(),
                 owners: vec![WorkspaceOwnerSnapshot {
                     authority: None,
@@ -135,12 +138,12 @@ async fn resident_parser_delta_is_visible_without_rewriting_the_canonical_genera
                         },
                     ],
                 }],
-                tombstones: Vec::new(),
                 relations: Vec::new(),
             },
         )
         .await
         .expect("publish resident parser delta");
+    let resident_digest = receipt.resident_generation_digest;
 
     let owner_content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
     let mut expected = blake3::Hasher::new();
@@ -224,12 +227,13 @@ async fn resident_parser_delta_preserves_a_valid_empty_projection() {
         .clone();
 
     registry
-        .publish_resident_owner_delta(
+        .publish_resident_owner_symbol_rebind(
             workspace_identity,
             &root,
-            WorkspaceGenerationDelta {
-                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "2".to_owned(),
+            WorkspaceOwnerSymbolRebindV1 {
+                schema_id: WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                rebind_id: "resident-empty-parser-rebind".to_owned(),
                 base_generation_digest,
                 owners: vec![WorkspaceOwnerSnapshot {
                     authority: None,
@@ -239,7 +243,6 @@ async fn resident_parser_delta_preserves_a_valid_empty_projection() {
                     native_syntax_diagnostic: None,
                     selectors: Vec::new(),
                 }],
-                tombstones: Vec::new(),
                 relations: Vec::new(),
             },
         )

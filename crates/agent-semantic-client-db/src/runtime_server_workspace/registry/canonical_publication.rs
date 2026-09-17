@@ -28,6 +28,9 @@ pub(super) struct EnsureCanonicalGenerationCommand {
     pub(super) prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
     pub(super) admission_candidate:
         Option<crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity>,
+    /// Last durable epoch read from the fixed-size pointer without restoring
+    /// the superseded generation payload.
+    pub(super) persisted_epoch: u64,
     pub(super) reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
 }
 
@@ -46,6 +49,7 @@ pub(super) async fn publish_canonical_generation(
         materialization,
         prepared_index,
         admission_candidate,
+        persisted_epoch,
         reply,
     } = command;
     let WorkspaceWriteTarget {
@@ -58,7 +62,7 @@ pub(super) async fn publish_canonical_generation(
     let active = current.borrow().clone();
     let active_epoch = active
         .as_ref()
-        .map_or(0, |backend| backend.generation().active_epoch);
+        .map_or(persisted_epoch, |backend| backend.generation().active_epoch);
     let generation_build_started = tokio::time::Instant::now();
     let generation = materialization.into_generation(active_epoch).map(Arc::new);
     record_generation_build(&workspace_identity, generation_build_started.elapsed());

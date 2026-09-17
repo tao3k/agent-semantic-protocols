@@ -9,7 +9,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -31,15 +30,13 @@ pub struct ResidentSearchAuthority {
 /// belong to owner-local dynamic projections keyed by the owner content digest.
 #[must_use]
 pub fn resident_navigation_keys(owner_path: &str) -> Vec<String> {
-    source_index_lookup_terms(owner_path)
+    agent_semantic_symbol_index::symbol_skeleton_navigation_keys(owner_path)
 }
 
 const RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT: usize = 4_096;
-const RESIDENT_LEXICAL_TOKEN_BYTES_LIMIT: usize = 128;
 
-pub struct ResidentLexicalCoverageInput<'a> {
+pub struct ResidentSkeletonCoverageInput<'a> {
     pub owner_path: &'a str,
-    pub source: &'a [u8],
     pub parser_query_keys: Vec<String>,
 }
 
@@ -64,7 +61,9 @@ pub fn resident_index_engine_digest() -> String {
     identity.update(b"agent-semantic-search-resident-index-engine-v1\0");
     identity.update(env!("CARGO_PKG_VERSION").as_bytes());
     identity.update(&[0]);
-    identity.update(b"tantivy-0.26.1\0parallel-segments-no-merge\0indexed-owner-id\0");
+    identity.update(
+        b"tantivy-0.26.1\0parallel-segments-no-merge\0indexed-owner-id\0symbol-skeleton-fields-only\0",
+    );
     identity.update(crate::search_projection_analyzer_digest().as_bytes());
     identity.update(&[0]);
     identity
@@ -130,8 +129,8 @@ impl ResidentIndexBuildResources {
 /// This is the generation-construction API used by production and performance
 /// qualification. Query execution never calls it.
 #[must_use]
-pub fn resident_lexical_coverage_batch(
-    inputs: &[ResidentLexicalCoverageInput<'_>],
+pub fn resident_skeleton_coverage_batch(
+    inputs: &[ResidentSkeletonCoverageInput<'_>],
 ) -> Vec<Vec<String>> {
     if inputs.is_empty() {
         return Vec::new();
@@ -149,9 +148,8 @@ pub fn resident_lexical_coverage_batch(
                     chunk
                         .iter()
                         .map(|input| {
-                            resident_lexical_coverage_keys(
+                            resident_skeleton_coverage_keys(
                                 input.owner_path,
-                                input.source,
                                 input.parser_query_keys.iter().cloned(),
                             )
                         })
@@ -165,95 +163,28 @@ pub fn resident_lexical_coverage_batch(
     })
 }
 
-/// Derive lexical keys from already-admitted bytes for in-process fixtures and
-/// provider adapters that explicitly own byte-token normalization.
-///
-/// Generation construction calls this once for added or changed owner bytes.
-/// This function is not `rg` and its output must not be labeled as `rg`
-/// evidence. Production generation admission joins real `fd` inventory and
-/// caller-supplied `rg` facts through `plan_lexical_generation`. Warm queries
-/// consume only the resulting resident keys and never read source.
+/// Derive the P0 skeleton index from owner/file navigation keys and
+/// parser-owned symbol keys. Function-body tokens are deliberately excluded;
+/// byte/regex truth remains the resident GREP plane and detailed structure is
+/// materialized by exact Query.
 #[must_use]
-pub fn resident_lexical_coverage_keys(
+pub fn resident_skeleton_coverage_keys(
     owner_path: &str,
-    source: &[u8],
     parser_query_keys: impl IntoIterator<Item = String>,
 ) -> Vec<String> {
-    let mut priority_keys = resident_navigation_keys(owner_path)
-        .into_iter()
-        .collect::<HashSet<_>>();
-    for key in parser_query_keys {
-        priority_keys.extend(source_index_lookup_terms(&key));
-    }
-    let mut source_keys = HashSet::new();
-    let mut start = None;
-    for (index, byte) in source
-        .iter()
-        .copied()
-        .chain(std::iter::once(b' '))
-        .enumerate()
-    {
-        let lexical = byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b':');
-        match (start, lexical) {
-            (None, true) => start = Some(index),
-            (Some(begin), false) => {
-                let token = &source[begin..index];
-                if (2..=RESIDENT_LEXICAL_TOKEN_BYTES_LIMIT).contains(&token.len())
-                    && token.iter().any(u8::is_ascii_alphabetic)
-                {
-                    insert_identifier_terms(&mut source_keys, &String::from_utf8_lossy(token));
-                }
-                start = None;
-            }
-            _ => {}
-        }
-    }
-    source_keys.retain(|key| !priority_keys.contains(key));
-    let mut keys = priority_keys.into_iter().collect::<Vec<_>>();
+    let mut keys = resident_navigation_keys(owner_path);
     keys.sort_unstable();
-    if keys.len() < RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT {
-        let mut source_keys = source_keys.into_iter().collect::<Vec<_>>();
-        source_keys.sort_unstable();
-        keys.extend(
-            source_keys
-                .into_iter()
-                .take(RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT - keys.len()),
-        );
-    }
+    keys.dedup();
     keys.truncate(RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT);
+    let mut symbol_terms = BTreeSet::new();
+    for key in parser_query_keys {
+        symbol_terms.extend(agent_semantic_symbol_index::symbol_skeleton_terms(&key));
+    }
+    symbol_terms.retain(|term| keys.binary_search(term).is_err());
+    let remaining = RESIDENT_LEXICAL_COVERAGE_KEY_LIMIT.saturating_sub(keys.len());
+    keys.extend(symbol_terms.into_iter().take(remaining));
+    keys.sort_unstable();
     keys
-}
-
-fn insert_identifier_terms(keys: &mut HashSet<String>, identifier: &str) {
-    keys.insert(identifier.to_ascii_lowercase());
-    for segment in identifier
-        .split(['_', '-', ':'])
-        .filter(|part| !part.is_empty())
-    {
-        let chars = segment.chars().collect::<Vec<_>>();
-        let mut start = 0;
-        for index in 1..chars.len() {
-            let previous = chars[index - 1];
-            let current = chars[index];
-            let next = chars.get(index + 1).copied();
-            let boundary = (previous.is_ascii_lowercase() || previous.is_ascii_digit())
-                && current.is_ascii_uppercase()
-                || previous.is_ascii_uppercase()
-                    && current.is_ascii_uppercase()
-                    && next.is_some_and(|next| next.is_ascii_lowercase());
-            if boundary {
-                insert_identifier_part(keys, &chars[start..index]);
-                start = index;
-            }
-        }
-        insert_identifier_part(keys, &chars[start..]);
-    }
-}
-
-fn insert_identifier_part(keys: &mut HashSet<String>, chars: &[char]) {
-    if chars.len() >= 2 {
-        keys.insert(chars.iter().collect::<String>().to_ascii_lowercase());
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -261,11 +192,80 @@ pub struct ResidentSourceDocument {
     pub owner_path: String,
     pub owner_content_digest: String,
     pub line_count: u32,
+    /// Normalized file-navigation and parser-owned symbol keys only.
+    /// Source/function bodies are deliberately not representable.
     pub query_keys: Vec<String>,
-    /// Admitted source text used only while building the immutable Tantivy
-    /// attachment. Reopened attachments already contain their token positions.
-    pub lexical_body: Option<String>,
     pub authority: Option<ResidentSearchAuthority>,
+}
+
+/// One immutable owner-local Tantivy segment used by the Runtime content
+/// overlay. A segment contains only the owners changed by one atomic mutation;
+/// older segments remain readable by existing leases and the base generation
+/// is never rebuilt on the edit path.
+#[derive(Debug)]
+pub struct ResidentTantivyDeltaIndex {
+    lexical_index: crate::tantivy_lexical::TantivyLexicalIndex,
+    documents: Vec<ResidentSourceDocument>,
+}
+
+impl ResidentTantivyDeltaIndex {
+    pub fn new(
+        source_documents: BTreeMap<String, ResidentSourceDocument>,
+        resources: ResidentIndexBuildResources,
+    ) -> Result<Self, String> {
+        let owner_terms = owner_terms(&source_documents);
+        let lexical_documents = lexical_documents(&source_documents, &owner_terms);
+        let lexical_index = crate::tantivy_lexical::TantivyLexicalIndex::build_with_resources(
+            &lexical_documents,
+            resources,
+        )?;
+        Ok(Self {
+            lexical_index,
+            documents: source_documents.into_values().collect(),
+        })
+    }
+
+    pub fn query_language_owner_paths(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_config::LanguageId,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        if expression.trim().is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let mut authorities = Vec::new();
+        for authority in self
+            .documents
+            .iter()
+            .filter_map(|document| document.authority.as_ref())
+            .filter(|authority| &authority.language_id == language_id)
+        {
+            if !authorities.contains(authority) {
+                authorities.push(authority.clone());
+            }
+        }
+        let mut matches = BTreeSet::new();
+        for authority in authorities {
+            let required_terms = [
+                authority_language_term(&authority),
+                authority_provider_term(&authority),
+            ];
+            for owner_id in self.lexical_index.search_expression(
+                expression,
+                &required_terms,
+                None,
+                self.documents.len().max(1),
+            )? {
+                if let Some(document) = self.documents.get(owner_id)
+                    && document.authority.as_ref() == Some(&authority)
+                {
+                    matches.insert(document.owner_path.clone());
+                }
+            }
+        }
+        Ok(matches.into_iter().take(limit).collect())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -765,10 +765,7 @@ fn lexical_documents(
             |(document, exact_terms)| crate::tantivy_lexical::TantivyLexicalDocument {
                 exact_terms: exact_terms.clone(),
                 title: document.owner_path.clone(),
-                body: document
-                    .lexical_body
-                    .clone()
-                    .unwrap_or_else(|| document.query_keys.join(" ")),
+                symbol_body: document.query_keys.join(" "),
             },
         )
         .collect()

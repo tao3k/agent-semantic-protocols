@@ -89,6 +89,7 @@ pub struct WorkspaceMerkleNodeRecordIncrementalV1 {
 /// Persistent path-radix Merkle tree supporting content-addressed deltas.
 #[derive(Debug, Clone)]
 struct RadixNodeIncrementalV1 {
+    source_blob_digest: Option<ContentDigestV1>,
     terminal_digest: Option<ContentDigestV1>,
     children: BTreeMap<u8, Arc<RadixNodeIncrementalV1>>,
     digest: ContentDigestV1,
@@ -96,11 +97,13 @@ struct RadixNodeIncrementalV1 {
 
 impl RadixNodeIncrementalV1 {
     fn new(
+        source_blob_digest: Option<ContentDigestV1>,
         terminal_digest: Option<ContentDigestV1>,
         children: BTreeMap<u8, Arc<Self>>,
     ) -> Arc<Self> {
         let digest = radix_node_digest(&terminal_digest, &children);
         Arc::new(Self {
+            source_blob_digest,
             terminal_digest,
             children,
             digest,
@@ -108,7 +111,7 @@ impl RadixNodeIncrementalV1 {
     }
 
     fn empty() -> Arc<Self> {
-        Self::new(None, BTreeMap::new())
+        Self::new(None, None, BTreeMap::new())
     }
 }
 
@@ -116,7 +119,7 @@ impl RadixNodeIncrementalV1 {
 #[derive(Debug, Clone)]
 pub struct WorkspacePathMerkleTreeIncrementalV1 {
     root: Arc<RadixNodeIncrementalV1>,
-    leaves: Arc<BTreeMap<String, ContentDigestV1>>,
+    leaf_count: usize,
 }
 
 impl WorkspacePathMerkleTreeIncrementalV1 {
@@ -124,7 +127,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
     pub fn empty() -> Self {
         Self {
             root: RadixNodeIncrementalV1::empty(),
-            leaves: Arc::new(BTreeMap::new()),
+            leaf_count: 0,
         }
     }
 
@@ -132,19 +135,17 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
     pub fn from_file_digests(
         file_digests: impl IntoIterator<Item = (String, ContentDigestV1)>,
     ) -> Result<Self, WorkspaceMerkleIncrementalV1Error> {
-        let mut leaves = BTreeMap::new();
+        let mut paths = BTreeSet::new();
+        let mut tree = Self::empty();
         for (path, digest) in file_digests {
             validate_path(&path)?;
-            if leaves.insert(path, digest).is_some() {
+            if !paths.insert(path.clone()) {
                 return Err(WorkspaceMerkleIncrementalV1Error::DuplicatePath);
             }
+            let owner_digest = derive_owner_subtree_digest_incremental_v1(&path, &digest);
+            tree.root = replace_path(&tree.root, path.as_bytes(), 0, Some((digest, owner_digest)));
+            tree.leaf_count += 1;
         }
-        let mut tree = Self::empty();
-        for (path, digest) in &leaves {
-            let owner_digest = derive_owner_subtree_digest_incremental_v1(path, digest);
-            tree.root = replace_path(&tree.root, path.as_bytes(), 0, Some(owner_digest));
-        }
-        tree.leaves = Arc::new(leaves);
         Ok(tree)
     }
 
@@ -155,7 +156,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
 
     /// Returns the number of owner-path leaves.
     pub fn leaf_count(&self) -> usize {
-        self.leaves.len()
+        self.leaf_count
     }
 
     /// Returns the number of persistent radix nodes.
@@ -188,7 +189,9 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
 
     /// Looks up the exact source blob digest for one owner path.
     pub fn source_blob_digest(&self, owner_path: &str) -> Option<&ContentDigestV1> {
-        self.leaves.get(owner_path)
+        terminal_node(&self.root, owner_path.as_bytes(), 0)?
+            .source_blob_digest
+            .as_ref()
     }
 
     /// Applies a bounded set of content-addressed upserts and removals.
@@ -198,7 +201,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
     ) -> Result<(Self, WorkspaceMerkleDeltaMetricsIncrementalV1), WorkspaceMerkleIncrementalV1Error>
     {
         let mut root = Arc::clone(&self.root);
-        let mut leaves = self.leaves.as_ref().clone();
+        let mut leaf_count = self.leaf_count;
         let mut touched_paths = BTreeSet::new();
         let mut written_node_count = 0usize;
         let mut reused_node_count = 0usize;
@@ -211,7 +214,8 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
                     source_blob_digest,
                 } => {
                     validate_path(owner_path)?;
-                    match (leaves.get(owner_path), previous_source_blob_digest) {
+                    let current = source_blob_digest_at(&root, owner_path);
+                    match (current, previous_source_blob_digest) {
                         (None, None) => {}
                         (Some(actual), Some(expected)) if actual == expected => {}
                         (None, Some(_)) | (Some(_), None) => {
@@ -221,12 +225,17 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
                             return Err(WorkspaceMerkleIncrementalV1Error::PreviousDigestMismatch);
                         }
                     }
-                    leaves.insert(owner_path.clone(), source_blob_digest.clone());
+                    if current.is_none() {
+                        leaf_count = leaf_count.saturating_add(1);
+                    }
                     (
                         owner_path,
-                        Some(derive_owner_subtree_digest_incremental_v1(
-                            owner_path,
-                            source_blob_digest,
+                        Some((
+                            source_blob_digest.clone(),
+                            derive_owner_subtree_digest_incremental_v1(
+                                owner_path,
+                                source_blob_digest,
+                            ),
                         )),
                     )
                 }
@@ -235,13 +244,13 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
                     previous_source_blob_digest,
                 } => {
                     validate_path(owner_path)?;
-                    let Some(actual) = leaves.get(owner_path) else {
+                    let Some(actual) = source_blob_digest_at(&root, owner_path) else {
                         return Err(WorkspaceMerkleIncrementalV1Error::MissingPath);
                     };
                     if actual != previous_source_blob_digest {
                         return Err(WorkspaceMerkleIncrementalV1Error::PreviousDigestMismatch);
                     }
-                    leaves.remove(owner_path);
+                    leaf_count = leaf_count.saturating_sub(1);
                     (owner_path, None)
                 }
             };
@@ -254,10 +263,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
         }
 
         Ok((
-            Self {
-                root,
-                leaves: Arc::new(leaves),
-            },
+            Self { root, leaf_count },
             WorkspaceMerkleDeltaMetricsIncrementalV1 {
                 touched_leaf_count: touched_paths.len(),
                 written_node_count,
@@ -269,7 +275,7 @@ impl WorkspacePathMerkleTreeIncrementalV1 {
 
     /// Builds an inclusion proof for one current owner path.
     pub fn inclusion_proof(&self, owner_path: &str) -> Option<WorkspaceMerkleProofIncrementalV1> {
-        let source_blob_digest = self.leaves.get(owner_path)?.clone();
+        let source_blob_digest = self.source_blob_digest(owner_path)?.clone();
         let owner_subtree_digest =
             derive_owner_subtree_digest_incremental_v1(owner_path, &source_blob_digest);
         let mut node = Arc::clone(&self.root);
@@ -385,7 +391,7 @@ fn replace_path(
     node: &Arc<RadixNodeIncrementalV1>,
     path: &[u8],
     depth: usize,
-    replacement: Option<ContentDigestV1>,
+    replacement: Option<(ContentDigestV1, ContentDigestV1)>,
 ) -> Arc<RadixNodeIncrementalV1> {
     replace_path_with_metrics(node, path, depth, replacement).0
 }
@@ -394,11 +400,12 @@ fn replace_path_with_metrics(
     node: &Arc<RadixNodeIncrementalV1>,
     path: &[u8],
     depth: usize,
-    replacement: Option<ContentDigestV1>,
+    replacement: Option<(ContentDigestV1, ContentDigestV1)>,
 ) -> (Arc<RadixNodeIncrementalV1>, usize, usize) {
     if depth == path.len() {
+        let (source_blob_digest, terminal_digest) = replacement.unzip();
         return (
-            RadixNodeIncrementalV1::new(replacement, node.children.clone()),
+            RadixNodeIncrementalV1::new(source_blob_digest, terminal_digest, node.children.clone()),
             1,
             node.children.len(),
         );
@@ -418,7 +425,11 @@ fn replace_path_with_metrics(
         children.insert(edge, next_child);
     }
     (
-        RadixNodeIncrementalV1::new(node.terminal_digest.clone(), children),
+        RadixNodeIncrementalV1::new(
+            node.source_blob_digest.clone(),
+            node.terminal_digest.clone(),
+            children,
+        ),
         written + 1,
         reused
             + node
@@ -426,6 +437,26 @@ fn replace_path_with_metrics(
                 .len()
                 .saturating_sub(usize::from(node.children.contains_key(&edge))),
     )
+}
+
+fn terminal_node<'a>(
+    node: &'a RadixNodeIncrementalV1,
+    path: &[u8],
+    depth: usize,
+) -> Option<&'a RadixNodeIncrementalV1> {
+    if depth == path.len() {
+        return Some(node);
+    }
+    terminal_node(node.children.get(&path[depth])?, path, depth + 1)
+}
+
+fn source_blob_digest_at<'a>(
+    root: &'a RadixNodeIncrementalV1,
+    owner_path: &str,
+) -> Option<&'a ContentDigestV1> {
+    terminal_node(root, owner_path.as_bytes(), 0)?
+        .source_blob_digest
+        .as_ref()
 }
 
 fn radix_node_digest(

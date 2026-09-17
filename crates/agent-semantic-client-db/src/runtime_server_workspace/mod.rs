@@ -69,15 +69,19 @@ pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
     ExactProjectionKind, RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID, RuntimeDataPlaneCounters,
     RuntimeProjectionScope, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
+    WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID,
+    WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID, WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID,
     WorkspaceAuxiliaryOwnerSnapshot, WorkspaceDataPlanePerformanceReceipt,
     WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationDelta,
     WorkspaceGenerationSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
-    WorkspaceOwnerProjection, WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot,
-    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
-    WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead, WorkspaceRuntimeOwnerSearchRead,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
-    WorkspaceTopologySourceSegment,
+    WorkspaceOwnerContentMutationReceiptV1, WorkspaceOwnerContentMutationV1,
+    WorkspaceOwnerContentRemovalV1, WorkspaceOwnerContentUpsertV1, WorkspaceOwnerProjection,
+    WorkspaceOwnerSearchSeedSnapshot, WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot,
+    WorkspaceOwnerSymbolRebindReceiptV1, WorkspaceOwnerSymbolRebindV1, WorkspaceRecoveryReceipt,
+    WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead,
+    WorkspaceRuntimeOwnerSearchRead, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
+    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot, WorkspaceTopologySourceSegment,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};
@@ -96,7 +100,8 @@ pub(crate) use search_generation_authority::{
 pub(crate) mod test_fixture;
 pub use search_index_projection::{
     RuntimeDerivedAttachmentBuildTiming, WorkspaceSearchGenerationDataPlaneClient,
-    encode_workspace_search_generation_segment, workspace_search_generation_segment_path,
+    WorkspaceSymbolSkeletonHit, encode_workspace_search_generation_segment,
+    workspace_search_generation_segment_path,
 };
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::{

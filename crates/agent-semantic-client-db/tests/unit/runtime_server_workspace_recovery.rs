@@ -505,3 +505,107 @@ async fn canonical_ready_reuse_republishes_an_obsolete_exact_layout() {
     ));
     registry.shutdown().await.expect("drain writer lane");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn validated_canonical_replacement_does_not_restore_superseded_mmap() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let workspace_identity = "workspace-canonical-replacement-bypass";
+    let project_root = temporary.path().join("project");
+    std::fs::create_dir_all(&project_root).expect("create canonical project root");
+    let canonical_project_root =
+        std::fs::canonicalize(project_root).expect("canonicalize project root");
+    let materialization = canonical_materialization(workspace_identity, &canonical_project_root);
+
+    let first_registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let first_receipt = first_registry
+        .ensure_canonical_generation(
+            "publish-superseded-generation",
+            workspace_identity,
+            materialization
+                .clone()
+                .into_validated(workspace_identity)
+                .expect("validate initial materialization"),
+        )
+        .await
+        .expect("publish initial resident generation");
+    first_registry
+        .shutdown()
+        .await
+        .expect("drain initial durability");
+
+    let pointer =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            temporary.path(),
+            workspace_identity,
+            &canonical_project_root,
+        )
+        .expect("workspace generation pointer path");
+    let old_snapshot = WorkspaceGenerationPointerReader::open(&pointer)
+        .await
+        .expect("open old generation pointer")
+        .read()
+        .expect("read old generation pointer");
+    assert_eq!(old_snapshot.active_epoch, first_receipt.target_epoch);
+    let old_path = std::path::PathBuf::from(&old_snapshot.mmap_segment_path);
+    let mut old_bytes = tokio::fs::read(&old_path)
+        .await
+        .expect("read old generation segment");
+    old_bytes[..16].copy_from_slice(b"BROKEN-OLD-MMAP!");
+    tokio::fs::write(&old_path, old_bytes)
+        .await
+        .expect("corrupt superseded generation payload");
+    assert!(matches!(
+        WorkspaceGenerationDataPlaneClient::open_state(&pointer)
+            .await
+            .expect("classify corrupt old generation"),
+        WorkspaceGenerationDataPlaneOpen::RecoveryRequired { .. }
+    ));
+
+    let replacement_registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let replacement_receipt = replacement_registry
+        .ensure_canonical_generation(
+            "replace-with-validated-resident",
+            workspace_identity,
+            materialization
+                .into_validated(workspace_identity)
+                .expect("validate replacement materialization"),
+        )
+        .await
+        .expect("validated replacement must not decode the old mmap");
+    assert_eq!(
+        replacement_registry.data_plane_counters().filesystem_reads,
+        0,
+        "replacement must read pointer metadata without restoring the old payload"
+    );
+    assert_eq!(replacement_receipt.active_epoch, old_snapshot.active_epoch);
+    assert_eq!(
+        replacement_receipt.target_epoch,
+        old_snapshot.active_epoch + 1
+    );
+    assert_eq!(
+        replacement_registry
+            .resident_read_client(workspace_identity, &canonical_project_root)
+            .expect("replacement resident query authority")
+            .generation_digest(),
+        replacement_receipt.generation_digest
+    );
+
+    replacement_registry
+        .shutdown()
+        .await
+        .expect("drain replacement durability");
+    let new_snapshot = WorkspaceGenerationPointerReader::open(&pointer)
+        .await
+        .expect("open replacement pointer")
+        .read()
+        .expect("read replacement pointer");
+    assert_eq!(new_snapshot.active_epoch, replacement_receipt.target_epoch);
+    assert!(matches!(
+        WorkspaceGenerationDataPlaneClient::open_state(&pointer)
+            .await
+            .expect("open replacement durable generation"),
+        WorkspaceGenerationDataPlaneOpen::Ready(_)
+    ));
+}

@@ -153,6 +153,7 @@ dependencies = [
  "agent-semantic-runtime-observability",
  "agent-semantic-search",
  "agent-semantic-search-projection",
+ "agent-semantic-symbol-index",
  "agent-semantic-workspace-scheduler",
  "arc-swap",
  "asp-rust-project-harness-policy",
@@ -528,6 +529,7 @@ dependencies = [
  "agent-semantic-search-playbook",
  "agent-semantic-search-projection",
  "agent-semantic-shell-parser",
+ "agent-semantic-symbol-index",
  "agent-semantic-tree-sitter",
  "asp-rust-project-harness-policy",
  "blake3",
@@ -586,6 +588,15 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tree-sitter",
  "tree-sitter-bash",
+]
+
+[[package]]
+name = "agent-semantic-symbol-index"
+version = "0.1.0"
+dependencies = [
+ "asp-rust 0.1.2",
+ "asp-rust-project-harness-policy",
+ "blake3",
 ]
 
 [[package]]
@@ -853,7 +864,6 @@ version = "0.1.2"
 dependencies = [
  "asp-rust-build-support 0.1.0",
  "blake3",
- "cargo-lock",
  "cargo_toml",
  "globset",
  "libc",

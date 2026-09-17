@@ -37,6 +37,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     ));
     assert!(names.contains(&PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID));
     assert!(names.contains(&CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID));
+    assert!(names.contains(&"canonical-replacement-resident-first"));
     assert!(names.contains(&SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID));
     assert!(names.contains(

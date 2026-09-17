@@ -123,11 +123,14 @@ pub(super) async fn publish_owner_delta_command(
 }
 
 #[derive(Debug)]
-pub(super) struct PublishResidentOwnerDeltaCommand {
+pub(super) struct PublishResidentOwnerSymbolRebindCommand {
     pub(super) target: super::core::WorkspaceWriteTarget,
     pub(super) workspace_identity: String,
-    pub(super) delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
-    pub(super) reply: tokio::sync::oneshot::Sender<Result<String, String>>,
+    pub(super) rebind: crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindV1,
+    pub(super) prepared: super::super::resident_overlay::PreparedOwnerSymbolRebind,
+    pub(super) reply: tokio::sync::oneshot::Sender<
+        Result<crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindReceiptV1, String>,
+    >,
 }
 
 /// Commit a semantic owner delta to the resident read model only.
@@ -137,31 +140,135 @@ pub(super) struct PublishResidentOwnerDeltaCommand {
 /// would turn one candidate parser miss into an O(workspace bytes) Search
 /// barrier, so restart recovery deliberately rehydrates this overlay from the
 /// parser artifact store instead.
-pub(super) async fn publish_resident_owner_delta_command(
-    command: PublishResidentOwnerDeltaCommand,
+pub(super) async fn publish_resident_owner_symbol_rebind_command(
+    command: PublishResidentOwnerSymbolRebindCommand,
 ) {
-    let PublishResidentOwnerDeltaCommand {
+    let PublishResidentOwnerSymbolRebindCommand {
         target,
         workspace_identity,
-        delta,
+        rebind,
+        prepared,
         reply,
     } = command;
     let result = (|| {
         let base = current_generation(&target.current, &workspace_identity)?;
-        delta.validate()?;
-        if delta.base_generation_digest != base.generation().generation_digest {
-            return Err("workspace generation delta base generation digest mismatch".to_owned());
+        rebind.validate()?;
+        if rebind.base_generation_digest != base.generation().generation_digest {
+            return Err("workspace owner symbol rebind base generation digest mismatch".to_owned());
         }
-        let staged = target.overlays.publish_semantic_owner_delta(
-            base.generation(),
-            delta.owners,
-            delta.tombstones,
-            delta.relations,
-        )?;
+        let rebind_id = rebind.rebind_id.clone();
+        let base_generation_digest = rebind.base_generation_digest.clone();
+        let rebound_owner_count = rebind.owners.len();
+        let relation_count = rebind.relations.len();
+        let (staged, symbol_count) =
+            target
+                .overlays
+                .publish_owner_symbol_rebind(base.generation(), rebind, prepared)?;
         let resident_generation_digest = staged.generation_digest().to_owned();
         target.overlays.commit(staged);
-        Ok(resident_generation_digest)
+        let receipt = crate::runtime_server_workspace::WorkspaceOwnerSymbolRebindReceiptV1 {
+            schema_id:
+                crate::runtime_server_workspace::WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID
+                    .to_owned(),
+            schema_version: "1".to_owned(),
+            rebind_id,
+            workspace_identity,
+            base_generation_digest,
+            resident_generation_digest,
+            rebound_owner_count,
+            symbol_count,
+            relation_count,
+        };
+        receipt.validate()?;
+        Ok(receipt)
     })();
+    let _ = reply.send(result);
+}
+
+#[derive(Debug)]
+pub(super) struct PublishOwnerContentMutationCommand {
+    pub(super) target: super::core::WorkspaceWriteTarget,
+    pub(super) workspace_identity: String,
+    pub(super) mutation: crate::runtime_server_workspace::WorkspaceOwnerContentMutationV1,
+    pub(super) prepared_search_delta:
+        super::super::resident_overlay::PreparedOwnerContentSearchDelta,
+    pub(super) reply: tokio::sync::oneshot::Sender<
+        Result<crate::runtime_server_workspace::WorkspaceOwnerContentMutationReceiptV1, String>,
+    >,
+}
+
+pub(super) async fn publish_owner_content_mutation_command(
+    command: PublishOwnerContentMutationCommand,
+) {
+    let PublishOwnerContentMutationCommand {
+        target,
+        workspace_identity,
+        mutation,
+        prepared_search_delta,
+        reply,
+    } = command;
+    let result = async {
+        let base = current_generation(&target.current, &workspace_identity)?;
+        let mutation_id = mutation.mutation_id.clone();
+        let base_generation_digest = mutation.base_generation_digest.clone();
+        let upserted_owner_count = mutation.upserts.len();
+        let removed_owner_count = mutation.removals.len();
+        let identity_delta = mutation
+            .upserts
+            .iter()
+            .map(
+                |upsert| super::super::owner_identity_journal::RuntimeOwnerIdentityEntry {
+                    owner_path: upsert.owner.owner_path.clone(),
+                    state: super::super::owner_identity_journal::RuntimeOwnerIdentityState::Present,
+                    content_digest: Some(upsert.owner.content_digest.clone()),
+                    mutation_id: None,
+                },
+            )
+            .chain(mutation.removals.iter().map(|removal| {
+                super::super::owner_identity_journal::RuntimeOwnerIdentityEntry {
+                    owner_path: removal.owner_path.clone(),
+                    state: super::super::owner_identity_journal::RuntimeOwnerIdentityState::Missing,
+                    content_digest: None,
+                    mutation_id: None,
+                }
+            }))
+            .collect();
+        let (staged, metrics) = target.overlays.publish_content_owner_mutation(
+            base.generation(),
+            mutation,
+            prepared_search_delta,
+        )?;
+        target
+            .publisher
+            .publish_owner_identity_delta(
+                &workspace_identity,
+                &base_generation_digest,
+                &mutation_id,
+                identity_delta,
+            )
+            .await?;
+        let receipt = crate::runtime_server_workspace::WorkspaceOwnerContentMutationReceiptV1 {
+            schema_id:
+                crate::runtime_server_workspace::WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID
+                    .to_owned(),
+            schema_version: "1".to_owned(),
+            mutation_id,
+            workspace_identity,
+            base_generation_digest,
+            resident_generation_digest: staged.generation_digest().to_owned(),
+            owner_identity_root_digest: staged.owner_identity_root_digest().to_owned(),
+            upserted_owner_count,
+            removed_owner_count,
+            touched_leaf_count: metrics.touched_leaf_count,
+            written_node_count: metrics.written_node_count,
+            reused_node_count: metrics.reused_node_count,
+            full_merkle_rebuilds: metrics.full_merkle_rebuilds,
+        };
+        receipt.validate()?;
+        target.overlays.commit(staged);
+        Ok(receipt)
+    }
+    .await;
     let _ = reply.send(result);
 }
 

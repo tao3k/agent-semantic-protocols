@@ -667,13 +667,18 @@ fn selector_receipts(
                 })
                 .enrich_projection_record_with_owner_inclusion_proof(tree, &owner_inclusion_proof)
                 .map_err(|error| format!("enrich provider projection record: {error:?}"))?;
-            let mut query_keys = vec![ClientDbSourceIndexQueryKey::from(item.name.as_str())];
+            let mut query_keys = vec![
+                ClientDbSourceIndexQueryKey::from(item.name.as_str()),
+                ClientDbSourceIndexQueryKey::from(item.identity.symbol.as_str()),
+            ];
             query_keys.extend(
                 item.identity
                     .scopes
                     .iter()
                     .map(|scope| ClientDbSourceIndexQueryKey::from(scope.symbol.as_str())),
             );
+            query_keys.sort();
+            query_keys.dedup();
             let record_structural_selector = record.proof.structural_selector().to_owned();
             if record_structural_selector != item.selector {
                 return Err("provider projection record selector drift".to_owned());

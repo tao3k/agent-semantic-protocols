@@ -36,8 +36,10 @@ use tantivy::schema::TextOptions;
 
 pub(crate) struct TantivyLexicalDocument {
     pub(crate) exact_terms: Vec<String>,
+    /// V1 `title`: normalized owner path and file name.
     pub(crate) title: String,
-    pub(crate) body: String,
+    /// V1 `body`: parser-owned symbol keys, never owner source bytes.
+    pub(crate) symbol_body: String,
 }
 
 pub(crate) struct TantivyLexicalIndex {
@@ -368,7 +370,7 @@ fn owner_document(
         document.add_text(term_field, term);
     }
     document.add_text(title_field, &source.title);
-    document.add_text(body_field, &source.body);
+    document.add_text(body_field, &source.symbol_body);
     document
 }
 

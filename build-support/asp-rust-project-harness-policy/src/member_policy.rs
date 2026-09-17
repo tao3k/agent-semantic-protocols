@@ -177,6 +177,13 @@ const SEARCH_PROJECTION_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     },
 ];
 
+const SYMBOL_INDEX_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/symbol_skeleton_index.rs",
+        rationale: "rarest-first cross-language symbol posting intersection is a resident Search hot path",
+    },
+];
+
 const CLIENT_DB_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
         path: "src/engine/facade.rs",
@@ -354,6 +361,16 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         rule_severity_overrides: &[],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: SEARCH_PROJECTION_LATENCY_OWNERS,
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-symbol-index",
+        crate_root: "crates/agent-semantic-symbol-index",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-symbol-index cargo-check advice; owner=language-neutral symbol skeleton index gate; finding_category=advisory policy findings; why_safe_now=the isolated index keeps advisory findings visible while warning and error findings fail the build; cleanup_trigger=clear the symbol index advisory backlog and remove this allowance",
+        verification_label: Some("symbol skeleton index"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: SYMBOL_INDEX_LATENCY_OWNERS,
         availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {

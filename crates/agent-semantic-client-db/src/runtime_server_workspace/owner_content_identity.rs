@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 pub(super) struct RuntimeOwnerContentIdentity {
     pub digest: String,
+    pub bytes: Vec<u8>,
 }
 
 pub(super) async fn read(
@@ -14,8 +15,8 @@ pub(super) async fn read(
 ) -> Result<Option<RuntimeOwnerContentIdentity>, String> {
     let relative = normalized_owner_path(owner_path)?;
     let path = project_root.join(relative);
-    let bytes = match tokio::fs::read(&path).await {
-        Ok(bytes) => bytes,
+    let before = match tokio::fs::metadata(&path).await {
+        Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(format!(
@@ -24,11 +25,29 @@ pub(super) async fn read(
             ));
         }
     };
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|error| format!("failed to read runtime owner {}: {error}", path.display()))?;
+    let after = tokio::fs::metadata(&path).await.map_err(|error| {
+        format!(
+            "failed to restat runtime owner {} after read: {error}",
+            path.display()
+        )
+    })?;
+    if before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+        || after.len() != bytes.len() as u64
+    {
+        return Err(format!(
+            "runtime owner changed during content acquisition: {}",
+            path.display()
+        ));
+    }
     let digest = format!(
         "blake3-256:{}",
         agent_semantic_content_identity::ArtifactHash::blake3(&bytes).value
     );
-    Ok(Some(RuntimeOwnerContentIdentity { digest }))
+    Ok(Some(RuntimeOwnerContentIdentity { digest, bytes }))
 }
 
 pub(super) fn normalized_owner_path(owner_path: &str) -> Result<PathBuf, String> {

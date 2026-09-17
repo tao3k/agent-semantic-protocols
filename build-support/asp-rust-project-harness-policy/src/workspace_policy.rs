@@ -5,6 +5,7 @@
 //! Thin ASP workspace policy adapter over the ASP Rust Build DAG API.
 
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::build_gate::assert_asp_rust_project_harness_member_policy;
 use crate::member_policy::asp_workspace_member_policy_for;
@@ -38,10 +39,10 @@ pub fn evaluate_asp_rust_project_harness_member_source_policy(
 pub fn assert_asp_rust_project_harness_member_source_policy_from_env() -> asp_rust::AspRustReport {
     let package_name = std::env::var("CARGO_PKG_NAME")
         .expect("CARGO_PKG_NAME is required for the ASP Rust member source policy");
-    let config = asp_workspace_member_policy_for(&package_name)
-        .map_or_else(asp_rust::default_asp_rust_config, |policy| {
-            policy.apply_to_asp_rust_config(asp_rust::default_asp_rust_config())
-        });
+    let member_policy = asp_workspace_member_policy_for(&package_name);
+    let config = member_policy.map_or_else(asp_rust::default_asp_rust_config, |policy| {
+        policy.apply_to_asp_rust_config(asp_rust::default_asp_rust_config())
+    });
     let policy = asp_rust::AspRustDownstreamPolicy::new(
         format!("agent-semantic-protocols::{package_name}"),
         config,
@@ -49,20 +50,55 @@ pub fn assert_asp_rust_project_harness_member_source_policy_from_env() -> asp_ru
     let project_root = std::env::var_os("CARGO_MANIFEST_DIR")
         .map(std::path::PathBuf::from)
         .expect("CARGO_MANIFEST_DIR is required for the ASP Rust member source policy");
-    let report = asp_rust::evaluate_asp_rust_downstream_policy(&project_root, &policy);
-    emit_member_policy_warnings(&report);
-    let errors = report
-        .findings
-        .iter()
-        .filter(|finding| finding.severity == asp_rust::RustDiagnosticSeverity::Error)
-        .map(|finding| format!("[{}] {}", finding.rule_id, finding.summary))
-        .collect::<Vec<_>>();
-    assert!(
-        errors.is_empty(),
-        "ASP Rust member source policy errors:\n{}",
-        errors.join("\n")
+    let out_dir = std::env::var_os("OUT_DIR")
+        .map(PathBuf::from)
+        .expect("OUT_DIR is required for the ASP Rust member source policy");
+    let policy_digest = member_policy.map_or_else(
+        || {
+            format!(
+                "blake3-256:{}",
+                blake3::hash(format!("asp-rust.default-package-policy:{package_name}").as_bytes())
+                    .to_hex()
+            )
+        },
+        |policy| policy.contract_digest(),
     );
+    let authority = asp_rust::AspRustBuildGateAuthority::new(
+        cargo_build_gate_cache_root(&project_root, &out_dir)
+            .unwrap_or_else(|error| panic!("derive ASP Rust member cache authority: {error}")),
+        policy_digest,
+    )
+    .unwrap_or_else(|error| panic!("bind ASP Rust member cache authority: {error}"));
+    let report = asp_rust::assert_asp_rust_downstream_policy_with_authority(
+        &project_root,
+        &policy,
+        &authority,
+    );
+    emit_member_policy_warnings(&report);
     report
+}
+
+fn cargo_build_gate_cache_root(project_root: &Path, out_dir: &Path) -> Result<PathBuf, String> {
+    let cargo_build_root = out_dir
+        .ancestors()
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "build"))
+        .ok_or_else(|| {
+            format!(
+                "Cargo OUT_DIR does not contain a build boundary: {}",
+                out_dir.display()
+            )
+        })?;
+    let canonical_project_root = project_root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize member project root: {error}"))?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agent-semantic-protocols.asp-rust-member-cache.v1\0");
+    hasher.update(canonical_project_root.as_os_str().as_encoded_bytes());
+    let project_identity = hasher.finalize().to_hex();
+    Ok(cargo_build_root
+        .join(".asp-rust-project-harness-policy")
+        .join("v1")
+        .join(&project_identity[..32]))
 }
 
 fn emit_member_policy_warnings(report: &asp_rust::AspRustReport) {
@@ -129,4 +165,43 @@ pub fn assert_asp_workspace_policy(workspace_root: &Path) -> asp_rust::AspRustWo
 pub fn assert_asp_workspace_policy_from_env() -> asp_rust::AspRustWorkspaceRunReport {
     let build_dag = assert_asp_workspace_build_identity_from_env();
     assert_asp_workspace_policy(&build_dag.workspace_root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cargo_build_gate_cache_root;
+
+    #[test]
+    fn cargo_cache_authority_is_stable_across_package_build_hashes() {
+        let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let first = cargo_build_gate_cache_root(
+            project_root,
+            std::path::Path::new("/tmp/target/debug/build/member-aaaa/out"),
+        )
+        .unwrap();
+        let second = cargo_build_gate_cache_root(
+            project_root,
+            std::path::Path::new("/tmp/target/debug/build/member-bbbb/out"),
+        )
+        .unwrap();
+
+        assert_eq!(first, second);
+        assert!(first.starts_with("/tmp/target/debug/build"));
+        assert!(first.parent().is_some_and(|parent| parent.ends_with("v1")));
+        assert_eq!(
+            first
+                .file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .map(str::len),
+            Some(32)
+        );
+    }
+
+    #[test]
+    fn cargo_cache_authority_rejects_non_cargo_output_layout() {
+        let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(
+            cargo_build_gate_cache_root(project_root, std::path::Path::new("/tmp/out")).is_err()
+        );
+    }
 }

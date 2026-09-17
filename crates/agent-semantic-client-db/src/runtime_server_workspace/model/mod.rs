@@ -18,7 +18,12 @@ pub use core::{
     WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead, WorkspaceRuntimeOwnerRead,
 };
 pub use mutation::{
-    WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WorkspaceGenerationDelta,
+    WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WORKSPACE_OWNER_CONTENT_MUTATION_RECEIPT_SCHEMA_ID,
+    WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID, WORKSPACE_OWNER_SYMBOL_REBIND_RECEIPT_SCHEMA_ID,
+    WORKSPACE_OWNER_SYMBOL_REBIND_SCHEMA_ID, WorkspaceGenerationDelta,
+    WorkspaceOwnerContentMutationReceiptV1, WorkspaceOwnerContentMutationV1,
+    WorkspaceOwnerContentRemovalV1, WorkspaceOwnerContentUpsertV1,
+    WorkspaceOwnerSymbolRebindReceiptV1, WorkspaceOwnerSymbolRebindV1,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
     WorkspaceRuntimeSelectorRead, WorkspaceRuntimeSelectorRebind,
 };

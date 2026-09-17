@@ -252,6 +252,31 @@ impl RuntimeResidentReadClient {
             .read_source_index(query, authority, limit)
     }
 
+    pub fn read_symbol_skeleton(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceSymbolSkeletonHit>, String> {
+        let hits = self
+            .search_projection
+            .read_symbol_skeleton(query, self.search_projection.symbol_skeleton_count().max(1));
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => Ok(hits.into_iter().take(limit).collect()),
+            (None, Some(lease)) => Ok(lease
+                .merge_symbol_skeleton_hits(hits, query, limit)
+                .into_iter()
+                .filter(|hit| lease.symbol_skeleton_hit_is_current(hit))
+                .take(limit)
+                .collect()),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    #[must_use]
+    pub fn symbol_skeleton_count(&self) -> usize {
+        self.search_projection.symbol_skeleton_count()
+    }
+
     pub fn read_source_index_for_owner_scope(
         &self,
         query: &str,
@@ -262,6 +287,56 @@ impl RuntimeResidentReadClient {
     {
         self.search_projection
             .read_source_index_for_owner_scope(query, owner_path, authority, limit)
+    }
+
+    /// Query the immutable base Tantivy generation plus owner-local immutable
+    /// delta segments. Newest deltas shadow older deltas and base documents by
+    /// owner path, so edited bytes cannot leak a stale base hit.
+    pub fn resident_tantivy_owner_paths(
+        &self,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        owner_scope: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        let base_scope = owner_scope.map(|paths| {
+            paths
+                .iter()
+                .filter(|path| self.search_projection.contains_indexed_owner(path))
+                .cloned()
+                .collect::<Vec<_>>()
+        });
+        let base = if base_scope.as_ref().is_some_and(Vec::is_empty) {
+            Vec::new()
+        } else {
+            let result = if let Some(paths) = base_scope.as_deref() {
+                self.search_projection
+                    .read_tantivy_for_language_owner_scope(
+                        expression,
+                        language_id,
+                        paths,
+                        u32::try_from(limit).unwrap_or(u32::MAX).max(1),
+                    )
+            } else {
+                self.search_projection.read_tantivy_for_language(
+                    expression,
+                    language_id,
+                    u32::try_from(limit).unwrap_or(u32::MAX).max(1),
+                )
+            }?;
+            result
+                .hits
+                .iter()
+                .map(|hit| hit.owner_path.clone())
+                .collect()
+        };
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => Ok(base),
+            (None, Some(lease)) => {
+                lease.merge_tantivy_owner_paths(base, expression, language_id, owner_scope, limit)
+            }
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
     }
 
     pub fn read_source_index_for_language(
@@ -346,8 +421,19 @@ impl RuntimeResidentReadClient {
         ),
         String,
     > {
-        self.search_projection
-            .resident_grep_candidate_owner_paths(plan, limit)
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self
+                .search_projection
+                .resident_grep_candidate_owner_paths(plan, limit),
+            (None, Some(lease)) => lease.resident_grep_candidate_owner_paths(plan, None, limit),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
+    pub fn resident_owner_bytes(&self, owner_path: &str) -> Result<Option<Arc<[u8]>>, String> {
+        Ok(self
+            .owner_snapshot(owner_path)?
+            .map(|owner| Arc::<[u8]>::from(owner.bytes)))
     }
 
     pub fn read_byte_evidence_for_owner_scope(
@@ -448,17 +534,25 @@ impl RuntimeResidentReadClient {
 
     #[must_use]
     pub fn indexed_owner_count(&self) -> usize {
-        self.search_projection.indexed_owner_count()
+        self.indexed_owner_paths().len()
     }
 
     #[must_use]
     pub fn contains_indexed_owner(&self, owner_path: &str) -> bool {
-        self.search_projection.contains_indexed_owner(owner_path)
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self.search_projection.contains_indexed_owner(owner_path),
+            (None, Some(lease)) => lease.runtime_owner_snapshot(owner_path).is_some(),
+            _ => false,
+        }
     }
 
     #[must_use]
     pub fn indexed_owner_paths(&self) -> Vec<String> {
-        self.search_projection.indexed_owner_paths()
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self.search_projection.indexed_owner_paths(),
+            (None, Some(lease)) => lease.indexed_owner_paths(),
+            _ => Vec::new(),
+        }
     }
 
     #[must_use]
@@ -618,10 +712,15 @@ impl RuntimeResidentReadClient {
 
     /// Merkle root of the projected owner records used by exact/search reads.
     pub fn owner_merkle_root_digest(&self) -> String {
-        self.search_projection
-            .authority()
-            .owner_merkle_root_digest
-            .clone()
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self
+                .search_projection
+                .authority()
+                .owner_merkle_root_digest
+                .clone(),
+            (None, Some(lease)) => lease.owner_identity_root_digest().to_owned(),
+            _ => unreachable!("Runtime resident read authority is inconsistent"),
+        }
     }
 
     #[expect(

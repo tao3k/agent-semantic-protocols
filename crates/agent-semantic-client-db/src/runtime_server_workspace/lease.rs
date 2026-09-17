@@ -241,6 +241,81 @@ impl WorkspaceGenerationLease {
         self.overlay.owner_bytes(self.generation(), owner_path)
     }
 
+    pub(crate) fn indexed_owner_paths(&self) -> Vec<String> {
+        self.overlay.indexed_owner_paths(self.generation())
+    }
+
+    pub(crate) fn owner_identity_root_digest(&self) -> &str {
+        self.overlay.owner_identity_root_digest()
+    }
+
+    pub(crate) fn resident_grep_candidate_owner_paths(
+        &self,
+        plan: &agent_semantic_search::ResidentGrepCandidatePlan,
+        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
+        limit: usize,
+    ) -> Result<
+        (
+            Vec<String>,
+            agent_semantic_search::ResidentByteCoverageQueryReceipt,
+        ),
+        String,
+    > {
+        let base_limit = self
+            .backend
+            .search_data_plane()
+            .indexed_owner_count()
+            .max(1);
+        let (base_candidates, mut receipt) = self
+            .backend
+            .search_data_plane()
+            .resident_grep_candidate_owner_paths(plan, base_limit)?;
+        let candidates =
+            self.overlay
+                .merge_grep_candidates(base_candidates, plan, authority, limit)?;
+        receipt.candidate_count = candidates.len();
+        Ok((candidates, receipt))
+    }
+
+    pub(crate) fn merge_tantivy_owner_paths(
+        &self,
+        base_owner_paths: Vec<String>,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        admitted_owner_paths: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        self.overlay.merge_tantivy_owner_paths(
+            base_owner_paths,
+            expression,
+            language_id,
+            admitted_owner_paths,
+            limit,
+        )
+    }
+
+    pub(crate) fn symbol_skeleton_hit_is_current(
+        &self,
+        hit: &super::WorkspaceSymbolSkeletonHit,
+    ) -> bool {
+        self.overlay
+            .owner_snapshot(self.generation(), &hit.owner_path)
+            .is_some_and(|owner| owner.content_digest == hit.owner_content_digest)
+            && self
+                .overlay
+                .semantic_owner_materialized(&self.backend, &hit.owner_path)
+    }
+
+    pub(crate) fn merge_symbol_skeleton_hits(
+        &self,
+        base_hits: Vec<super::WorkspaceSymbolSkeletonHit>,
+        query: &str,
+        limit: usize,
+    ) -> Vec<super::WorkspaceSymbolSkeletonHit> {
+        self.overlay
+            .merge_symbol_skeleton_hits(base_hits, query, limit)
+    }
+
     pub fn read_runtime_selector(
         &self,
         projection_kind: super::ExactProjectionKind,

@@ -8,6 +8,8 @@
 pub use asp_rust;
 
 pub mod build_gate;
+mod canonical_replacement_search_scenario;
+mod owner_content_mutation_search_scenario;
 pub use build_gate::AspRustProjectHarnessMemberPolicyReceipt;
 pub use build_gate::assert_asp_rust_project_harness_member_policy;
 pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;

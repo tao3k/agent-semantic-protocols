@@ -38,21 +38,28 @@ fn execute_runtime_resident_grep_blocks(
         .iter()
         .map(|span| span.owner_path.clone())
         .collect::<Vec<_>>();
-    execute_runtime_resident_grep_blocks_impl(corpus, blocks, limit, |plan, limit| {
-        if plan.is_match_all() {
-            return Ok((
-                all_owners.clone(),
-                agent_semantic_search::ResidentByteCoverageQueryReceipt {
-                    requested_gram_count: 0,
-                    decoded_posting_count: 0,
-                    smallest_posting_count: 0,
-                    candidate_count: all_owners.len(),
-                    lookup_nanos: 0,
-                },
-            ));
-        }
-        index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
-    })
+    execute_runtime_resident_grep_blocks_impl(
+        corpus,
+        corpus.owner_spans.len(),
+        blocks,
+        limit,
+        |plan, limit| {
+            if plan.is_match_all() {
+                return Ok((
+                    all_owners.clone(),
+                    agent_semantic_search::ResidentByteCoverageQueryReceipt {
+                        requested_gram_count: 0,
+                        decoded_posting_count: 0,
+                        smallest_posting_count: 0,
+                        candidate_count: all_owners.len(),
+                        lookup_nanos: 0,
+                    },
+                ));
+            }
+            index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
+        },
+        |owner_path| Ok(corpus.owner_bytes(owner_path).map(std::sync::Arc::from)),
+    )
 }
 
 fn digest(bytes: &[u8]) -> String {
@@ -410,6 +417,7 @@ fn admitted_grep_matches_rg_reference_corpus() {
             .collect::<Vec<_>>();
         let result = execute_runtime_resident_grep_blocks_impl(
             &corpus,
+            scenario.owners.len(),
             std::slice::from_ref(&case.argv),
             case.limit,
             |plan, limit| {
@@ -432,6 +440,7 @@ fn admitted_grep_matches_rg_reference_corpus() {
                     index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
                 }
             },
+            |owner_path| Ok(corpus.owner_bytes(owner_path).map(std::sync::Arc::from)),
         )
         .unwrap();
         let mut actual = result.branch_matches[0]
@@ -673,11 +682,13 @@ fn resident_grep_4096_owner_reads_have_submillisecond_kernel_and_wall_p99() {
         let started = std::time::Instant::now();
         let receipt = execute_runtime_resident_grep_blocks_impl(
             &corpus,
+            OWNER_COUNT,
             std::slice::from_ref(&argv),
             OWNER_COUNT as u32,
             |plan, limit| {
                 byte_index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
             },
+            |owner_path| Ok(corpus.owner_bytes(owner_path).map(std::sync::Arc::from)),
         )
         .expect("resident 4096-owner rg read");
         let wall_nanos = started.elapsed().as_nanos();

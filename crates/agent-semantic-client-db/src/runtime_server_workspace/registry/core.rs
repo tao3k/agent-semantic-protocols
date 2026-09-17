@@ -4,12 +4,11 @@
 
 use crate::runtime_server_workspace::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, ResidentOverlayStore, RuntimeDataPlaneCounters,
-    RuntimeServerShutdownReceipt, WorkspaceGenerationDataPlaneClient,
-    WorkspaceGenerationDataPlaneOpen, WorkspaceGenerationLease, WorkspaceGenerationPublisher,
-    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeContext,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    workspace_generation_pointer_path,
+    RuntimeServerShutdownReceipt, WorkspaceGenerationDataPlaneClient, WorkspaceGenerationLease,
+    WorkspaceGenerationPublisher, WorkspaceMemoryBackend, WorkspaceMemoryGeneration,
+    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
+    WorkspaceRuntimeContext, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeSelectorOverlayReceipt, workspace_generation_pointer_path,
 };
 use parking_lot::RwLock;
 use std::{
@@ -33,6 +32,7 @@ use super::{
 #[derive(Debug)]
 pub(super) struct WorkspaceEntry {
     project_root: PathBuf,
+    pub(super) persisted_epoch: u64,
     pub(super) current: watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>,
     pub(super) durability: watch::Sender<
         Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
@@ -40,6 +40,12 @@ pub(super) struct WorkspaceEntry {
     overlays: Arc<ResidentOverlayStore>,
     pub(super) publisher: Arc<WorkspaceGenerationPublisher>,
     pub(super) writer: mpsc::Sender<WorkspaceWriteCommand>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum WorkspaceEntryBootstrap {
+    RestoreDurable,
+    ReplaceWithValidatedResident,
 }
 
 #[derive(Clone, Debug)]
@@ -103,7 +109,10 @@ pub(super) enum WorkspaceWriteCommand {
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
     PublishOwnerDelta(super::writer_publication::PublishOwnerDeltaCommand),
-    PublishResidentOwnerDelta(super::writer_publication::PublishResidentOwnerDeltaCommand),
+    PublishResidentOwnerSymbolRebind(
+        super::writer_publication::PublishResidentOwnerSymbolRebindCommand,
+    ),
+    PublishOwnerContentMutation(super::writer_publication::PublishOwnerContentMutationCommand),
     PublishSelectorOverlay {
         target: WorkspaceWriteTarget,
         workspace_identity: String,
@@ -545,6 +554,33 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: &str,
         project_root: &std::path::Path,
     ) -> Result<Arc<WorkspaceEntry>, String> {
+        self.entry_with_bootstrap(
+            workspace_identity,
+            project_root,
+            WorkspaceEntryBootstrap::RestoreDurable,
+        )
+        .await
+    }
+
+    pub(super) async fn replacement_entry(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+    ) -> Result<Arc<WorkspaceEntry>, String> {
+        self.entry_with_bootstrap(
+            workspace_identity,
+            project_root,
+            WorkspaceEntryBootstrap::ReplaceWithValidatedResident,
+        )
+        .await
+    }
+
+    async fn entry_with_bootstrap(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+        bootstrap: WorkspaceEntryBootstrap,
+    ) -> Result<Arc<WorkspaceEntry>, String> {
         if workspace_identity.trim().is_empty() {
             return Err("workspace identity must be non-empty text".to_owned());
         }
@@ -603,34 +639,19 @@ impl RuntimeServerWorkspaceRegistry {
                     workspace_identity,
                     project_root,
                 )?;
-                let pointer_path = directory.join("active-generation.pointer");
-                let restored =
-                    match WorkspaceGenerationDataPlaneClient::open_state(&pointer_path).await? {
-                        WorkspaceGenerationDataPlaneOpen::Ready(client) => {
-                            Some(Arc::clone(&client.lease().backend))
-                        }
-                        WorkspaceGenerationDataPlaneOpen::Missing
-                        | WorkspaceGenerationDataPlaneOpen::RecoveryRequired { .. } => None,
-                    };
+                let initialized = super::entry_bootstrap::initialize(
+                    directory,
+                    workspace_identity,
+                    project_root,
+                    bootstrap,
+                )
+                .await?;
+                let restored = initialized.restored;
+                let persisted_epoch = initialized.persisted_epoch;
                 if restored.is_some() {
                     self.counters
                         .filesystem_reads
                         .fetch_add(2, Ordering::Relaxed);
-                }
-                let publisher = WorkspaceGenerationPublisher::new(directory).await?;
-                if let Some(backend) = restored.as_ref() {
-                    // Projection segments are reconstructible from the
-                    // canonical materialization. Preserve the generic backend
-                    // and its epoch when projection authority is incompatible
-                    // so the canonical writer can atomically republish the
-                    // complete generation instead of failing entry bootstrap.
-                    let _projection_restore = publisher
-                        .restore_search_generation_authority(
-                            workspace_identity,
-                            project_root.to_string_lossy().as_ref(),
-                            backend.generation().active_epoch,
-                        )
-                        .await;
                 }
                 let overlays = Arc::new(ResidentOverlayStore::new(
                     restored
@@ -641,10 +662,11 @@ impl RuntimeServerWorkspaceRegistry {
                 let (durability, _) = watch::channel(None);
                 Ok::<_, String>(Arc::new(WorkspaceEntry {
                     project_root: project_root.to_path_buf(),
+                    persisted_epoch,
                     current,
                     durability,
                     overlays,
-                    publisher: Arc::new(publisher),
+                    publisher: initialized.publisher,
                     writer: resident.writer.clone(),
                 }))
             })
@@ -761,8 +783,12 @@ async fn workspace_writer_lane(
                     last_receipts.insert(scope_key, receipt);
                 }
             }
-            WorkspaceWriteCommand::PublishResidentOwnerDelta(command) => {
-                super::writer_publication::publish_resident_owner_delta_command(command).await;
+            WorkspaceWriteCommand::PublishResidentOwnerSymbolRebind(command) => {
+                super::writer_publication::publish_resident_owner_symbol_rebind_command(command)
+                    .await;
+            }
+            WorkspaceWriteCommand::PublishOwnerContentMutation(command) => {
+                super::writer_publication::publish_owner_content_mutation_command(command).await;
             }
             WorkspaceWriteCommand::PublishSelectorOverlay {
                 target,

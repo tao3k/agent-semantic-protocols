@@ -10,6 +10,22 @@ use std::sync::Arc;
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 
 impl WorkspaceSearchGenerationDataPlaneClient {
+    /// Resolve parser-owned symbols directly to canonical selectors. This
+    /// index is language-neutral: every provider contributes the same V1
+    /// selector query-key contract, and no function-body text is indexed.
+    pub fn read_symbol_skeleton(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Vec<super::WorkspaceSymbolSkeletonHit> {
+        self.symbol_skeleton_index.query(query, limit)
+    }
+
+    #[must_use]
+    pub fn symbol_skeleton_count(&self) -> usize {
+        self.symbol_skeleton_index.symbol_count()
+    }
+
     pub fn owner_paths_for_graph_entry_node_ids<'a>(
         &self,
         node_ids: impl IntoIterator<Item = &'a str>,

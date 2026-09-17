@@ -21,6 +21,7 @@ agent-semantic-runtime-observability.workspace = true
 agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-symbol-index.workspace = true
 memmap2.workspace = true
 postcard.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
@@ -58,6 +59,10 @@ path = "tests/unit/runtime_generation_readiness_request.rs"
 [[test]]
 name = "runtime_server_owner_receipt"
 path = "tests/unit/runtime_server_owner_receipt.rs"
+
+[[test]]
+name = "runtime_server_owner_content_mutation"
+path = "tests/unit/runtime_server_owner_content_mutation.rs"
 
 [[bench]]
 name = "turso_mvcc_concurrent_write"

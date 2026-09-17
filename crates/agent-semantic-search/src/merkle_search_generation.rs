@@ -295,7 +295,6 @@ impl MerkleSearchGeneration {
                         owner_content_digest: fragment.content_digest.clone(),
                         line_count: fragment.line_count,
                         query_keys: fragment.lexical_query_keys.clone(),
-                        lexical_body: None,
                         authority: Some(authority.clone()),
                     },
                 )

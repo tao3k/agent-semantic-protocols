@@ -14,8 +14,8 @@ use crate::ResidentIndexBuildStrategy;
 use crate::ResidentSearchAuthority;
 use crate::ResidentSourceDocument;
 use crate::ResidentSourceIndex;
-use crate::resident_lexical_coverage_keys;
 use crate::resident_navigation_keys;
+use crate::resident_skeleton_coverage_keys;
 
 fn build_resources() -> ResidentIndexBuildResources {
     ResidentIndexBuildResources::new(
@@ -68,7 +68,6 @@ fn one_source_document() -> BTreeMap<String, ResidentSourceDocument> {
             owner_content_digest: hash_blob(b"runtime").value,
             line_count: 42,
             query_keys: vec!["runtime".to_owned(), "runtime-server".to_owned()],
-            lexical_body: None,
             authority: Some(authority("rust", "asp-rust")),
         },
     )])
@@ -137,7 +136,6 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
                 owner_content_digest: hash_blob(b"runtime").value,
                 line_count: 42,
                 query_keys: vec!["runtime".to_owned(), "runtime-server".to_owned()],
-                lexical_body: None,
                 authority: Some(authority("rust", "asp-rust")),
             },
         )]),
@@ -179,7 +177,6 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
                         "registry".to_owned(),
                         "runtime".to_owned(),
                     ],
-                    lexical_body: Some("artifact refresh runtime registry".to_owned()),
                     authority: Some(rust.clone()),
                 },
             ),
@@ -190,7 +187,6 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
                     owner_content_digest: hash_blob(b"archive").value,
                     line_count: 1,
                     query_keys: vec!["archive".to_owned(), "artifact".to_owned()],
-                    lexical_body: Some("artifact publication archive".to_owned()),
                     authority: Some(rust.clone()),
                 },
             ),
@@ -244,6 +240,53 @@ fn native_tantivy_expression_preserves_fields_phrases_boosts_and_boolean_logic()
 }
 
 #[test]
+fn native_tantivy_fields_are_path_and_parser_symbol_skeleton_only() {
+    let rust = authority("rust", "asp-rust");
+    let index = ResidentSourceIndex::new(
+        BTreeMap::from([(
+            "crates/runtime.rs".to_owned(),
+            ResidentSourceDocument {
+                owner_path: "crates/runtime.rs".to_owned(),
+                owner_content_digest: hash_blob(b"unindexed source body secret").value,
+                line_count: 1,
+                query_keys: vec!["RuntimeRegistry".to_owned()],
+                authority: Some(rust),
+            },
+        )]),
+        source_snapshot(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        build_resources(),
+    )
+    .unwrap();
+    let language = agent_semantic_config::LanguageId::new("rust");
+
+    assert_eq!(
+        index
+            .query_tantivy_language("title:runtime", &language, 10)
+            .unwrap()
+            .hits
+            .len(),
+        1
+    );
+    assert_eq!(
+        index
+            .query_tantivy_language("body:RuntimeRegistry", &language, 10)
+            .unwrap()
+            .hits
+            .len(),
+        1
+    );
+    assert!(
+        index
+            .query_tantivy_language("body:secret", &language, 10)
+            .unwrap()
+            .hits
+            .is_empty(),
+        "owner bytes must never enter the symbol-skeleton body field"
+    );
+}
+
+#[test]
 fn native_tantivy_top_k_is_independent_of_physical_segment_layout() {
     let rust = authority("rust", "asp-rust");
     let documents = (0..8)
@@ -256,7 +299,6 @@ fn native_tantivy_top_k_is_independent_of_physical_segment_layout() {
                     owner_content_digest: hash_blob(format!("owner-{index}").as_bytes()).value,
                     line_count: 1,
                     query_keys: vec!["shared".to_owned()],
-                    lexical_body: Some("shared body".to_owned()),
                     authority: Some(rust.clone()),
                 },
             )
@@ -303,7 +345,6 @@ fn provider_authority_filters_before_limit_and_never_relabels_hits() {
                     owner_content_digest: hash_blob(b"rust").value,
                     line_count: 1,
                     query_keys: vec!["runtime".to_owned()],
-                    lexical_body: None,
                     authority: Some(rust.clone()),
                 },
             ),
@@ -314,7 +355,6 @@ fn provider_authority_filters_before_limit_and_never_relabels_hits() {
                     owner_content_digest: hash_blob(b"gerbil").value,
                     line_count: 1,
                     query_keys: vec!["runtime".to_owned()],
-                    lexical_body: None,
                     authority: Some(gerbil.clone()),
                 },
             ),
@@ -383,7 +423,6 @@ fn warm_query_cache_reuses_the_generation_bound_result_without_payload_clone() {
                 owner_content_digest: hash_blob(b"runtime").value,
                 line_count: 42,
                 query_keys: vec!["runtime".to_owned()],
-                lexical_body: None,
                 authority: Some(rust.clone()),
             },
         )]),
@@ -421,7 +460,6 @@ fn novel_dense_posting_queries_preserve_bounded_top_k_without_full_vocabulary_cl
                     .chain((0..QUERY_COUNT).map(|query| format!("term{query}")))
                     .chain((0..128).map(|key| format!("owner-key-{key}")))
                     .collect(),
-                lexical_body: None,
                 authority: Some(rust.clone()),
             },
         );
@@ -471,36 +509,30 @@ fn durable_navigation_keys_are_path_shallow_and_never_source_text() {
 }
 
 #[test]
-fn admitted_owner_bytes_and_parser_keys_share_one_lexical_coverage() {
-    let keys = resident_lexical_coverage_keys(
+fn symbol_skeleton_coverage_contains_paths_and_parser_keys_but_not_body_tokens() {
+    let keys = resident_skeleton_coverage_keys(
         "src/runtime_server_admission.rs",
-        b"impl WorkspaceGenerationAdmission { fn compare_candidate(&self) {} }",
         ["rust://src/runtime_server_admission.rs#item/method/compare_candidate".to_owned()],
     );
 
-    assert!(keys.contains(&"workspacegenerationadmission".to_owned()));
     assert!(keys.contains(&"compare_candidate".to_owned()));
-    assert!(keys.contains(&"workspace".to_owned()));
-    assert!(keys.contains(&"generation".to_owned()));
     assert!(keys.contains(&"admission".to_owned()));
     assert!(keys.contains(&"compare".to_owned()));
     assert!(keys.contains(&"candidate".to_owned()));
     assert!(keys.contains(&"runtime_server_admission".to_owned()));
+    assert!(!keys.contains(&"workspace".to_owned()));
+    assert!(!keys.contains(&"generation".to_owned()));
+    assert!(!keys.contains(&"workspacegenerationadmission".to_owned()));
 }
 
 #[test]
-fn parser_keys_survive_a_saturated_source_coverage_budget() {
-    let source = (0..5_000)
-        .map(|index| format!("identifier_{index}"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let keys = resident_lexical_coverage_keys(
+fn symbol_skeleton_budget_is_bounded_without_source_token_expansion() {
+    let keys = resident_skeleton_coverage_keys(
         "src/large.rs",
-        source.as_bytes(),
-        ["zzzz_parser_authority".to_owned()],
+        (0..5_000).map(|index| format!("symbol_{index}")),
     );
 
     assert_eq!(keys.len(), 4_096);
-    assert!(keys.contains(&"zzzz_parser_authority".to_owned()));
     assert!(keys.contains(&"large".to_owned()));
+    assert!(!keys.contains(&"symbol_4999".to_owned()));
 }

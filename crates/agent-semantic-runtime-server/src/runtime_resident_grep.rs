@@ -41,6 +41,7 @@ pub(crate) struct RuntimeGrepMatch {
 
 pub(crate) fn execute_runtime_resident_grep_blocks(
     corpus: &agent_semantic_search::ResidentGrepCorpusArtifact,
+    owner_count: usize,
     blocks: &[Vec<String>],
     limit: u32,
     mut candidate_owner_paths: impl FnMut(
@@ -53,6 +54,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         ),
         String,
     >,
+    mut owner_bytes: impl FnMut(&str) -> Result<Option<std::sync::Arc<[u8]>>, String>,
 ) -> Result<RuntimeResidentGrepAxisReceipt, String> {
     if blocks.is_empty() || limit == 0 {
         return Err("resident GREP axis is outside the bounded Runtime envelope".to_owned());
@@ -96,7 +98,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         // at the result limit could hide a later real match. The immutable
         // generation cardinality is the complete, already-admitted bound.
         let (candidate_owner_paths, candidate_receipt) =
-            candidate_owner_paths(&matcher.candidate_plan, corpus.owner_spans.len())?;
+            candidate_owner_paths(&matcher.candidate_plan, owner_count)?;
         let candidate_owners = candidate_owner_paths
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>();
@@ -104,7 +106,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             if !roots.contains(&owner_path) || !matcher.path_matches(&owner_path) {
                 continue;
             }
-            let bytes = corpus.owner_bytes(&owner_path).ok_or_else(|| {
+            let bytes = owner_bytes(&owner_path)?.ok_or_else(|| {
                 format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
             })?;
             resident_owner_read_count += 1;
@@ -123,7 +125,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             };
             matcher
                 .expression
-                .find_iter(bytes, |occurrence| {
+                .find_iter(&bytes, |occurrence| {
                     // A zero-width match at EOF is not a physical line. This
                     // excludes an empty file and the phantom line after a
                     // terminating newline while retaining real empty lines.

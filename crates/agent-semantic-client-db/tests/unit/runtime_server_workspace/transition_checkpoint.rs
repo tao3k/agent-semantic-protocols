@@ -40,6 +40,7 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
 
 fn callable_owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     let mut owner = owner(path, selector, bytes);
+    owner.selectors[0].query_keys = vec!["run_search".to_owned()];
     owner.selectors[0].derived_projections = vec![
         crate::projection_fixture::callable_skeleton_projection_fixture(selector, "run_search"),
     ];
@@ -611,7 +612,7 @@ async fn published_generation_exposes_parser_owned_selectors_and_resident_conten
     assert_eq!(
         lookup.hits.len(),
         1,
-        "resident grep corpus must find source bytes"
+        "resident skeleton must find the parser-owned symbol key"
     );
     assert_eq!(
         client

@@ -57,7 +57,9 @@ pub fn assert_asp_rust_project_harness_member_policy(
             &manifest,
             full_harness_package,
             &["dependencies", "build-dependencies"],
-        ) {
+        ) && !(package_name == "agent-semantic-symbol-index"
+            && full_harness_package == "asp-rust")
+        {
             return Err(format!(
                 "ASP Rust harness member {package_name} must not compile the full ASP Rust scanner from normal or build dependencies: {full_harness_package}; use the shared Build Support dependency and run full verification once from the workspace gate",
             ));

@@ -8,6 +8,7 @@ pub(super) mod canonical_durability;
 pub(super) mod canonical_publication;
 mod core;
 mod durability;
+mod entry_bootstrap;
 pub(super) mod owner_identity;
 mod publication;
 mod readiness;
