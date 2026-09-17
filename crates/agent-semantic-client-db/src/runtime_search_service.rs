@@ -14,6 +14,23 @@ use crate::runtime_server_workspace::{
 
 const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
+/// Content and provider authority for one generation-time parser skeleton batch.
+#[derive(Clone)]
+pub struct RuntimeGenerationSkeletonRequest {
+    pub workspace_identity: String,
+    pub project_root: PathBuf,
+    pub parser_artifact_root: PathBuf,
+    pub language_id: String,
+    pub files: Vec<crate::ClientDbSourceIndexScopeFile>,
+    pub source_blobs: std::sync::Arc<crate::ClientDbSourceIndexSourceBlobs>,
+    pub auxiliary_owners: std::sync::Arc<
+        std::collections::BTreeMap<
+            String,
+            Vec<agent_semantic_provider_transport::projection_batch::ProviderProjectionOwner>,
+        >,
+    >,
+}
+
 pub enum RuntimeSearchServiceRequest {
     ProviderRuntime {
         project_root: PathBuf,
@@ -87,6 +104,10 @@ pub enum RuntimeSearchServiceRequest {
         owners: Vec<WorkspaceOwnerSnapshot>,
         auxiliary_owners: Vec<WorkspaceAuxiliaryOwnerSnapshot>,
         response: oneshot::Sender<Result<Vec<WorkspaceOwnerProjection>, String>>,
+    },
+    ProviderGenerationSkeleton {
+        request: RuntimeGenerationSkeletonRequest,
+        response: oneshot::Sender<Result<Vec<crate::ClientDbSourceIndexScopeFile>, String>>,
     },
 }
 
@@ -395,6 +416,26 @@ impl RuntimeSearchServiceHandle {
             receipt,
             "provider-owners",
             "Runtime search service dropped the owner batch response",
+        )
+        .await
+    }
+
+    /// Build content-addressed parser skeletons for one provider-owned file set.
+    pub async fn provider_generation_skeleton(
+        &self,
+        request: RuntimeGenerationSkeletonRequest,
+    ) -> Result<Vec<crate::ClientDbSourceIndexScopeFile>, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::ProviderGenerationSkeleton { request, response })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting generation skeleton requests".to_owned()
+            })?;
+        self.await_receipt(
+            receipt,
+            "provider-generation-skeleton",
+            "Runtime search service dropped the generation skeleton response",
         )
         .await
     }

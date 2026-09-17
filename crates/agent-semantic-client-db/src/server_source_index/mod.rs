@@ -39,6 +39,7 @@ pub use model::{
     SourceIndexRefreshReport, SourceIndexScopeFile, SourceIndexSourceKind,
 };
 pub use parser_artifact_store::ParserArtifactResidentCache;
+pub use projection::project_generation_skeleton_with_resident_runtime;
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
     ProviderWorkspaceIdentityV1,

@@ -19,14 +19,20 @@ fn implicit_parser_projection_is_bounded_after_complete_retrieval() {
         super::RuntimeGrepMatch {
             owner_path: "c.rs".to_owned(),
             owner_line: 7,
+            byte_start: 6,
+            byte_end: 7,
         },
         super::RuntimeGrepMatch {
             owner_path: "c.rs".to_owned(),
             owner_line: 9,
+            byte_start: 8,
+            byte_end: 9,
         },
         super::RuntimeGrepMatch {
             owner_path: "a.rs".to_owned(),
             owner_line: 3,
+            byte_start: 2,
+            byte_end: 3,
         },
     ];
     let ranked_owner_paths = ["a.rs".to_owned(), "c.rs".to_owned()];
@@ -88,6 +94,8 @@ fn top_k_projection_scenario_preserves_complete_retrieval_and_bounds_parser_work
             (0..=(index % 3)).map(move |line| super::RuntimeGrepMatch {
                 owner_path: owner.clone(),
                 owner_line: u64::try_from(line + 1).expect("bounded line"),
+                byte_start: line,
+                byte_end: line + 1,
             })
         })
         .collect::<Vec<_>>();

@@ -54,9 +54,11 @@ pub(super) fn build_topology_index(
                 .iter()
                 .filter(|selector| !selector.query_keys.is_empty())
                 .map(|selector| {
-                    agent_semantic_topology::TopologyNodeV1::from_selector(
+                    agent_semantic_topology::TopologyNodeV1::from_selector_with_anchor(
                         selector.selector.clone(),
                         selector.query_keys.clone(),
+                        selector.byte_start,
+                        selector.byte_end,
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;

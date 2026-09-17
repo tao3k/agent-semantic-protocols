@@ -126,6 +126,7 @@ async fn durable_recovery_requires_current_content_and_execution() {
     }];
     let request = SourceIndexGenerationRefresh {
         recovery_execution: Some(&execution),
+        parser_artifact_root: &project_root,
         changed_owner_paths: None,
         replacement_authority: None,
         index_root: &project_root,

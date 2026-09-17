@@ -57,6 +57,14 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             .len(),
         1
     );
+    assert_eq!(
+        old_resident
+            .smallest_enclosing_topology_anchor("src/lib.rs", 3, 11,)
+            .expect("old content-bound anchor")
+            .expect("old selector anchor")
+            .structural_selector,
+        "rust://src/lib.rs#item/function/previous_symbol"
+    );
     let base_generation_digest = old_lease.generation().generation_digest.clone();
     let pointer_path =
         agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
@@ -171,6 +179,12 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
     );
     assert!(
         resident
+            .smallest_enclosing_topology_anchor("src/lib.rs", 3, 7,)
+            .expect("content mutation shadows the previous anchor shard")
+            .is_none()
+    );
+    assert!(
+        resident
             .read_topology_index("previous_symbol", 8)
             .expect("stale topology shard is rejected after owner mutation")
             .is_empty()
@@ -261,6 +275,14 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             .expect("new parser symbol is resident")
             .len(),
         1
+    );
+    assert_eq!(
+        rebound
+            .smallest_enclosing_topology_anchor("src/lib.rs", 3, 7,)
+            .expect("rebound content-bound anchor")
+            .expect("rebound selector anchor")
+            .structural_selector,
+        "rust://src/lib.rs#item/function/next_symbol"
     );
     assert!(
         rebound

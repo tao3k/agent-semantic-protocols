@@ -59,7 +59,7 @@ pub use runtime_project_topology_attachment::{
     RuntimeProjectTopologyAttachmentCandidate, RuntimeProjectTopologyAttachmentError,
 };
 pub use topology_index::{
-    RankedTextTopologySelectorHitV1, TopologyHitV1, TopologyIndexV1, TopologyNodeKindV1,
-    TopologyNodeV1, TopologyOwnerV1, ranked_text_topology_selector_carrier, topology_feature_terms,
-    topology_navigation_features,
+    RankedTextTopologySelectorHitV1, TopologyAnchorHitV1, TopologyHitV1, TopologyIndexV1,
+    TopologyNodeKindV1, TopologyNodeV1, TopologyOwnerV1, ranked_text_topology_selector_carrier,
+    topology_feature_terms, topology_navigation_features,
 };

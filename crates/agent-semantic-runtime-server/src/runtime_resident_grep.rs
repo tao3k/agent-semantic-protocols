@@ -37,6 +37,8 @@ pub(crate) struct RuntimeResidentGrepBlockReceipt {
 pub(crate) struct RuntimeGrepMatch {
     pub owner_path: String,
     pub owner_line: u64,
+    pub byte_start: usize,
+    pub byte_end: usize,
 }
 
 pub(crate) fn execute_runtime_resident_grep_blocks(
@@ -140,7 +142,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                     }
                     if last_emitted_line != Some(owner_line) {
                         last_emitted_line = Some(owner_line);
-                        owner_lines.push(owner_line);
+                        owner_lines.push((owner_line, occurrence.start(), occurrence.end()));
                     }
                     owner_lines.len() < owner_line_limit
                 })
@@ -154,7 +156,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             }
             owners.push(owner_path.clone());
             all_owners.insert(owner_path.clone());
-            for owner_line in owner_lines {
+            for (owner_line, byte_start, byte_end) in owner_lines {
                 if line_attribution {
                     if matches.len() == limit as usize {
                         truncated = true;
@@ -163,6 +165,8 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                     let matched = RuntimeGrepMatch {
                         owner_path: owner_path.clone(),
                         owner_line,
+                        byte_start,
+                        byte_end,
                     };
                     grounding_matches.push(matched.clone());
                     matches.push(matched);
@@ -174,6 +178,8 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
                     grounding_matches.push(RuntimeGrepMatch {
                         owner_path: owner_path.clone(),
                         owner_line,
+                        byte_start,
+                        byte_end,
                     });
                     break;
                 }

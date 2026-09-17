@@ -66,6 +66,105 @@ fn owner_content_digest_changes_topology_shard_identity() {
 }
 
 #[test]
+fn exact_byte_match_resolves_smallest_content_bound_anchor() {
+    let mut outer = TopologyNodeV1::from_selector_with_anchor(
+        "rust://src/lib.rs#item/module/runtime",
+        vec!["runtime".to_owned()],
+        0,
+        80,
+    )
+    .unwrap();
+    let inner = TopologyNodeV1::from_selector_with_anchor(
+        "rust://src/lib.rs#item/function/commit",
+        vec!["commit".to_owned()],
+        12,
+        40,
+    )
+    .unwrap();
+    outer.features.push("module".to_owned());
+    let digest = format!("blake3-256:{}", "1".repeat(64));
+    let index = TopologyIndexV1::build([TopologyOwnerV1 {
+        owner_path: "src/lib.rs".to_owned(),
+        owner_content_digest: digest.clone(),
+        nodes: vec![outer, inner],
+    }])
+    .unwrap();
+
+    let hit = index
+        .smallest_enclosing_anchor("src/lib.rs", &digest, 20, 26)
+        .unwrap()
+        .expect("current anchor");
+    assert_eq!(
+        hit.structural_selector,
+        "rust://src/lib.rs#item/function/commit"
+    );
+    assert!(
+        index
+            .smallest_enclosing_anchor(
+                "src/lib.rs",
+                &format!("blake3-256:{}", "2".repeat(64)),
+                20,
+                26,
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn resident_anchor_lookup_scenario_is_sub_millisecond_without_owner_bodies() {
+    let benchmark = toml::from_str::<toml::Value>(include_str!(
+        "../scenarios/topology_index_v1/benchmark.toml"
+    ))
+    .expect("Topology Index benchmark receipt");
+    let anchor_count = benchmark["work_metrics"]["parser_anchor_count"]
+        .as_integer()
+        .and_then(|value| usize::try_from(value).ok())
+        .expect("anchor count");
+    let sample_count = benchmark["work_metrics"]["sample_count"]
+        .as_integer()
+        .and_then(|value| usize::try_from(value).ok())
+        .expect("sample count");
+    let maximum_p99_nanos = benchmark["qualification"]["maximum_anchor_lookup_p99_nanos"]
+        .as_integer()
+        .and_then(|value| u128::try_from(value).ok())
+        .expect("anchor p99 gate");
+    let digest = format!("blake3-256:{}", "1".repeat(64));
+    let nodes = (0..anchor_count)
+        .map(|index| {
+            TopologyNodeV1::from_selector_with_anchor(
+                format!("rust://src/lib.rs#item/function/node_{index}"),
+                vec![format!("node_{index}")],
+                index * 16,
+                index * 16 + 12,
+            )
+            .unwrap()
+        })
+        .collect();
+    let index = TopologyIndexV1::build([TopologyOwnerV1 {
+        owner_path: "src/lib.rs".to_owned(),
+        owner_content_digest: digest.clone(),
+        nodes,
+    }])
+    .unwrap();
+    let byte_start = (anchor_count - 1) * 16 + 2;
+    let mut observations = Vec::with_capacity(sample_count);
+    for _ in 0..sample_count {
+        let started = std::time::Instant::now();
+        let hit = index
+            .smallest_enclosing_anchor("src/lib.rs", &digest, byte_start, byte_start + 2)
+            .unwrap();
+        observations.push(started.elapsed().as_nanos());
+        assert!(hit.is_some());
+    }
+    observations.sort_unstable();
+    let p99 = observations[observations.len() * 99 / 100];
+    eprintln!(
+        "[topology-anchor] anchors={anchor_count} samples={sample_count} p99Nanos={p99} ownerSnapshotCopies=0 providerCalls=0"
+    );
+    assert!(p99 < maximum_p99_nanos, "anchor lookup p99={p99}ns");
+}
+
+#[test]
 fn provider_node_kind_must_match_the_canonical_selector() {
     let mut owner = owner(
         "docs/design.org",

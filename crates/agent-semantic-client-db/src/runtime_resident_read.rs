@@ -272,6 +272,27 @@ impl RuntimeResidentReadClient {
         }
     }
 
+    /// Resolve an exact resident byte match without provider, scheduler, DB,
+    /// filesystem, or socket work.
+    pub fn smallest_enclosing_topology_anchor(
+        &self,
+        owner_path: &str,
+        match_start: usize,
+        match_end: usize,
+    ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self.search_projection.smallest_enclosing_topology_anchor(
+                owner_path,
+                match_start,
+                match_end,
+            ),
+            (None, Some(lease)) => {
+                lease.smallest_enclosing_topology_anchor(owner_path, match_start, match_end)
+            }
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
     #[must_use]
     pub fn topology_node_count(&self) -> usize {
         self.search_projection.topology_node_count()

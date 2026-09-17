@@ -31,6 +31,8 @@ pub struct TopologyNodeV1 {
     pub structural_selector: String,
     pub kind: TopologyNodeKindV1,
     pub features: Vec<String>,
+    /// Parser-proven half-open byte interval in the content-bound owner.
+    pub byte_anchor: Option<(usize, usize)>,
 }
 
 impl TopologyNodeV1 {
@@ -49,7 +51,20 @@ impl TopologyNodeV1 {
                 native_kind: selector.kind.as_str().to_owned(),
             },
             features,
+            byte_anchor: None,
         })
+    }
+
+    /// Decode canonical identity and retain its generation-bound source anchor.
+    pub fn from_selector_with_anchor(
+        structural_selector: impl Into<String>,
+        features: Vec<String>,
+        byte_start: usize,
+        byte_end: usize,
+    ) -> Result<Self, String> {
+        let mut node = Self::from_selector(structural_selector, features)?;
+        node.byte_anchor = Some((byte_start, byte_end));
+        Ok(node)
     }
 }
 
@@ -80,11 +95,22 @@ pub struct RankedTextTopologySelectorHitV1 {
     pub structural_selector: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Exact selector reached from a content-bound parser byte anchor.
+pub struct TopologyAnchorHitV1 {
+    pub owner_path: String,
+    pub owner_content_digest: String,
+    pub structural_selector: String,
+    pub byte_start: usize,
+    pub byte_end: usize,
+}
+
 #[derive(Debug, Default)]
 /// Immutable postings over directories, owners, and parser-native nodes.
 pub struct TopologyIndexV1 {
     postings: BTreeMap<String, Arc<[TopologyHitV1]>>,
     owner_shard_digests: BTreeMap<String, String>,
+    owner_anchors: BTreeMap<String, Arc<[TopologyAnchorHitV1]>>,
     node_count: usize,
     parser_native_node_count: usize,
 }
@@ -94,6 +120,7 @@ impl TopologyIndexV1 {
     pub fn build(owners: impl IntoIterator<Item = TopologyOwnerV1>) -> Result<Self, String> {
         let mut postings = BTreeMap::<String, Vec<TopologyHitV1>>::new();
         let mut owner_shard_digests = BTreeMap::new();
+        let mut owner_anchors = BTreeMap::new();
         let mut node_count = 0usize;
         let mut parser_native_node_count = 0usize;
         for mut owner in owners {
@@ -112,6 +139,27 @@ impl TopologyIndexV1 {
             {
                 return Err("topology index contains a duplicate owner path".to_owned());
             }
+            let mut anchors = owner
+                .nodes
+                .iter()
+                .filter_map(|node| {
+                    let (byte_start, byte_end) = node.byte_anchor?;
+                    Some(TopologyAnchorHitV1 {
+                        owner_path: owner.owner_path.clone(),
+                        owner_content_digest: owner.owner_content_digest.clone(),
+                        structural_selector: node.structural_selector.clone(),
+                        byte_start,
+                        byte_end,
+                    })
+                })
+                .collect::<Vec<_>>();
+            anchors.sort_by(|left, right| {
+                left.byte_start
+                    .cmp(&right.byte_start)
+                    .then_with(|| left.byte_end.cmp(&right.byte_end))
+                    .then_with(|| left.structural_selector.cmp(&right.structural_selector))
+            });
+            owner_anchors.insert(owner.owner_path.clone(), Arc::from(anchors));
 
             for directory in owner_directories(&owner.owner_path) {
                 node_count = node_count.saturating_add(1);
@@ -161,6 +209,7 @@ impl TopologyIndexV1 {
                 })
                 .collect(),
             owner_shard_digests,
+            owner_anchors,
             node_count,
             parser_native_node_count,
         })
@@ -213,6 +262,41 @@ impl TopologyIndexV1 {
     #[must_use]
     pub fn owner_shard_digest(&self, owner_path: &str) -> Option<&str> {
         self.owner_shard_digests.get(owner_path).map(String::as_str)
+    }
+
+    /// Resolve one exact byte match to its smallest enclosing parser node.
+    ///
+    /// The expected digest is mandatory: an overlay may shadow the same path,
+    /// and a selector from the previous content must never ground current bytes.
+    pub fn smallest_enclosing_anchor(
+        &self,
+        owner_path: &str,
+        expected_owner_content_digest: &str,
+        match_start: usize,
+        match_end: usize,
+    ) -> Result<Option<TopologyAnchorHitV1>, String> {
+        if match_start > match_end {
+            return Err("topology anchor match interval is reversed".to_owned());
+        }
+        let Some(anchors) = self.owner_anchors.get(owner_path) else {
+            return Ok(None);
+        };
+        if let Some(anchor) = anchors.first()
+            && anchor.owner_content_digest != expected_owner_content_digest
+        {
+            return Err(format!(
+                "topology anchor owner-content digest mismatch: owner={owner_path}"
+            ));
+        }
+        Ok(anchors
+            .iter()
+            .filter(|anchor| anchor.byte_start <= match_start && match_end <= anchor.byte_end)
+            .min_by(|left, right| {
+                (left.byte_end - left.byte_start)
+                    .cmp(&(right.byte_end - right.byte_start))
+                    .then_with(|| left.structural_selector.cmp(&right.structural_selector))
+            })
+            .cloned())
     }
 
     #[must_use]
@@ -283,6 +367,12 @@ fn validate_owner(owner: &TopologyOwnerV1) -> Result<(), String> {
         };
         if selector.language_id.as_str() != language_id || selector.kind.as_str() != native_kind {
             return Err("topology node kind does not match its canonical selector".to_owned());
+        }
+        if node
+            .byte_anchor
+            .is_some_and(|(byte_start, byte_end)| byte_start >= byte_end)
+        {
+            return Err("topology node byte anchor is empty or reversed".to_owned());
         }
     }
     Ok(())
@@ -432,6 +522,11 @@ fn topology_shard_digest(owner: &TopologyOwnerV1) -> String {
         for feature in &node.features {
             hasher.update(&[0]);
             hasher.update(feature.as_bytes());
+        }
+        if let Some((byte_start, byte_end)) = node.byte_anchor {
+            hasher.update(&[0]);
+            hasher.update(&(byte_start as u64).to_le_bytes());
+            hasher.update(&(byte_end as u64).to_le_bytes());
         }
     }
     format!("blake3-256:{}", hasher.finalize().to_hex())

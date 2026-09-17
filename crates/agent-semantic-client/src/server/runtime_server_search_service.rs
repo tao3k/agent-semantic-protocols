@@ -443,6 +443,69 @@ pub(super) async fn serve_runtime_search_requests(
                     let _ = response.send(result);
                 });
             }
+            RuntimeSearchServiceRequest::ProviderGenerationSkeleton { request, response } => {
+                let agent_semantic_client_db::runtime_search_service::RuntimeGenerationSkeletonRequest {
+                    workspace_identity,
+                    project_root,
+                    parser_artifact_root,
+                    language_id,
+                    files,
+                    source_blobs,
+                    auxiliary_owners,
+                } = request;
+                let result = (|| {
+                    let launch = runtime_active_provider_projection.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
+                    let runtime = match runtimes.get(&launch.key) {
+                        None => None,
+                        Some(runtime) => match runtime.authority.client().current() {
+                            agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
+                                receipt,
+                            ) if receipt == runtime.expected_receipt => {
+                                Some(runtime.authority.client())
+                            }
+                            agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
+                                _,
+                            ) => {
+                                return Err(format!(
+                                    "provider-runtime-contract-drift: languageId={language_id}"
+                                ));
+                            }
+                            _ => None,
+                        },
+                    };
+                    let (registry, _) = crate::command::active_provider_projection::
+                        runtime_source_index_provider_projection(
+                            &runtime_active_provider_projection,
+                            &provider_register,
+                            &std::collections::BTreeSet::from([language_id.clone()]),
+                        )?;
+                    Ok((runtime, registry))
+                })();
+                tasks.spawn(async move {
+                    let result = match result {
+                        Ok((runtime, registry)) => {
+                            agent_semantic_client_db::server_source_index::
+                                project_generation_skeleton_with_resident_runtime(
+                                    runtime.as_ref(),
+                                    &project_root,
+                                    &workspace_identity,
+                                    &registry,
+                                    &files,
+                                    &source_blobs,
+                                    &auxiliary_owners,
+                                    &parser_artifact_root,
+                                )
+                                .await
+                        }
+                        Err(error) => Err(error),
+                    };
+                    let _ = response.send(result);
+                });
+            }
         }
         while tasks.try_join_next().is_some() {}
     }

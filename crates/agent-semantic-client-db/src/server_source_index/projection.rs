@@ -42,6 +42,36 @@ enum ProviderProjectionExecutor<'a> {
 
 pub(super) type ProviderProjectionAuxiliaryOwners = BTreeMap<String, Vec<ProviderProjectionOwner>>;
 
+/// Project one provider-homogeneous generation skeleton through the persistent
+/// parser artifact store, retaining selector proofs and source anchors.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "generation skeleton projection keeps every content and provider authority explicit"
+)]
+pub async fn project_generation_skeleton_with_resident_runtime(
+    runtime: Option<&ProviderRuntimeActorClient>,
+    project_root: &Path,
+    workspace_identity: &str,
+    registry: &RuntimeProviderProjection,
+    files: &[ClientDbSourceIndexScopeFile],
+    source_blobs: &ClientDbSourceIndexSourceBlobs,
+    auxiliary_owners: &BTreeMap<String, Vec<ProviderProjectionOwner>>,
+    artifact_root: &Path,
+) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
+    project_generation_with_resident_runtime_and_artifact_store(
+        runtime,
+        project_root,
+        workspace_identity,
+        registry,
+        files,
+        source_blobs,
+        auxiliary_owners,
+        artifact_root,
+        None,
+    )
+    .await
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "provider projection keeps runtime, workspace, source, and artifact authorities explicit"

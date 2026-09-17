@@ -8,6 +8,28 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::{AspClientOperationError, RuntimeGrepMatch, WorkspaceSearchSyntaxCandidate};
 
+pub(crate) fn resident_semantic_scope(
+    generation: &crate::RuntimeQueryGeneration,
+    owners: &BTreeSet<String>,
+) -> Result<
+    Option<
+        std::sync::Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>,
+    >,
+    AspClientOperationError,
+> {
+    let resident = generation.resident();
+    if !resident.has_semantic_owner_materialization_authority() {
+        return Ok(None);
+    }
+    if !resident
+        .semantic_owners_materialized(owners)
+        .map_err(AspClientOperationError::Message)?
+    {
+        return Ok(None);
+    }
+    Ok(Some(generation.resident_arc()))
+}
+
 #[cfg(test)]
 pub(crate) fn fused_file_context_scope(
     rg_scope: &BTreeSet<String>,
@@ -178,61 +200,39 @@ pub(crate) fn syntax_candidates_enclosing_rg_matches<'a>(
     if owners.is_empty() {
         return Ok(Vec::new());
     }
-    let (projections, _, _) = resident
-        .native_syntax_playbook_projection(&owners)
-        .map_err(AspClientOperationError::Message)?;
-    let projections = projections
-        .into_iter()
-        .map(|projection| (projection.owner_path.clone(), projection))
-        .collect::<BTreeMap<_, _>>();
-    let mut line_ranges = BTreeMap::new();
-    for owner in &owners {
-        let snapshot = resident
-            .owner_snapshot(owner)
-            .map_err(AspClientOperationError::Message)?
-            .ok_or_else(|| {
-                AspClientOperationError::Message(format!(
-                    "rg syntax mapping owner disappeared: {owner}"
-                ))
-            })?;
-        line_ranges.insert(owner.clone(), source_line_ranges(&snapshot.bytes));
-    }
-
     let mut candidates = BTreeMap::<(String, String), WorkspaceSearchSyntaxCandidate>::new();
     for item in matches {
-        let Some((line_start, line_end)) = line_ranges
-            .get(&item.owner_path)
-            .and_then(|ranges| {
-                usize::try_from(item.owner_line)
-                    .ok()?
-                    .checked_sub(1)
-                    .and_then(|line| ranges.get(line))
-            })
-            .copied()
-        else {
+        if item.byte_start > item.byte_end {
             return Err(AspClientOperationError::Message(format!(
-                "rg syntax mapping line is outside owner: owner={} line={}",
-                item.owner_path, item.owner_line
+                "runtime-search-topology-grounding-unavailable: byte interval is reversed: owner={} start={} end={}",
+                item.owner_path, item.byte_start, item.byte_end
             )));
-        };
-        let Some(projection) = projections.get(&item.owner_path) else {
+        }
+        let Some(anchor) = resident
+            .smallest_enclosing_topology_anchor(&item.owner_path, item.byte_start, item.byte_end)
+            .map_err(|error| {
+                AspClientOperationError::Message(format!(
+                    "runtime-search-topology-grounding-unavailable: {error}"
+                ))
+            })?
+        else {
+            // Top-level imports, attributes, and prose may satisfy the byte
+            // predicate without identifying a parser-native item. They remain
+            // exact retrieval evidence but cannot fabricate a selector.
             continue;
         };
-        let enclosing = smallest_selector_overlapping_line(projection, line_start, line_end);
-        if let Some(selector) = enclosing {
-            let candidate = candidates
-                .entry((item.owner_path.clone(), selector.selector.clone()))
-                .or_insert_with(|| WorkspaceSearchSyntaxCandidate {
-                    owner: item.owner_path.clone(),
-                    selector: selector.selector.clone(),
-                    relation: "syntax-encloses:rg-match".to_owned(),
-                    hit: agent_semantic_search::WorkspaceSearchHitProjection {
-                        native: true,
-                        ..Default::default()
-                    },
-                });
-            candidate.hit.rg.push([item.owner_line, item.owner_line]);
-        }
+        let candidate = candidates
+            .entry((item.owner_path.clone(), anchor.structural_selector.clone()))
+            .or_insert_with(|| WorkspaceSearchSyntaxCandidate {
+                owner: item.owner_path.clone(),
+                selector: anchor.structural_selector,
+                relation: "topology-anchor-encloses:rg-match".to_owned(),
+                hit: agent_semantic_search::WorkspaceSearchHitProjection {
+                    native: true,
+                    ..Default::default()
+                },
+            });
+        candidate.hit.rg.push([item.owner_line, item.owner_line]);
     }
     for candidate in candidates.values_mut() {
         candidate.hit.rg.sort_unstable();
@@ -241,6 +241,7 @@ pub(crate) fn syntax_candidates_enclosing_rg_matches<'a>(
     Ok(candidates.into_values().collect())
 }
 
+#[cfg(test)]
 pub(crate) fn smallest_selector_overlapping_line(
     projection: &agent_semantic_search::NativeSyntaxProjection,
     line_start: usize,
@@ -257,6 +258,7 @@ pub(crate) fn smallest_selector_overlapping_line(
         })
 }
 
+#[cfg(test)]
 pub(crate) fn source_line_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
     let mut starts = vec![0];
     starts.extend(

@@ -219,6 +219,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     };
     let generation_builder = build_workspace_generation_candidate_builder(
         state_home,
+        &workspace_store_root,
         std::sync::Arc::clone(&provider_register),
         runtime_search_service.clone(),
         schema_bundles.clone(),

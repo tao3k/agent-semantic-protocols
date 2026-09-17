@@ -160,8 +160,15 @@ provider-local planner enters the Search hot path.
 Automatic parser grounding uses exact resident-GREP owner/line evidence, not
 only the argv-selected display shape.  Output-attribution flags may suppress
 line rendering for rg compatibility, but they MUST NOT erase Runtime's private
-grounding line.  Runtime retains at least one exact matching line for each
-matched owner and maps it to the smallest enclosing parser-owned selector.
+grounding position.  Runtime retains the exact byte interval and line for each
+bounded match and maps it to the smallest enclosing parser-owned selector by a
+generation-resident Topology anchor lookup.  The lookup MUST NOT invoke a
+provider, rebuild Project Topology, or materialize an owner during the Search
+request.  A verified byte match outside every parser-native anchor is
+ineligible for item projection and does not suppress independently grounded
+matches.  Stale or content-mismatched anchor shards fail closed with typed
+grounding-unavailable evidence; they never authorize reuse of a selector from
+another owner-content digest.
 Only those bounded matching selectors enter Top-K.  Expanding an owner-level
 hit into every selector in the owner is forbidden because Search locates the
 next exact Query target; detailed callable and Relation materialization belongs
@@ -408,6 +415,22 @@ a provider, a durable database read, or a fallback process. The optional
 =asp-python-graphs= session is selected only by an admitted graph
 block and must be bound to the exact Project/Workspace/Generation/root identity.
 
+=SearchCoreReady= means both source bytes and the complete current-content
+Topology skeleton are resident.  A byte-only generation is not Search-ready
+for implicit parser grounding, even if GREP itself can return exact byte hits.
+Every provider-supported owner MUST contribute either current selector anchors
+or its typed =source-syntax-unavailable= receipt before publication.  Search
+MUST NOT repair this admission gap by starting a provider or parsing an owner
+on the request path.
+
+Generation construction probes the content-addressed parser artifact store
+before starting a provider.  A complete cache hit performs zero provider
+lifecycle operations.  Only a typed =provider-parser-runtime-required= miss may
+start the matching resident provider; after it becomes Ready, the same immutable
+request is projected and admitted.  This is generation construction, not a
+Search retry.  The admitted generation subsequently serves byte-to-selector
+grounding only from its content-bound Topology anchors.
+
 * Projection contract
 
 =compact= returns the bounded evidence needed for the next decision:
@@ -613,7 +636,8 @@ Every admitted provider already returns V1 projected items with =kind=,
 
 #+begin_src typst
 $ P(feature) = set((ownerPath, ownerContentDigest, nodeKind, canonicalSelector?)) $
-$ shard(o) = H(ownerPath_o, contentDigest_o, sort(nodes_o)) $
+$ A_o = sort((byteStart, byteEnd, canonicalSelector)) $
+$ shard(o) = H(ownerPath_o, contentDigest_o, sort(nodes_o), A_o) $
 #+end_src
 
 The index derives directory and owner navigation nodes from the admitted owner
@@ -626,6 +650,12 @@ second topology generation: canonical nodes, owner-local relations, inferred
 edges, coverage, and closure remain owned by =agent-semantic-topology=.  The
 index adds only deterministic feature postings and directory/owner navigation
 witnesses needed to reach those nodes without scanning the repository.
+Each parser-native node also retains its parser-proven half-open source byte
+anchor =[byteStart, byteEnd)= inside the same owner shard.  Anchors are not a
+second index identity or a public Schema field: they are the compact resident
+bridge from exact GREP byte evidence to the canonical selector already owned by
+Project Topology.  The anchor table is sorted owner-locally and queried only
+after owner-content identity admission.  It stores no source body.
 GREP owns byte/regex truth over current owner bytes; exact Query owns detailed
 parser projection.  The public V1 =(tantivy ...)= leaf is the ranked query
 language for this same repository skeleton and is not a source-body search
@@ -668,6 +698,22 @@ The existing V1 selector =queryKeys= field carries searchable node features,
 including =name=, =identity.symbol=, heading text, and enclosing scope names.
 The selector itself supplies canonical language and native node kind.  No V2
 schema or compatibility payload is introduced.
+
+For an exact resident match =m=, implicit grounding is defined only by the
+current content-bound anchor shard:
+
+#+begin_src typst
+$ enclosing(m, o) = arg min_(a in A_o, a.start <= m.start and m.end <= a.end)
+  (a.end - a.start, a.selector) $
+$ digest(A_o) != digest(bytes_o) arrow enclosing(m, o) = bot $
+$ W_(ground)(M) = O(sum_(m in M) (log abs(A_(owner(m))) + depth(m))) $
+$ ProviderCalls_(ground)(M) = 0 $
+#+end_src
+
+The implementation may use an interval-search equivalent of this bound.
+=depth(m)= is the number of nested anchors intersecting the match, not the
+number of owners or repository nodes.  A benchmark that measures only feature
+posting lookup does not qualify this end-to-end grounding path.
 
 Parser completion publishes an internal
 =workspace-owner-topology-rebind= transaction with =schemaVersion=1=.  It binds

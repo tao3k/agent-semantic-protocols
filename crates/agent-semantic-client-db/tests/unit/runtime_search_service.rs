@@ -130,3 +130,55 @@ async fn provider_owner_batch_preserves_one_request_and_one_response_boundary() 
     assert!(projected.is_empty());
     actor.await.expect("owner batch actor");
 }
+
+#[tokio::test]
+async fn generation_skeleton_preserves_one_typed_request_boundary() {
+    let (handle, mut requests) = super::runtime_search_service_channel();
+    let source_blobs =
+        std::sync::Arc::new(crate::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            crate::ClientDbSourceIndexPath::new("src/lib.rs"),
+            b"pub fn indexed() {}\n".to_vec(),
+        )]));
+    let request = super::RuntimeGenerationSkeletonRequest {
+        workspace_identity: "workspace-test".to_owned(),
+        project_root: "/workspace".into(),
+        parser_artifact_root: "/artifacts".into(),
+        language_id: "rust".to_owned(),
+        files: vec![crate::ClientDbSourceIndexScopeFile {
+            path: "/workspace/src/lib.rs".into(),
+            language_id: "rust".into(),
+            provider_id: "asp-rust".into(),
+            projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::Complete,
+            projection_diagnostic: None,
+            selector_receipts: Vec::new(),
+            relations: Vec::new(),
+        }],
+        source_blobs: std::sync::Arc::clone(&source_blobs),
+        auxiliary_owners: std::sync::Arc::default(),
+    };
+    let actor = tokio::spawn(async move {
+        let request = tokio_stream::StreamExt::next(&mut requests)
+            .await
+            .expect("generation skeleton request");
+        let super::RuntimeSearchServiceRequest::ProviderGenerationSkeleton { request, response } =
+            request
+        else {
+            panic!("expected one typed generation skeleton request");
+        };
+        assert_eq!(request.workspace_identity, "workspace-test");
+        assert_eq!(request.language_id, "rust");
+        assert_eq!(request.files.len(), 1);
+        assert_eq!(request.source_blobs.len(), 1);
+        response
+            .send(Ok(request.files))
+            .expect("generation skeleton response");
+    });
+
+    let projected = handle
+        .provider_generation_skeleton(request)
+        .await
+        .expect("generation skeleton response");
+    assert_eq!(projected.len(), 1);
+    assert_eq!(std::sync::Arc::strong_count(&source_blobs), 1);
+    actor.await.expect("generation skeleton actor");
+}

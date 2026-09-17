@@ -35,12 +35,14 @@ pub(super) fn resolve_host_workspace_initialization_binding(
 
 pub(super) fn build_workspace_generation_candidate_builder(
     state_home: &Path,
+    workspace_store_root: &Path,
     provider_register: Arc<RuntimeProviderRegister>,
     runtime_search_service: RuntimeSearchServiceHandle,
     schema_bundles: RuntimeSchemaBundleCatalog,
     admission_catalog: RuntimeWorkspaceAdmissionCatalog,
 ) -> WorkspaceGenerationCandidateBuilder {
     let state_home = state_home.to_path_buf();
+    let workspace_store_root = workspace_store_root.to_path_buf();
     Arc::new(
         move |workspace_id,
               project_root,
@@ -49,6 +51,7 @@ pub(super) fn build_workspace_generation_candidate_builder(
               provider_target,
               cancellation| {
             let state_home = state_home.clone();
+            let workspace_store_root = workspace_store_root.clone();
             let provider_register = Arc::clone(&provider_register);
             let runtime_search_service = runtime_search_service.clone();
             let schema_bundles = schema_bundles.clone();
@@ -115,6 +118,7 @@ pub(super) fn build_workspace_generation_candidate_builder(
                 let mut build = agent_semantic_client_db::server_source_index::
                     prepare_runtime_server_workspace_generation_with_runtime_service_async(
                         runtime_search_service,
+                        workspace_store_root,
                         admission.project_id.clone(),
                         workspace_id.clone(),
                         project_root,

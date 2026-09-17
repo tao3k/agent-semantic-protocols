@@ -20,7 +20,8 @@ use agent_semantic_search::{
 mod structural_scope;
 pub(super) use structural_scope::{
     bounded_graph_seed_scope, bounded_semantic_projection_scope, compile_graph_relation_pattern,
-    intersect_clause_owner_scopes, relation_neighbor_scope, syntax_candidates_enclosing_rg_matches,
+    intersect_clause_owner_scopes, relation_neighbor_scope, resident_semantic_scope,
+    syntax_candidates_enclosing_rg_matches,
 };
 #[cfg(test)]
 use structural_scope::{
@@ -229,7 +230,10 @@ pub(super) async fn execute_progressive_search_clauses(
         };
     let projection_owner_count = projection_scope.len();
     let owner_materialization_started = std::time::Instant::now();
-    let resident = if !has_retrieval_clauses {
+    let resident = if !has_retrieval_clauses || structural_clauses.is_empty() {
+        // Retrieval-only Search grounds exact regex bytes through the
+        // generation-resident Topology anchor index. It must never bootstrap
+        // providers or materialize owners on the request path.
         generation.resident_arc()
     } else if let Some(resident) = resident_semantic_scope(&generation, &projection_scope)? {
         resident
@@ -530,26 +534,6 @@ pub(super) async fn execute_progressive_search_clauses(
         structural_resource_receipt,
         resource_permits,
     })
-}
-
-fn resident_semantic_scope(
-    generation: &RuntimeQueryGeneration,
-    owners: &BTreeSet<String>,
-) -> Result<
-    Option<Arc<agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient>>,
-    AspClientOperationError,
-> {
-    let resident = generation.resident();
-    if !resident.has_semantic_owner_materialization_authority() {
-        return Ok(None);
-    }
-    if !resident
-        .semantic_owners_materialized(owners)
-        .map_err(AspClientOperationError::Message)?
-    {
-        return Ok(None);
-    }
-    Ok(Some(generation.resident_arc()))
 }
 
 fn execute_default_retrieval_layout(

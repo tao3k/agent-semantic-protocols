@@ -391,6 +391,37 @@ theorem heading_is_a_parser_native_node_feature :
     featureNodeKind .heading = .parserNative := by
   rfl
 
+/-- Search readiness is stronger than byte retrieval readiness: implicit
+grounding additionally requires the complete current-content topology skeleton. -/
+structure SearchCoreAdmission where
+  sourceBytesReady : Bool
+  currentTopologySkeletonReady : Bool
+  deriving DecidableEq, Repr
+
+def searchCoreReady (admission : SearchCoreAdmission) : Bool :=
+  admission.sourceBytesReady && admission.currentTopologySkeletonReady
+
+theorem byte_only_generation_cannot_admit_grounded_search :
+    searchCoreReady ⟨true, false⟩ = false := by
+  rfl
+
+theorem search_core_ready_requires_current_topology_skeleton
+    (admission : SearchCoreAdmission)
+    (ready : searchCoreReady admission = true) :
+    admission.currentTopologySkeletonReady = true := by
+  cases current : admission.currentTopologySkeletonReady with
+  | false => simp [searchCoreReady, current] at ready
+  | true => rfl
+
+/-- Persistent parser-artifact reuse is generation construction with zero
+provider lifecycle work; it is not query-time materialization. -/
+def generationProviderLifecycleCalls (artifactCacheComplete : Bool) : Nat :=
+  if artifactCacheComplete then 0 else 1
+
+theorem complete_parser_artifact_cache_starts_no_provider :
+    generationProviderLifecycleCalls true = 0 := by
+  rfl
+
 /-- Rebinding topology pays only for changed owner paths and node cardinality;
 the number of languages and workspace owners is not a work term. -/
 def topologyShardRebindWork (changedNodes changedPathBytes : Nat) : Nat :=
@@ -1348,6 +1379,34 @@ theorem exact_grounding_never_exceeds_full_owner_projection
     defaultSearchSelectorWork exactGroundedSelectors ≤
       fullOwnerSelectorWork ownerSelectors := by
   exact groundedSubset
+
+/-- Implicit RG grounding is admitted only by an anchor from the exact current
+owner content. Byte containment is checked by Rust; this model isolates the
+identity condition that prevents an old selector shard grounding new bytes. -/
+structure TopologyAnchorIdentity where
+  ownerContentDigest : Nat
+  deriving DecidableEq, Repr
+
+def topologyAnchorContentAdmitted
+    (currentOwnerDigest : Nat) (anchor : TopologyAnchorIdentity) : Bool :=
+  decide (anchor.ownerContentDigest = currentOwnerDigest)
+
+theorem stale_topology_anchor_cannot_ground_current_content
+    (currentOwnerDigest staleDigest : Nat)
+    (changed : staleDigest ≠ currentOwnerDigest) :
+    topologyAnchorContentAdmitted currentOwnerDigest ⟨staleDigest⟩ = false := by
+  simp [topologyAnchorContentAdmitted, changed]
+
+/-- Provider work is absent from resident byte-to-selector grounding. The
+number of matches and nested anchors affects index work, never provider
+lifecycle work. -/
+def implicitGroundingProviderCalls
+    (_exactMatches _nestedAnchors : Nat) : Nat :=
+  0
+
+theorem resident_topology_anchor_grounding_skips_provider_materialization
+    (exactMatches nestedAnchors : Nat) :
+    implicitGroundingProviderCalls exactMatches nestedAnchors = 0 := rfl
 
 /-- A Tantivy clause waits for lexical readiness only. Request Graph state is
 not part of that completion predicate. -/

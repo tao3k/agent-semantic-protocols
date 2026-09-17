@@ -92,7 +92,7 @@ impl SourceIndexRefreshContext {
 
     async fn prepare_partial_generation_with_runtime_service_async(
         &self,
-        _runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+        runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
         request: SourceIndexGenerationRefresh<'_>,
         cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
@@ -130,18 +130,31 @@ impl SourceIndexRefreshContext {
             );
             return Ok(recovered);
         }
-        // SearchCoreReady owns bytes and immutable content identity only.
-        // Parser selectors and relations are content-addressed semantic
-        // attachments materialized for the bounded candidate owner set.  A
-        // complete-generation projection here made every first Search wait for
-        // every parser even when the query touched one owner.
-        let _auxiliary_owners = auxiliary_owners;
-        let projection_micros = 0;
+        // The Topology skeleton is part of SearchCoreReady. Parser artifacts
+        // are content-addressed per owner, so unchanged files reuse their
+        // durable projection while changed files alone invoke a provider.
+        // Query-time provider materialization is forbidden for implicit GREP
+        // grounding.
+        let projection_started = Instant::now();
+        let source_blobs = std::sync::Arc::new(source_blobs);
+        let auxiliary_owners = std::sync::Arc::new(auxiliary_owners);
+        let projected_files = project_generation_skeletons(
+            runtime,
+            &workspace_identity,
+            &request,
+            std::sync::Arc::clone(&source_blobs),
+            std::sync::Arc::clone(&auxiliary_owners),
+            cancellation,
+        )
+        .await?;
+        let projection_micros = projection_started.elapsed().as_micros();
+        let source_blobs = std::sync::Arc::try_unwrap(source_blobs)
+            .map_err(|_| "generation skeleton retained source blobs after completion".to_owned())?;
         let assembly_started = Instant::now();
         let context = self.clone();
         let index_root = request.index_root.to_path_buf();
         let project_resolutions = request.project_resolutions.to_vec();
-        let files = request.files.to_vec();
+        let files = projected_files;
         let candidate = request.candidate.clone();
         let registry = request.registry.clone();
         let provider_registry = request.provider_registry.clone();
@@ -152,6 +165,7 @@ impl SourceIndexRefreshContext {
                     index_root: &index_root,
                     files: &files,
                     project_resolutions: &project_resolutions,
+                    parser_artifact_root: &index_root,
                     changed_owner_paths: None,
                     replacement_authority: None,
                     candidate: &candidate,
@@ -236,9 +250,85 @@ impl SourceIndexRefreshContext {
     }
 }
 
+async fn project_generation_skeletons(
+    runtime: &crate::runtime_search_service::RuntimeSearchServiceHandle,
+    workspace_identity: &str,
+    request: &SourceIndexGenerationRefresh<'_>,
+    source_blobs: std::sync::Arc<crate::ClientDbSourceIndexSourceBlobs>,
+    auxiliary_owners: std::sync::Arc<
+        crate::server_source_index::projection::ProviderProjectionAuxiliaryOwners,
+    >,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+) -> Result<Vec<SourceIndexScopeFile>, String> {
+    let mut projected_by_path = std::collections::BTreeMap::new();
+    for provider in request
+        .provider_registry
+        .providers
+        .iter()
+        .filter(|provider| provider.runtime_operation("projection-batch").is_some())
+    {
+        let provider_files = request
+            .files
+            .iter()
+            .filter(|file| file.provider_id == provider.provider_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        if provider_files.is_empty() {
+            continue;
+        }
+        let language_id = provider.language_id.as_str().to_owned();
+        let skeleton_request = crate::runtime_search_service::RuntimeGenerationSkeletonRequest {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: request.index_root.to_path_buf(),
+            parser_artifact_root: request.parser_artifact_root.to_path_buf(),
+            language_id: language_id.clone(),
+            files: provider_files,
+            source_blobs: std::sync::Arc::clone(&source_blobs),
+            auxiliary_owners: std::sync::Arc::clone(&auxiliary_owners),
+        };
+        let projected = match runtime
+            .provider_generation_skeleton(skeleton_request.clone())
+            .await
+        {
+            Ok(projected) => projected,
+            Err(error)
+                if error == "state=cache-miss reasonKind=provider-parser-runtime-required" =>
+            {
+                runtime
+                    .provider_runtime(request.index_root.to_path_buf(), language_id.clone())
+                    .await?;
+                runtime
+                    .provider_runtime_await_ready(
+                        request.index_root.to_path_buf(),
+                        language_id,
+                        cancellation.clone(),
+                    )
+                    .await?;
+                runtime
+                    .provider_generation_skeleton(skeleton_request)
+                    .await?
+            }
+            Err(error) => return Err(error),
+        };
+        for file in projected {
+            projected_by_path.insert(file.path.clone(), file);
+        }
+    }
+    Ok(request
+        .files
+        .iter()
+        .map(|file| {
+            projected_by_path
+                .remove(&file.path)
+                .unwrap_or_else(|| file.clone())
+        })
+        .collect())
+}
+
 pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) recovery_execution:
         Option<&'a super::generation_recovery::SourceIndexRecoveryExecution>,
+    pub(super) parser_artifact_root: &'a Path,
     pub(super) changed_owner_paths: Option<&'a [String]>,
     pub(super) replacement_authority: Option<&'a agent_semantic_search::ResidentSearchAuthority>,
     pub(super) index_root: &'a Path,

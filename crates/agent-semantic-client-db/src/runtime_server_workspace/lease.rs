@@ -312,6 +312,26 @@ impl WorkspaceGenerationLease {
         self.overlay.merge_topology_hits(base_hits, query, limit)
     }
 
+    pub(crate) fn smallest_enclosing_topology_anchor(
+        &self,
+        owner_path: &str,
+        match_start: usize,
+        match_end: usize,
+    ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+        let owner_content_digest = self
+            .overlay
+            .owner_content_digest(self.generation(), owner_path)
+            .ok_or_else(|| format!("topology anchor owner is unavailable: {owner_path}"))?;
+        let base = self.backend.search_data_plane();
+        self.overlay.resolve_topology_anchor(
+            owner_path,
+            owner_content_digest,
+            match_start,
+            match_end,
+            || base.smallest_enclosing_topology_anchor(owner_path, match_start, match_end),
+        )
+    }
+
     pub fn read_runtime_selector(
         &self,
         projection_kind: super::ExactProjectionKind,

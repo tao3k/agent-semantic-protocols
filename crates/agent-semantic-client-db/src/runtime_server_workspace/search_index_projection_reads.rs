@@ -26,6 +26,25 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         self.topology_index.node_count()
     }
 
+    pub fn smallest_enclosing_topology_anchor(
+        &self,
+        owner_path: &str,
+        match_start: usize,
+        match_end: usize,
+    ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+        let owner_content_digest = &self
+            .owner_directory_records
+            .get(owner_path)
+            .ok_or_else(|| format!("topology anchor owner is unavailable: {owner_path}"))?
+            .content_digest;
+        self.topology_index.smallest_enclosing_anchor(
+            owner_path,
+            owner_content_digest,
+            match_start,
+            match_end,
+        )
+    }
+
     pub fn owner_paths_for_graph_entry_node_ids<'a>(
         &self,
         node_ids: impl IntoIterator<Item = &'a str>,

@@ -10,18 +10,22 @@ statistic = "lookup-elapsed-nanos"
 [work_metrics]
 owner_count = 4096
 parser_native_node_count = 4096
+parser_anchor_count = 4096
 sample_count = 512
 source_body_input_count = 0
 workspace_scan_count = 0
 query_filesystem_read_count = 0
 query_provider_call_count = 0
+query_owner_snapshot_copy_count = 0
 
 [observed]
 p99_nanos = 1625
+anchor_lookup_p99_nanos = 4167
 source_body_input_count = 0
 
 [qualification]
 maximum_p99_nanos = 1000000
+maximum_anchor_lookup_p99_nanos = 1000000
 passed = true
 
 [interpretation]

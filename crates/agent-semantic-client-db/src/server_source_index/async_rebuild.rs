@@ -354,6 +354,7 @@ fn owner_projection_from_projected_file(
 )]
 pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_async(
     runtime: crate::runtime_search_service::RuntimeSearchServiceHandle,
+    parser_artifact_root: PathBuf,
     project_id: String,
     workspace_id: String,
     project_root: PathBuf,
@@ -388,6 +389,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
             &runtime,
             SourceIndexGenerationRefresh {
                 recovery_execution: Some(&recovery_execution),
+                parser_artifact_root: &parser_artifact_root,
                 changed_owner_paths: None,
                 replacement_authority: replacement_authority.as_ref(),
                 index_root: &project_root,

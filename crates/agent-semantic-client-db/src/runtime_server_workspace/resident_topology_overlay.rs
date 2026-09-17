@@ -6,7 +6,11 @@
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
-use super::{WorkspaceOwnerSnapshot, WorkspaceOwnerTopologyRebindV1, WorkspaceTopologyHit};
+use super::resident_content_overlay::OwnerContentOverlayValue;
+use super::{
+    ResidentOverlaySnapshot, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceOwnerTopologyRebindV1, WorkspaceTopologyHit,
+};
 
 #[derive(Debug)]
 pub(super) struct ResidentTopologyDeltaLayer {
@@ -101,6 +105,79 @@ pub(super) fn merge_topology_hits(
     merged
 }
 
+pub(super) fn resolve_topology_anchor(
+    head: Option<&ResidentTopologyDeltaLayer>,
+    owner_path: &str,
+    owner_content_digest: &str,
+    match_start: usize,
+    match_end: usize,
+    base: impl FnOnce() -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String>,
+) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+    let mut layer = head;
+    while let Some(current) = layer {
+        if current.shadowed_owner_paths.contains(owner_path) {
+            return current.index.as_ref().map_or(Ok(None), |index| {
+                index.smallest_enclosing_anchor(
+                    owner_path,
+                    owner_content_digest,
+                    match_start,
+                    match_end,
+                )
+            });
+        }
+        layer = current.previous.as_deref();
+    }
+    base()
+}
+
+impl ResidentOverlaySnapshot {
+    pub(super) fn resolve_topology_anchor(
+        &self,
+        owner_path: &str,
+        owner_content_digest: &str,
+        match_start: usize,
+        match_end: usize,
+        base: impl FnOnce() -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String>,
+    ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+        resolve_topology_anchor(
+            self.state.topology_delta_head.as_deref(),
+            owner_path,
+            owner_content_digest,
+            match_start,
+            match_end,
+            base,
+        )
+    }
+
+    pub(super) fn owner_content_digest<'a>(
+        &'a self,
+        base: &'a WorkspaceMemoryGeneration,
+        owner_path: &str,
+    ) -> Option<&'a str> {
+        if let Some(content) = self.state.content_owners.get(owner_path) {
+            return match content {
+                OwnerContentOverlayValue::Present { owner, .. } => {
+                    Some(owner.content_digest.as_str())
+                }
+                OwnerContentOverlayValue::Removed => None,
+            };
+        }
+        if self.state.tombstones.contains(owner_path) {
+            return None;
+        }
+        self.state
+            .owners
+            .get(owner_path)
+            .map(|owner| owner.content_digest.as_str())
+            .or_else(|| {
+                base.owners
+                    .iter()
+                    .find(|owner| owner.owner_path == owner_path)
+                    .map(|owner| owner.content_digest.as_str())
+            })
+    }
+}
+
 fn append_unique_hits(
     merged: &mut Vec<WorkspaceTopologyHit>,
     seen: &mut HashSet<(String, String)>,
@@ -126,9 +203,11 @@ fn workspace_owner_topology(
         .iter()
         .filter(|selector| !selector.query_keys.is_empty())
         .map(|selector| {
-            agent_semantic_topology::TopologyNodeV1::from_selector(
+            agent_semantic_topology::TopologyNodeV1::from_selector_with_anchor(
                 selector.selector.clone(),
                 selector.query_keys.clone(),
+                selector.byte_start,
+                selector.byte_end,
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
