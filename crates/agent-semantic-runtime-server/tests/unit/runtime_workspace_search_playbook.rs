@@ -3,10 +3,133 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    bounded_graph_seed_scope, branch_marginal_reductions, compile_graph_relation_pattern,
-    fused_file_context_scope, intersect_clause_owner_scopes, resident_grep_candidate_scope,
-    retrieval_composition_kind, smallest_selector_overlapping_line, source_line_ranges,
+    bounded_graph_seed_scope, bounded_semantic_projection_scope, branch_marginal_reductions,
+    compile_graph_relation_pattern, fused_file_context_scope, intersect_clause_owner_scopes,
+    resident_grep_candidate_scope, retrieval_composition_kind, smallest_selector_overlapping_line,
+    source_line_ranges,
 };
+
+#[test]
+fn implicit_parser_projection_is_bounded_after_complete_retrieval() {
+    let complete = ["a.rs", "b.rs", "c.rs", "d.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let matches = [
+        super::RuntimeGrepMatch {
+            owner_path: "c.rs".to_owned(),
+            owner_line: 7,
+        },
+        super::RuntimeGrepMatch {
+            owner_path: "c.rs".to_owned(),
+            owner_line: 9,
+        },
+        super::RuntimeGrepMatch {
+            owner_path: "a.rs".to_owned(),
+            owner_line: 3,
+        },
+    ];
+    let ranked_owner_paths = ["a.rs".to_owned(), "c.rs".to_owned()];
+    let ranked = vec![ranked_owner_paths.as_slice()];
+    let (projection, truncated) =
+        bounded_semantic_projection_scope(&complete, &matches, &ranked, 1);
+
+    assert_eq!(
+        projection,
+        ["c.rs"].into_iter().map(str::to_owned).collect()
+    );
+    assert!(truncated);
+    assert_eq!(complete.len(), 4, "the complete retrieval set is unchanged");
+}
+
+#[test]
+fn implicit_projection_fills_from_complete_scope_when_no_rg_line_exists() {
+    let complete = ["a.rs", "b.rs", "c.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let ranked_owner_paths = ["c.rs".to_owned(), "b.rs".to_owned(), "a.rs".to_owned()];
+    let ranked = vec![ranked_owner_paths.as_slice()];
+    let (projection, truncated) =
+        bounded_semantic_projection_scope(&complete, std::iter::empty(), &ranked, 2);
+
+    assert_eq!(
+        projection,
+        ["b.rs", "c.rs"].into_iter().map(str::to_owned).collect()
+    );
+    assert!(truncated);
+}
+
+#[test]
+fn top_k_projection_scenario_preserves_complete_retrieval_and_bounds_parser_work() {
+    let scenario = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_search_top_k_projection/scenario.toml"
+    ))
+    .expect("Top-K projection Scenario metadata");
+    let benchmark = toml::from_str::<toml::Value>(include_str!(
+        "scenarios/runtime_search_top_k_projection/benchmark.toml"
+    ))
+    .expect("Top-K projection benchmark metadata");
+    let retrieval_owner_count = scenario["model"]["retrieval_owner_count"]
+        .as_integer()
+        .and_then(|count| usize::try_from(count).ok())
+        .expect("retrieval owner count");
+    let top_k = scenario["model"]["evidence_top_k"]
+        .as_integer()
+        .and_then(|count| usize::try_from(count).ok())
+        .expect("evidence Top-K");
+    let complete = (0..retrieval_owner_count)
+        .map(|index| format!("src/owner-{index:03}.rs"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let matches = complete
+        .iter()
+        .enumerate()
+        .flat_map(|(index, owner)| {
+            (0..=(index % 3)).map(move |line| super::RuntimeGrepMatch {
+                owner_path: owner.clone(),
+                owner_line: u64::try_from(line + 1).expect("bounded line"),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let ranked_owner_paths = complete.iter().rev().cloned().collect::<Vec<_>>();
+    let ranked = vec![ranked_owner_paths.as_slice()];
+    let (projection, truncated) =
+        bounded_semantic_projection_scope(&complete, &matches, &ranked, top_k);
+
+    assert_eq!(complete.len(), retrieval_owner_count);
+    assert_eq!(projection.len(), top_k);
+    assert!(projection.is_subset(&complete));
+    assert!(truncated);
+    assert_eq!(
+        benchmark["observed"]["after"]["projection_owner_count"].as_integer(),
+        Some(i64::try_from(top_k).expect("Top-K fits i64"))
+    );
+    assert!(
+        benchmark["observed"]["after"]["owner_materialization_micros"].as_integer()
+            < benchmark["observed"]["before"]["owner_materialization_micros"].as_integer()
+    );
+}
+
+#[test]
+fn implicit_projection_fuses_complete_branch_ranks_before_top_k() {
+    let complete = ["a.rs", "b.rs", "c.rs"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let branch_1 = ["a.rs".to_owned(), "b.rs".to_owned(), "c.rs".to_owned()];
+    let branch_2 = ["b.rs".to_owned(), "c.rs".to_owned(), "a.rs".to_owned()];
+    let branches = vec![branch_1.as_slice(), branch_2.as_slice()];
+
+    let (projection, truncated) =
+        bounded_semantic_projection_scope(&complete, std::iter::empty(), &branches, 1);
+
+    assert_eq!(
+        projection,
+        ["b.rs"].into_iter().map(str::to_owned).collect()
+    );
+    assert!(truncated);
+}
 
 #[test]
 fn runtime_reads_retrieval_semantics_from_the_operator_tree() {

@@ -63,7 +63,7 @@
       "properties": {
         "rgMatchCount": {"type": "integer", "minimum": 1, "maximum": 4294967295},
         "lexicalOwnerCount": {"type": "integer", "minimum": 1, "maximum": 4294967295},
-        "syntaxSelectorCount": {"type": "integer", "minimum": 1},
+        "syntaxSelectorCount": {"const": 30},
         "graphCandidateOwnerCount": {"type": "integer", "minimum": 1},
         "graphDepth": {"type": "integer", "minimum": 0, "maximum": 16},
         "graphNodeCount": {"type": "integer", "minimum": 0, "maximum": 256},

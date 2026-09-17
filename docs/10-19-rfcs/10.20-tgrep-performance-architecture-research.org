@@ -1339,3 +1339,64 @@ once; it does not start an rg process or import rg's traversal stack.  External
 posting construction, bounded OR unions, broader rg differential semantics,
 and independently measured end-to-end request cost remain the next performance
 closure points.
+
+** Retrieval completeness is not parser cardinality
+
+The exact lexical set and the Agent-facing semantic projection are different
+objects.  Let =R= be the complete exact owner set produced by an =rg= leaf,
+=T= the complete owner set produced by another retrieval leaf, =F= their
+Scheme-defined fusion, and =E= the V1 evidence-item limit:
+
+#+begin_src typst
+$ F = R inter T $
+$ P = take(rank(F), E) $
+$ P subset.eq F, quad abs(P) <= E $
+#+end_src
+
+=F= remains complete until every declared set operation has finished.  This is
+required for exact =intersect= semantics and no ranking or evidence limit may be
+pushed ahead of it.  Parser projection, request Topology and result settlement
+consume =P= when the request has no explicit structural refinement.  They MUST
+NOT consume every owner in =F= merely because lexical verification proved that
+the owner matches.  An explicit =syntax=, =native-syntax= or =graph= stage owns
+its separately declared structural scope and cannot silently inherit this
+output-only cut.
+
+This distinction closes a measured architectural defect.  A resident regex
+query spent 17,372us in retrieval, then projected 144 matched Rust owners for
+5,446,858us although the public V1 result could emit only 30 evidence items.
+The correct work equation is:
+
+#+begin_src typst
+$ W_("retrieval") = W_("complete exact owner set") $
+$ W_("implicit parser grounding") <= W_("parser", min(abs(F), E)) $
+$ W_("implicit topology") <= W_("topology", min(abs(F), E)) $
+#+end_src
+
+The generation cardinality still bounds complete retrieval.  It is not a legal
+selector budget.  V1 =syntaxSelectorCount= is therefore the protocol evidence
+limit, never =corpusByteCount= or workspace owner cardinality.  A projection cut
+does not certify lexical absence; the complete retrieval receipt remains the
+authority for membership and intersection.
+
+The projection order is not path order.  Each complete retrieval branch keeps
+its native order; Runtime combines those orders with deterministic
+reciprocal-rank fusion and uses exact rg grounding cardinality as an additional
+signal.  For branch set =B=, rank =r_b(o)= and a fixed =k=:
+
+#+begin_src typst
+$ rrf(o) = sum_(b in B) 1 / (k + r_b(o)) $
+$ rank(o) = (-support_B(o), -grounding(o), -rrf(o), stable-id(o)) $
+$ W_(rank) = O(sum_(b in B) abs(b) + abs(F)), quad M_(rank) = O(abs(F)) $
+#+end_src
+
+This makes Tantivy-only Top-K preserve Tantivy relevance instead of falling
+back to owner-path order and lets independently complete branches contribute
+without changing Scheme membership.  Runtime uses a linear score pass followed
+by a Top-K selection partition; it MUST NOT fully sort or clone the complete
+owner frontier merely to admit =E= owners.  A resident Graph score may refine this
+order only when its generation identity equals the retrieval generation and
+its coverage includes every owner in =F=.  A partial parser/Relation overlay
+MUST NOT demote owners absent from that overlay.  Until that coverage witness
+exists, Graph may rerank the already admitted projection for Agent output but
+cannot choose which owners receive first materialization.

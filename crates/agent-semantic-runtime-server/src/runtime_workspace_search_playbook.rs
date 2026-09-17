@@ -19,8 +19,8 @@ use agent_semantic_search::{
 #[path = "runtime_workspace_search_structural_scope.rs"]
 mod structural_scope;
 pub(super) use structural_scope::{
-    bounded_graph_seed_scope, compile_graph_relation_pattern, intersect_clause_owner_scopes,
-    syntax_candidates_enclosing_rg_matches,
+    bounded_graph_seed_scope, bounded_semantic_projection_scope, compile_graph_relation_pattern,
+    intersect_clause_owner_scopes, relation_neighbor_scope, syntax_candidates_enclosing_rg_matches,
 };
 #[cfg(test)]
 use structural_scope::{
@@ -41,6 +41,8 @@ pub(super) struct ProgressiveSearchEvidence {
     pub(super) lexical_wait_micros: u128,
     pub(super) retrieval_micros: u128,
     pub(super) owner_materialization_micros: u128,
+    pub(super) projection_owner_count: usize,
+    pub(super) projection_truncated: bool,
     pub(super) structural_micros: u128,
     pub(super) retrieval_resource_receipt:
         agent_semantic_workspace_scheduler::RuntimeServerResourcePermitReceipt,
@@ -209,10 +211,27 @@ pub(super) async fn execute_progressive_search_clauses(
         })??;
     retrieval_permit.release_cpu();
     let retrieval_micros = retrieval_started.elapsed().as_micros();
+    let ranked_retrieval_branches = retrieval
+        .clauses
+        .iter()
+        .map(|execution| execution.receipt.candidate_owners.as_slice())
+        .collect::<Vec<_>>();
+    let (projection_scope, projection_truncated) =
+        if has_retrieval_clauses && structural_clauses.is_empty() {
+            bounded_semantic_projection_scope(
+                &retrieval.fused_scope,
+                retrieval.fused_matches.iter(),
+                &ranked_retrieval_branches,
+                execution_budget.evidence_item_limit(),
+            )
+        } else {
+            (retrieval.fused_scope.clone(), false)
+        };
+    let projection_owner_count = projection_scope.len();
     let owner_materialization_started = std::time::Instant::now();
     let resident = if !has_retrieval_clauses {
         generation.resident_arc()
-    } else if let Some(resident) = resident_semantic_scope(&generation, &retrieval.fused_scope)? {
+    } else if let Some(resident) = resident_semantic_scope(&generation, &projection_scope)? {
         resident
     } else {
         owner_materializer
@@ -222,7 +241,7 @@ pub(super) async fn execute_progressive_search_clauses(
                 project_root,
                 parser_artifact_root,
                 generation.generation_digest(),
-                &retrieval.fused_scope,
+                &projection_scope,
                 providers,
                 runtime_search_service,
                 workspace_registry,
@@ -254,8 +273,13 @@ pub(super) async fn execute_progressive_search_clauses(
             .await
             .map_err(AspClientOperationError::Message)?;
         structural_resource_receipt = Some(grounding_permit.receipt());
-        let grounding_scope = retrieval.fused_scope.clone();
-        let grounding_matches = retrieval.fused_matches.clone();
+        let grounding_scope = projection_scope.clone();
+        let grounding_matches = retrieval
+            .fused_matches
+            .iter()
+            .filter(|matched| grounding_scope.contains(&matched.owner_path))
+            .cloned()
+            .collect::<Vec<_>>();
         let grounding_resident = workspace_registry
             .resident_read_client(workspace_identity, project_root)
             .map_err(AspClientOperationError::Message)?;
@@ -303,7 +327,7 @@ pub(super) async fn execute_progressive_search_clauses(
         }
     }
     let mut clause_executions = retrieval.clauses;
-    let mut structural_scope = retrieval.fused_scope.clone();
+    let mut structural_scope = projection_scope;
     for (axis, block_index, priority_rank) in structural_clauses {
         let clause_started = std::time::Instant::now();
         let input_owner_count = structural_scope.len();
@@ -501,6 +525,8 @@ pub(super) async fn execute_progressive_search_clauses(
         lexical_wait_micros,
         retrieval_micros,
         owner_materialization_micros,
+        projection_owner_count,
+        projection_truncated,
         structural_micros,
         retrieval_resource_receipt,
         structural_resource_receipt,
@@ -526,51 +552,6 @@ fn resident_semantic_scope(
         return Ok(None);
     }
     Ok(Some(generation.resident_arc()))
-}
-
-pub(super) fn relation_neighbor_scope(
-    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
-    seed: &BTreeSet<String>,
-    limit: usize,
-) -> Result<BTreeSet<String>, AspClientOperationError> {
-    let mut scope = seed.clone();
-    if scope.len() >= limit {
-        return Ok(scope);
-    }
-    let indexed = resident
-        .indexed_owner_paths()
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-    for segment in resident
-        .topology_source_segments_for_owner_scope(seed)
-        .map_err(AspClientOperationError::Message)?
-    {
-        for relation in segment.relations {
-            for endpoint in [&relation.relation.from, &relation.relation.to] {
-                let owner = match endpoint.kind {
-                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner => {
-                        Some(endpoint.id.clone())
-                    }
-                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item => {
-                        agent_semantic_content_identity::CanonicalItemSelector::parse(
-                            endpoint.id.clone(),
-                        )
-                        .ok()
-                        .and_then(|selector| selector.owner_path().ok())
-                    }
-                };
-                if let Some(owner) = owner
-                    && indexed.contains(&owner)
-                {
-                    scope.insert(owner);
-                    if scope.len() == limit {
-                        return Ok(scope);
-                    }
-                }
-            }
-        }
-    }
-    Ok(scope)
 }
 
 fn execute_default_retrieval_layout(

@@ -33,7 +33,7 @@ def receipt() -> dict[str, object]:
         "limits": {
             "rgMatchCount": 8000,
             "lexicalOwnerCount": 700,
-            "syntaxSelectorCount": 90000,
+            "syntaxSelectorCount": 30,
             "graphCandidateOwnerCount": 700,
             "graphDepth": 16,
             "graphNodeCount": 256,
@@ -54,6 +54,7 @@ def test_runtime_search_execution_budget_schema_accepts_typed_receipt() -> None:
     [
         (("authority",), "agent-planner"),
         (("limits", "rgMatchCount"), 0),
+        (("limits", "syntaxSelectorCount"), 31),
         (("limits", "graphNodeCount"), 257),
         (("limits", "evidenceItemCount"), 31),
     ],

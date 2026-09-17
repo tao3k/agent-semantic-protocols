@@ -98,7 +98,8 @@ impl RuntimeSearchExecutionBudget {
             limits: RuntimeSearchExecutionLimits {
                 rg_match_count: corpus_line_count,
                 lexical_owner_count,
-                syntax_selector_count: corpus_byte_count.max(indexed_owner_count),
+                syntax_selector_count:
+                    agent_semantic_search::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT,
                 graph_candidate_owner_count: indexed_owner_count,
                 graph_depth: graph_node_count.min(GRAPH_DEPTH_V1_LIMIT),
                 graph_node_count: graph_node_count.min(GRAPH_NODE_V1_LIMIT),
@@ -136,9 +137,7 @@ impl RuntimeSearchExecutionBudget {
             && usize::try_from(limits.lexical_owner_count).ok()
                 == Some(cardinality.indexed_owner_count)
             && limits.syntax_selector_count
-                == cardinality
-                    .corpus_byte_count
-                    .max(cardinality.indexed_owner_count)
+                == agent_semantic_search::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT
             && limits.graph_candidate_owner_count == cardinality.indexed_owner_count
             && limits.graph_depth == cardinality.graph_node_count.min(GRAPH_DEPTH_V1_LIMIT)
             && limits.graph_node_count == cardinality.graph_node_count.min(GRAPH_NODE_V1_LIMIT)

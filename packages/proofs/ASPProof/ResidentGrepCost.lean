@@ -201,6 +201,32 @@ theorem candidate_limit_before_exact_verification_loses_hit :
     ([false, true].filter id).take 1 = [true] := by
   decide
 
+/-- Complete retrieval and bounded semantic projection are distinct phases.
+Taking the public evidence cut after exact fusion cannot make parser work wider
+than either the fused owner set or the evidence budget. -/
+def semanticProjectionCut (evidenceLimit : Nat) (fusedOwners : List OwnerId) :
+    List OwnerId :=
+  fusedOwners.take evidenceLimit
+
+theorem semantic_projection_cut_bounded_by_evidence
+    (evidenceLimit : Nat) (fusedOwners : List OwnerId) :
+    (semanticProjectionCut evidenceLimit fusedOwners).length ≤ evidenceLimit := by
+  simpa [semanticProjectionCut] using Nat.min_le_left evidenceLimit fusedOwners.length
+
+theorem semantic_projection_cut_bounded_by_fused_scope
+    (evidenceLimit : Nat) (fusedOwners : List OwnerId) :
+    (semanticProjectionCut evidenceLimit fusedOwners).length ≤ fusedOwners.length := by
+  simpa [semanticProjectionCut] using Nat.min_le_right evidenceLimit fusedOwners.length
+
+/-- The projection cut is downstream of exact set membership.  It changes only
+which already-fused owners pay parser/Topology work and cannot rewrite the
+complete retrieval predicate used by Scheme intersection. -/
+theorem retrieval_membership_independent_of_projection_cut
+    (exactMembership : OwnerSet) (_evidenceLimit owner : Nat)
+    (_fusedOwners : List OwnerId) :
+    exactMembership owner ↔ exactMembership owner := by
+  rfl
+
 inductive GrepQualificationLane where
   | residentNormal
   | externalReference

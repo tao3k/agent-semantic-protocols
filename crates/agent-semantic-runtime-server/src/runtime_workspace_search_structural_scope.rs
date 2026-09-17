@@ -4,7 +4,7 @@
 
 //! Maps retrieval evidence onto parser-owned structural selectors.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::{AspClientOperationError, RuntimeGrepMatch, WorkspaceSearchSyntaxCandidate};
 
@@ -45,6 +45,121 @@ pub(crate) fn bounded_graph_seed_scope(
         scope.iter().take(limit).cloned().collect(),
         scope.len() > limit,
     )
+}
+
+/// Select the only owners that may enter implicit parser grounding and
+/// request-Topology construction after retrieval has completed.  Exact owner
+/// membership remains in `complete_scope`; this cut is strictly downstream of
+/// every Scheme set operation.
+pub(crate) fn bounded_semantic_projection_scope<'a>(
+    complete_scope: &BTreeSet<String>,
+    grounding_matches: impl IntoIterator<Item = &'a RuntimeGrepMatch>,
+    ranked_retrieval_branches: &[&[String]],
+    limit: usize,
+) -> (BTreeSet<String>, bool) {
+    let mut selected = BTreeSet::new();
+    if limit != 0 {
+        // Values are `(branch support, grounding strength, fused rank)`. Keys
+        // borrow the complete scope so ranking allocates no second owner set.
+        let mut rank_signals = complete_scope
+            .iter()
+            .map(|owner| (owner.as_str(), (0usize, 0usize, 0usize)))
+            .collect::<HashMap<_, _>>();
+        for matched in grounding_matches {
+            if let Some((_, grounding_strength, _)) =
+                rank_signals.get_mut(matched.owner_path.as_str())
+            {
+                *grounding_strength += 1;
+            }
+        }
+        // Reciprocal-rank fusion preserves the native rank of every complete
+        // retrieval branch without introducing floating-point instability.
+        // A branch contributes at most once per owner; exact Scheme set
+        // membership was already computed in `complete_scope`.
+        const RANK_SCALE: usize = 1_000_000;
+        const RANK_OFFSET: usize = 60;
+        for branch in ranked_retrieval_branches {
+            let mut seen = HashSet::new();
+            for (rank, owner) in branch.iter().enumerate() {
+                if seen.insert(owner.as_str())
+                    && let Some((branch_support, _, fused_rank)) =
+                        rank_signals.get_mut(owner.as_str())
+                {
+                    *branch_support += 1;
+                    *fused_rank += RANK_SCALE / RANK_OFFSET.saturating_add(rank).max(1);
+                }
+            }
+        }
+        let mut ranked = complete_scope.iter().collect::<Vec<_>>();
+        let compare = |left_owner: &&String, right_owner: &&String| {
+            let left = rank_signals
+                .get(left_owner.as_str())
+                .expect("complete owner has rank signals");
+            let right = rank_signals
+                .get(right_owner.as_str())
+                .expect("complete owner has rank signals");
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| right.1.cmp(&left.1))
+                .then_with(|| right.2.cmp(&left.2))
+                .then_with(|| left_owner.cmp(right_owner))
+        };
+        if ranked.len() > limit {
+            ranked.select_nth_unstable_by(limit, compare);
+            ranked.truncate(limit);
+        }
+        for owner in ranked {
+            selected.insert(owner.clone());
+        }
+    }
+    let truncated = selected.len() < complete_scope.len();
+    (selected, truncated)
+}
+
+pub(crate) fn relation_neighbor_scope(
+    resident: &agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient,
+    seed: &BTreeSet<String>,
+    limit: usize,
+) -> Result<BTreeSet<String>, AspClientOperationError> {
+    let mut scope = seed.clone();
+    if scope.len() >= limit {
+        return Ok(scope);
+    }
+    let indexed = resident
+        .indexed_owner_paths()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    for segment in resident
+        .topology_source_segments_for_owner_scope(seed)
+        .map_err(AspClientOperationError::Message)?
+    {
+        for relation in segment.relations {
+            for endpoint in [&relation.relation.from, &relation.relation.to] {
+                let owner = match endpoint.kind {
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Owner => {
+                        Some(endpoint.id.clone())
+                    }
+                    agent_semantic_content_identity::ProviderRelationEndpointKindV1::Item => {
+                        agent_semantic_content_identity::CanonicalItemSelector::parse(
+                            endpoint.id.clone(),
+                        )
+                        .ok()
+                        .and_then(|selector| selector.owner_path().ok())
+                    }
+                };
+                if let Some(owner) = owner
+                    && indexed.contains(&owner)
+                {
+                    scope.insert(owner);
+                    if scope.len() == limit {
+                        return Ok(scope);
+                    }
+                }
+            }
+        }
+    }
+    Ok(scope)
 }
 
 pub(crate) fn syntax_candidates_enclosing_rg_matches<'a>(

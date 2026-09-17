@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "runtime-search-top-k-projection"
+scenario = "runtime-search-top-k-projection"
+corpus = "agent-semantic-protocols-rust"
+query = "(?i)legacy|compatib"
+reference = "ripgrep-15.1.0"
+
+[observed.before]
+retrieval_micros = 17372
+projection_owner_count = 144
+owner_materialization_micros = 5446858
+topology_micros = 124685
+
+[observed.after]
+retrieval_micros = 4928
+projection_owner_count = 30
+owner_materialization_micros = 564092
+topology_micros = 32380
+
+[qualification]
+external_rg_warm_wall_micros = 140000
+asp_resident_retrieval_micros = 4928
+compare_lexical_layer_only = true
+end_to_end_includes_parser_and_topology = true

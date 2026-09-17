@@ -18,7 +18,7 @@ fn budget_is_derived_from_generation_cardinality_and_protocol_envelope() {
 
     assert_eq!(budget.rg_match_limit(), 8_000);
     assert_eq!(budget.lexical_owner_limit(), 700);
-    assert_eq!(budget.syntax_selector_limit(), 90_000);
+    assert_eq!(budget.syntax_selector_limit(), 30);
     assert_eq!(budget.graph_candidate_owner_limit(), 700);
     assert_eq!(
         budget.graph_evaluation_budget(),
