@@ -104,15 +104,15 @@ theorem current_missing_owner_is_not_stale
 
 theorem changed_workspace_batch_cannot_erase_an_admitted_identity
     (batch : WorkspaceMutationBatch)
-    (envelope : WorkspaceGenerationEnvelope)
+    (envelope : WorkspaceContentMutationEnvelope)
     (present : envelope ∈ batch.envelopes) :
     envelope.workspaceId ∈ affectedWorkspaceIds batch := by
-  exact every_generation_envelope_retains_its_workspace_identity batch envelope present
+  exact every_content_mutation_envelope_retains_its_workspace_identity batch envelope present
 
 theorem repeated_path_set_requires_a_new_mutation_identity
     (leftMutationId rightMutationId : MutationId)
     (different : leftMutationId ≠ rightMutationId)
-    (envelopes : List WorkspaceGenerationEnvelope) :
+    (envelopes : List WorkspaceContentMutationEnvelope) :
     ({ mutationId := leftMutationId, envelopes } : WorkspaceMutationBatch) ≠
       ({ mutationId := rightMutationId, envelopes } : WorkspaceMutationBatch) := by
   exact equal_envelopes_do_not_collapse_distinct_mutation_events

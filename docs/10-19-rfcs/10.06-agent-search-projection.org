@@ -662,8 +662,8 @@ validates each owner against the current resident bytes/content digest and
 atomically swaps both the exact-selector postings shard and the Tantivy
 skeleton delta that implements the public ranked-text leaf.  Publishing only
 one of those views is forbidden because it creates two Search truths for the
-same resident generation.  The generic
-=workspace-generation-delta.v2= surface is not a legal symbol-rebind path.
+same resident generation.  Generic content mutation is not a legal
+symbol-rebind path.
 Rebind returns a typed V1 receipt containing the base digest, new resident
 digest, owner count, symbol count, and relation count.  A stale base, changed
 owner bytes, duplicate owner, or relation outside the rebound membership fails

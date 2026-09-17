@@ -293,65 +293,80 @@ theorem publication_replaces_generation_and_selector_inventory_atomically
       (publish state next).active.selectors = next.selectors := by
   simp [publish]
 
-/-- One reconciliation event carries every owner upsert, tombstone, relocation,
-and selector inventory in one successor generation. The base generation is a
-CAS precondition; per-owner publication is not representable. -/
-structure WorkspaceGenerationDelta where
+/-- A PostTool content mutation owns bytes and owner membership only.  Parser
+selectors and relations are deliberately unrepresentable in this contract. -/
+structure WorkspaceOwnerContentMutation where
   baseGenerationId : GenerationId
-  next : ActiveGeneration
+  nextGenerationId : GenerationId
+  nextRootDigest : RootDigest
+  nextOwners : List OwnerPath
+  shadowedOwners : List OwnerPath
   deriving DecidableEq, Repr
 
-def applyGenerationDelta
+def applyOwnerContentMutation
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta) : Option RuntimeState :=
-  if delta.baseGenerationId = state.active.generationId then
-    some (publish state delta.next)
+    (mutation : WorkspaceOwnerContentMutation) : Option RuntimeState :=
+  if mutation.baseGenerationId = state.active.generationId then
+    some (publish state {
+      generationId := mutation.nextGenerationId
+      rootDigest := mutation.nextRootDigest
+      owners := mutation.nextOwners
+      selectors := state.active.selectors.filter
+        (fun selector => selector.1 ∉ mutation.shadowedOwners) })
   else
     none
 
-def observeGenerationAfterDelta
+def observeGenerationAfterContentMutation
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta) : RuntimeState :=
-  (applyGenerationDelta state delta).getD state
+    (mutation : WorkspaceOwnerContentMutation) : RuntimeState :=
+  (applyOwnerContentMutation state mutation).getD state
 
-theorem matching_base_publishes_the_complete_successor
+theorem matching_base_publishes_content_and_invalidates_shadowed_symbols
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta)
-    (baseMatches : delta.baseGenerationId = state.active.generationId) :
-    applyGenerationDelta state delta = some (publish state delta.next) := by
-  simp [applyGenerationDelta, baseMatches]
+    (mutation : WorkspaceOwnerContentMutation)
+    (baseMatches : mutation.baseGenerationId = state.active.generationId) :
+    applyOwnerContentMutation state mutation = some (publish state {
+      generationId := mutation.nextGenerationId
+      rootDigest := mutation.nextRootDigest
+      owners := mutation.nextOwners
+      selectors := state.active.selectors.filter
+        (fun selector => selector.1 ∉ mutation.shadowedOwners) }) := by
+  simp [applyOwnerContentMutation, baseMatches]
 
-theorem stale_base_cannot_publish_any_part_of_the_delta
+theorem stale_base_cannot_publish_any_part_of_the_content_mutation
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta)
-    (baseStale : delta.baseGenerationId ≠ state.active.generationId) :
-    observeGenerationAfterDelta state delta = state := by
-  simp [observeGenerationAfterDelta, applyGenerationDelta, baseStale]
+    (mutation : WorkspaceOwnerContentMutation)
+    (baseStale : mutation.baseGenerationId ≠ state.active.generationId) :
+    observeGenerationAfterContentMutation state mutation = state := by
+  simp [observeGenerationAfterContentMutation, applyOwnerContentMutation, baseStale]
 
-theorem readers_observe_old_or_complete_next_generation
+theorem readers_observe_old_or_complete_content_view
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta) :
-    (observeGenerationAfterDelta state delta).active = state.active ∨
-      (observeGenerationAfterDelta state delta).active = delta.next := by
-  by_cases baseMatches : delta.baseGenerationId = state.active.generationId
+    (mutation : WorkspaceOwnerContentMutation) :
+    (observeGenerationAfterContentMutation state mutation).active = state.active ∨
+      (observeGenerationAfterContentMutation state mutation).active = {
+        generationId := mutation.nextGenerationId
+        rootDigest := mutation.nextRootDigest
+        owners := mutation.nextOwners
+        selectors := state.active.selectors.filter
+          (fun selector => selector.1 ∉ mutation.shadowedOwners) } := by
+  by_cases baseMatches : mutation.baseGenerationId = state.active.generationId
   · right
-    simp [observeGenerationAfterDelta, applyGenerationDelta, baseMatches, publish]
+    simp [observeGenerationAfterContentMutation, applyOwnerContentMutation, baseMatches, publish]
   · left
-    simp [observeGenerationAfterDelta, applyGenerationDelta, baseMatches]
+    simp [observeGenerationAfterContentMutation, applyOwnerContentMutation, baseMatches]
 
-theorem no_half_generation_selector_inventory
+theorem matching_content_mutation_exposes_no_shadowed_selector
     (state : RuntimeState)
-    (delta : WorkspaceGenerationDelta) :
-    let observed := (observeGenerationAfterDelta state delta).active
-    (observed.owners = state.active.owners ∧
-        observed.selectors = state.active.selectors) ∨
-      (observed.owners = delta.next.owners ∧
-        observed.selectors = delta.next.selectors) := by
-  by_cases baseMatches : delta.baseGenerationId = state.active.generationId
-  · right
-    simp [observeGenerationAfterDelta, applyGenerationDelta, baseMatches, publish]
-  · left
-    simp [observeGenerationAfterDelta, applyGenerationDelta, baseMatches]
+    (mutation : WorkspaceOwnerContentMutation)
+    (baseMatches : mutation.baseGenerationId = state.active.generationId)
+    (owner : OwnerPath)
+    (selector : StructuralSelector)
+    (shadowed : owner ∈ mutation.shadowedOwners) :
+    (owner, selector) ∉
+      (observeGenerationAfterContentMutation state mutation).active.selectors := by
+  simp [observeGenerationAfterContentMutation, applyOwnerContentMutation, baseMatches,
+    publish, shadowed]
 
 /-- Admission acceptance and generation readiness are distinct lifecycle
 states. PreToolUse may release an exact query only after the typed ensure
@@ -454,25 +469,25 @@ theorem boolean_mutation_signal_loses_workspace_identity
       [left] ≠ [right] := by
   simp [workspaceMutatedSignal, different]
 
-/-- The PostTool mutation envelope preserves one complete generation delta per
+/-- The PostTool mutation envelope preserves one byte-only content mutation per
 affected workspace. The runtime may apply lanes independently, but it may not
 drop or infer their workspace identities from the hook cwd. -/
-structure WorkspaceGenerationEnvelope where
+structure WorkspaceContentMutationEnvelope where
   workspaceId : WorkspaceId
-  delta : WorkspaceGenerationDelta
+  mutation : WorkspaceOwnerContentMutation
   deriving DecidableEq, Repr
 
 structure WorkspaceMutationBatch where
   mutationId : MutationId
-  envelopes : List WorkspaceGenerationEnvelope
+  envelopes : List WorkspaceContentMutationEnvelope
   deriving DecidableEq, Repr
 
 def affectedWorkspaceIds (batch : WorkspaceMutationBatch) : List WorkspaceId :=
   batch.envelopes.map (·.workspaceId)
 
-theorem every_generation_envelope_retains_its_workspace_identity
+theorem every_content_mutation_envelope_retains_its_workspace_identity
     (batch : WorkspaceMutationBatch)
-    (envelope : WorkspaceGenerationEnvelope)
+    (envelope : WorkspaceContentMutationEnvelope)
     (present : envelope ∈ batch.envelopes) :
     envelope.workspaceId ∈ affectedWorkspaceIds batch := by
   exact List.mem_map.mpr ⟨envelope, present, rfl⟩
@@ -483,7 +498,7 @@ answered from the preceding event's completed flight. -/
 theorem equal_envelopes_do_not_collapse_distinct_mutation_events
     (leftMutationId rightMutationId : MutationId)
     (different : leftMutationId ≠ rightMutationId)
-    (envelopes : List WorkspaceGenerationEnvelope) :
+    (envelopes : List WorkspaceContentMutationEnvelope) :
     ({ mutationId := leftMutationId, envelopes } : WorkspaceMutationBatch) ≠
       ({ mutationId := rightMutationId, envelopes } : WorkspaceMutationBatch) := by
   intro equalBatch

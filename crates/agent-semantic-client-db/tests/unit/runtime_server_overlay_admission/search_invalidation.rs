@@ -8,9 +8,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
-use agent_semantic_client_db::runtime_server_workspace::WORKSPACE_GENERATION_DELTA_SCHEMA_ID;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild;
-use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDelta;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceMemoryGeneration;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot;
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
@@ -186,38 +184,6 @@ async fn canonical_rebuild_invalidates_lexical_postings_and_graph_edges_in_one_e
     );
 
     let fresh_bytes = b"fn fresh() {}";
-    let fresh_owner = WorkspaceOwnerSnapshot {
-        authority: None,
-        owner_path: "src/lib.rs".to_owned(),
-        content_digest: format!("blake3-256:{}", blake3::hash(fresh_bytes).to_hex()),
-        bytes: fresh_bytes.to_vec(),
-        native_syntax_diagnostic: None,
-        selectors: vec![WorkspaceSelectorSnapshot {
-            selector: "rust://src/lib.rs#item/function/fresh".to_owned(),
-            byte_start: 0,
-            byte_end: fresh_bytes.len(),
-            query_keys: vec!["fresh".to_owned()],
-            derived_projections: Vec::new(),
-        }],
-    };
-    let missing_generation_proof = registry
-        .publish_owner_delta(
-            "replace-owner-and-invalidate-derived-search-state",
-            workspace_identity,
-            &root,
-            WorkspaceGenerationDelta {
-                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
-                schema_version: "2".to_owned(),
-                base_generation_digest: old_lease.generation().generation_digest.clone(),
-                owners: vec![fresh_owner],
-                tombstones: Vec::new(),
-                relations: Vec::new(),
-            },
-        )
-        .await
-        .expect_err("owner delta cannot mint a content search generation");
-    assert!(missing_generation_proof.contains("canonical generation rebuild required"));
-
     let fresh_selector = WorkspaceSelectorSnapshot {
         selector: "rust://src/lib.rs#item/function/fresh".to_owned(),
         byte_start: 0,

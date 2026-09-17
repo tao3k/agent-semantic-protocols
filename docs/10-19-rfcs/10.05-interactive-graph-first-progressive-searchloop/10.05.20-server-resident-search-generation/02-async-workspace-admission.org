@@ -111,18 +111,30 @@ built installed binary containing =RestoreOnly= passes the same probe.
 
 * Atomic mutation reconciliation
 
-One successful post-tool event submits exactly one typed
-=WorkspaceGenerationDelta=. The delta binds the active base generation digest,
-all updated owners with their parser-owned selectors, and all tombstoned owner
-paths. Relocation is represented by one tombstone plus one upsert in the same
-delta. The workspace writer lane validates the complete staged materialization,
-advances the epoch once, persists once, and switches the active pointer once.
+One successful post-tool event submits exactly one typed V1
+=WorkspaceOwnerContentMutation= per affected workspace.  The mutation binds the
+active base generation digest and mutation identity, and carries only byte-only
+owner upserts plus content-bound removals.  Relocation is represented by one
+removal plus one upsert in the same mutation.  It MUST NOT carry parser-owned
+selectors, relations, or diagnostics.  The workspace writer validates and
+applies the owner-local Merkle delta, shadows the old symbol shard, and swaps the
+resident content/search view once without republishing the durable canonical
+generation.
 
-Per-owner publish, tombstone, or relocation operations are not public lifecycle
-surfaces. A multi-file edit MUST NOT expose intermediate generations in which a
-test owner is new while its implementation owner is old, or owner bytes are new
-while their selector set is old. A stale base digest rejects the complete delta;
-it never partially applies the non-conflicting owners.
+Parser completion is a distinct typed V1 =WorkspaceOwnerSymbolRebind=.  It may
+carry selectors and owner-local relations, but it MUST bind to bytes and content
+digests already visible in the resident content view.  Its symbol postings and
+Tantivy skeleton delta are constructed outside the Tokio writer and become
+visible in one writer-lane commit.  This two-phase split is not eventual
+correctness: between phases, byte/path search sees the new owner and symbol
+search sees no shard for that owner, so stale parser facts are never observable.
+
+Generic owner-delta publication is not a public lifecycle surface.  A
+multi-file content mutation MUST NOT
+expose an intermediate view in which one affected owner is new while another is
+old.  A stale base digest or stale per-owner previous digest rejects the complete
+content mutation; it never partially applies non-conflicting owners.  Parser
+rebind has its own all-or-nothing membership and content-identity checks.
 
 The generation owner computes one total, disjoint partition for every affected
 owner.  Given affected membership =A= and owners present in the replacement
@@ -142,10 +154,10 @@ $ upsert(A, P) intersection tombstone(A, P) = emptyset $
 A mutation admission request MUST carry normalized changed paths, not only a
 =workspaceMutated= boolean or the hook cwd. The Runtime Server resolves every
 changed path through the resident workspace catalog, groups changes by
-=workspaceIdentity=, and constructs one =WorkspaceGenerationDelta= per affected
-workspace. One PostTool event MAY therefore atomically advance several isolated
-workspace lanes, while each lane retains its own base-generation CAS and single
-pointer switch. A nested repository or package workspace MUST NOT be silently
+=workspaceIdentity=, and constructs one =WorkspaceOwnerContentMutation= per
+affected workspace. One PostTool event MAY therefore atomically advance several
+isolated workspace lanes, while each lane retains its own base-generation CAS
+and single resident-view commit. A nested repository or package workspace MUST NOT be silently
 charged to its parent cwd workspace. Dropping changed paths before admission is
 a contract violation because a boolean mutation signal cannot identify the
 affected workspace set.

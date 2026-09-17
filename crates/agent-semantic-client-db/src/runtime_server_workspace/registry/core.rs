@@ -108,7 +108,6 @@ pub(super) enum WorkspaceWriteCommand {
         owner: WorkspaceOwnerSnapshot,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
-    PublishOwnerDelta(super::writer_publication::PublishOwnerDeltaCommand),
     PublishResidentOwnerSymbolRebind(
         super::writer_publication::PublishResidentOwnerSymbolRebindCommand,
     ),
@@ -775,13 +774,6 @@ async fn workspace_writer_lane(
                     last_receipts.insert(scope_key, receipt.clone());
                 }
                 let _ = reply.send(result);
-            }
-            WorkspaceWriteCommand::PublishOwnerDelta(command) => {
-                if let Some((scope_key, receipt)) =
-                    super::writer_publication::publish_owner_delta_command(command, &counters).await
-                {
-                    last_receipts.insert(scope_key, receipt);
-                }
             }
             WorkspaceWriteCommand::PublishResidentOwnerSymbolRebind(command) => {
                 super::writer_publication::publish_resident_owner_symbol_rebind_command(command)
