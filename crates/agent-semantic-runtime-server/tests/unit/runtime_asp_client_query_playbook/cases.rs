@@ -22,8 +22,11 @@ use agent_semantic_content_identity::runtime_workspace_execution_publication::{
     RuntimeWorkspaceExecutionPublication, RuntimeWorkspaceExecutionPublicationInput,
 };
 
-#[path = "runtime_asp_client_query_playbook_fixtures.rs"]
+#[path = "../runtime_asp_client_query_playbook_fixtures.rs"]
 mod fixtures;
+
+#[path = "terminal_materialization.rs"]
+mod terminal_materialization;
 use fixtures::{
     execution_publication_for_exact_generation, process_cold_generation, process_cold_resources,
 };
@@ -400,6 +403,135 @@ async fn process_cold_exact_owner_replay_materializes_a_real_durable_generation_
     assert_eq!(lifecycle.leaked, 0);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn resident_overlay_commit_replaces_same_canonical_query_generation_lease() {
+    use agent_semantic_client_db::runtime_server_workspace::{
+        RuntimeServerWorkspaceRegistry, WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID,
+        WorkspaceOwnerContentMutationV1, WorkspaceOwnerContentUpsertV1, WorkspaceOwnerSnapshot,
+        WorkspaceRecoverySource,
+    };
+
+    let temporary = tempfile::tempdir().expect("resident overlay query-generation workspace");
+    let project_root = temporary.path().join("project");
+    std::fs::create_dir_all(project_root.join("src")).expect("create owner directory");
+    let previous = b"pub fn previous() -> usize { 1 }\n";
+    let next = b"pub fn next() -> usize { 2 }\n";
+    std::fs::write(project_root.join("src/lib.rs"), previous).expect("write previous owner");
+    let workspace_identity = "workspace-resident-view-rebind";
+    let registry = RuntimeServerWorkspaceRegistry::new(temporary.path().join("workspace-store"))
+        .expect("resident overlay registry");
+    registry
+        .publish(
+            "resident-overlay-base",
+            WorkspaceRecoverySource::TursoGeneration,
+            process_cold_generation(
+                &project_root,
+                workspace_identity,
+                "rust://src/lib.rs#item/function/previous",
+                previous,
+            ),
+        )
+        .await
+        .expect("publish resident overlay base");
+    let canonical_digest = registry
+        .lease(workspace_identity, &project_root)
+        .expect("lease base generation")
+        .generation()
+        .generation_digest
+        .clone();
+    let binding = agent_semantic_artifacts::ProjectBinding::resolve(
+        None,
+        "gix-common-dir:resident-view-rebind",
+        project_root.display().to_string(),
+    )
+    .expect("fixture Gix project binding");
+    let key = crate::RuntimeProjectWorkspaceKey::from_project_binding(
+        &binding,
+        agent_semantic_client_protocol::ClientProjectId::new("repo-0000000000000001")
+            .expect("fixture ProjectId"),
+        agent_semantic_client_protocol::ClientWorkspaceIdentity::new(workspace_identity)
+            .expect("fixture WorkspaceId"),
+    )
+    .expect("fixture query-generation key");
+    let authority = crate::RuntimeQueryGenerationAuthority::new();
+    let first = authority
+        .ensure_ready_resident(
+            &key,
+            &project_root,
+            registry
+                .resident_read_client(workspace_identity, &project_root)
+                .expect("open first resident view"),
+            &canonical_digest,
+        )
+        .await
+        .expect("publish first query generation");
+    let first_view_digest = first
+        .resident()
+        .resident_view_digest()
+        .expect("first resident view digest");
+
+    std::fs::write(project_root.join("src/lib.rs"), next).expect("write next owner");
+    registry
+        .publish_owner_content_mutation(
+            workspace_identity,
+            &project_root,
+            WorkspaceOwnerContentMutationV1 {
+                schema_id: WORKSPACE_OWNER_CONTENT_MUTATION_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                mutation_id: "resident-view-edit-1".to_owned(),
+                base_generation_digest: canonical_digest.clone(),
+                upserts: vec![WorkspaceOwnerContentUpsertV1 {
+                    previous_content_digest: Some(format!(
+                        "blake3-256:{}",
+                        blake3::hash(previous).to_hex()
+                    )),
+                    owner: WorkspaceOwnerSnapshot {
+                        owner_path: "src/lib.rs".to_owned(),
+                        authority: None,
+                        content_digest: format!("blake3-256:{}", blake3::hash(next).to_hex()),
+                        native_syntax_diagnostic: None,
+                        bytes: next.to_vec(),
+                        selectors: Vec::new(),
+                    },
+                }],
+                removals: Vec::new(),
+            },
+        )
+        .await
+        .expect("publish owner-local content mutation");
+    let second = authority
+        .ensure_ready_resident(
+            &key,
+            &project_root,
+            registry
+                .resident_read_client(workspace_identity, &project_root)
+                .expect("open second resident view"),
+            &canonical_digest,
+        )
+        .await
+        .expect("replace query generation with overlay view");
+    assert!(!std::sync::Arc::ptr_eq(&first, &second));
+    assert_eq!(first.generation_digest(), second.generation_digest());
+    assert_ne!(
+        first_view_digest,
+        second
+            .resident()
+            .resident_view_digest()
+            .expect("second resident view digest")
+    );
+    assert_eq!(
+        second
+            .resident()
+            .resident_owner_bytes("src/lib.rs")
+            .expect("read rebound owner bytes")
+            .as_deref(),
+        Some(next.as_slice())
+    );
+
+    authority.shutdown().await.expect("shutdown authority");
+    registry.shutdown().await.expect("shutdown registry");
+}
+
 #[tokio::test]
 async fn cold_query_rejects_an_impossible_owner_before_generation_admission() {
     let root = tempfile::tempdir().expect("cold Query workspace");
@@ -736,119 +868,6 @@ fn client_timing_is_settled_once_against_the_multilanguage_execution_publication
         ]
     );
     assert_eq!(trace.observations().len(), 8);
-}
-
-#[test]
-fn query_playbook_materializes_one_runtime_bound_terminal_in_selector_order() {
-    let binding = runtime_binding();
-    let receipt = materialize_query_playbook_receipt(
-        "request-query-playbook",
-        &params(),
-        &binding,
-        &digest('e'),
-        &digest('f'),
-        &digest('1'),
-        &"2".repeat(64),
-        &binding.project_workspace,
-        &[
-            ("org".into(), "asp-org".into()),
-            ("rust".into(), "asp-rust".into()),
-        ],
-        None,
-        |_projection, selector| {
-            Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: digest('1'),
-                root_digest: "2".repeat(64),
-                resolved_selector: selector.to_owned(),
-                bytes: format!("materialized:{selector}").into_bytes(),
-            })
-        },
-    )
-    .unwrap_or_else(|_| panic!("one complete materialization terminal"));
-    assert_eq!(receipt["terminal"]["state"], "ready");
-    assert_eq!(receipt["terminal"]["terminalCount"], 1);
-    assert_eq!(receipt["materializations"].as_array().unwrap().len(), 2);
-    assert_eq!(
-        receipt["materializations"][0]["selector"],
-        params().selectors[0]
-    );
-    assert_eq!(
-        receipt["runtimeExecutionBinding"],
-        serde_json::to_value(binding).unwrap()
-    );
-    assert_eq!(receipt["sourceGenerationDigest"], digest('1'));
-    assert_eq!(receipt["sourceRootDigest"], "2".repeat(64));
-}
-
-#[test]
-fn query_playbook_uses_the_exact_read_generation_after_parser_materialization() {
-    let binding = runtime_binding();
-    let receipt = materialize_query_playbook_receipt(
-        "request-query-playbook-parser-generation",
-        &params(),
-        &binding,
-        &digest('e'),
-        &digest('f'),
-        &digest('1'),
-        &"2".repeat(64),
-        &binding.project_workspace,
-        &[
-            ("org".into(), "asp-org".into()),
-            ("rust".into(), "asp-rust".into()),
-        ],
-        None,
-        |_projection, selector| {
-            Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: digest('7'),
-                root_digest: "2".repeat(64),
-                resolved_selector: selector.to_owned(),
-                bytes: format!("materialized:{selector}").into_bytes(),
-            })
-        },
-    )
-    .unwrap_or_else(|_| panic!("parser-materialized exact generation"));
-    assert_eq!(receipt["terminal"]["state"], "ready");
-    assert_eq!(receipt["sourceGenerationDigest"], digest('7'));
-    assert_eq!(receipt["sourceRootDigest"], "2".repeat(64));
-}
-
-#[test]
-fn query_playbook_rejects_a_selector_read_from_another_content_generation() {
-    let binding = runtime_binding();
-    let (reason_kind, receipt) = failed_query_receipt(materialize_query_playbook_receipt(
-        "request-query-playbook-drift",
-        &params(),
-        &binding,
-        &digest('e'),
-        &digest('f'),
-        &digest('1'),
-        &"2".repeat(64),
-        &binding.project_workspace,
-        &[
-            ("org".into(), "asp-org".into()),
-            ("rust".into(), "asp-rust".into()),
-        ],
-        None,
-        |_projection, selector| {
-            Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: if selector.starts_with("org://") {
-                    digest('1')
-                } else {
-                    digest('9')
-                },
-                root_digest: "2".repeat(64),
-                resolved_selector: selector.to_owned(),
-                bytes: b"content-bound".to_vec(),
-            })
-        },
-    ));
-    assert_eq!(reason_kind, "query-playbook-content-identity-mismatch");
-    assert_eq!(receipt["terminal"]["state"], "failed");
-    assert_eq!(
-        receipt["terminal"]["reasonKind"],
-        "query-playbook-content-identity-mismatch"
-    );
-    assert_eq!(receipt["materializations"], serde_json::json!([]));
 }
 
 #[test]

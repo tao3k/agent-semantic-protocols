@@ -30,6 +30,7 @@ async fn failed_terminal_publishes_exact_generation_failure() {
             project_root: std::path::PathBuf::from("/project"),
             resident_pointer_path: std::path::PathBuf::from("/generation.pointer"),
             generation_digest: "blake3-256:generation".to_owned(),
+            resident_view_digest: None,
         };
     let receiver = authority.subscribe();
 

@@ -598,6 +598,17 @@ async fn published_generation_exposes_parser_owned_selectors_and_resident_conten
         )
         .await
         .expect("open zero-copy search generation");
+    let reopened = agent_semantic_client_db::runtime_server_workspace::
+        WorkspaceSearchGenerationDataPlaneClient::open(
+            publisher.pointer_path(),
+            &project_root("workspace-search"),
+        )
+        .await
+        .expect("reuse zero-copy search generation");
+    assert!(
+        Arc::ptr_eq(&client, &reopened),
+        "generation validation and query reads must share one mapped Search reader"
+    );
     assert!(
         !client.graph_generation_is_ready(),
         "cold generation open must not create a graph builder"

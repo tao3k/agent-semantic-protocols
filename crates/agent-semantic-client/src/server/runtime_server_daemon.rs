@@ -5,9 +5,13 @@
 //! Owns assembly and coordinated shutdown of the long-lived Runtime Server.
 
 use super::daemon_identity;
+use super::runtime_server_daemon_publication::{
+    normalize_server_shutdown_for_identity_handoff, resident_workspace_view_publication,
+};
 use super::runtime_server_generation_builder::{
     build_workspace_generation_candidate_builder, resolve_host_workspace_initialization_binding,
 };
+use super::runtime_server_hook_memory_inbox;
 use super::runtime_server_identity_handoff;
 use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
@@ -285,6 +289,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )?;
     let query_generation_workspace_registry = std::sync::Arc::clone(server.workspace_registry());
     let mut generation_publications = server.workspace_generation_publication_subscribe();
+    let mut resident_view_publications = server
+        .workspace_registry()
+        .subscribe_resident_view_publications();
+    let query_generation_workspace_store_root = workspace_store_root.clone();
     let generation_admission = server.workspace_generation_admission().ok_or_else(|| {
         "Runtime ClientFrame service requires the server-owned workspace generation admission authority"
             .to_owned()
@@ -320,6 +328,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     })?;
     let (client_grpc_shutdown, client_grpc_shutdown_receiver) = tokio::sync::watch::channel(false);
     let mut generation_shutdown = client_grpc_shutdown.subscribe();
+    let hook_inbox_shutdown = client_grpc_shutdown.subscribe();
     let (client_grpc_done_sender, mut client_grpc_done_receiver) = tokio::sync::oneshot::channel();
     let client_grpc_task = task_scope.spawn("asp-client-grpc", async move {
         let result = agent_semantic_client_server::serve_asp_client_grpc_tcp(
@@ -362,12 +371,20 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             lifecycle_bus.receiver,
         ),
     )?;
+    let hook_inbox_task = runtime_server_hook_memory_inbox::spawn_reconciler(
+        state_home,
+        std::sync::Arc::clone(&query_generation_workspace_registry),
+        admission_catalog.clone(),
+        generation_admission.clone(),
+        &task_scope,
+        hook_inbox_shutdown,
+    )?;
     let generation_authority = query_generation_authority.clone();
     let generation_state_home = state_home.to_path_buf();
     let (activation_ready_sender, mut activation_ready) = tokio::sync::watch::channel(false);
     let generation_task = task_scope.spawn("runtime-query-generation", async move {
         loop {
-            tokio::select! {
+            let publication = tokio::select! {
                 changed = generation_shutdown.changed() => {
                     if changed.is_err() || *generation_shutdown.borrow() {
                         generation_authority.clear_all();
@@ -380,18 +397,46 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                         generation_authority.clear_all();
                         break;
                     }
+                    generation_publications.borrow().clone()
+                }
+                resident_view = resident_view_publications.recv() => {
+                    let resident_view = match resident_view {
+                        Ok(resident_view) => resident_view,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            eprintln!(
+                                "[runtime-query-generation-observer] state=failed reasonKind=resident-view-publication-lagged skipped={skipped}"
+                            );
+                            continue;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            generation_authority.clear_all();
+                            break;
+                        }
+                    };
+                    match resident_workspace_view_publication(
+                        &query_generation_workspace_store_root,
+                        resident_view,
+                    ) {
+                        Ok(publication) => Some(publication),
+                        Err(error) => {
+                            eprintln!(
+                                "[runtime-query-generation-observer] state=failed reasonKind=resident-view-publication-invalid error={error}"
+                            );
+                            continue;
+                        }
+                    }
                 }
                 changed = activation_ready.changed() => {
                     if changed.is_err() {
                         generation_authority.clear_all();
                         break;
                     }
+                    generation_publications.borrow().clone()
                 }
-            }
+            };
             if !*activation_ready.borrow() {
                 continue;
             }
-            let publication = generation_publications.borrow().clone();
             match publication {
                 Some(publication) => {
                     let project_binding = match agent_semantic_runtime::state_core::ResolvedState::resolve(
@@ -428,6 +473,14 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     );
                     match resident {
                         Ok(resident) => {
+                            if let Some(expected) = publication.resident_view_digest.as_deref()
+                                && resident.resident_view_digest().as_deref() != Ok(expected)
+                            {
+                                eprintln!(
+                                    "[runtime-query-generation-observer] state=superseded reasonKind=resident-view-publication-superseded expectedResidentViewDigest={expected}"
+                                );
+                                continue;
+                            }
                             let execution_product = async {
                                 let activation = agent_semantic_artifacts::runtime_artifact_activation::
                                     read_applied_runtime_artifact_activation_event(&generation_state_home)
@@ -517,12 +570,22 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                                 result,
                             );
                         }
-                        Err(error) => generation_authority.publish_failed(
-                            project_workspace_key,
-                            0,
-                            publication.generation_digest,
-                            error,
-                        ),
+                        Err(_resident_error) => {
+                            let result = generation_authority
+                                .ensure_ready(
+                                    &project_workspace_key,
+                                    &publication.resident_pointer_path,
+                                    &publication.project_root,
+                                    &publication.generation_digest,
+                                )
+                                .await;
+                            publish_observer_terminal(
+                                &generation_authority,
+                                project_workspace_key,
+                                &publication,
+                                result,
+                            );
+                        }
                     }
                 }
                 None => generation_authority.clear_all(),
@@ -729,6 +792,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     eprintln!(
         "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=generation-observer-drained"
     );
+    let hook_inbox_error = hook_inbox_task
+        .join()
+        .await
+        .map_err(|error| format!("Runtime Hook inbox task failed: {error}"))?
+        .err();
     let query_generation_shutdown_error = query_generation_authority.shutdown().await.err();
     eprintln!(
         "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=query-generation-builder-drained"
@@ -806,6 +874,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let mut shutdown_errors = Vec::new();
     if let Some(error) = query_generation_shutdown_error {
         shutdown_errors.push(format!("queryGenerationBuilder={error}"));
+    }
+    if let Some(error) = hook_inbox_error {
+        shutdown_errors.push(format!("hookMemoryInbox={error}"));
     }
     if let Err(error) = task_scope.finish(total_drain_elapsed.as_micros() as u64) {
         shutdown_errors.push(format!("taskScope={error}"));
@@ -921,17 +992,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     )
     .await?;
     result
-}
-
-fn normalize_server_shutdown_for_identity_handoff(
-    identity_handoff_requested: bool,
-    server_result: Result<(), String>,
-) -> Result<(), String> {
-    if identity_handoff_requested {
-        Ok(())
-    } else {
-        server_result
-    }
 }
 
 #[cfg(test)]

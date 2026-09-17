@@ -15,6 +15,8 @@ use fixture::generation_with_selectors;
 
 #[path = "runtime_server_overlay_admission/canonical_materialization.rs"]
 mod canonical_materialization;
+#[path = "runtime_server_overlay_admission/owner_content_mutation.rs"]
+mod owner_content_mutation;
 #[path = "runtime_server_overlay_admission/resident_semantic.rs"]
 mod resident_semantic;
 

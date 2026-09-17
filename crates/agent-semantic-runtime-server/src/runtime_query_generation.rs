@@ -48,7 +48,18 @@ impl RuntimeQueryGeneration {
             (None, None) => true,
             _ => false,
         };
-        if previous.generation_digest == self.generation_digest && execution_identity_matches {
+        let resident_view_identity_matches =
+            match (previous.resident.as_deref(), self.resident.as_deref()) {
+                (Some(previous), Some(incoming)) => {
+                    previous.resident_view_digest()? == incoming.resident_view_digest()?
+                }
+                (None, None) => true,
+                _ => false,
+            };
+        if previous.generation_digest == self.generation_digest
+            && execution_identity_matches
+            && resident_view_identity_matches
+        {
             // An equivalent handle is not a new generation.  Keep the exact
             // resident object so its OnceLock-backed lexical accelerator and
             // completion channel remain one authority across observer refresh.

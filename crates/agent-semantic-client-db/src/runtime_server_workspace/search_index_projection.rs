@@ -17,6 +17,15 @@ use super::{
     encode_search_generation_segment, encode_sorted_record_table,
 };
 
+const OWNER_RECORD_KEY_PREFIX: &[u8] = b"\0owner\0";
+
+pub(super) fn owner_record_key(owner_path: &str) -> Vec<u8> {
+    let mut key = Vec::with_capacity(OWNER_RECORD_KEY_PREFIX.len() + owner_path.len());
+    key.extend_from_slice(OWNER_RECORD_KEY_PREFIX);
+    key.extend_from_slice(owner_path.as_bytes());
+    key
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SearchOwnerRecord {
@@ -29,6 +38,23 @@ pub(super) struct SearchOwnerRecord {
     pub(super) line_count: u32,
     pub(super) query_keys: Vec<String>,
     pub(super) selectors: Vec<super::WorkspaceSelectorSnapshot>,
+}
+
+/// Compact, generation-bound directory entry needed by the byte-search plane.
+///
+/// Parser selectors and query keys deliberately live in the addressed owner
+/// record table. Opening a mapped generation must not deserialize them for
+/// every workspace owner before an `rg` leaf can run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SearchOwnerLocatorRecord {
+    pub(super) owner_path: String,
+    pub(super) authority: Option<agent_semantic_search::ResidentSearchAuthority>,
+    pub(super) content_digest: String,
+    pub(super) byte_offset: u64,
+    pub(super) byte_length: u64,
+    pub(super) line_count: u32,
+    pub(super) corpus_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,12 +106,17 @@ pub struct WorkspaceSearchGenerationDataPlaneClient {
     pub(super) authority: WorkspaceSearchGenerationAuthority,
     pub(super) project_root: String,
     pub(super) owner_directory_records: BTreeMap<String, Arc<SearchOwnerRecord>>,
+    pub(super) owner_locator_records: BTreeMap<String, Arc<SearchOwnerLocatorRecord>>,
+    pub(super) mapped_owner_record_table_range: Option<std::ops::Range<usize>>,
+    pub(super) mapped_merkle_owner_table_range: Option<std::ops::Range<usize>>,
+    pub(super) mapped_graph_relation_table_range: Option<std::ops::Range<usize>>,
     pub(super) source_documents: Vec<agent_semantic_search::ResidentSourceDocument>,
     pub(super) provider_authorities: BTreeMap<String, std::collections::BTreeSet<String>>,
     pub(super) resident_byte_coverage: agent_semantic_search::ResidentByteCoverageIndex,
     pub(super) resident_grep_corpus: agent_semantic_search::ResidentGrepCorpusArtifact,
     pub(super) callable_selector_by_owner: BTreeMap<String, String>,
-    pub(super) topology_index: agent_semantic_topology::TopologyIndexV1,
+    pub(super) topology_index:
+        std::sync::OnceLock<Result<agent_semantic_topology::TopologyIndexV1, String>>,
     pub(super) graph_entry_owner_by_node_id: BTreeMap<String, String>,
     pub(super) owner_bytes_range: Option<std::ops::Range<usize>>,
     pub(super) merkle_owner_records: BTreeMap<String, Arc<SearchMerkleOwnerRecord>>,
@@ -118,6 +149,15 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     pub(super) fn lexical_source_documents(
         &self,
     ) -> Result<BTreeMap<String, agent_semantic_search::ResidentSourceDocument>, String> {
+        if self.mapping.is_some() {
+            let owners = self.mapped_all_owner_records()?;
+            let relations = self.mapped_all_owned_relations()?;
+            let (documents, _) = build_owner_search_indexes(&owners, &relations, &self.authority)?;
+            return Ok(documents
+                .into_iter()
+                .map(|document| (document.owner_path.clone(), document))
+                .collect());
+        }
         let documents = self
             .source_documents
             .iter()
@@ -125,6 +165,65 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             .map(|document| (document.owner_path.clone(), document))
             .collect::<BTreeMap<_, _>>();
         Ok(documents)
+    }
+
+    pub(super) fn mapped_all_owner_records(
+        &self,
+    ) -> Result<BTreeMap<String, Arc<SearchOwnerRecord>>, String> {
+        let mapping = self
+            .mapping
+            .as_ref()
+            .ok_or_else(|| "mapped workspace search generation is missing".to_owned())?;
+        let range = self
+            .mapped_owner_record_table_range
+            .as_ref()
+            .ok_or_else(|| "mapped owner-record table is missing".to_owned())?;
+        ValidatedSortedRecordTable::parse(
+            mapping
+                .get(range.clone())
+                .ok_or_else(|| "mapped owner-record table exceeds generation".to_owned())?,
+        )?
+        .owned_records()?
+        .into_iter()
+        .filter(|(key, _)| key.starts_with(OWNER_RECORD_KEY_PREFIX))
+        .map(|(key, value)| {
+            let owner_path = String::from_utf8(key[OWNER_RECORD_KEY_PREFIX.len()..].to_vec())
+                .map_err(|error| format!("mapped owner-record key is not UTF-8: {error}"))?;
+            let record: SearchOwnerRecord = serde_json::from_slice(&value)
+                .map_err(|error| format!("decode mapped owner record: {error}"))?;
+            if record.owner_path != owner_path {
+                return Err("mapped owner record key drift".to_owned());
+            }
+            Ok((owner_path, Arc::new(record)))
+        })
+        .collect()
+    }
+
+    pub(super) fn mapped_all_owned_relations(
+        &self,
+    ) -> Result<Vec<crate::ClientDbSourceIndexOwnedRelation>, String> {
+        let mapping = self
+            .mapping
+            .as_ref()
+            .ok_or_else(|| "mapped workspace search generation is missing".to_owned())?;
+        let range = self
+            .mapped_graph_relation_table_range
+            .as_ref()
+            .ok_or_else(|| "mapped graph-relation table is missing".to_owned())?;
+        ValidatedSortedRecordTable::parse(
+            mapping
+                .get(range.clone())
+                .ok_or_else(|| "mapped graph-relation table exceeds generation".to_owned())?,
+        )?
+        .owned_records()?
+        .into_iter()
+        .try_fold(Vec::new(), |mut relations, (_, value)| {
+            relations.extend(
+                serde_json::from_slice::<Vec<crate::ClientDbSourceIndexOwnedRelation>>(&value)
+                    .map_err(|error| format!("decode mapped graph relations: {error}"))?,
+            );
+            Ok(relations)
+        })
     }
 }
 
@@ -332,6 +431,14 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
     let mut owner_bytes = Vec::new();
     let mut owner_records = Vec::with_capacity(owners.len());
     let mut selectors = Vec::<(Vec<u8>, Vec<u8>)>::new();
+    let mut corpus_hasher = blake3::Hasher::new();
+    for owner in &owners {
+        corpus_hasher.update(&owner.bytes);
+        if !owner.bytes.ends_with(b"\n") {
+            corpus_hasher.update(b"\n");
+        }
+    }
+    let corpus_digest = format!("blake3-256:{}", corpus_hasher.finalize().to_hex());
     for owner in &owners {
         let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
         let query_keys = search_projection_manifest
@@ -365,8 +472,22 @@ pub(super) fn encode_workspace_search_generation_segment_with_authority(
             query_keys,
             selectors: owner.selectors.clone(),
         };
+        let locator = SearchOwnerLocatorRecord {
+            owner_path: record.owner_path.clone(),
+            authority: record.authority.clone(),
+            content_digest: record.content_digest.clone(),
+            byte_offset: record.byte_offset,
+            byte_length: record.byte_length,
+            line_count: record.line_count,
+            corpus_digest: corpus_digest.clone(),
+        };
         owner_records.push((
             owner.owner_path.as_bytes().to_vec(),
+            serde_json::to_vec(&locator)
+                .map_err(|error| format!("encode workspace owner locator: {error}"))?,
+        ));
+        selectors.push((
+            owner_record_key(&owner.owner_path),
             serde_json::to_vec(&record)
                 .map_err(|error| format!("encode workspace owner record: {error}"))?,
         ));
@@ -577,7 +698,7 @@ pub(super) fn build_owner_search_indexes(
 pub(super) fn build_resident_byte_coverage_index(
     mapping: Arc<Mmap>,
     owner_bytes_range: &std::ops::Range<usize>,
-    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerLocatorRecord>>,
 ) -> Result<agent_semantic_search::ResidentByteCoverageIndex, String> {
     let mut owners = Vec::with_capacity(owner_directory_records.len());
     let mut owner_payload_len = 0usize;

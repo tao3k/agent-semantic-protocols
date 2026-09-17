@@ -60,6 +60,7 @@ pub(super) struct ResolvedRouteContext {
     pub(super) query_generation: tokio::sync::watch::Receiver<
         Arc<HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
     >,
+    pub(super) query_generation_authority: crate::RuntimeQueryGenerationAuthority,
     pub(super) telemetry_sender: RuntimeTelemetryBusSender,
     pub(super) telemetry_traces: Arc<
         Mutex<
@@ -93,6 +94,7 @@ pub(super) async fn dispatch_resolved_route(
         active_provider_targets,
         workspace_search_providers,
         query_generation,
+        query_generation_authority,
         telemetry_sender,
         telemetry_traces,
         active_telemetry_trace_count,
@@ -365,6 +367,7 @@ pub(super) async fn dispatch_resolved_route(
             &telemetry_traces,
             active_telemetry_trace_count.as_ref(),
             &query_generation,
+            &query_generation_authority,
         )
         .await;
     }
@@ -547,6 +550,13 @@ pub(super) async fn dispatch_resolved_route(
                 generation_provider_targets,
                 &query_generation,
                 &project_workspace_key,
+                &query_generation_authority,
+                &agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                    &workspace_store_root,
+                    request.workspace_id.as_str(),
+                    &project_root,
+                )
+                .map_err(AspClientOperationError::Message)?,
             )
             .await;
             eprintln!(

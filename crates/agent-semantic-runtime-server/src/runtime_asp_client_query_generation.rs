@@ -361,7 +361,7 @@ pub(super) fn request_runtime_query_generation_ready(
 > {
     generation_admission.request_runtime_generations_ready_for_providers(
         workspace_identity,
-        project_root,
+        project_root.clone(),
         provider_targets,
     )
 }
@@ -385,15 +385,17 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
         >,
     >,
     key: &crate::RuntimeProjectWorkspaceKey,
+    generation_authority: &crate::RuntimeQueryGenerationAuthority,
+    pointer_path: &std::path::Path,
 ) -> Result<std::sync::Arc<crate::RuntimeQueryGeneration>, String> {
     let required_provider_targets = provider_targets.clone();
     let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
     generation_admission.request_runtime_generations_ready_for_providers_with_terminal(
         workspace_identity,
-        project_root,
+        project_root.clone(),
         provider_targets,
         move |terminal| async move {
-            let _ = terminal_sender.send(terminal.map(|_| ()));
+            let _ = terminal_sender.send(terminal);
         },
     )?;
     let generation = await_runtime_query_generation_for_provider_targets(
@@ -409,6 +411,23 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
         Ok(Err(error)) => Err(error),
         // Success still requires the daemon-owned resident publication. A
         // coalesced submission drops this callback and joins the same event.
-        Ok(Ok(())) | Err(_) => generation.await,
+        Ok(Ok(receipt)) => {
+            let commit = receipt.commit.ok_or_else(|| {
+                "ready workspace generation admission omitted its commit receipt".to_owned()
+            })?;
+            match generation_authority
+                .ensure_ready_from_admission(
+                    key,
+                    pointer_path,
+                    &project_root,
+                    &commit.generation_digest,
+                )
+                .await
+            {
+                Ok(generation) => Ok(generation),
+                Err(_) => generation.await,
+            }
+        }
+        Err(_) => generation.await,
     }
 }

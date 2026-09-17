@@ -14,6 +14,8 @@ mod aot_evaluator_cli;
 #[cfg(feature = "evaluator")]
 mod hook_binary;
 #[cfg(feature = "evaluator")]
+pub mod hook_memory_inbox;
+#[cfg(feature = "evaluator")]
 mod search_playbook_pretool;
 #[cfg(feature = "evaluator")]
 mod search_subagent_output_contract;

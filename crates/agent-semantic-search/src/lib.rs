@@ -269,6 +269,7 @@ pub use resident_graph_search::rank_resident_graph_generation;
 pub use resident_grep_candidate_plan::{
     ResidentGrepCandidatePlan, build_resident_grep_candidate_plan,
 };
+pub use resident_grep_corpus::AdmittedResidentGrepMappedCorpusOwner;
 pub use resident_grep_corpus::RESIDENT_GREP_CORPUS_RECEIPT_SCHEMA_ID;
 pub use resident_grep_corpus::ResidentGrepCorpusArtifact;
 pub use resident_grep_corpus::ResidentGrepCorpusOwner;
@@ -276,6 +277,7 @@ pub use resident_grep_corpus::ResidentGrepCorpusReceipt;
 pub use resident_grep_corpus::ResidentGrepMappedCorpusOwner;
 pub use resident_grep_corpus::ResidentGrepOwnerSpan;
 pub use resident_grep_corpus::build_resident_grep_corpus;
+pub use resident_grep_corpus::open_admitted_mapped_resident_grep_corpus;
 pub use resident_grep_corpus::open_mapped_resident_grep_corpus;
 pub use resident_grep_corpus::owner_for_corpus_line;
 #[cfg(feature = "tantivy-accelerator")]

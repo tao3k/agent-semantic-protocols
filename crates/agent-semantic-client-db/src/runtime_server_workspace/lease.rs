@@ -245,10 +245,6 @@ impl WorkspaceGenerationLease {
         self.overlay.indexed_owner_paths(self.generation())
     }
 
-    pub(crate) fn owner_identity_root_digest(&self) -> &str {
-        self.overlay.owner_identity_root_digest()
-    }
-
     pub(crate) fn resident_grep_candidate_owner_paths(
         &self,
         plan: &agent_semantic_search::ResidentGrepCandidatePlan,
@@ -342,11 +338,10 @@ impl WorkspaceGenerationLease {
             )?;
         let owner_path = parsed.owner_path()?;
         let base = self.backend.search_data_plane();
+        let base_hit = base.exact_topology_selector(selector)?;
         Ok(self
             .overlay
-            .resolve_topology_selector(&owner_path, selector, || {
-                base.exact_topology_selector(selector)
-            }))
+            .resolve_topology_selector(&owner_path, selector, || base_hit))
     }
 
     pub fn read_runtime_selector(

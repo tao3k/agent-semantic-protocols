@@ -51,6 +51,23 @@ The same local inbox owns post-tool workspace-mutation and performance-failure
 observations.  Those one-shot Hook events MUST NOT use a Runtime socket either;
 their Runtime projection is performed by the reconcile authority.
 
+For =workspace-mutation=, =event= is the shared V1
+=HookWorkspaceMutationEvent=: one deterministic =mutationId=, one absolute
+=projectRoot=, one strictly ordered and unique set of workspace-relative
+=changedPaths=, the Host =toolName=, and optional =sessionId=/=toolUseId=
+evidence.  The Hook does not hash file contents, open a generation, or infer a
+workspace identity.  The Runtime binds the admitted Git-derived workspace
+identity and recomputes only those owner content identities.
+
+The physical V1 inbox is one fixed-size preallocated mmap under the
+Runtime-serving mailbox namespace.  Each record is =length + BLAKE3 checksum +
+canonical JSON=.  The writer publishes the new offset and next sequence only
+after the entire record is present.  A Hook uses one non-blocking writer-lock
+attempt and never waits for Runtime availability.  After advancing the durable
+acknowledgement, Runtime reclaims the acknowledged byte prefix under the same
+writer lock while preserving the global next sequence.  Compaction is batched,
+is outside the Hook and Search paths, and retries after lock contention.
+
 ** Reconcile authority
 
 The ChoicePlane or Runtime owner consumes inbox events in sequence order.  It
@@ -58,6 +75,13 @@ performs delegation admission and calls the existing Runtime Server lifecycle
 materializer.  An event is acknowledged only after the materializer returns a
 schema-valid terminal receipt.  Exact replay is idempotent; an unavailable
 Runtime leaves the event pending.
+
+Workspace mutation reconcile has two ordered visibility points: first publish
+the changed-owner byte/Search delta so resident GREP and Tantivy stop exposing
+stale bytes; then run the changed-owner parser/topology rebind.  The durable
+inbox sequence is acknowledged only after the second phase terminalizes.
+Search and Query never consume or repair the inbox and never build a generation
+as a side effect of a read request.
 
 ** Failure contract
 

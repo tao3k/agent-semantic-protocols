@@ -21,6 +21,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 
+use super::durable_query_binding::DurableQueryBinding;
 use super::writer_publication_owner::{
     active_epoch, current_generation, publish_generation, publish_staged_overlay_generation,
     restore_checkpoint,
@@ -40,6 +41,9 @@ pub(super) struct WorkspaceEntry {
     overlays: Arc<ResidentOverlayStore>,
     pub(super) publisher: Arc<WorkspaceGenerationPublisher>,
     pub(super) writer: mpsc::Sender<WorkspaceWriteCommand>,
+    resident_view_publications: tokio::sync::broadcast::Sender<
+        crate::runtime_server_publication::ResidentWorkspaceViewPublished,
+    >,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,6 +61,9 @@ pub(super) struct WorkspaceWriteTarget {
     >,
     pub(super) overlays: Arc<ResidentOverlayStore>,
     pub(super) publisher: Arc<WorkspaceGenerationPublisher>,
+    pub(super) resident_view_publications: tokio::sync::broadcast::Sender<
+        crate::runtime_server_publication::ResidentWorkspaceViewPublished,
+    >,
 }
 
 impl WorkspaceEntry {
@@ -67,6 +74,7 @@ impl WorkspaceEntry {
             durability: self.durability.clone(),
             overlays: Arc::clone(&self.overlays),
             publisher: Arc::clone(&self.publisher),
+            resident_view_publications: self.resident_view_publications.clone(),
         }
     }
 }
@@ -163,10 +171,14 @@ pub(super) enum WorkspaceWriteCommand {
 pub struct RuntimeServerWorkspaceRegistry {
     pub(crate) root: PathBuf,
     entries: RwLock<HashMap<String, Arc<WorkspaceResident>>>,
+    pub(super) durable_query_bindings: RwLock<HashMap<(String, PathBuf), DurableQueryBinding>>,
     writer_capacity: usize,
     blocking_lane_ready: tokio::sync::OnceCell<()>,
     counters: Arc<RuntimeDataPlaneCounterState>,
     workspace_count: watch::Sender<usize>,
+    resident_view_publications: tokio::sync::broadcast::Sender<
+        crate::runtime_server_publication::ResidentWorkspaceViewPublished,
+    >,
     pub(super) sparse_provider_owners: super::sparse_provider_owner_cache::SparseProviderOwnerCache,
 }
 
@@ -190,13 +202,16 @@ impl RuntimeServerWorkspaceRegistry {
         let writer_capacity =
             crate::runtime_concurrency::RuntimeConcurrencyPlan::current().writer_queue_capacity();
         let (workspace_count, _) = watch::channel(0);
+        let (resident_view_publications, _) = tokio::sync::broadcast::channel(1_024);
         Ok(Self {
             root,
             entries: RwLock::new(HashMap::new()),
+            durable_query_bindings: RwLock::new(HashMap::new()),
             writer_capacity,
             blocking_lane_ready: tokio::sync::OnceCell::new(),
             counters: Arc::new(RuntimeDataPlaneCounterState::default()),
             workspace_count,
+            resident_view_publications,
             sparse_provider_owners:
                 super::sparse_provider_owner_cache::SparseProviderOwnerCache::new(4_096),
         })
@@ -267,6 +282,17 @@ impl RuntimeServerWorkspaceRegistry {
 
     pub fn subscribe_workspace_count(&self) -> watch::Receiver<usize> {
         self.workspace_count.subscribe()
+    }
+
+    /// Subscribe to owner-overlay commits. This is distinct from canonical
+    /// generation publication because content/topology deltas deliberately do
+    /// not rewrite or mint a full workspace generation.
+    pub fn subscribe_resident_view_publications(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<
+        crate::runtime_server_publication::ResidentWorkspaceViewPublished,
+    > {
+        self.resident_view_publications.subscribe()
     }
 
     pub fn data_plane_counters(&self) -> RuntimeDataPlaneCounters {
@@ -433,6 +459,7 @@ impl RuntimeServerWorkspaceRegistry {
                 )?;
                 WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
                 crate::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+                crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
             }
             let (live_lease_count, in_flight_request_count) = resident.activity.counts();
             let receipt = ResidentWorkspaceRetirementReceipt {
@@ -524,6 +551,7 @@ impl RuntimeServerWorkspaceRegistry {
                 )?;
                 WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
                 crate::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+                crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
             }
         }
         let receipt = RuntimeServerShutdownReceipt {
@@ -667,6 +695,7 @@ impl RuntimeServerWorkspaceRegistry {
                     overlays,
                     publisher: initialized.publisher,
                     writer: resident.writer.clone(),
+                    resident_view_publications: self.resident_view_publications.clone(),
                 }))
             })
             .await?;
@@ -722,6 +751,7 @@ async fn workspace_writer_lane(
                     durability: _,
                     overlays,
                     publisher,
+                    resident_view_publications: _,
                 } = target;
                 let active_epoch = active_epoch(&current);
                 let result = if generation.active_epoch <= active_epoch {

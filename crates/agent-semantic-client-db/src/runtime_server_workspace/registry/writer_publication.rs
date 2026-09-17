@@ -107,21 +107,29 @@ pub(super) async fn publish_resident_owner_topology_rebind_command(
                 .overlays
                 .publish_owner_topology_rebind(base.generation(), rebind, prepared)?;
         let resident_generation_digest = staged.generation_digest().to_owned();
-        target.overlays.commit(staged);
         let receipt = crate::runtime_server_workspace::WorkspaceOwnerTopologyRebindReceiptV1 {
             schema_id:
                 crate::runtime_server_workspace::WORKSPACE_OWNER_TOPOLOGY_REBIND_RECEIPT_SCHEMA_ID
                     .to_owned(),
             schema_version: "1".to_owned(),
             rebind_id,
-            workspace_identity,
-            base_generation_digest,
-            resident_generation_digest,
+            workspace_identity: workspace_identity.clone(),
+            base_generation_digest: base_generation_digest.clone(),
+            resident_generation_digest: resident_generation_digest.clone(),
             rebound_owner_count,
             topology_node_count,
             relation_count,
         };
         receipt.validate()?;
+        target.overlays.commit(staged);
+        let _ = target.resident_view_publications.send(
+            crate::runtime_server_publication::ResidentWorkspaceViewPublished {
+                workspace_identity: workspace_identity.clone(),
+                project_root: std::path::PathBuf::from(&target.scope_key),
+                generation_digest: base_generation_digest.clone(),
+                resident_view_digest: resident_generation_digest.clone(),
+            },
+        );
         Ok(receipt)
     })();
     let _ = reply.send(result);
@@ -195,8 +203,8 @@ pub(super) async fn publish_owner_content_mutation_command(
                     .to_owned(),
             schema_version: "1".to_owned(),
             mutation_id,
-            workspace_identity,
-            base_generation_digest,
+            workspace_identity: workspace_identity.clone(),
+            base_generation_digest: base_generation_digest.clone(),
             resident_generation_digest: staged.generation_digest().to_owned(),
             owner_identity_root_digest: staged.owner_identity_root_digest().to_owned(),
             upserted_owner_count,
@@ -208,6 +216,14 @@ pub(super) async fn publish_owner_content_mutation_command(
         };
         receipt.validate()?;
         target.overlays.commit(staged);
+        let _ = target.resident_view_publications.send(
+            crate::runtime_server_publication::ResidentWorkspaceViewPublished {
+                workspace_identity: workspace_identity.clone(),
+                project_root: std::path::PathBuf::from(&target.scope_key),
+                generation_digest: base_generation_digest.clone(),
+                resident_view_digest: receipt.resident_generation_digest.clone(),
+            },
+        );
         Ok(receipt)
     }
     .await;

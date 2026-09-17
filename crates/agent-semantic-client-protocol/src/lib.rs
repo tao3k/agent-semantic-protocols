@@ -11,6 +11,7 @@ mod client_timing;
 mod conformance;
 mod enhanced_query_capability;
 mod frame;
+mod hook_memory_inbox;
 mod identity;
 pub mod protocol_identity;
 mod protocol_validation;
@@ -55,6 +56,12 @@ pub use frame::ClientInfo;
 pub use frame::ClientOutcome;
 pub use frame::ClientResponsePayload;
 pub use frame::TraceContext;
+pub use hook_memory_inbox::{
+    HOOK_MEMORY_INBOX_FAILURE_SCHEMA_ID, HOOK_MEMORY_INBOX_SCHEMA_ID,
+    HOOK_MEMORY_INBOX_SCHEMA_VERSION, HookMemoryInboxEntryKind, HookMemoryInboxEvent,
+    HookMemoryInboxEventPayload, HookMemoryInboxFailure, HookMemoryInboxFailureReason,
+    HookWorkspaceMutationEvent,
+};
 pub use identity::AgentChildThreadId;
 pub use identity::AgentName;
 pub use identity::AgentParentThreadId;

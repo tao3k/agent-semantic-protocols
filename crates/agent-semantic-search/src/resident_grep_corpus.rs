@@ -29,6 +29,14 @@ pub struct ResidentGrepMappedCorpusOwner {
     pub byte_range: Range<usize>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdmittedResidentGrepMappedCorpusOwner {
+    pub owner_path: String,
+    pub content_digest: String,
+    pub byte_range: Range<usize>,
+    pub line_count: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResidentGrepOwnerSpan {
@@ -247,6 +255,68 @@ pub fn open_mapped_resident_grep_corpus(
             owner_count: owner_spans.len(),
             corpus_digest,
             owner_spans_digest,
+        },
+        owner_spans,
+        storage: ResidentGrepCorpusStorage::Mapped(mapping),
+        owner_byte_ranges,
+        corpus_byte_count,
+    })
+}
+
+/// Opens a generation-admitted mmap corpus without rehashing or rescanning
+/// every owner byte. The immutable generation pointer and owner-directory
+/// record digests are the validation authority for this reader path.
+pub fn open_admitted_mapped_resident_grep_corpus(
+    content_generation_digest: &str,
+    corpus_digest: &str,
+    mapping: Arc<memmap2::Mmap>,
+    owners: impl IntoIterator<Item = AdmittedResidentGrepMappedCorpusOwner>,
+) -> Result<ResidentGrepCorpusArtifact, String> {
+    let content_generation_digest = crate::canonical_blake3_digest(content_generation_digest)?;
+    let corpus_digest = crate::canonical_blake3_digest(corpus_digest)?;
+    let mut owners = owners.into_iter().collect::<Vec<_>>();
+    owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    if owners.is_empty()
+        || owners
+            .windows(2)
+            .any(|pair| pair[0].owner_path == pair[1].owner_path)
+    {
+        return Err("resident GREP corpus owner set is empty or non-canonical".to_owned());
+    }
+    let mut owner_spans = Vec::with_capacity(owners.len());
+    let mut owner_byte_ranges = Vec::with_capacity(owners.len());
+    let mut corpus_byte_count = 0usize;
+    let mut next_line = 1u64;
+    for owner in owners {
+        validate_owner_path(&owner.owner_path)?;
+        let content_digest = crate::canonical_blake3_digest(&owner.content_digest)?;
+        if owner.byte_range.start > owner.byte_range.end || owner.byte_range.end > mapping.len() {
+            return Err("resident GREP corpus owner exceeds mapped generation".to_owned());
+        }
+        let line_count = u64::from(owner.line_count.max(1));
+        let end_line = next_line + line_count - 1;
+        corpus_byte_count = corpus_byte_count
+            .checked_add(owner.byte_range.len())
+            .ok_or_else(|| "resident GREP corpus byte count overflows".to_owned())?;
+        owner_spans.push(ResidentGrepOwnerSpan {
+            owner_path: owner.owner_path,
+            content_digest,
+            start_line: next_line,
+            end_line,
+        });
+        owner_byte_ranges.push(owner.byte_range);
+        next_line = end_line + 1;
+    }
+    let spans = serde_json::to_vec(&owner_spans)
+        .map_err(|error| format!("encode resident GREP owner spans: {error}"))?;
+    Ok(ResidentGrepCorpusArtifact {
+        receipt: ResidentGrepCorpusReceipt {
+            schema_id: RESIDENT_GREP_CORPUS_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            content_generation_digest,
+            owner_count: owner_spans.len(),
+            corpus_digest,
+            owner_spans_digest: format!("blake3-256:{}", blake3::hash(&spans).to_hex()),
         },
         owner_spans,
         storage: ResidentGrepCorpusStorage::Mapped(mapping),

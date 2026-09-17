@@ -7,12 +7,16 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SourceIndexCollectionScope {
     CompleteGeneration,
+    /// A Hook-observed mutation cut. Existing paths are projected while paths
+    /// absent from the inventory remain in the cut as removals during overlay.
+    ChangedOwners(std::collections::BTreeSet<String>),
 }
 
 pub(crate) struct SourceIndexCollectionReceipt {
     pub(crate) files: Vec<crate::ClientDbSourceIndexScopeFile>,
     pub(crate) project_resolutions: Vec<agent_semantic_content_identity::AdmittedProjectResolution>,
     pub(crate) candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    pub(crate) changed_owner_paths: Option<Vec<String>>,
 }
 
 pub(crate) fn collect_source_index_scope_from_inventory(
@@ -23,10 +27,15 @@ pub(crate) fn collect_source_index_scope_from_inventory(
     candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 ) -> Result<SourceIndexCollectionReceipt, String> {
     candidate.validate()?;
-    let candidate_paths = inventory
-        .iter()
-        .map(std::path::PathBuf::from)
-        .collect::<Vec<_>>();
+    let candidate_paths = match scope {
+        SourceIndexCollectionScope::CompleteGeneration => inventory.to_vec(),
+        SourceIndexCollectionScope::ChangedOwners(owner_paths) => {
+            owner_paths.iter().cloned().collect::<Vec<_>>()
+        }
+    }
+    .iter()
+    .map(std::path::PathBuf::from)
+    .collect::<Vec<_>>();
     collect_source_index_scope_from_paths(
         project_root,
         provider_registry,
@@ -45,7 +54,6 @@ fn collect_source_index_scope_from_paths(
 ) -> Result<SourceIndexCollectionReceipt, String> {
     let mut files = Vec::new();
     for provider in &provider_registry.providers {
-        let SourceIndexCollectionScope::CompleteGeneration = scope;
         if provider.source_extensions.is_empty() {
             return Err(format!(
                 "base generation requires declarative source extensions: languageId={} providerId={}",
@@ -74,6 +82,12 @@ fn collect_source_index_scope_from_paths(
         files,
         project_resolutions: Vec::new(),
         candidate,
+        changed_owner_paths: match scope {
+            SourceIndexCollectionScope::CompleteGeneration => None,
+            SourceIndexCollectionScope::ChangedOwners(owner_paths) => {
+                Some(owner_paths.iter().cloned().collect())
+            }
+        },
     })
 }
 

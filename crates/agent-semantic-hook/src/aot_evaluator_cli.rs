@@ -108,8 +108,168 @@ fn emit_runtime_identity() {
 }
 
 fn emit_observational_event(event: &str) {
-    let _ = event;
+    if event != "post-tool" {
+        println!("{{}}");
+        return;
+    }
+    #[cfg(feature = "compiler")]
+    match append_post_tool_workspace_mutation() {
+        Ok(()) => println!("{{}}"),
+        Err(failure) => {
+            let typed = serde_json::to_string(&failure)
+                .unwrap_or_else(|_| "Hook memory inbox failed".to_owned());
+            println!(
+                "{}",
+                serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUse",
+                        "additionalContext": typed,
+                    },
+                    "systemMessage": typed,
+                })
+            );
+        }
+    }
+    #[cfg(not(feature = "compiler"))]
     println!("{{}}");
+}
+
+#[cfg(feature = "compiler")]
+fn append_post_tool_workspace_mutation()
+-> Result<(), agent_semantic_client_protocol::HookMemoryInboxFailure> {
+    use agent_semantic_client_protocol::{
+        HookMemoryInboxFailure, HookMemoryInboxFailureReason, HookWorkspaceMutationEvent,
+    };
+    let fail = |reason, detail| HookMemoryInboxFailure::new(reason, detail);
+    let mut payload_json = String::new();
+    std::io::stdin()
+        .read_to_string(&mut payload_json)
+        .map_err(|error| {
+            fail(
+                HookMemoryInboxFailureReason::DecodeRecord,
+                format!("read PostToolUse payload: {error}"),
+            )
+        })?;
+    let payload: serde_json::Value = serde_json::from_str(&payload_json).map_err(|error| {
+        fail(
+            HookMemoryInboxFailureReason::DecodeRecord,
+            format!("decode PostToolUse payload: {error}"),
+        )
+    })?;
+    let tool_name = payload
+        .get("tool_name")
+        .or_else(|| payload.get("toolName"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let tool_input = payload
+        .get("tool_input")
+        .or_else(|| payload.get("toolInput"))
+        .unwrap_or(&serde_json::Value::Null);
+    let changed_paths = crate::workspace_mutation_paths(tool_name, tool_input);
+    if changed_paths.is_empty() {
+        return Ok(());
+    }
+    let project_root = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .ok_or_else(|| {
+            fail(
+                HookMemoryInboxFailureReason::EncodeEvent,
+                "PostToolUse workspace mutation has no project root".to_owned(),
+            )
+        })?;
+    if !project_root.is_absolute() {
+        return Err(fail(
+            HookMemoryInboxFailureReason::EncodeEvent,
+            "PostToolUse workspace root must be absolute".to_owned(),
+        ));
+    }
+    let mut relative_paths = changed_paths
+        .iter()
+        .map(|path| normalize_changed_path(&project_root, path))
+        .collect::<Result<Vec<_>, _>>()?;
+    relative_paths.sort();
+    relative_paths.dedup();
+    let canonical_project_root = std::fs::canonicalize(&project_root).map_err(|error| {
+        fail(
+            HookMemoryInboxFailureReason::EncodeEvent,
+            format!(
+                "canonicalize PostToolUse workspace root {}: {error}",
+                project_root.display()
+            ),
+        )
+    })?;
+    let mutation_id = payload
+        .get("tool_use_id")
+        .or_else(|| payload.get("toolUseId"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|identity| !identity.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("hook:{}", blake3::hash(payload_json.as_bytes()).to_hex()));
+    let event = HookWorkspaceMutationEvent {
+        mutation_id,
+        project_root: canonical_project_root.display().to_string(),
+        changed_paths: relative_paths,
+        tool_name: tool_name.to_owned(),
+        session_id: payload
+            .get("session_id")
+            .or_else(|| payload.get("sessionId"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        tool_use_id: payload
+            .get("tool_use_id")
+            .or_else(|| payload.get("toolUseId"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+    };
+    let path = crate::hook_memory_inbox::default_path()
+        .map_err(|error| fail(HookMemoryInboxFailureReason::Open, error))?;
+    crate::hook_memory_inbox::append_workspace_mutation(&path, event)?;
+    Ok(())
+}
+
+#[cfg(feature = "compiler")]
+fn normalize_changed_path(
+    project_root: &std::path::Path,
+    candidate: &str,
+) -> Result<String, agent_semantic_client_protocol::HookMemoryInboxFailure> {
+    use agent_semantic_client_protocol::{HookMemoryInboxFailure, HookMemoryInboxFailureReason};
+    use std::path::Component;
+    let candidate = std::path::Path::new(candidate);
+    let relative = if candidate.is_absolute() {
+        candidate.strip_prefix(project_root).map_err(|_| {
+            HookMemoryInboxFailure::new(
+                HookMemoryInboxFailureReason::EncodeEvent,
+                format!("changed path escapes project root: {}", candidate.display()),
+            )
+        })?
+    } else {
+        candidate
+    };
+    let mut normalized = PathBuf::new();
+    for component in relative.components() {
+        match component {
+            Component::Normal(segment) => normalized.push(segment),
+            _ => {
+                return Err(HookMemoryInboxFailure::new(
+                    HookMemoryInboxFailureReason::EncodeEvent,
+                    format!("changed path is not normalized: {}", candidate.display()),
+                ));
+            }
+        }
+    }
+    normalized
+        .to_str()
+        .filter(|path| !path.is_empty())
+        .map(|path| path.replace(std::path::MAIN_SEPARATOR, "/"))
+        .ok_or_else(|| {
+            HookMemoryInboxFailure::new(
+                HookMemoryInboxFailureReason::EncodeEvent,
+                "changed path is empty or not UTF-8",
+            )
+        })
 }
 
 fn emit_subagent_stop_terminal() {

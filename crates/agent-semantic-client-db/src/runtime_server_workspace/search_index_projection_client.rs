@@ -12,17 +12,41 @@ use memmap2::{Mmap, MmapOptions};
 use tokio::fs;
 
 use super::search_index_projection::{
-    RuntimeDerivedAttachmentBuildTiming, SearchMerkleOwnerRecord, SearchOwnerRecord,
-    WorkspaceSearchGenerationDataPlaneClient, build_admitted_owner_search_indexes,
-    build_merkle_search_generation, build_owner_search_indexes, build_resident_byte_coverage_index,
-    build_resident_graph_generation, build_resident_grep_corpus, elapsed_micros, graph_key,
-    workspace_search_generation_segment_path,
+    RuntimeDerivedAttachmentBuildTiming, SearchMerkleOwnerRecord, SearchOwnerLocatorRecord,
+    SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient,
+    build_admitted_owner_search_indexes, build_merkle_search_generation,
+    build_resident_byte_coverage_index, build_resident_graph_generation,
+    build_resident_grep_corpus, elapsed_micros, workspace_search_generation_segment_path,
 };
 use super::{
     SearchGenerationSectionKind, ValidatedSearchGenerationSegment, ValidatedSortedRecordTable,
     WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration,
     WorkspaceSearchGenerationAuthority,
 };
+
+#[derive(Debug, Default)]
+struct WorkspaceSearchGenerationDataPlaneCell {
+    client: tokio::sync::OnceCell<Arc<WorkspaceSearchGenerationDataPlaneClient>>,
+}
+
+static SEARCH_GENERATION_DATA_PLANE_CELLS: std::sync::OnceLock<
+    parking_lot::RwLock<BTreeMap<std::path::PathBuf, Arc<WorkspaceSearchGenerationDataPlaneCell>>>,
+> = std::sync::OnceLock::new();
+
+fn search_generation_data_plane_cell(
+    pointer_path: &Path,
+) -> Arc<WorkspaceSearchGenerationDataPlaneCell> {
+    let cells = SEARCH_GENERATION_DATA_PLANE_CELLS.get_or_init(Default::default);
+    if let Some(cell) = cells.read().get(pointer_path) {
+        return Arc::clone(cell);
+    }
+    let mut cells = cells.write();
+    Arc::clone(
+        cells
+            .entry(pointer_path.to_path_buf())
+            .or_insert_with(|| Arc::new(WorkspaceSearchGenerationDataPlaneCell::default())),
+    )
+}
 
 fn graph_entry_owner_index(
     owners: &BTreeMap<String, Arc<SearchOwnerRecord>>,
@@ -76,8 +100,29 @@ fn owned_relation_index(
 }
 
 impl WorkspaceSearchGenerationDataPlaneClient {
-    pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
-        Self::open_inner(pointer_path, project_root).await
+    /// Open one immutable Search generation through the process-wide pointer
+    /// cell. Admission validation, Runtime observation, and the first query
+    /// therefore share the exact same mmap and decoded locator plane.
+    pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Arc<Self>, String> {
+        let cell = search_generation_data_plane_cell(pointer_path);
+        let client = cell
+            .client
+            .get_or_try_init(|| async {
+                Self::open_inner(pointer_path, project_root)
+                    .await
+                    .map(Arc::new)
+            })
+            .await?;
+        if client.project_root != project_root.to_string_lossy() {
+            return Err("workspace Search generation project root drift".to_owned());
+        }
+        Ok(Arc::clone(client))
+    }
+
+    pub(crate) fn invalidate_committed_pointer(pointer_path: &Path) {
+        if let Some(cells) = SEARCH_GENERATION_DATA_PLANE_CELLS.get() {
+            cells.write().remove(pointer_path);
+        }
     }
 
     async fn open_inner(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
@@ -218,11 +263,34 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         let owner_search_started = std::time::Instant::now();
         let (source_documents, callable_selector_by_owner) =
             build_admitted_owner_search_indexes(&owner_directory_records)?;
-        let topology_index =
-            super::search_index_projection::build_topology_index(&owner_directory_records)?;
+        let topology_index = std::sync::OnceLock::new();
+        topology_index
+            .set(super::search_index_projection::build_topology_index(
+                &owner_directory_records,
+            ))
+            .map_err(|_| "resident topology index initialized twice".to_owned())?;
         let provider_authorities = provider_authorities(&source_documents);
         let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
         let owner_search_micros = elapsed_micros(owner_search_started);
+        let corpus_digest =
+            resident_grep_corpus_digest(owners.iter().map(|(_, owner)| owner.bytes.as_slice()));
+        let owner_locator_records = owner_directory_records
+            .iter()
+            .map(|(owner_path, record)| {
+                (
+                    owner_path.clone(),
+                    Arc::new(SearchOwnerLocatorRecord {
+                        owner_path: owner_path.clone(),
+                        authority: record.authority.clone(),
+                        content_digest: record.content_digest.clone(),
+                        byte_offset: record.byte_offset,
+                        byte_length: record.byte_length,
+                        line_count: record.line_count,
+                        corpus_digest: corpus_digest.clone(),
+                    }),
+                )
+            })
+            .collect();
         let byte_coverage_started = std::time::Instant::now();
         let resident_byte_coverage =
             agent_semantic_search::ResidentByteCoverageIndex::new(owners.iter().map(
@@ -269,6 +337,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             authority,
             project_root,
             owner_directory_records,
+            owner_locator_records,
+            mapped_owner_record_table_range: None,
+            mapped_merkle_owner_table_range: None,
+            mapped_graph_relation_table_range: None,
             source_documents,
             provider_authorities,
             resident_byte_coverage,
@@ -292,7 +364,9 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         expected_workspace_identity: &str,
         expected_generation_digest: &str,
     ) -> Result<Self, String> {
+        let total_started = std::time::Instant::now();
         let mapping = Arc::new(mapping);
+        let segment_started = std::time::Instant::now();
         let segment = ValidatedSearchGenerationSegment::parse(mapping.as_ref())?;
         let (evidence, _, _) = segment.section(SearchGenerationSectionKind::GenerationEvidence);
         let authority: WorkspaceSearchGenerationAuthority = serde_json::from_slice(evidence)
@@ -303,89 +377,85 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         {
             return Err("workspace search generation pointer binding mismatch".to_owned());
         }
+        let segment_micros = elapsed_micros(segment_started);
+        let owners_started = std::time::Instant::now();
         let (owner_directory_bytes, _, _) =
             segment.section(SearchGenerationSectionKind::OwnerDirectory);
-        let owner_directory_records = ValidatedSortedRecordTable::parse(owner_directory_bytes)?
+        let owner_locator_records = ValidatedSortedRecordTable::parse(owner_directory_bytes)?
             .owned_records()?
             .into_iter()
             .map(|(key, value)| {
                 let key = String::from_utf8(key).map_err(|error| {
                     format!("workspace owner-directory key is not UTF-8: {error}")
                 })?;
-                let record: SearchOwnerRecord = serde_json::from_slice(&value)
-                    .map_err(|error| format!("decode workspace owner record: {error}"))?;
+                let record: SearchOwnerLocatorRecord = serde_json::from_slice(&value)
+                    .map_err(|error| format!("decode workspace owner locator: {error}"))?;
                 if record.owner_path != key {
-                    return Err("workspace owner record key drift".to_owned());
+                    return Err("workspace owner locator key drift".to_owned());
                 }
                 Ok((key, Arc::new(record)))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
+        let owners_micros = elapsed_micros(owners_started);
         let owner_bytes_range = segment.section_range(SearchGenerationSectionKind::OwnerBytes);
+        let byte_coverage_started = std::time::Instant::now();
         let resident_byte_coverage = build_resident_byte_coverage_index(
             Arc::clone(&mapping),
             &owner_bytes_range,
-            &owner_directory_records,
+            &owner_locator_records,
         )?;
+        let byte_coverage_micros = elapsed_micros(byte_coverage_started);
+        let grep_started = std::time::Instant::now();
         let resident_grep_corpus = build_resident_grep_corpus(
             Arc::clone(&mapping),
             &owner_bytes_range,
-            &owner_directory_records,
+            &owner_locator_records,
             &authority
                 .content_search_generation
                 .content_generation_digest,
         )?;
-        let (merkle_owner_bytes, _, _) =
-            segment.section(SearchGenerationSectionKind::MerkleOwnerIndex);
-        let merkle_owner_records = ValidatedSortedRecordTable::parse(merkle_owner_bytes)?
-            .owned_records()?
-            .into_iter()
-            .map(|(key, value)| {
-                let key = String::from_utf8(key).map_err(|error| {
-                    format!("workspace search Merkle-owner key is not UTF-8: {error}")
-                })?;
-                let record: SearchMerkleOwnerRecord = serde_json::from_slice(&value)
-                    .map_err(|error| format!("decode workspace search Merkle owner: {error}"))?;
-                if record.owner_path != key {
-                    return Err("workspace search Merkle owner key drift".to_owned());
-                }
-                Ok((key, Arc::new(record)))
+        let grep_micros = elapsed_micros(grep_started);
+        let merkle_micros = 0;
+        let graph_micros = 0;
+        let topology_micros = 0;
+        let owner_directory_records = BTreeMap::new();
+        let source_documents = owner_locator_records
+            .values()
+            .map(|record| agent_semantic_search::ResidentSourceDocument {
+                owner_path: record.owner_path.clone(),
+                authority: record.authority.clone(),
+                owner_content_digest: record.content_digest.clone(),
+                line_count: record.line_count,
+                query_keys: Vec::new(),
             })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-        let (graph_relation_bytes, _, _) =
-            segment.section(SearchGenerationSectionKind::GraphRelations);
-        let graph_records =
-            ValidatedSortedRecordTable::parse(graph_relation_bytes)?.owned_records()?;
-        let mut graph_relations = Vec::<crate::ClientDbSourceIndexOwnedRelation>::new();
-        let mut graph_relation_records = BTreeMap::<
-            (String, String),
-            Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
-        >::new();
-        for (key, value) in graph_records {
-            let owned_relations =
-                serde_json::from_slice::<Vec<crate::ClientDbSourceIndexOwnedRelation>>(&value)
-                    .map_err(|error| format!("decode workspace search graph relations: {error}"))?;
-            for owned in &owned_relations {
-                let relation = &owned.relation;
-                if graph_key(relation.from.kind.as_str(), &relation.from.id) != key {
-                    return Err("workspace search graph relation key drift".to_owned());
-                }
-                graph_relation_records
-                    .entry((relation.from.kind.to_string(), relation.from.id.clone()))
-                    .or_default()
-                    .push(relation.clone());
-            }
-            graph_relations.extend(owned_relations);
-        }
-        let owned_relations_by_owner =
-            owned_relation_index(&owner_directory_records, &graph_relations)?;
-        let (source_documents, callable_selector_by_owner) =
-            build_owner_search_indexes(&owner_directory_records, &graph_relations, &authority)?;
-        let topology_index =
-            super::search_index_projection::build_topology_index(&owner_directory_records)?;
+            .collect::<Vec<_>>();
         let provider_authorities = provider_authorities(&source_documents);
-        let graph_entry_owner_by_node_id = graph_entry_owner_index(&owner_directory_records)?;
+        let callable_selector_by_owner = BTreeMap::new();
+        let topology_index = std::sync::OnceLock::new();
+        let graph_entry_owner_by_node_id = BTreeMap::new();
+        let merkle_owner_records = BTreeMap::new();
+        let owned_relations_by_owner = BTreeMap::new();
+        let graph_relation_records = BTreeMap::new();
+        let mapped_owner_record_table_range =
+            segment.section_range(SearchGenerationSectionKind::SelectorIndex);
+        let mapped_merkle_owner_table_range =
+            segment.section_range(SearchGenerationSectionKind::MerkleOwnerIndex);
+        let mapped_graph_relation_table_range =
+            segment.section_range(SearchGenerationSectionKind::GraphRelations);
         let graph_generation = Arc::new(tokio::sync::OnceCell::new());
         let lexical_accelerator = Arc::new(tokio::sync::OnceCell::new());
+        eprintln!(
+            "[mapped-search-plane-open-timing] ownerCount={} segmentMicros={} ownersMicros={} byteCoverageMicros={} grepCorpusMicros={} merkleMicros={} graphMicros={} topologyMicros={} totalMicros={}",
+            owner_locator_records.len(),
+            segment_micros,
+            owners_micros,
+            byte_coverage_micros,
+            grep_micros,
+            merkle_micros,
+            graph_micros,
+            topology_micros,
+            elapsed_micros(total_started),
+        );
         Ok(Self {
             mapping: Some(mapping),
             resident_generation: None,
@@ -396,6 +466,10 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                 .ok_or_else(|| "workspace search project root is not UTF-8".to_owned())?
                 .to_owned(),
             owner_directory_records,
+            owner_locator_records,
+            mapped_owner_record_table_range: Some(mapped_owner_record_table_range),
+            mapped_merkle_owner_table_range: Some(mapped_merkle_owner_table_range),
+            mapped_graph_relation_table_range: Some(mapped_graph_relation_table_range),
             source_documents,
             provider_authorities,
             resident_byte_coverage,
@@ -458,15 +532,29 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         }
         let build_started = std::time::Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            build_resident_graph_generation(
-                &self.authority,
-                &self.owner_directory_records,
-                self.graph_relation_records
-                    .values()
-                    .flatten()
-                    .cloned()
-                    .collect(),
-            )
+            let mapped_owners;
+            let mapped_relations;
+            let (owners, relations) = if self.mapping.is_some() {
+                mapped_owners = self.mapped_all_owner_records()?;
+                mapped_relations = self.mapped_all_owned_relations()?;
+                (
+                    &mapped_owners,
+                    mapped_relations
+                        .iter()
+                        .map(|owned| owned.relation.clone())
+                        .collect(),
+                )
+            } else {
+                (
+                    &self.owner_directory_records,
+                    self.graph_relation_records
+                        .values()
+                        .flatten()
+                        .cloned()
+                        .collect(),
+                )
+            };
+            build_resident_graph_generation(&self.authority, owners, relations)
         }))
         .unwrap_or_else(|_| Err("background generation graph builder panicked".to_owned()));
         let build_micros = elapsed_micros(build_started);
@@ -614,4 +702,15 @@ fn provider_authorities(
             .insert(authority.provider_id.as_str().to_owned());
     }
     authorities
+}
+
+fn resident_grep_corpus_digest<'a>(owners: impl IntoIterator<Item = &'a [u8]>) -> String {
+    let mut hasher = blake3::Hasher::new();
+    for bytes in owners {
+        hasher.update(bytes);
+        if !bytes.ends_with(b"\n") {
+            hasher.update(b"\n");
+        }
+    }
+    format!("blake3-256:{}", hasher.finalize().to_hex())
 }

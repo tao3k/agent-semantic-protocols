@@ -58,6 +58,7 @@ pub(super) async fn publish_canonical_generation(
         durability,
         overlays,
         publisher,
+        resident_view_publications: _,
     } = target;
     let active = current.borrow().clone();
     let active_epoch = active

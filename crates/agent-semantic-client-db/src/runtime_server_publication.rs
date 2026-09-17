@@ -15,6 +15,19 @@ pub struct WorkspaceGenerationPublished {
     pub project_root: PathBuf,
     pub resident_pointer_path: PathBuf,
     pub generation_digest: String,
+    pub resident_view_digest: Option<String>,
+}
+
+/// One process-resident overlay view became visible without minting a new
+/// canonical generation. Consumers must reopen the resident lease and compare
+/// `resident_view_digest`; the canonical generation digest alone is not a
+/// sufficient cache key for mutable owner overlays.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResidentWorkspaceViewPublished {
+    pub workspace_identity: String,
+    pub project_root: PathBuf,
+    pub generation_digest: String,
+    pub resident_view_digest: String,
 }
 
 #[derive(Clone)]

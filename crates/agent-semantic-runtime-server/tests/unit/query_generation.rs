@@ -334,6 +334,29 @@ async fn failed_open_publishes_a_typed_workspace_state() {
     ));
 }
 
+#[tokio::test]
+async fn failed_admission_handoff_leaves_terminal_authority_to_observer() {
+    let authority = authority();
+    let receiver = authority.subscribe();
+    let workspace_key = key("project-test", "workspace-admission-handoff");
+    let missing = std::path::Path::new("/definitely-missing-asp-generation/pointer");
+
+    let result = authority
+        .ensure_ready_from_admission(
+            &workspace_key,
+            missing,
+            std::path::Path::new("/definitely-missing-asp-generation/project"),
+            "blake3-256:expected",
+        )
+        .await;
+
+    assert!(result.is_err());
+    assert!(
+        receiver.borrow().get(&workspace_key).is_none(),
+        "request-side handoff cannot publish a transient failure before the observer terminal"
+    );
+}
+
 #[test]
 fn calibration_cache_ignores_stale_engine_and_machine_identity() {
     let bulk = workload_bucket(1 << 20, 4_096, 4_096, true);

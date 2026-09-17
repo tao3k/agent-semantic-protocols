@@ -14,6 +14,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
     let workspace_identity = "workspace-owner-content-mutation-v1";
     let registry =
         RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
+    let mut resident_view_publications = registry.subscribe_resident_view_publications();
     let previous = b"fn previous() {}\n";
     let authority = agent_semantic_search::ResidentSearchAuthority {
         language_id: agent_semantic_config::LanguageId::new("rust"),
@@ -23,7 +24,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
         .publish(
             "owner-content-base",
             WorkspaceRecoverySource::TursoGeneration,
-            super::overlay_fixture::generation_with_authority_and_selectors(
+            super::fixture::generation_with_authority_and_selectors(
                 workspace_identity,
                 &root,
                 1,
@@ -116,6 +117,20 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
         .expect("publish owner-local content transaction");
 
     receipt.validate().expect("valid V1 mutation receipt");
+    let content_publication = resident_view_publications
+        .recv()
+        .await
+        .expect("content mutation publishes a resident-view event");
+    assert_eq!(content_publication.workspace_identity, workspace_identity);
+    assert_eq!(content_publication.project_root, root);
+    assert_eq!(
+        content_publication.generation_digest,
+        base_generation_digest
+    );
+    assert_eq!(
+        content_publication.resident_view_digest,
+        receipt.resident_generation_digest
+    );
     assert_eq!(receipt.base_generation_digest, base_generation_digest);
     assert_eq!(receipt.upserted_owner_count, 1);
     assert_eq!(receipt.removed_owner_count, 0);
@@ -278,6 +293,14 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
         .await
         .expect("publish V1 owner topology rebind");
     rebind_receipt.validate().expect("valid V1 rebind receipt");
+    let topology_publication = resident_view_publications
+        .recv()
+        .await
+        .expect("topology rebind publishes a resident-view event");
+    assert_eq!(
+        topology_publication.resident_view_digest,
+        rebind_receipt.resident_generation_digest
+    );
     assert_eq!(rebind_receipt.rebound_owner_count, 1);
     assert_eq!(
         rebind_receipt.topology_node_count, 3,

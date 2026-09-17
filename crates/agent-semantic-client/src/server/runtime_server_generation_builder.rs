@@ -115,6 +115,34 @@ pub(super) fn build_workspace_generation_candidate_builder(
                     .as_ref()
                     .map(|target| replacement_authority_for_target(target, &registry))
                     .transpose()?;
+                // Hook mutations already carry the exact changed-owner cut.
+                // Preserve it through parser projection and generation overlay
+                // when this is a workspace mutation, rather than expanding it
+                // into a complete provider replacement. A query-demand target
+                // still owns full provider admission because the active base
+                // is not yet proved to cover that provider.
+                let changed_owner_paths = if provider_target.is_none() {
+                    normalized_changed_source_owners(
+                        &project_root,
+                        changed_paths.as_ref(),
+                        &registry,
+                    )?
+                } else {
+                    std::collections::BTreeSet::new()
+                };
+                let collection_scope = if changed_owner_paths.is_empty() {
+                    agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration
+                } else {
+                    agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::ChangedOwners(changed_owner_paths)
+                };
+                let replacement_authority = if matches!(
+                    collection_scope,
+                    agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::ChangedOwners(_)
+                ) {
+                    None
+                } else {
+                    replacement_authority
+                };
                 let mut build = agent_semantic_client_db::server_source_index::
                     prepare_runtime_server_workspace_generation_with_runtime_service_async(
                         runtime_search_service,
@@ -128,7 +156,7 @@ pub(super) fn build_workspace_generation_candidate_builder(
                             schema_bundle_digest: schema_bundle_digest.clone(),
                             workspace_closure_digest: current_catalog_generation.clone(),
                         },
-                        agent_semantic_client_db::server_source_index::SourceIndexCollectionScope::CompleteGeneration,
+                        collection_scope,
                         candidate,
                         inventory.owner_paths,
                         replacement_authority,
@@ -157,6 +185,53 @@ pub(super) fn build_workspace_generation_candidate_builder(
             })
         },
     )
+}
+
+fn normalized_changed_source_owners(
+    project_root: &Path,
+    changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    registry: &agent_semantic_client_core::RuntimeProviderProjection,
+) -> Result<std::collections::BTreeSet<String>, String> {
+    let source_extensions = registry
+        .providers
+        .iter()
+        .flat_map(|provider| provider.source_extensions.iter())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut owners = std::collections::BTreeSet::new();
+    for changed_path in changed_paths {
+        let relative = if changed_path.is_absolute() {
+            changed_path.strip_prefix(project_root).map_err(|_| {
+                format!(
+                    "workspace mutation path escaped project root: {}",
+                    changed_path.display()
+                )
+            })?
+        } else {
+            changed_path.as_path()
+        };
+        if relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(format!(
+                "workspace mutation path is not normalized: {}",
+                changed_path.display()
+            ));
+        }
+        let owner = relative.to_string_lossy().replace('\\', "/");
+        // Configuration and directory mutations may invalidate an auxiliary
+        // ancestor cut. Until that cut is explicit, retain the conservative
+        // complete-generation path instead of claiming a false delta.
+        if !source_extensions
+            .iter()
+            .any(|extension| owner.ends_with(extension.as_str()))
+            || !project_root.join(relative).is_file()
+        {
+            return Ok(std::collections::BTreeSet::new());
+        }
+        owners.insert(owner);
+    }
+    Ok(owners)
 }
 
 fn replacement_authority_for_target(

@@ -97,6 +97,38 @@ async fn validate_turso_source_index_schema(connection: &turso::Connection) -> R
                 )
                 .await
                 .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT content_digest, size_bytes, source_bytes
+                     FROM asp_source_index_blob_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            owner_path, from_kind, from_id, relation_kind, to_kind, to_id
+                     FROM asp_source_index_relation_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT workspace_identity, project_root, materialization_schema_id,
+                            materialization_schema_version, source_index_schema_id,
+                            source_index_schema_version, generation_id,
+                            source_snapshot_root_digest, import_digest,
+                            materialization_json, updated_at_ms
+                     FROM asp_workspace_generation_materialization_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
             Ok(())
         },
         "failed to inspect Turso source-index schema layout",
@@ -107,11 +139,14 @@ async fn validate_turso_source_index_schema(connection: &turso::Connection) -> R
 
 async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
     for table in [
+        "asp_workspace_generation_materialization_v1",
+        "asp_source_index_relation_v1",
         "asp_source_index_token_owner_v1",
         "asp_source_index_selector_v1",
         "asp_source_index_owner_v1",
         "asp_source_index_layout_v1",
         "asp_source_index_scope_v1",
+        "asp_source_index_blob_v1",
     ] {
         execute_turso_statement(
             connection,

@@ -57,8 +57,15 @@ pub struct PublishedSourceIndexGenerationV1 {
 pub fn publish_workspace_search_generation_v1(
     publication: WorkspaceSearchGenerationPublicationRequestV1<'_>,
 ) -> Result<PublishedSourceIndexGenerationV1, String> {
-    let crate::server_source_index::collect::SourceIndexCollectionScope::CompleteGeneration =
-        &publication.collection_scope;
+    if !matches!(
+        publication.collection_scope,
+        crate::server_source_index::collect::SourceIndexCollectionScope::CompleteGeneration
+    ) {
+        return Err(
+            "immutable complete-generation fixture publication rejects a changed-owner cut"
+                .to_owned(),
+        );
+    }
     publish_complete_workspace_search_generation_v1(publication)
 }
 

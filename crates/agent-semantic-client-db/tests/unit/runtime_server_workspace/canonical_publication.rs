@@ -272,13 +272,23 @@ async fn topology_source_segments_preserve_owner_attribution_across_resident_and
     )
     .await
     .expect("mapped search projection");
+    let reopened = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        publisher.pointer_path(),
+        &project_root,
+    )
+    .await
+    .expect("reuse mapped search projection");
+    assert!(
+        Arc::ptr_eq(&restored, &reopened),
+        "admission validation and query reads must share one mapped Search generation"
+    );
     let restored_segments = restored
         .topology_source_segments()
         .expect("mapped topology source segments");
 
     assert_eq!(restored.resident_grep_corpus().corpus_heap_bytes(), 0);
     assert_eq!(restored.resident_grep_index_stats().artifact_heap_bytes, 0);
-    for client in [&resident, &restored] {
+    for client in [&resident, restored.as_ref()] {
         assert_eq!(
             client
                 .read_admitted_selector_slice(first_selector, 3..10)

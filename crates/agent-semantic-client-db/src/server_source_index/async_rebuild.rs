@@ -382,7 +382,6 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
         )?;
     let inventory_micros = elapsed_micros(inventory_started);
     trace("scope-files-collected", trace_started);
-    let SourceIndexCollectionScope::CompleteGeneration = &collection_scope;
     let snapshot_started = Instant::now();
     let prepared = context
         .prepare_generation_with_runtime_service_async(
@@ -390,7 +389,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
             SourceIndexGenerationRefresh {
                 recovery_execution: Some(&recovery_execution),
                 parser_artifact_root: &parser_artifact_root,
-                changed_owner_paths: None,
+                changed_owner_paths: collection.changed_owner_paths.as_deref(),
                 replacement_authority: replacement_authority.as_ref(),
                 index_root: &project_root,
                 files: &collection.files,

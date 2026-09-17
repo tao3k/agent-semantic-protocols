@@ -13,6 +13,77 @@ use super::{
 };
 
 impl RuntimeServerWorkspaceRegistry {
+    /// Admit the immutable pointer for Search/Query without decoding the
+    /// canonical generation into the mutable writer registry.
+    ///
+    /// The caller must first establish the exact V1 admission binding against
+    /// the current repository candidate and Runtime bundle. Projection mmap
+    /// corruption remains fail-closed in the query-generation observer, which
+    /// opens the exact and Search segments before publishing Ready.
+    pub async fn restore_published_query_generation(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: &Path,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let pointer_path = super::workspace_generation_pointer_path(
+            &self.root,
+            &workspace_identity,
+            project_root,
+        )?;
+        let pointer = super::WorkspaceGenerationPointerReader::open(&pointer_path).await?;
+        let snapshot = pointer.read()?;
+        snapshot.validate()?;
+        if snapshot.workspace_identity != workspace_identity {
+            return Err("durable query generation workspace identity drift".to_owned());
+        }
+        let execution_binding = snapshot
+            .runtime_provider_execution_binding
+            .as_ref()
+            .ok_or_else(|| {
+                "durable query generation lacks Runtime provider execution binding".to_owned()
+            })?;
+        execution_binding.validate()?;
+        let projection_capability =
+            crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest {
+                provider_catalog_digest: execution_binding.workspace_closure_digest.clone(),
+                selectors: Vec::new(),
+            }
+            .into_ready_receipt(
+                workspace_identity.clone(),
+                snapshot.generation_digest.clone(),
+                snapshot.source_root_digest.clone(),
+                snapshot.active_epoch,
+            )?;
+        let receipt = WorkspaceRecoveryReceipt {
+            schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            request_id: request_id.into(),
+            workspace_identity: workspace_identity.clone(),
+            source: WorkspaceRecoverySource::MmapCheckpoint,
+            state: WorkspaceGenerationState::Ready,
+            active_epoch: snapshot.active_epoch.saturating_sub(1),
+            target_epoch: snapshot.active_epoch,
+            generation_digest: snapshot.generation_digest,
+            source_root_digest: snapshot.source_root_digest,
+            projection_capability,
+            old_generation_readable: snapshot.previous_epoch_readable,
+            resident_publication_elapsed_micros: 0,
+            counters: RuntimeDataPlaneCounters::default(),
+        };
+        receipt.validate()?;
+        self.publish_durable_query_binding(
+            workspace_identity,
+            project_root.to_path_buf(),
+            super::registry::DurableQueryBinding {
+                generation_digest: receipt.generation_digest.clone(),
+                runtime_bundle_digest: execution_binding.runtime_bundle_digest.clone(),
+            },
+        );
+        Ok(receipt)
+    }
+
     pub async fn published_generation_state(
         &self,
         workspace_identity: &str,

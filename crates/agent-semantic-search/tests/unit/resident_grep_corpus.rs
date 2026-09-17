@@ -5,9 +5,11 @@
 use std::io::Write;
 use std::sync::Arc;
 
+use super::AdmittedResidentGrepMappedCorpusOwner;
 use super::ResidentGrepCorpusOwner;
 use super::ResidentGrepMappedCorpusOwner;
 use super::build_resident_grep_corpus;
+use super::open_admitted_mapped_resident_grep_corpus;
 use super::open_mapped_resident_grep_corpus;
 use super::owner_for_corpus_line;
 
@@ -114,4 +116,29 @@ fn mapped_corpus_reads_owner_ranges_without_workspace_heap_copy() {
     assert_eq!(artifact.corpus_byte_count(), a.len() + b.len());
     assert_eq!(artifact.receipt, owned.receipt);
     assert_eq!(artifact.owner_bytes("src/b.rs"), Some(b.as_slice()));
+}
+
+#[test]
+fn admitted_mapped_corpus_uses_generation_bound_line_metadata() {
+    let bytes = b"fn alpha() {}\nfn beta() {}\n";
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(bytes).unwrap();
+    file.flush().unwrap();
+    let mapping = Arc::new(unsafe { memmap2::MmapOptions::new().map(&file).unwrap() });
+    let artifact = open_admitted_mapped_resident_grep_corpus(
+        &digest(b"generation"),
+        &digest(bytes),
+        mapping,
+        [AdmittedResidentGrepMappedCorpusOwner {
+            owner_path: "src/lib.rs".to_owned(),
+            content_digest: digest(bytes),
+            byte_range: 0..bytes.len(),
+            line_count: 2,
+        }],
+    )
+    .unwrap();
+    assert_eq!(artifact.corpus_heap_bytes(), 0);
+    assert_eq!(artifact.owner_spans[0].start_line, 1);
+    assert_eq!(artifact.owner_spans[0].end_line, 2);
+    assert_eq!(artifact.owner_bytes("src/lib.rs"), Some(bytes.as_slice()));
 }

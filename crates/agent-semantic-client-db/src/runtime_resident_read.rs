@@ -91,7 +91,7 @@ impl RuntimeResidentReadClient {
         >::new();
         for selector in selectors {
             let hit = match (&self.exact_projection, &self.resident_lease) {
-                (Some(_), None) => self.search_projection.exact_topology_selector(selector),
+                (Some(_), None) => self.search_projection.exact_topology_selector(selector)?,
                 (None, Some(lease)) => lease.exact_topology_selector(selector)?,
                 _ => return Err("Runtime resident read authority is inconsistent".to_owned()),
             }
@@ -146,9 +146,11 @@ impl RuntimeResidentReadClient {
                 WorkspaceExactProjectionDataPlaneClient::open(pointer_path).await?,
             ),
             resident_lease: None,
-            search_projection: Arc::new(
-                WorkspaceSearchGenerationDataPlaneClient::open(pointer_path, project_root).await?,
-            ),
+            search_projection: WorkspaceSearchGenerationDataPlaneClient::open(
+                pointer_path,
+                project_root,
+            )
+            .await?,
         })
     }
 
@@ -297,7 +299,7 @@ impl RuntimeResidentReadClient {
     ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologyHit>, String> {
         let hits = self
             .search_projection
-            .read_topology_index(query, self.search_projection.topology_node_count().max(1));
+            .read_topology_index(query, self.search_projection.topology_node_count()?.max(1))?;
         match (&self.exact_projection, &self.resident_lease) {
             (Some(_), None) => Ok(hits.into_iter().take(limit).collect()),
             (None, Some(lease)) => Ok(lease
@@ -332,7 +334,7 @@ impl RuntimeResidentReadClient {
     }
 
     #[must_use]
-    pub fn topology_node_count(&self) -> usize {
+    pub fn topology_node_count(&self) -> Result<usize, String> {
         self.search_projection.topology_node_count()
     }
 
@@ -756,6 +758,13 @@ impl RuntimeResidentReadClient {
         }
     }
 
+    /// Identity of the complete process-resident read view. Unlike the
+    /// canonical generation digest, this advances for owner content and
+    /// parser-topology overlay commits.
+    pub fn resident_view_digest(&self) -> Result<String, String> {
+        self.topology_source_generation_digest()
+    }
+
     /// Digest of the source snapshot admitted into this generation.
     ///
     /// This identity is intentionally distinct from the Merkle root over the
@@ -771,15 +780,10 @@ impl RuntimeResidentReadClient {
 
     /// Merkle root of the projected owner records used by exact/search reads.
     pub fn owner_merkle_root_digest(&self) -> String {
-        match (&self.exact_projection, &self.resident_lease) {
-            (Some(_), None) => self
-                .search_projection
-                .authority()
-                .owner_merkle_root_digest
-                .clone(),
-            (None, Some(lease)) => lease.owner_identity_root_digest().to_owned(),
-            _ => unreachable!("Runtime resident read authority is inconsistent"),
-        }
+        self.search_projection
+            .authority()
+            .owner_merkle_root_digest
+            .clone()
     }
 
     #[expect(

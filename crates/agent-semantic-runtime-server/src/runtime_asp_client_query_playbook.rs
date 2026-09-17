@@ -375,40 +375,19 @@ struct ResidentQueryProjectionHandoff<'a> {
 
 fn materialize_generation_bound_query_playbook(
     template_request_id: &str,
-    workspace_id: &str,
     params: &AspClientWorkspaceQueryPlaybookRequest,
     initialized: &InitializedWorkspace,
-    workspace_registry: &RuntimeServerWorkspaceRegistry,
     active_provider_targets: &[(String, String)],
     mut projection_handoff: ResidentQueryProjectionHandoff<'_>,
 ) -> Result<serde_json::Value, AspClientOperationError> {
-    let (resident_root, resident_generation_digest) = workspace_registry
-        .unique_resident_scope(workspace_id)
-        .map_err(|error| {
-            query_playbook_terminal(
-                "query-playbook-runtime-binding-unavailable",
-                error,
-                params.selectors.len(),
-            )
-        })?;
-    if resident_root != initialized.project_root
-        || resident_generation_digest != projection_handoff.generation.generation_digest()
-    {
+    let resident = projection_handoff.generation.resident_arc();
+    if resident.generation_digest() != projection_handoff.generation.generation_digest() {
         return Err(query_playbook_terminal(
             "query-playbook-runtime-binding-mismatch",
             "Query Playbook resident generation changed after execution publication",
             params.selectors.len(),
         ));
     }
-    let resident = workspace_registry
-        .resident_read_client(workspace_id, &initialized.project_root)
-        .map_err(|error| {
-            query_playbook_terminal(
-                "query-playbook-runtime-binding-unavailable",
-                error,
-                params.selectors.len(),
-            )
-        })?;
     let execution_publication = projection_handoff
         .generation
         .execution_publication()
@@ -491,6 +470,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
     query_generation: &tokio::sync::watch::Receiver<
         Arc<HashMap<RuntimeProjectWorkspaceKey, RuntimeQueryGenerationState>>,
     >,
+    query_generation_authority: &crate::RuntimeQueryGenerationAuthority,
 ) -> Result<agent_semantic_client_protocol::ClientResponsePayload, AspClientOperationError> {
     params.validate_schema_identity()?;
     let initialized = initialized_workspaces
@@ -568,6 +548,19 @@ pub(super) async fn dispatch_workspace_query_playbook(
                     provider_targets,
                     query_generation,
                     project_workspace_key,
+                    query_generation_authority,
+                    &agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                        workspace_registry.root(),
+                        request.workspace_id.as_str(),
+                        &initialized.project_root,
+                    )
+                    .map_err(|error| {
+                        query_playbook_terminal(
+                            "query-not-ready",
+                            error,
+                            params.selectors.len(),
+                        )
+                    })?,
                 )
                 .await
                 .map_err(|error| {
@@ -669,15 +662,11 @@ pub(super) async fn dispatch_workspace_query_playbook(
                                 {
                                     let materialization_generation =
                                         Arc::clone(&materialization_generation);
-                                    let materialization_registry =
-                                        Arc::clone(&materialization_registry);
                                     move || {
                                         materialize_generation_bound_query_playbook(
                                             &materialization_request_id,
-                                            &materialization_workspace_id,
                                             &materialization_params,
                                             &materialization_initialized,
-                                            materialization_registry.as_ref(),
                                             &materialization_targets,
                                             ResidentQueryProjectionHandoff {
                                                 generation: materialization_generation.as_ref(),
@@ -764,5 +753,5 @@ async fn settled_query_materialization(
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/runtime_asp_client_query_playbook.rs"]
+#[path = "../tests/unit/runtime_asp_client_query_playbook/mod.rs"]
 mod tests;

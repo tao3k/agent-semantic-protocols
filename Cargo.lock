@@ -260,6 +260,7 @@ name = "agent-semantic-hook"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-artifacts",
+ "agent-semantic-client-protocol",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-provider-protocol",

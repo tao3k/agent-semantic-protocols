@@ -449,6 +449,126 @@ therefore has work
 = O(validated owners + missing owner projection)= across both phases, rather
 than two durable reads of the complete owner set.
 
+** Mutation delta is the only admissible post-Hook rebuild unit
+
+An admitted Edit/Write post-tool event owns an exact normalized changed-owner
+cut =Delta=.  Runtime MUST preserve that cut through collection, source
+snapshot construction, parser-artifact qualification, topology rebind, and
+generation overlay.  It MUST NOT treat =changed_paths= as a diagnostic counter
+and then widen the work into =CompleteGeneration= or a whole-language
+=replacement_authority=.  A source-owner mutation has construction work
+
+#+begin_src typst
+$ T_(delta) = O(bytes(Delta) + parser(Delta) + nodes(Delta) + log N) $
+#+end_src
+
+where =N= is the resident base owner count.  =N= is not a multiplicative or
+additive byte-copy term.  Configuration, directory, provider-execution, and
+schema mutations may have a wider, explicitly derived invalidation cut; until
+that cut is proved, they fail closed to the complete-generation lane rather
+than pretending to be an owner delta.
+
+The Host-to-Runtime handoff is the shared V1 file-backed Hook memory inbox,
+not the Runtime socket and not the next Search call.  Hook append work is
+=O(encoded event bytes)= and excludes workspace cardinality.  Runtime first
+publishes current changed-owner bytes into the resident Search delta, then
+terminalizes the parser/topology successor in its independent background lane.
+Only that terminal advances the durable inbox acknowledgement.  An unavailable
+workspace or failed successor remains pending for exact replay; the request
+plane never becomes a recovery owner.
+
+The canonical generation digest intentionally does not change for a resident
+content or topology overlay.  It is therefore insufficient as a Query/Search
+handle cache key.  Every committed content mutation and parser topology rebind
+MUST publish a resident-view event carrying its independently advancing view
+digest.  The Runtime query-generation observer reopens the in-process lease and
+atomically replaces the handle when that digest changes.  It MUST NOT inherit
+generation-local Search/Query materializations or the old resident lease across
+a view change.  This event is an in-process publication boundary; it performs
+no canonical generation rewrite and no request-path filesystem scan.
+
+Search may await the already-owned single-flight publication of such a delta,
+but Search MUST NOT originate or synchronously execute a complete workspace
+build.  Once =SearchCoreReady= is published, request work is
+
+#+begin_src typst
+$ T_(search) = O(log N + postings(q) + bytes(candidates(q)) + K) $
+#+end_src
+
+and contains zero inventory, full-workspace Merkle construction, provider
+projection, canonical generation assembly, durable recovery, or resident
+Search-plane construction.  A measurement that includes any of those stages
+is a generation-readiness measurement and MUST NOT be reported as Search
+latency.
+
+Durable mapped recovery obeys the same boundary.  Mapping a file and then
+calling =owned_records()= over every owner, selector, or relation table is a
+workspace materialization, not an index open.  Sorted mmap tables remain the
+query data structure: opening validates their compact directory authority;
+queries verify and decode only addressed records.  Exact GREP verifies only
+candidate owner bytes against their committed content digests.  It does not
+rehash or recount lines for every owner merely to open the generation.
+
+The owner directory is therefore a compact locator plane: normalized owner
+path, authority, content digest, byte range, and persisted line count.  Large
+parser selector/query-key payloads live in an addressed record table.  GREP
+opens only the locator plane and decodes one parser record per bounded grounded
+owner; Merkle proofs and graph relations are likewise decoded by key.  The
+global Topology postings object is an independent lazy attachment required by
+topology/syntax queries, never a prerequisite for byte-regex Search.  This is
+an internal V1 physical-layout refinement, not a new public schema version.
+For a durable mmap generation, exact regex verification borrows each candidate
+slice directly from the admitted owner-byte section.  It MUST NOT reconstruct
+an owner snapshot, decode parser JSON, or allocate an =Arc<[u8]>= copy merely
+to run the matcher.  A process-resident mutable overlay retains its separate
+overlay-aware byte path so this zero-copy rule cannot expose stale base bytes.
+
+Process-cold V1 recovery has two distinct products.  The canonical mutable
+generation is writer/build authority; the exact-selector and Search-plane mmap
+artifacts are reader/query authority.  A zero-delta Search or Query restore
+MUST validate the compact active pointer, the
+=generation-admission-binding.v1= Workspace/source-root identity, and the
+current Runtime provider-execution binding, then publish that pointer to the
+query-generation observer.  It MUST NOT decode the canonical generation or
+reconstruct an in-memory Workspace registry merely to rediscover reader
+artifacts already bound by those authorities.  The observer opens the exact
+and Search mmap artifacts directly and fails closed if either artifact or its
+identity is invalid.
+
+Directory validation and query publication MUST share one immutable Search
+reader cell keyed by the canonical generation pointer.  Admission validation,
+the query-generation observer, and concurrent first requests are waiters on
+that cell, not independent mmap/decode owners.  Thus one pointer generation
+causes at most one physical Search-plane open per Runtime process.  Publishing
+a successor pointer, retiring the workspace, or shutting down the registry
+atomically invalidates the cell; reuse can never cross a generation boundary.
+This single-flight reader handoff removes duplicated validation work without
+weakening content or Runtime identity admission.
+
+After admission reaches a Ready commit, the initiating request MAY join or
+claim the same query-generation open lane directly instead of waiting for a
+separate watch-channel scheduling turn.  This is a reader handoff, not a
+request-owned generation build.  If the durable execution publication has not
+yet crossed the daemon boundary, that early open returns privately and the
+request continues waiting for the daemon observer; it MUST NOT publish a
+transient Failed state or overtake the observer's terminal authority.
+
+This fast restore is admissible only when the changed-owner cut is empty.
+Any pending owner mutation, admission mismatch, Runtime bundle drift, corrupt
+directory, or missing mapped segment rejects the reader restore and returns
+control to the Runtime-owned repair/build lane; the request itself still owns
+no recovery transition.  Consequently the zero-delta restore equation is:
+
+#+begin_src typst
+$ W_(query-restore) = W_(pointer + binding + directories),\
+  W_(canonical-decode) = 0 $
+#+end_src
+
+The equality is a logical-work invariant, not a wall-clock claim.  It prevents
+a nominal persistence path from hiding full-generation deserialization behind
+=restore= and keeps mutable writer recovery outside the Search/Query critical
+path.  No new schema version or compatibility route is introduced.
+
 * Projection contract
 
 =compact= returns the bounded evidence needed for the next decision:

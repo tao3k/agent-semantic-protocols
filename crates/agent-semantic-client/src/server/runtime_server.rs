@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+//! Owns the `asp server` command surface and routes lifecycle work to typed owners.
+
 use agent_semantic_client_db::RuntimeServerControlReceipt;
 use agent_semantic_client_db::RuntimeServerOperation;
 use agent_semantic_client_db::call_runtime_server_for_state_home;
@@ -19,8 +21,12 @@ use tokio::io::AsyncWriteExt;
 
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
+#[path = "runtime_server_daemon_publication.rs"]
+mod runtime_server_daemon_publication;
 #[path = "runtime_server_generation_builder.rs"]
 mod runtime_server_generation_builder;
+#[path = "runtime_server_hook_memory_inbox.rs"]
+mod runtime_server_hook_memory_inbox;
 #[path = "runtime_server_identity_handoff.rs"]
 mod runtime_server_identity_handoff;
 #[path = "runtime_server_query_generation_observer.rs"]

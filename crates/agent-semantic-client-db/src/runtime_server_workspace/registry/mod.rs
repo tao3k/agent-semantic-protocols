@@ -8,6 +8,7 @@ pub(super) mod canonical_durability;
 pub(super) mod canonical_publication;
 mod core;
 mod durability;
+mod durable_query_binding;
 mod entry_bootstrap;
 pub(super) mod owner_identity;
 mod publication;
@@ -22,4 +23,5 @@ pub(super) use writer_publication as writer_publication_owner;
 
 pub use core::RuntimeServerWorkspaceRegistry;
 use core::WorkspaceWriteCommand;
+pub(crate) use durable_query_binding::DurableQueryBinding;
 pub use readiness::PublishedWorkspaceGenerationState;

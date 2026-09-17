@@ -135,6 +135,58 @@ fn temporary_subagent_start_is_observational_and_stop_requires_identity() {
 }
 
 #[test]
+fn post_tool_appends_workspace_mutation_without_runtime_ipc() {
+    let _test_guard = hook_process_test_guard();
+    let state_home = tempfile::tempdir().expect("isolated State Home");
+    let project_root = tempfile::tempdir().expect("isolated project");
+    let mut child = hook_command()
+        .arg("post-tool")
+        .args(["--client", "codex"])
+        .current_dir(project_root.path())
+        .env("ASP_STATE_HOME", state_home.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn PostToolUse Hook");
+    serde_json::to_writer(
+        child.stdin.as_mut().expect("Hook stdin"),
+        &serde_json::json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-1",
+            "tool_use_id": "tool-use-1",
+            "cwd": project_root.path(),
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "patch": "*** Begin Patch\n*** Update File: src/lib.rs\n@@\n-old\n+new\n*** End Patch"
+            }
+        }),
+    )
+    .expect("write PostToolUse payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("PostToolUse terminal");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).expect("valid Host JSON"),
+        serde_json::json!({})
+    );
+    assert!(output.stderr.is_empty());
+
+    let inbox = agent_semantic_artifacts::StateHomeLayout::new(state_home.path())
+        .runtime_state()
+        .serving()
+        .hook_memory_inbox();
+    let events = agent_semantic_hook::hook_memory_inbox::read_after(&inbox, 0)
+        .expect("read process-independent Hook inbox");
+    let event = events[0]
+        .workspace_mutation_event()
+        .expect("valid workspace mutation")
+        .expect("workspace mutation entry");
+    assert_eq!(event.mutation_id, "tool-use-1");
+    assert_eq!(event.changed_paths, ["src/lib.rs"]);
+}
+
+#[test]
 fn asp_explorer_stop_requires_executable_source_free_evidence() {
     let _test_guard = hook_process_test_guard();
     let run = |last_assistant_message: &str| {

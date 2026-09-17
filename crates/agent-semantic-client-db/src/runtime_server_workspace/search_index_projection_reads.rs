@@ -10,6 +10,20 @@ use std::sync::Arc;
 use super::{SearchOwnerRecord, WorkspaceSearchGenerationDataPlaneClient};
 
 impl WorkspaceSearchGenerationDataPlaneClient {
+    fn topology_index(&self) -> Result<&agent_semantic_topology::TopologyIndexV1, String> {
+        self.topology_index
+            .get_or_init(|| {
+                if self.mapping.is_some() {
+                    self.mapped_all_owner_records()
+                        .and_then(|owners| super::build_topology_index(&owners))
+                } else {
+                    super::build_topology_index(&self.owner_directory_records)
+                }
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
     /// Resolve repository navigation and parser-native topology nodes. Every
     /// provider contributes the same V1 selector query-key contract; source
     /// and prose bodies are not representable in the index.
@@ -17,21 +31,49 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         &self,
         query: &str,
         limit: usize,
-    ) -> Vec<super::WorkspaceTopologyHit> {
-        self.topology_index.query(query, limit)
+    ) -> Result<Vec<super::WorkspaceTopologyHit>, String> {
+        Ok(self.topology_index()?.query(query, limit))
     }
 
     #[must_use]
-    pub fn topology_node_count(&self) -> usize {
-        self.topology_index.node_count()
+    pub fn topology_node_count(&self) -> Result<usize, String> {
+        Ok(self.topology_index()?.node_count())
     }
 
     #[must_use]
     pub fn exact_topology_selector(
         &self,
         selector: &str,
-    ) -> Option<agent_semantic_topology::TopologyHitV1> {
-        self.topology_index.exact_selector(selector)
+    ) -> Result<Option<agent_semantic_topology::TopologyHitV1>, String> {
+        if let (Some(mapping), Some(range)) = (
+            self.mapping.as_ref(),
+            self.mapped_owner_record_table_range.as_ref(),
+        ) {
+            let table = super::ValidatedSortedRecordTable::parse(
+                mapping
+                    .get(range.clone())
+                    .ok_or_else(|| "mapped selector table exceeds generation".to_owned())?,
+            )?;
+            let Some(value) = table.get_checked(selector.as_bytes())? else {
+                return Ok(None);
+            };
+            let (owner_path, position): (String, usize) = serde_json::from_slice(value)
+                .map_err(|error| format!("decode addressed selector owner: {error}"))?;
+            let owner = self
+                .resident_owner_record(&owner_path)?
+                .ok_or_else(|| "addressed selector owner is missing".to_owned())?;
+            if owner
+                .selectors
+                .get(position)
+                .is_none_or(|record| record.selector != selector)
+            {
+                return Err("addressed selector position drift".to_owned());
+            }
+            let mut one = std::collections::BTreeMap::new();
+            one.insert(owner_path, owner);
+            return Ok(super::build_topology_index(&one)?.exact_selector(selector));
+        }
+        Ok(self.topology_index()?.exact_selector(selector))
     }
 
     pub fn smallest_enclosing_topology_anchor(
@@ -40,17 +82,25 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         match_start: usize,
         match_end: usize,
     ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
-        let owner_content_digest = &self
-            .owner_directory_records
-            .get(owner_path)
-            .ok_or_else(|| format!("topology anchor owner is unavailable: {owner_path}"))?
-            .content_digest;
-        self.topology_index.smallest_enclosing_anchor(
-            owner_path,
-            owner_content_digest,
-            match_start,
-            match_end,
-        )
+        let owner = self
+            .resident_owner_record(owner_path)?
+            .ok_or_else(|| format!("topology anchor owner is unavailable: {owner_path}"))?;
+        Ok(owner
+            .selectors
+            .iter()
+            .filter(|selector| {
+                !selector.query_keys.is_empty()
+                    && selector.byte_start <= match_start
+                    && match_end <= selector.byte_end
+            })
+            .min_by_key(|selector| selector.byte_end.saturating_sub(selector.byte_start))
+            .map(|selector| agent_semantic_topology::TopologyAnchorHitV1 {
+                owner_path: owner.owner_path.clone(),
+                owner_content_digest: owner.content_digest.clone(),
+                structural_selector: selector.selector.clone(),
+                byte_start: selector.byte_start,
+                byte_end: selector.byte_end,
+            }))
     }
 
     pub fn owner_paths_for_graph_entry_node_ids<'a>(
@@ -69,7 +119,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         &self,
     ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
         let owner_paths = self
-            .owner_directory_records
+            .owner_locator_records
             .keys()
             .cloned()
             .collect::<BTreeSet<_>>();
@@ -80,10 +130,17 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         &self,
         owner_paths: &BTreeSet<String>,
     ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        let mapped_relations = if self.mapping.is_some() {
+            Some(self.mapped_all_owned_relations()?)
+        } else {
+            None
+        };
         owner_paths
             .iter()
-            .filter_map(|owner_path| {
-                let owner = self.owner_directory_records.get(owner_path)?;
+            .map(|owner_path| {
+                let owner = self
+                    .resident_owner_record(owner_path)?
+                    .ok_or_else(|| format!("topology source owner is unavailable: {owner_path}"))?;
                 let mut selectors = owner
                     .selectors
                     .iter()
@@ -91,11 +148,21 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                     .collect::<Vec<_>>();
                 selectors.sort();
                 selectors.dedup();
-                let relations = self
-                    .owned_relations_by_owner
-                    .get(owner_path)
-                    .map_or_else(Vec::new, |relations| relations.to_vec());
-                Some(Ok(
+                let relations = self.owned_relations_by_owner.get(owner_path).map_or_else(
+                    || {
+                        mapped_relations
+                            .as_ref()
+                            .map_or_else(Vec::new, |relations| {
+                                relations
+                                    .iter()
+                                    .filter(|relation| relation.owner_path.as_str() == owner_path)
+                                    .cloned()
+                                    .collect()
+                            })
+                    },
+                    |relations| relations.to_vec(),
+                );
+                Ok(
                     crate::runtime_server_workspace::WorkspaceTopologySourceSegment {
                         owner_path: owner_path.clone(),
                         content_digest: owner.content_digest.clone(),
@@ -103,7 +170,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                         selectors,
                         relations,
                     },
-                ))
+                )
             })
             .collect()
     }
@@ -301,8 +368,17 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             .into_iter()
             .filter(|term| !term.chars().any(char::is_whitespace))
             .collect::<BTreeSet<_>>();
-        let mut ranked = self
-            .source_documents
+        let mapped_documents;
+        let documents = if admitted.is_none() && self.mapping.is_some() {
+            mapped_documents = self
+                .lexical_source_documents()?
+                .into_values()
+                .collect::<Vec<_>>();
+            mapped_documents.as_slice()
+        } else {
+            self.source_documents.as_slice()
+        };
+        let mut ranked = documents
             .iter()
             .filter(|document| {
                 admitted
@@ -363,13 +439,26 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         owner_paths
             .iter()
             .map(|owner_path| {
-                if !self.owner_directory_records.contains_key(owner_path) {
-                    return Err("workspace search result references a missing owner".to_owned());
-                }
-                Ok(self
+                let owner = self.resident_owner_record(owner_path)?.ok_or_else(|| {
+                    "workspace search result references a missing owner".to_owned()
+                })?;
+                let selector = self
                     .callable_selector_by_owner
                     .get(owner_path)
-                    .map(|selector| (selector.clone(), owner_path.clone())))
+                    .cloned()
+                    .or_else(|| {
+                        owner.selectors.iter().find_map(|selector| {
+                            selector
+                                .derived_projections
+                                .iter()
+                                .any(|projection| {
+                                    projection.projection_kind
+                                        == crate::runtime_server_workspace::ExactProjectionKind::CallableSkeleton
+                                })
+                                .then(|| selector.selector.clone())
+                        })
+                    });
+                Ok(selector.map(|selector| (selector, owner_path.clone())))
             })
             .collect::<Result<Vec<_>, String>>()
             .map(|pairs| pairs.into_iter().flatten().collect())
@@ -478,12 +567,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
 
     #[must_use]
     pub fn indexed_owner_count(&self) -> usize {
-        self.owner_directory_records.len()
+        self.owner_locator_records.len()
     }
 
     #[must_use]
     pub fn contains_indexed_owner(&self, owner_path: &str) -> bool {
-        self.owner_directory_records.contains_key(owner_path)
+        self.owner_locator_records.contains_key(owner_path)
     }
 
     /// Slice parser-materialized descendant bytes only inside its admitted root.
@@ -496,8 +585,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             agent_semantic_content_identity::CanonicalItemSelector::parse(root_selector)?;
         let owner_path = canonical.owner_path()?;
         let owner = self
-            .owner_directory_records
-            .get(&owner_path)
+            .resident_owner_record(&owner_path)?
             .ok_or_else(|| "resident exact descendant owner is not admitted".to_owned())?;
         let root = owner
             .selectors
@@ -507,7 +595,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         if range.start >= range.end || range.start < root.byte_start || range.end > root.byte_end {
             return Err("resident exact descendant byte range is outside its root".to_owned());
         }
-        self.resident_owner_bytes(owner)?
+        self.resident_owner_bytes(&owner)?
             .get(range)
             .map(<[u8]>::to_vec)
             .ok_or_else(|| "resident exact descendant byte range is outside its owner".to_owned())
@@ -515,14 +603,41 @@ impl WorkspaceSearchGenerationDataPlaneClient {
 
     #[must_use]
     pub fn indexed_owner_paths(&self) -> Vec<String> {
-        self.owner_directory_records.keys().cloned().collect()
+        self.owner_locator_records.keys().cloned().collect()
     }
 
     fn resident_owner_record(
         &self,
         owner_path: &str,
     ) -> Result<Option<Arc<SearchOwnerRecord>>, String> {
-        Ok(self.owner_directory_records.get(owner_path).map(Arc::clone))
+        if let Some(record) = self.owner_directory_records.get(owner_path) {
+            return Ok(Some(Arc::clone(record)));
+        }
+        if !self.owner_locator_records.contains_key(owner_path) {
+            return Ok(None);
+        }
+        let mapping = self
+            .mapping
+            .as_ref()
+            .ok_or_else(|| "mapped workspace search generation is missing".to_owned())?;
+        let range = self
+            .mapped_owner_record_table_range
+            .as_ref()
+            .ok_or_else(|| "mapped owner-record table is missing".to_owned())?;
+        let table = super::ValidatedSortedRecordTable::parse(
+            mapping
+                .get(range.clone())
+                .ok_or_else(|| "mapped owner-record table exceeds generation".to_owned())?,
+        )?;
+        let Some(value) = table.get_checked(&super::owner_record_key(owner_path))? else {
+            return Err(format!("mapped owner record is missing: {owner_path}"));
+        };
+        let record: SearchOwnerRecord = serde_json::from_slice(value)
+            .map_err(|error| format!("decode addressed workspace owner record: {error}"))?;
+        if record.owner_path != owner_path {
+            return Err("mapped owner record key drift".to_owned());
+        }
+        Ok(Some(Arc::new(record)))
     }
 
     pub(super) fn resident_owner_bytes<'a>(
@@ -574,7 +689,34 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         } else {
             format!("blake3-256:{}", self.authority.owner_merkle_root_digest)
         };
-        let Some(value) = self.merkle_owner_records.get(owner_path) else {
+        let mapped_record = if self.merkle_owner_records.contains_key(owner_path) {
+            None
+        } else if let (Some(mapping), Some(range)) = (
+            self.mapping.as_ref(),
+            self.mapped_merkle_owner_table_range.as_ref(),
+        ) {
+            let table = super::ValidatedSortedRecordTable::parse(
+                mapping
+                    .get(range.clone())
+                    .ok_or_else(|| "mapped Merkle owner table exceeds generation".to_owned())?,
+            )?;
+            table
+                .get_checked(owner_path.as_bytes())?
+                .map(|value| {
+                    serde_json::from_slice::<super::SearchMerkleOwnerRecord>(value)
+                        .map(Arc::new)
+                        .map_err(|error| format!("decode addressed Merkle owner record: {error}"))
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        let value = self
+            .merkle_owner_records
+            .get(owner_path)
+            .cloned()
+            .or(mapped_record);
+        let Some(value) = value else {
             return Ok(
                 crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::OwnerMissing {
                     schema_id:
@@ -590,7 +732,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
                 },
             );
         };
-        let record = Arc::clone(value);
+        let record = value;
         if record.owner_path != owner_path {
             return Err("workspace search Merkle owner key drift".to_owned());
         }

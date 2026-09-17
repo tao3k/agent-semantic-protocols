@@ -302,6 +302,37 @@ theorem owner_delta_work_independent_of_workspace_cardinality
       changedBytes + changedPathBytes := by
   rfl
 
+/-- The Hook ingress copies only the encoded event and never inspects the
+workspace. Capacity is fixed by the preallocated mmap and is not a work term. -/
+def hookInboxAppendWork (encodedEventBytes : Nat) : Nat := encodedEventBytes
+
+theorem hook_inbox_append_work_excludes_workspace_cardinality
+    (encodedEventBytes _workspaceOwners : Nat) :
+    hookInboxAppendWork encodedEventBytes = encodedEventBytes := by
+  rfl
+
+/-- The Runtime may acknowledge a sequence only after both byte-search truth
+and the parser/topology successor have reached terminal visibility. -/
+def hookMutationAcknowledged
+    (residentBytesPublished topologyTerminal : Bool) : Bool :=
+  residentBytesPublished && topologyTerminal
+
+theorem resident_bytes_without_topology_terminal_cannot_acknowledge :
+    hookMutationAcknowledged true false = false := by
+  rfl
+
+theorem complete_hook_mutation_can_acknowledge :
+    hookMutationAcknowledged true true = true := by
+  rfl
+
+/-- Search is a reader of the resident view; it owns no recovery transition. -/
+def searchRequestGenerationBuilds (_residentReady : Bool) : Nat := 0
+
+theorem search_request_never_builds_workspace_generation
+    (residentReady : Bool) :
+    searchRequestGenerationBuilds residentReady = 0 := by
+  rfl
+
 inductive OwnerTransactionVisibility where
   | before
   | after
@@ -1103,6 +1134,41 @@ theorem delta_only_overlay_work_equals_delta
 theorem copying_base_bytes_adds_forbidden_work (baseBytes deltaBytes : Nat) :
     residentOverlayPublicationWork ⟨baseBytes, deltaBytes⟩ = baseBytes + deltaBytes := rfl
 
+/-- Hook-observed owner mutation work is expressed only by the changed cut.
+The resident base cardinality is an authority input, not a rebuild-work term. -/
+def atomicMutationBuildWork
+    (changedBytes changedParserNodes changedTopologyNodes logarithmicRebind : Nat) : Nat :=
+  changedBytes + changedParserNodes + changedTopologyNodes + logarithmicRebind
+
+theorem atomic_mutation_build_excludes_workspace_cardinality
+    (changedBytes changedParserNodes changedTopologyNodes logarithmicRebind
+      _workspaceOwners _workspaceBytes : Nat) :
+    atomicMutationBuildWork changedBytes changedParserNodes changedTopologyNodes logarithmicRebind =
+      changedBytes + changedParserNodes + changedTopologyNodes + logarithmicRebind := by
+  rfl
+
+/-- Widening a nonempty atomic mutation into a complete workspace byte rewrite
+strictly adds work whenever unchanged base bytes exist. -/
+theorem complete_rebuild_strictly_exceeds_atomic_delta
+    (deltaWork unchangedBaseBytes : Nat)
+    (nonemptyBase : 0 < unchangedBaseBytes) :
+    deltaWork < deltaWork + unchangedBaseBytes := by
+  omega
+
+/-- A mapped index open validates compact authority. Source-byte verification
+belongs to the addressed candidate cut, never to workspace-wide open work. -/
+def mappedIndexReadWork
+    (directoryAuthorityWork candidateBytes : Nat) : Nat :=
+  directoryAuthorityWork + candidateBytes
+
+theorem mapped_index_open_excludes_unaddressed_workspace_bytes
+    (directoryAuthorityWork firstCandidateBytes secondCandidateBytes
+      _workspaceBytes : Nat)
+    (sameCandidates : firstCandidateBytes = secondCandidateBytes) :
+    mappedIndexReadWork directoryAuthorityWork firstCandidateBytes =
+      mappedIndexReadWork directoryAuthorityWork secondCandidateBytes := by
+  simp [mappedIndexReadWork, sameCandidates]
+
 /-- The generation-bound Search data plane is constructed at admission. Read
 handles retain that immutable plane by reference; they do not repeat any
 workspace-proportional validation or index construction. `Arc` behavior and
@@ -1577,5 +1643,136 @@ theorem whole_owner_automaton_removes_per_line_restarts
       perOwnerMatcherEntrances physicalLines + (physicalLines - 1) := by
   simp [perLineMatcherEntrances, perOwnerMatcherEntrances]
   omega
+
+/-- Canonical generation identity is stable across resident owner overlays.
+Query/Search handles are reusable only when the independently advancing
+resident-view identity also matches. -/
+structure ResidentReadIdentity where
+  canonicalGeneration : Nat
+  residentView : Nat
+  deriving DecidableEq, Repr
+
+def residentReadReusable
+    (current incoming : ResidentReadIdentity) : Bool :=
+  decide (current.canonicalGeneration = incoming.canonicalGeneration ∧
+    current.residentView = incoming.residentView)
+
+theorem changed_resident_view_rejects_same_canonical_handle
+    (canonical oldView newView : Nat)
+    (changed : oldView ≠ newView) :
+    residentReadReusable ⟨canonical, oldView⟩ ⟨canonical, newView⟩ = false := by
+  simp [residentReadReusable, changed]
+
+theorem exact_resident_view_identity_admits_handle_reuse
+    (identity : ResidentReadIdentity) :
+    residentReadReusable identity identity = true := by
+  simp [residentReadReusable]
+
+/-- Process-cold query recovery admits the durable reader planes only when the
+V1 admission binding, current Runtime execution, zero-delta cut, and mapped
+segment directories all agree.  The canonical generation remains writer
+authority and is deliberately absent from this admission predicate. -/
+structure DurableQueryRestore where
+  admissionBindingValid : Bool
+  runtimeExecutionValid : Bool
+  changedOwnerCount : Nat
+  mappedDirectoriesValid : Bool
+  deriving DecidableEq, Repr
+
+def mayOpenDurableQueryPlanes (restore : DurableQueryRestore) : Bool :=
+  restore.admissionBindingValid &&
+    restore.runtimeExecutionValid &&
+    restore.changedOwnerCount == 0 &&
+    restore.mappedDirectoriesValid
+
+/-- Canonical decode is repair/build work.  An admitted durable query restore
+has no such work even when the canonical writer artifact is large. -/
+def canonicalDecodeWork
+    (restore : DurableQueryRestore) (canonicalGenerationBytes : Nat) : Nat :=
+  if mayOpenDurableQueryPlanes restore then 0 else canonicalGenerationBytes
+
+theorem zero_delta_durable_query_restore_has_zero_canonical_decode
+    (canonicalGenerationBytes : Nat) :
+    canonicalDecodeWork ⟨true, true, 0, true⟩ canonicalGenerationBytes = 0 := by
+  rfl
+
+theorem changed_owner_cut_rejects_durable_query_restore
+    (bindingValid runtimeValid directoriesValid : Bool)
+    (changedOwnerCount : Nat)
+    (changed : changedOwnerCount ≠ 0) :
+    mayOpenDurableQueryPlanes
+      ⟨bindingValid, runtimeValid, changedOwnerCount, directoriesValid⟩ = false := by
+  simp [mayOpenDurableQueryPlanes, changed]
+
+theorem corrupt_mapped_directory_rejects_durable_query_restore
+    (bindingValid runtimeValid : Bool) (changedOwnerCount : Nat) :
+    mayOpenDurableQueryPlanes
+      ⟨bindingValid, runtimeValid, changedOwnerCount, false⟩ = false := by
+  simp [mayOpenDurableQueryPlanes]
+
+theorem invalid_binding_rejects_durable_query_restore
+    (runtimeValid directoriesValid : Bool) (changedOwnerCount : Nat) :
+    mayOpenDurableQueryPlanes
+      ⟨false, runtimeValid, changedOwnerCount, directoriesValid⟩ = false := by
+  simp [mayOpenDurableQueryPlanes]
+
+/-- Once the V1 generation binding and mapped directories are admitted, opening
+the GREP corpus validates descriptors instead of hashing and line-counting all
+workspace bytes again. A failed authority still requires full validation. -/
+def mappedReaderFullByteValidationPasses
+    (generationBindingValid mappedDirectoriesValid : Bool) : Nat :=
+  if generationBindingValid && mappedDirectoriesValid then 0 else 1
+
+theorem admitted_mapped_grep_reader_has_zero_full_byte_validation_passes :
+    mappedReaderFullByteValidationPasses true true = 0 := by
+  rfl
+
+theorem invalid_mapped_grep_reader_requires_validation_or_repair
+    (mappedDirectoriesValid : Bool) :
+    mappedReaderFullByteValidationPasses false mappedDirectoriesValid = 1 := by
+  rfl
+
+/-- Mapped byte-search admission reads the compact owner locator directory.
+Large parser records are decoded only for the bounded grounded owner cut. -/
+def mappedReaderParserRecordDecodes (groundedOwners : Nat) : Nat := groundedOwners
+
+theorem mapped_reader_open_has_zero_parser_record_decodes :
+    mappedReaderParserRecordDecodes 0 = 0 := by
+  rfl
+
+/-- All consumers of one immutable generation pointer join one reader cell.
+The pointer generation is part of the key, so successor publication creates a
+new cell instead of reusing the old reader. -/
+def searchReaderPhysicalOpens (consumerCount : Nat) : Nat :=
+  min consumerCount 1
+
+theorem search_reader_single_flight_opens_at_most_once (consumerCount : Nat) :
+    searchReaderPhysicalOpens consumerCount ≤ 1 := by
+  exact Nat.min_le_right consumerCount 1
+
+theorem admission_and_query_share_one_search_reader :
+    searchReaderPhysicalOpens 2 = 1 := by
+  rfl
+
+theorem bounded_grounding_bounds_parser_record_decodes
+    (groundedOwners topK : Nat) (bounded : groundedOwners ≤ topK) :
+    mappedReaderParserRecordDecodes groundedOwners ≤ topK := by
+  simpa [mappedReaderParserRecordDecodes] using bounded
+
+/-- Graph and global Topology attachments are outside an rg-only request. -/
+def rgOnlyAttachmentBuilds (_workspaceOwners : Nat) : Nat := 0
+
+theorem rg_only_search_builds_no_global_attachments (workspaceOwners : Nat) :
+    rgOnlyAttachmentBuilds workspaceOwners = 0 := by
+  rfl
+
+/-- An immutable mmap candidate is matched over its admitted slice. Mutable
+overlays use their overlay-aware owner authority instead. -/
+def candidateOwnerByteCopies (durableMmap : Bool) (candidateOwners : Nat) : Nat :=
+  if durableMmap then 0 else candidateOwners
+
+theorem durable_mmap_regex_has_zero_candidate_byte_copies (candidateOwners : Nat) :
+    candidateOwnerByteCopies true candidateOwners = 0 := by
+  rfl
 
 end ASPProof.ResidentGrepCost

@@ -44,6 +44,7 @@ fn workspace_generation_publication(
             project_root: project_root.to_path_buf(),
             resident_pointer_path: pointer_path,
             generation_digest,
+            resident_view_digest: None,
         },
     )
 }
@@ -200,8 +201,6 @@ impl RuntimeServer {
                     receipt: &crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
                 | {
                     let expected = probe()?;
-                    let lease = memory_registry.lease(workspace_identity, project_root)?;
-                    let generation = lease.generation();
                     let committed_generation_digest = receipt
                         .commit
                         .as_ref()
@@ -210,6 +209,28 @@ impl RuntimeServer {
                         })?
                         .generation_digest
                         .as_str();
+                    let lease = match memory_registry.lease(workspace_identity, project_root) {
+                        Ok(lease) => lease,
+                        Err(resident_error) => {
+                            let expected_bundle = expected.as_deref().ok_or_else(|| {
+                                "durable query binding requires the current Runtime bundle"
+                                    .to_owned()
+                            })?;
+                            return memory_registry
+                                .validate_durable_query_binding(
+                                    workspace_identity,
+                                    project_root,
+                                    committed_generation_digest,
+                                    expected_bundle,
+                                )
+                                .map_err(|binding_error| {
+                                    format!(
+                                        "{resident_error}; durableReaderBinding={binding_error}"
+                                    )
+                                });
+                        }
+                    };
+                    let generation = lease.generation();
                     if generation.generation_digest != committed_generation_digest {
                         return Err(format!(
                             "Runtime resident generation drift: expected={} observed={}",
@@ -390,7 +411,7 @@ impl RuntimeServer {
                             Stage::DurableRestore,
                             async {
                                 memory_registry
-                                    .restore_published_generation(
+                                    .restore_published_query_generation(
                                         format!(
                                             "daemon-admission-restore-{workspace_identity}-{operation_id}"
                                         ),
@@ -407,17 +428,8 @@ impl RuntimeServer {
                             },
                         )
                         .await;
-                        let restored_generation_covers_demand = pointer_restore
-                            .as_ref()
-                            .is_ok_and(|_| {
-                                super::generation_builder::restored_generation_covers_demand(
-                                    &memory_registry,
-                                    &workspace_identity,
-                                    &project_root,
-                                    changed_paths.as_ref(),
-                                    provider_target.as_ref(),
-                                )
-                            });
+                        let restored_generation_covers_demand =
+                            pointer_restore.is_ok() && changed_paths.is_empty();
                         let restore_elapsed_micros = restore_started
                             .elapsed()
                             .as_micros()

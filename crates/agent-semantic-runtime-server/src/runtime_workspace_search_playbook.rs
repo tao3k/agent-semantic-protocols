@@ -284,9 +284,7 @@ pub(super) async fn execute_progressive_search_clauses(
             .filter(|matched| grounding_scope.contains(&matched.owner_path))
             .cloned()
             .collect::<Vec<_>>();
-        let grounding_resident = workspace_registry
-            .resident_read_client(workspace_identity, project_root)
-            .map_err(AspClientOperationError::Message)?;
+        let grounding_resident = Arc::clone(&resident);
         let grounding_task = generation
             .spawn_search_blocking("runtime-search-parser-grounding", move || {
                 syntax_candidates_enclosing_rg_matches(
@@ -356,9 +354,7 @@ pub(super) async fn execute_progressive_search_clauses(
                         syntax: vec![block.clone()],
                         projection: "matches".to_owned(),
                     };
-                let structural_resident = workspace_registry
-                    .resident_read_client(workspace_identity, project_root)
-                    .map_err(AspClientOperationError::Message)?;
+                let structural_resident = Arc::clone(&resident);
                 let evidence = if let Some(evidence) = generation
                     .resident_syntax_scope_evidence(&block.plan.plan_digest, &structural_scope)
                     .map_err(AspClientOperationError::Message)?
@@ -438,9 +434,6 @@ pub(super) async fn execute_progressive_search_clauses(
                         "native-syntax selector owner is outside the preceding typed Search scope: {owner}"
                     )));
                 }
-                let resident = workspace_registry
-                    .resident_read_client(workspace_identity, project_root)
-                    .map_err(AspClientOperationError::Message)?;
                 let (projections, _, diagnostics) = resident
                     .native_syntax_playbook_projection(std::slice::from_ref(&owner))
                     .map_err(AspClientOperationError::Message)?;
@@ -624,6 +617,9 @@ fn execute_default_retrieval_layout(
             generation.resident().indexed_owner_count(),
             std::slice::from_ref(block),
             budget.rg_match_limit(),
+            !generation
+                .resident()
+                .has_semantic_owner_materialization_authority(),
             |candidate_plan, limit| {
                 resident_grep_candidate_scope(candidate_plan, &rg_constraint_scope, limit, || {
                     generation

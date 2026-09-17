@@ -134,13 +134,11 @@ impl WorkspaceGenerationPublisher {
         project_root: &str,
         active_epoch: u64,
     ) -> Result<(), String> {
-        let data_plane = Arc::new(
-            super::WorkspaceSearchGenerationDataPlaneClient::open(
-                &self.pointer_path,
-                std::path::Path::new(project_root),
-            )
-            .await?,
-        );
+        let data_plane = super::WorkspaceSearchGenerationDataPlaneClient::open(
+            &self.pointer_path,
+            std::path::Path::new(project_root),
+        )
+        .await?;
         let exact_projection = Arc::new(
             super::WorkspaceExactProjectionDataPlaneClient::open(&self.pointer_path).await?,
         );
@@ -414,13 +412,14 @@ impl WorkspaceGenerationPublisher {
         super::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
         );
-        let data_plane = Arc::new(
-            super::WorkspaceSearchGenerationDataPlaneClient::open(
-                state.pointer.path(),
-                std::path::Path::new(&generation.project_root),
-            )
-            .await?,
+        super::WorkspaceSearchGenerationDataPlaneClient::invalidate_committed_pointer(
+            state.pointer.path(),
         );
+        let data_plane = super::WorkspaceSearchGenerationDataPlaneClient::open(
+            state.pointer.path(),
+            std::path::Path::new(&generation.project_root),
+        )
+        .await?;
         let exact_projection = Arc::new(
             super::WorkspaceExactProjectionDataPlaneClient::open(state.pointer.path()).await?,
         );

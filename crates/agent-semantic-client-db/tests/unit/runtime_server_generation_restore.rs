@@ -360,10 +360,26 @@ async fn process_cold_recovery_reuses_only_an_exact_fresh_binding() {
         .expect("restore unchanged generation");
     let restore_elapsed = restore_started.elapsed();
     assert!(restored_receipt.commit.is_some());
+    restored
+        .workspace_generation_admission()
+        .expect("restored generation admission")
+        .ensure_runtime_generation_ready(workspace_identity.clone(), project_root.clone())
+        .await
+        .expect("reuse durable reader binding without a writer checkout");
     assert_eq!(
         restored_builds.load(Ordering::SeqCst),
         0,
         "an exact process-cold binding must restore mmap state without parser/source rebuild"
+    );
+    assert_eq!(
+        restored.workspace_registry().workspace_count(),
+        0,
+        "Search/Query restart recovery must not decode the canonical writer generation"
+    );
+    assert!(
+        restore_elapsed < std::time::Duration::from_millis(100),
+        "durable pointer admission must remain a bounded identity operation: elapsedMicros={}",
+        restore_elapsed.as_micros()
     );
     eprintln!(
         "process-cold-generation-restore elapsedMicros={} sourceBuilderCount=0 parserInvocationCount=0 providerProcessCount=0",

@@ -69,6 +69,15 @@ pub(super) async fn complete_generation_from_optional_active_base(
         }
         return Ok(prepared);
     };
+    let active_materialization = crate::engine::active_turso_workspace_generation_materialization(
+        db_path,
+        workspace_identity.as_str(),
+        &project_root,
+    )
+    .await?
+    .ok_or_else(|| {
+        "incremental generation requires the active canonical materialization".to_owned()
+    })?;
     if let Some(replacement_authority) = replacement_authority {
         changed_owner_paths.extend(
             active
@@ -82,22 +91,16 @@ pub(super) async fn complete_generation_from_optional_active_base(
                 })
                 .map(|owner| owner.owner_path.clone()),
         );
-        let active_materialization =
-            crate::engine::active_turso_workspace_generation_materialization(
-                db_path,
-                workspace_identity.as_str(),
-                &project_root,
-            )
-            .await?
-            .ok_or_else(|| {
-                "target-provider replacement requires the active canonical materialization"
-                    .to_owned()
-            })?;
         project_resolutions = merge_target_project_resolutions(
             active_materialization.project_resolutions,
             project_resolutions,
             replacement_authority,
         )?;
+    } else {
+        // An owner-local delta changes neither the admitted project roots nor
+        // their provider ownership. The partial projection intentionally has
+        // no authority to replace the complete base resolution set.
+        project_resolutions = active_materialization.project_resolutions;
     }
     if changed_owner_paths.is_empty() {
         return Err("incremental generation requires changed owner membership".to_owned());

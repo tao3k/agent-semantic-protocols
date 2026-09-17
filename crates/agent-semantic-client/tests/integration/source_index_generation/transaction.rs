@@ -17,7 +17,11 @@ fn publication_has_one_typed_transaction_entry() {
 #[test]
 fn publication_request_carries_explicit_collection_scope() {
     fn consume_scope(request: WorkspaceSearchGenerationPublicationRequestV1<'_>) {
-        let SourceIndexCollectionScope::CompleteGeneration = request.collection_scope;
+        assert!(matches!(
+            request.collection_scope,
+            SourceIndexCollectionScope::CompleteGeneration
+                | SourceIndexCollectionScope::ChangedOwners(_)
+        ));
     }
 
     let _typed_scope_consumer: for<'a> fn(WorkspaceSearchGenerationPublicationRequestV1<'a>) =

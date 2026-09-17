@@ -733,6 +733,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     active_provider_targets,
                     workspace_search_providers,
                     query_generation,
+                    query_generation_authority,
                     telemetry_sender,
                     telemetry_traces,
                     active_telemetry_trace_count,

@@ -338,6 +338,45 @@ impl RuntimeQueryGenerationAuthority {
         project_root: &std::path::Path,
         expected_generation_digest: &str,
     ) -> Result<Arc<RuntimeQueryGeneration>, String> {
+        self.ensure_ready_inner(
+            key,
+            pointer_path,
+            project_root,
+            expected_generation_digest,
+            true,
+        )
+        .await
+    }
+
+    /// Join or claim the generation open lane without publishing a transient
+    /// failure. Query-demand uses this after admission succeeds: a durable
+    /// execution publication may still be crossing the daemon observer, in
+    /// which case the observer remains the terminal failure authority.
+    pub(crate) async fn ensure_ready_from_admission(
+        &self,
+        key: &RuntimeProjectWorkspaceKey,
+        pointer_path: &std::path::Path,
+        project_root: &std::path::Path,
+        expected_generation_digest: &str,
+    ) -> Result<Arc<RuntimeQueryGeneration>, String> {
+        self.ensure_ready_inner(
+            key,
+            pointer_path,
+            project_root,
+            expected_generation_digest,
+            false,
+        )
+        .await
+    }
+
+    async fn ensure_ready_inner(
+        &self,
+        key: &RuntimeProjectWorkspaceKey,
+        pointer_path: &std::path::Path,
+        project_root: &std::path::Path,
+        expected_generation_digest: &str,
+        publish_failure: bool,
+    ) -> Result<Arc<RuntimeQueryGeneration>, String> {
         if let Some(RuntimeQueryGenerationState::Ready(generation)) = self.sender.borrow().get(key)
             && generation.generation_digest() == expected_generation_digest
         {
@@ -405,21 +444,25 @@ impl RuntimeQueryGenerationAuthority {
                     expected_generation_digest,
                     generation.generation_digest()
                 );
-                self.publish_failed(
-                    key.clone(),
-                    generation.generation_token(),
-                    expected_generation_digest.to_owned(),
-                    error.clone(),
-                );
+                if publish_failure {
+                    self.publish_failed(
+                        key.clone(),
+                        generation.generation_token(),
+                        expected_generation_digest.to_owned(),
+                        error.clone(),
+                    );
+                }
                 Err(error)
             }
             Err(error) => {
-                self.publish_failed(
-                    key.clone(),
-                    0,
-                    expected_generation_digest.to_owned(),
-                    error.clone(),
-                );
+                if publish_failure {
+                    self.publish_failed(
+                        key.clone(),
+                        0,
+                        expected_generation_digest.to_owned(),
+                        error.clone(),
+                    );
+                }
                 Err(error)
             }
         }
@@ -468,14 +511,16 @@ impl RuntimeQueryGenerationAuthority {
         expected_generation_digest: &str,
         execution_publication: Option<agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication>,
     ) -> Result<Arc<RuntimeQueryGeneration>, String> {
-        let ready_matches = |generation: &RuntimeQueryGeneration| {
-            generation.generation_digest() == expected_generation_digest
+        let incoming_resident_view_digest = resident.resident_view_digest()?;
+        let ready_matches = |generation: &RuntimeQueryGeneration| -> Result<bool, String> {
+            Ok(generation.generation_digest() == expected_generation_digest
                 && execution_publication
                     .as_ref()
                     .is_none_or(|expected| generation.execution_publication() == Some(expected))
+                && generation.resident().resident_view_digest()? == incoming_resident_view_digest)
         };
         if let Some(RuntimeQueryGenerationState::Ready(generation)) = self.sender.borrow().get(key)
-            && ready_matches(generation)
+            && ready_matches(generation)?
         {
             return Ok(Arc::clone(generation));
         }
@@ -489,7 +534,7 @@ impl RuntimeQueryGenerationAuthority {
         };
         let _guard = lane.lock().await;
         if let Some(RuntimeQueryGenerationState::Ready(generation)) = self.sender.borrow().get(key)
-            && ready_matches(generation)
+            && ready_matches(generation)?
         {
             return Ok(Arc::clone(generation));
         }

@@ -5,10 +5,18 @@
 use super::{SourceIndexCollectionScope, collect_declarative_source_paths};
 
 #[test]
-fn collection_scope_has_only_complete_generation_authority() {
-    let scope = SourceIndexCollectionScope::CompleteGeneration;
-    let SourceIndexCollectionScope::CompleteGeneration = scope;
-    assert_eq!(std::mem::size_of::<SourceIndexCollectionScope>(), 0);
+fn collection_scope_distinguishes_complete_and_atomic_changed_owner_authority() {
+    let changed =
+        SourceIndexCollectionScope::ChangedOwners(["src/lib.rs".to_owned()].into_iter().collect());
+    assert!(matches!(
+        SourceIndexCollectionScope::CompleteGeneration,
+        SourceIndexCollectionScope::CompleteGeneration
+    ));
+    assert!(matches!(
+        changed,
+        SourceIndexCollectionScope::ChangedOwners(owner_paths)
+            if owner_paths == ["src/lib.rs".to_owned()].into_iter().collect()
+    ));
 }
 
 #[test]

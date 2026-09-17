@@ -26,6 +26,8 @@ source_body_tantivy_hit_count = 0
 rebound_symbol_tantivy_hit_count = 1
 topology_rebind_writer_commit_count = 1
 topology_rebind_physical_view_count = 2
+resident_view_publication_count = 2
+stale_query_generation_lease_reuse_count = 0
 
 [scheme.tantivy_fields]
 title = "owner-path-and-file-navigation"

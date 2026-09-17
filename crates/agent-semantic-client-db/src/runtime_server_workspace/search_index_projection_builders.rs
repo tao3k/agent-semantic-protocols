@@ -7,14 +7,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use super::{SearchOwnerRecord, WorkspaceSearchGenerationAuthority};
+use super::{SearchOwnerLocatorRecord, SearchOwnerRecord, WorkspaceSearchGenerationAuthority};
 
 pub(in crate::runtime_server_workspace) fn build_resident_grep_corpus(
     mapping: Arc<memmap2::Mmap>,
     owner_bytes_range: &std::ops::Range<usize>,
-    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerRecord>>,
+    owner_directory_records: &BTreeMap<String, Arc<SearchOwnerLocatorRecord>>,
     content_generation_digest: &str,
 ) -> Result<agent_semantic_search::ResidentGrepCorpusArtifact, String> {
+    let corpus_digest = owner_directory_records
+        .values()
+        .next()
+        .ok_or_else(|| "resident GREP corpus owner set is empty".to_owned())?
+        .corpus_digest
+        .clone();
+    if owner_directory_records
+        .values()
+        .any(|record| record.corpus_digest != corpus_digest)
+    {
+        return Err("resident GREP corpus digest drift across owner locators".to_owned());
+    }
     let owners = owner_directory_records
         .values()
         .map(|record| {
@@ -28,15 +40,19 @@ pub(in crate::runtime_server_workspace) fn build_resident_grep_corpus(
             if end > owner_bytes_range.end {
                 return Err("resident GREP corpus owner exceeds mapped generation".to_owned());
             }
-            Ok(agent_semantic_search::ResidentGrepMappedCorpusOwner {
-                owner_path: record.owner_path.clone(),
-                content_digest: record.content_digest.clone(),
-                byte_range: start..end,
-            })
+            Ok(
+                agent_semantic_search::AdmittedResidentGrepMappedCorpusOwner {
+                    owner_path: record.owner_path.clone(),
+                    content_digest: record.content_digest.clone(),
+                    byte_range: start..end,
+                    line_count: record.line_count,
+                },
+            )
         })
         .collect::<Result<Vec<_>, String>>()?;
-    agent_semantic_search::open_mapped_resident_grep_corpus(
+    agent_semantic_search::open_admitted_mapped_resident_grep_corpus(
         content_generation_digest,
+        &corpus_digest,
         mapping,
         owners,
     )

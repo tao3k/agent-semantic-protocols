@@ -46,6 +46,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
     owner_count: usize,
     blocks: &[Vec<String>],
     limit: u32,
+    use_generation_mmap_bytes: bool,
     mut candidate_owner_paths: impl FnMut(
         &agent_semantic_search::ResidentGrepCandidatePlan,
         usize,
@@ -108,9 +109,17 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             if !roots.contains(&owner_path) || !matcher.path_matches(&owner_path) {
                 continue;
             }
-            let bytes = owner_bytes(&owner_path)?.ok_or_else(|| {
-                format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
-            })?;
+            let owned_bytes;
+            let bytes = if use_generation_mmap_bytes {
+                corpus.owner_bytes(&owner_path).ok_or_else(|| {
+                    format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
+                })?
+            } else {
+                owned_bytes = owner_bytes(&owner_path)?.ok_or_else(|| {
+                    format!("resident GREP candidate owner is absent from the corpus: {owner_path}")
+                })?;
+                owned_bytes.as_ref()
+            };
             resident_owner_read_count += 1;
             resident_regex_scan_count += 1;
             // Execute rg's compiled matcher once per candidate owner. Ordinary
@@ -127,7 +136,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
             };
             matcher
                 .expression
-                .find_iter(&bytes, |occurrence| {
+                .find_iter(bytes, |occurrence| {
                     // A zero-width match at EOF is not a physical line. This
                     // excludes an empty file and the phantom line after a
                     // terminating newline while retaining real empty lines.

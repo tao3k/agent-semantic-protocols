@@ -157,6 +157,16 @@ impl RuntimeServingStateLayout {
         self.mailboxes().join("hook-break-glass")
     }
 
+    /// Process-independent, bounded Hook-to-Runtime event ingress.
+    pub fn hook_memory_inbox(&self) -> PathBuf {
+        self.mailboxes().join("hook-memory-inbox.v1.mmap")
+    }
+
+    /// Runtime-owned durable acknowledgement of the last reconciled inbox record.
+    pub fn hook_memory_inbox_acknowledgement(&self) -> PathBuf {
+        self.mailboxes().join("hook-memory-inbox.v1.ack")
+    }
+
     pub fn owner_election_lock(&self) -> PathBuf {
         self.root.join("runtime-server.owner.lock")
     }

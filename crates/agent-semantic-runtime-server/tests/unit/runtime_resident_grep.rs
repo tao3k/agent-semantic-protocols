@@ -43,6 +43,7 @@ fn execute_runtime_resident_grep_blocks(
         corpus.owner_spans.len(),
         blocks,
         limit,
+        true,
         |plan, limit| {
             if plan.is_match_all() {
                 return Ok((
@@ -420,6 +421,7 @@ fn admitted_grep_matches_rg_reference_corpus() {
             scenario.owners.len(),
             std::slice::from_ref(&case.argv),
             case.limit,
+            true,
             |plan, limit| {
                 if plan.is_match_all() {
                     Ok((
@@ -685,6 +687,7 @@ fn resident_grep_4096_owner_reads_have_submillisecond_kernel_and_wall_p99() {
             OWNER_COUNT,
             std::slice::from_ref(&argv),
             OWNER_COUNT as u32,
+            true,
             |plan, limit| {
                 byte_index.candidate_owner_paths_for_grep_plan_with_receipt(plan, None, limit)
             },
