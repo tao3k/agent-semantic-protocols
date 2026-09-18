@@ -7,6 +7,8 @@
 use agent_semantic_scheme_syntax::SchemeDatum;
 use serde::{Deserialize, Serialize};
 
+pub const QUERY_PLAYBOOK_V1_GRAMMAR: &str = "(query [(workspace \"id\")] (producers (language ...) (documents ...)) (select (selectors \"producer://owner[#item/...]\" ...) [(projection source|callable-skeleton)] [(output human|json)]))";
+
 /// Presentation selected for the public Query surface.
 ///
 /// Query is an agent-facing source/syntax operation by default. The typed
@@ -73,9 +75,7 @@ fn lower_query(root: &[SchemeDatum]) -> Result<ProgressiveQueryRequest, String> 
         }
         [_, _, _] => (None, 1, 2),
         _ => {
-            return Err(
-                "expected (query [(workspace \"id\")] (producers ...) (select ...))".to_owned(),
-            );
+            return Err(format!("expected {QUERY_PLAYBOOK_V1_GRAMMAR}"));
         }
     };
     let SchemeDatum::List(producers) = &root[producers_index] else {
@@ -131,7 +131,7 @@ fn lower_query(root: &[SchemeDatum]) -> Result<ProgressiveQueryRequest, String> 
             }
             Some(operator) => {
                 return Err(format!(
-                    "Query Playbook does not support operator `{operator}`"
+                    "Query Playbook does not support operator `{operator}`; select supports selectors, projection, and output; expected {QUERY_PLAYBOOK_V1_GRAMMAR}"
                 ));
             }
             None => return Err("select clause must begin with an operator".to_owned()),

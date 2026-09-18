@@ -86,6 +86,38 @@ def test_workspace_playbook_request_v1_accepts_executable_search() -> None:
     VALIDATOR.validate(request())
 
 
+def test_workspace_playbook_request_v1_accepts_topology_owner_membership() -> None:
+    value = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
+        "schemaVersion": "1",
+        "language": "rust",
+        "topology": [
+            {
+                "kind": "file",
+                "pathPrefix": "crates/",
+                "extension": "rs",
+                "pathGlob": "crates/**/src/*.rs",
+            }
+        ],
+        "composition": leaf("topology"),
+        "clauseOrder": [{"axis": "topology", "blockIndex": 0}],
+    }
+    VALIDATOR.validate(value)
+
+
+def test_workspace_playbook_request_v1_rejects_topology_scope_escape() -> None:
+    value = {
+        "schemaId": "agent.semantic-protocols.asp-client-workspace-search-playbook-request",
+        "schemaVersion": "1",
+        "language": "rust",
+        "topology": [{"kind": "file", "pathPrefix": "../outside"}],
+        "composition": leaf("topology"),
+        "clauseOrder": [{"axis": "topology", "blockIndex": 0}],
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        VALIDATOR.validate(value)
+
+
 def test_workspace_playbook_request_v1_requires_a_producer_axis() -> None:
     value = request()
     del value["language"]

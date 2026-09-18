@@ -10,6 +10,7 @@ use crate::model::{
     SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
     SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
     SearchPlaybookLeaf, SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
+    TopologyOwnerMembershipBlock,
 };
 use agent_semantic_scheme_syntax::SchemeDatum;
 
@@ -196,11 +197,12 @@ fn lower_search(
     lower_v1_composition(&composition, &mut state)?;
     if state.rg.is_empty()
         && state.tantivy.is_empty()
+        && state.topology.is_empty()
         && state.syntax.is_empty()
         && state.native_syntax.is_empty()
     {
         return Err(incomplete(
-            "Search Playbook requires a regex, ranked-text, or structural acquisition leaf",
+            "Search Playbook requires a regex, ranked-text, topology, or structural acquisition leaf",
         ));
     }
     let mut normalized_indices = NormalizedLeafIndices::default();
@@ -212,6 +214,7 @@ fn lower_search(
         workspace,
         rg: state.rg,
         tantivy: state.tantivy,
+        topology: state.topology,
         syntax: state.syntax,
         native_syntax: state.native_syntax,
         graph: state.graph,
@@ -255,6 +258,7 @@ fn reject_duplicate_leaves(
 struct NormalizedLeafIndices {
     rg: usize,
     tantivy: usize,
+    topology: usize,
     syntax: usize,
     native_syntax: usize,
     graph: usize,
@@ -286,6 +290,9 @@ fn normalize_composition_references(
                 }
                 SearchPlaybookLeaf::Tantivy(_) => {
                     take_index(&mut indices.tantivy, SearchPlaybookClauseAxis::Tantivy)
+                }
+                SearchPlaybookLeaf::Topology(_) => {
+                    take_index(&mut indices.topology, SearchPlaybookClauseAxis::Topology)
                 }
                 SearchPlaybookLeaf::Syntax(_) => {
                     take_index(&mut indices.syntax, SearchPlaybookClauseAxis::Syntax)
@@ -376,6 +383,7 @@ fn lower_producers(
 struct LoweringState {
     rg: Vec<Vec<String>>,
     tantivy: Vec<Vec<String>>,
+    topology: Vec<TopologyOwnerMembershipBlock>,
     syntax: Vec<ProducerNativeBlock>,
     native_syntax: Vec<String>,
     graph: Vec<GraphNativeBlock>,
@@ -398,7 +406,9 @@ fn lower_v1_composition(
                 acquisition,
                 SearchPlaybookComposition::Intersect(_)
                     | SearchPlaybookComposition::Leaf(
-                        SearchPlaybookLeaf::Rg(_) | SearchPlaybookLeaf::Tantivy(_)
+                        SearchPlaybookLeaf::Rg(_)
+                            | SearchPlaybookLeaf::Tantivy(_)
+                            | SearchPlaybookLeaf::Topology(_)
                     )
             ) {
                 lower_acquisition(acquisition, state)?;
@@ -413,6 +423,7 @@ fn lower_v1_composition(
         SearchPlaybookComposition::Leaf(
             leaf @ (SearchPlaybookLeaf::Rg(_)
             | SearchPlaybookLeaf::Tantivy(_)
+            | SearchPlaybookLeaf::Topology(_)
             | SearchPlaybookLeaf::Syntax(_)
             | SearchPlaybookLeaf::NativeSyntax(_)),
         ) => lower_leaf(leaf, state)?,
@@ -456,12 +467,14 @@ fn lower_acquisition(
             }
         }
         SearchPlaybookComposition::Leaf(
-            leaf @ (SearchPlaybookLeaf::Rg(_) | SearchPlaybookLeaf::Tantivy(_)),
+            leaf @ (SearchPlaybookLeaf::Rg(_)
+            | SearchPlaybookLeaf::Tantivy(_)
+            | SearchPlaybookLeaf::Topology(_)),
         ) => lower_leaf(leaf, state)?,
         SearchPlaybookComposition::Leaf(_) | SearchPlaybookComposition::Chain(_) => {
             return Err(invalid_parameter(
                 "search-playbook-layout-invalid",
-                "V1 acquisition intersection admits only nested intersect, rg, and tantivy",
+                "V1 acquisition intersection admits only nested intersect, rg, tantivy, and topology",
             ));
         }
     }
@@ -513,6 +526,15 @@ fn lower_leaf(
             state.tantivy.push(argv.clone());
             state.clause_order.push(SearchPlaybookClauseRef {
                 axis: SearchPlaybookClauseAxis::Tantivy,
+                block_index,
+            });
+        }
+        SearchPlaybookLeaf::Topology(block) => {
+            reject_after_graph(state)?;
+            let block_index = state.topology.len();
+            state.topology.push(block.clone());
+            state.clause_order.push(SearchPlaybookClauseRef {
+                axis: SearchPlaybookClauseAxis::Topology,
                 block_index,
             });
         }
@@ -608,6 +630,9 @@ fn parse_composition(
                 SearchPlaybookLeaf::Tantivy(argv),
             ))
         }
+        "topology" => Ok(SearchPlaybookComposition::Leaf(
+            SearchPlaybookLeaf::Topology(crate::topology_owner::parse(&form[1..])?),
+        )),
         "syntax" => {
             let (producer, argv) = producer_arguments(operator, &form[1..])?;
             if argv.len() != 1 {

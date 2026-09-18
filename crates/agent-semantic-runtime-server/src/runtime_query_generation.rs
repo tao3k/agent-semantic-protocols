@@ -359,7 +359,29 @@ impl RuntimeQueryGeneration {
 
         let source = match selector_scope {
             Some(selector_scope) => {
-                resident.topology_source_segments_for_selector_scope(selector_scope)?
+                let mut item_selectors = BTreeSet::new();
+                let mut owner_roots = BTreeSet::new();
+                for selector in selector_scope {
+                    match agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
+                        selector,
+                    )? {
+                        agent_semantic_content_identity::CanonicalStructuralSelectorReference::OwnerRoot(root) => {
+                            owner_roots.insert(root.owner_path().to_owned());
+                        }
+                        agent_semantic_content_identity::CanonicalStructuralSelectorReference::ParserItem(_) => {
+                            item_selectors.insert(selector.clone());
+                        }
+                    }
+                }
+                let mut source =
+                    resident.topology_source_segments_for_selector_scope(&item_selectors)?;
+                let detailed_owners = source
+                    .iter()
+                    .map(|segment| segment.owner_path.as_str())
+                    .collect::<BTreeSet<_>>();
+                owner_roots.retain(|owner| !detailed_owners.contains(owner.as_str()));
+                source.extend(resident.topology_source_segments_for_owner_roots(&owner_roots)?);
+                source
             }
             None => resident.topology_source_segments_for_owner_scope(owner_scope)?,
         };

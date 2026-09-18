@@ -87,6 +87,7 @@ fn search_request(
         workspace: None,
         rg: Some(vec![vec!["-n".to_owned(), pattern.to_owned()]]),
         tantivy: Some(vec![vec!["body:runtime".to_owned()]]),
+        topology: None,
         syntax: None,
         native_syntax: None,
         graph: None,

@@ -125,12 +125,16 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
         "ASP Search playbook routing is active for this prompt",
         "`asp search playbook '<scheme-expression>'`",
         "`(producers (language ...) (documents ...))`",
-        "begin V1 composition with `(intersect (rg ...) (tantivy ...))`",
-        "Preserve every native argv token as a Scheme string",
-        "one admitted immutable workspace generation",
-        "without prescribing the Agent's next action",
-        "one `asp query playbook '<scheme-expression>'` request",
-        "`(query ...)` form",
+        "Choose exactly the primary leaf justified by the predicate",
+        "`topology (owners ...)` for file/path membership",
+        "There is no default engine pair",
+        "`intersect` only for an explicit conjunction",
+        "keep Workspace scope at top level",
+        "returned closure state",
+        "copy Agent-chosen canonical root or item selectors unchanged",
+        "Complete ASP evidence forbids a second `find`, `fd`, `sed`, or external `rg` discovery pass",
+        "`asp query playbook '<scheme-expression>'`",
+        "(select (selectors",
         "Query has no implicit Search state",
     ] {
         assert!(
@@ -160,12 +164,14 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         "ASP Search playbook routing is active for this locator question",
         "`asp search playbook '<scheme-expression>'`",
         "`(producers (language ...) (documents ...))`",
-        "with `graph` leaves last",
-        "Preserve every native argv token as a Scheme string",
-        "one admitted immutable workspace generation",
-        "without prescribing the Agent's next action",
-        "one `asp query playbook '<scheme-expression>'` request",
-        "`(query ...)` form",
+        "Choose exactly the primary leaf justified by the predicate",
+        "`topology (owners ...)` for file/path membership",
+        "There is no default engine pair",
+        "`graph` only as the final barrier",
+        "returned closure state",
+        "copy Agent-chosen canonical root or item selectors unchanged",
+        "Complete ASP evidence forbids a second `find`, `fd`, `sed`, or external `rg` discovery pass",
+        "`asp query playbook '<scheme-expression>'`",
         "Query has no implicit Search state",
     ] {
         assert!(
@@ -173,6 +179,10 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
             "missing `{expected}` in {context}"
         );
     }
+    assert!(
+        !context.contains("begin V1 composition with `(intersect"),
+        "{context}"
+    );
     assert!(!context.contains("--code"), "{context}");
     assert!(!context.contains("--names-only"), "{context}");
 }

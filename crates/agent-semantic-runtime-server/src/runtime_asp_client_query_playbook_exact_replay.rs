@@ -146,11 +146,12 @@ pub(super) async fn try_process_cold_exact_owner_replay(
         let Some(owner_path) = selector_owner_path(selector) else {
             return Ok(None);
         };
-        if !owner_metadata.contains_key(owner_path) {
-            let Some(metadata) = exact.owner_content_metadata(owner_path)? else {
+        if let std::collections::btree_map::Entry::Vacant(entry) = owner_metadata.entry(owner_path)
+        {
+            let Some(metadata) = exact.owner_content_metadata(entry.key())? else {
                 return Ok(None);
             };
-            owner_metadata.insert(owner_path.to_owned(), metadata);
+            entry.insert(metadata);
         }
         let Some(projection_byte_len) = exact.direct_projection_byte_len(projection, selector)?
         else {
@@ -192,13 +193,15 @@ pub(super) async fn try_process_cold_exact_owner_replay(
                 let Some(owner_path) = selector_owner_path(selector) else {
                     return Ok(None);
                 };
-                if !current_owner_digests.contains_key(owner_path) {
+                if let std::collections::btree_map::Entry::Vacant(entry) =
+                    current_owner_digests.entry(owner_path)
+                {
                     let Some((current_digest, current_byte_len)) =
-                        process_cold_owner_content_digest(&project_root.join(owner_path))?
+                        process_cold_owner_content_digest(&project_root.join(entry.key()))?
                     else {
                         return Ok(None);
                     };
-                    let Some(expected) = owner_metadata.get(owner_path) else {
+                    let Some(expected) = owner_metadata.get(entry.key()) else {
                         return Ok(None);
                     };
                     if current_digest != expected.content_digest
@@ -206,7 +209,7 @@ pub(super) async fn try_process_cold_exact_owner_replay(
                     {
                         return Ok(None);
                     }
-                    current_owner_digests.insert(owner_path.to_owned(), current_digest);
+                    entry.insert(current_digest);
                 }
                 let read = exact.read_runtime_selector(projection, selector)?;
                 if !durable_projection_is_direct(selector, &read) {

@@ -369,14 +369,13 @@ pub(super) fn request_runtime_query_generation_ready(
 /// Submit source-generation work and wait on the two terminal authorities:
 /// admission may fail before any durable publication exists, while only the
 /// daemon observer may publish a successful resident generation.
-pub(super) async fn request_and_await_runtime_query_generation_ready(
-    generation_admission: &WorkspaceGenerationAdmission,
-    workspace_identity: String,
-    project_root: std::path::PathBuf,
-    provider_targets: Vec<
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget,
-    >,
-    generations: &tokio::sync::watch::Receiver<
+pub(super) struct RuntimeQueryGenerationReadinessRequest<'a> {
+    pub generation_admission: &'a WorkspaceGenerationAdmission,
+    pub workspace_identity: String,
+    pub project_root: std::path::PathBuf,
+    pub provider_targets:
+        Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+    pub generations: &'a tokio::sync::watch::Receiver<
         std::sync::Arc<
             std::collections::HashMap<
                 crate::RuntimeProjectWorkspaceKey,
@@ -384,10 +383,24 @@ pub(super) async fn request_and_await_runtime_query_generation_ready(
             >,
         >,
     >,
-    key: &crate::RuntimeProjectWorkspaceKey,
-    generation_authority: &crate::RuntimeQueryGenerationAuthority,
-    pointer_path: &std::path::Path,
+    pub key: &'a crate::RuntimeProjectWorkspaceKey,
+    pub generation_authority: &'a crate::RuntimeQueryGenerationAuthority,
+    pub pointer_path: &'a std::path::Path,
+}
+
+pub(super) async fn request_and_await_runtime_query_generation_ready(
+    request: RuntimeQueryGenerationReadinessRequest<'_>,
 ) -> Result<std::sync::Arc<crate::RuntimeQueryGeneration>, String> {
+    let RuntimeQueryGenerationReadinessRequest {
+        generation_admission,
+        workspace_identity,
+        project_root,
+        provider_targets,
+        generations,
+        key,
+        generation_authority,
+        pointer_path,
+    } = request;
     let required_provider_targets = provider_targets.clone();
     let (terminal_sender, terminal_receiver) = tokio::sync::oneshot::channel();
     generation_admission.request_runtime_generations_ready_for_providers_with_terminal(

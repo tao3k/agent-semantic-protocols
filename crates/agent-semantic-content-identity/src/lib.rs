@@ -36,6 +36,8 @@ pub use canonical_item_identity::CanonicalItemScopeRelation;
 pub use canonical_item_identity::CanonicalItemScopeSymbol;
 pub use canonical_item_identity::CanonicalItemSelector;
 pub use canonical_item_identity::CanonicalItemSymbol;
+pub use canonical_item_identity::CanonicalOwnerRootSelector;
+pub use canonical_item_identity::CanonicalStructuralSelectorReference;
 
 pub use derived_artifact_evidence::DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION;
 pub use derived_artifact_evidence::DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID;

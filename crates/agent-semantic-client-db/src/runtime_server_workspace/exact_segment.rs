@@ -170,10 +170,13 @@ impl MappedWorkspaceExactProjection {
             return self.project_selector(projection_kind, selector);
         }
         let canonical_selector =
-            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+            agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
                 structural_selector,
             );
-        if canonical_selector.is_ok() {
+        if canonical_selector
+            .as_ref()
+            .is_ok_and(|selector| selector.parser_item().is_some())
+        {
             let relocated = self.find_relocated_selectors(structural_selector)?;
             if relocated.len() == 1 {
                 let resolved_selector = &relocated[0];
@@ -195,7 +198,13 @@ impl MappedWorkspaceExactProjection {
             }
         }
         let (owner_path, owner_reference) = match canonical_selector {
-            Ok(selector) => (selector.owner_path()?, false),
+            Ok(selector) => (
+                selector.owner_path()?,
+                matches!(
+                    selector,
+                    agent_semantic_content_identity::CanonicalStructuralSelectorReference::OwnerRoot(_)
+                ),
+            ),
             Err(canonical_error) => {
                 let owner_path =
                     agent_semantic_client_protocol::workspace_source_mutation::SourceOwnerPath::new(
@@ -220,7 +229,7 @@ impl MappedWorkspaceExactProjection {
                 return Ok(WorkspaceRuntimeSelectorRead::Projection {
                     generation_digest: self.generation_digest.clone(),
                     root_digest: self.root_digest.clone(),
-                    resolved_selector: owner_path,
+                    resolved_selector: structural_selector.to_owned(),
                     bytes: self.owner_bytes(&owner)?.to_vec(),
                 });
             }

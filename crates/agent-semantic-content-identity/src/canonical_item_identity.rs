@@ -363,3 +363,99 @@ impl CanonicalItemSelector {
         Ok(())
     }
 }
+
+/// Canonical language-qualified source-owner root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CanonicalOwnerRootSelector {
+    language_id: CanonicalItemLanguageId,
+    owner_path: String,
+    structural_selector: String,
+}
+
+impl CanonicalOwnerRootSelector {
+    pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
+        let structural_selector = structural_selector.into();
+        let (language_id, encoded_owner_path) = structural_selector
+            .split_once("://")
+            .ok_or_else(|| "canonical owner root selector must include <language>://".to_owned())?;
+        if language_id.is_empty()
+            || encoded_owner_path.is_empty()
+            || encoded_owner_path.contains('#')
+        {
+            return Err(
+                "canonical owner root selector must contain one language-qualified owner path"
+                    .to_owned(),
+            );
+        }
+        let owner_path =
+            crate::structural_selector::decode_structural_selector_owner_path(encoded_owner_path)
+                .map_err(|error| format!("canonical owner root path is invalid: {error}"))?;
+        if owner_path
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+            || crate::structural_selector::encode_structural_selector_owner_path(&owner_path)
+                != encoded_owner_path
+        {
+            return Err(
+                "canonical owner root path is not normalized and canonically encoded".to_owned(),
+            );
+        }
+        Ok(Self {
+            language_id: language_id.into(),
+            owner_path,
+            structural_selector,
+        })
+    }
+
+    pub fn language_id(&self) -> &CanonicalItemLanguageId {
+        &self.language_id
+    }
+
+    pub fn owner_path(&self) -> &str {
+        &self.owner_path
+    }
+
+    pub fn structural_selector(&self) -> &str {
+        &self.structural_selector
+    }
+}
+
+/// V1 Search/Query selector identity without collapsing owner roots into items.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CanonicalStructuralSelectorReference {
+    OwnerRoot(CanonicalOwnerRootSelector),
+    ParserItem(CanonicalItemSelector),
+}
+
+impl CanonicalStructuralSelectorReference {
+    pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
+        let structural_selector = structural_selector.into();
+        if structural_selector.contains('#') {
+            CanonicalItemSelector::parse_root_or_exact_descendant(structural_selector)
+                .map(Self::ParserItem)
+        } else {
+            CanonicalOwnerRootSelector::parse(structural_selector).map(Self::OwnerRoot)
+        }
+    }
+
+    pub fn language_id(&self) -> &CanonicalItemLanguageId {
+        match self {
+            Self::OwnerRoot(selector) => selector.language_id(),
+            Self::ParserItem(selector) => &selector.language_id,
+        }
+    }
+
+    pub fn owner_path(&self) -> Result<String, String> {
+        match self {
+            Self::OwnerRoot(selector) => Ok(selector.owner_path().to_owned()),
+            Self::ParserItem(selector) => selector.owner_path(),
+        }
+    }
+
+    pub fn parser_item(&self) -> Option<&CanonicalItemSelector> {
+        match self {
+            Self::OwnerRoot(_) => None,
+            Self::ParserItem(selector) => Some(selector),
+        }
+    }
+}

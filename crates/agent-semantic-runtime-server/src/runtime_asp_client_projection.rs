@@ -94,6 +94,9 @@ pub(super) fn dispatch_exact_query(
         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
             params.projection.as_str(),
         )?;
+    agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
+        params.selector.as_str(),
+    )?;
     let resident_started = tokio::time::Instant::now();
     if generation.native_syntax_state() != "ready" {
         return Err(AspClientOperationError::Terminal(AspClientDispatchError {

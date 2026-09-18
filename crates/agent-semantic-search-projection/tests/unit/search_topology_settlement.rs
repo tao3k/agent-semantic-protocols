@@ -127,7 +127,7 @@ fn topology_settlement_admits_the_bound_single_gql_fixture() {
     let settlement = SearchTopologySettlement::admit(valid_settlement())
         .expect("the shared settlement fixture must be admitted");
 
-    assert_eq!(settlement.queryable_selector_count(), 2);
+    assert_eq!(settlement.queryable_endpoint_count(), 2);
     assert_eq!(settlement.derived_relation_count(), 1);
 }
 
@@ -318,6 +318,9 @@ fn topology_settlement_renders_one_compact_polyglot_gql_result() {
     assert_eq!(rendered.matches("#+begin_src gql").count(), 1);
     assert_eq!(rendered.matches("#+end_src").count(), 1);
     assert!(!rendered.contains("#+begin_src ascent"));
+    assert!(rendered.contains(
+        "(evidence:SearchEvidence {state:\"complete\",result:\"queryable\",queryable:true,terminal:\"ready\"})"
+    ));
     assert!(rendered.contains("(rust:Language)-[:RESULTS]->["));
     assert!(rendered.contains("item1:RustMethod"));
     assert!(rendered.contains("selector:\"rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry\""));
@@ -424,7 +427,7 @@ fn executed_workspace_result_is_joined_to_topology_before_rendering() {
     .expect("Runtime Search evidence joins the attached topology");
 
     assert_eq!(settlement.as_json()["resultState"], "queryable");
-    assert_eq!(settlement.queryable_selector_count(), 3);
+    assert_eq!(settlement.queryable_endpoint_count(), 3);
     let selected_node = settlement.as_json()["nodes"]
         .as_array()
         .unwrap()
@@ -447,6 +450,44 @@ fn executed_workspace_result_is_joined_to_topology_before_rendering() {
             .unwrap()
             .contains("projection:{rank:1,depth:0,hit:{rg:[[42,42]],native:true}}")
     );
+}
+
+#[tokio::test]
+async fn topology_owner_root_is_ranked_and_rendered_as_queryable_evidence() {
+    let owner_selector = "rust://src/registry.rs";
+    let library = generated_v2_library_with_frontier().await;
+    let settlement = SearchTopologySettlement::from_workspace_result(
+        "search-request-owner-root",
+        &serde_json::json!({
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
+            "schemaVersion": "1",
+            "result": "exact-selector-ready",
+            "evidenceItemLimit": 30,
+            "evidence": [{
+                "owner": "src/registry.rs",
+                "item": "owner-root",
+                "selector": owner_selector,
+                "matchedBy": ["topology:0"],
+                "relation": "topology-owner-membership",
+                "hit": {"native": true}
+            }]
+        }),
+        &library,
+    )
+    .expect("owner-root Search evidence joins its topology owner");
+
+    let owner = settlement.as_json()["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["ownerLocator"] == owner_selector)
+        .expect("ranked owner root");
+    assert_eq!(owner["projection"]["rank"], 1);
+    assert_eq!(owner["projection"]["hit"]["native"], true);
+    assert_eq!(settlement.queryable_endpoint_count(), 1);
+    let rendered = settlement.render_org_gql().expect("owner-root GQL");
+    assert!(rendered.contains("owner_locator:\"rust://src/registry.rs\""));
+    assert!(rendered.contains("projection:{rank:1,depth:0,hit:{native:true}}"));
 }
 
 #[tokio::test]

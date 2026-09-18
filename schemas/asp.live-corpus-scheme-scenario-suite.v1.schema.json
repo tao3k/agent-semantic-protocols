@@ -68,7 +68,7 @@
           "maxItems": 3,
           "uniqueItems": true,
           "prefixItems": [
-            { "enum": ["regex-truth", "ranked-text", "explicit-conjunction"] },
+            { "enum": ["regex-truth", "ranked-text", "structural-syntax", "topology-membership", "explicit-conjunction"] },
             { "const": "exact-parser-owner" },
             { "const": "zero-match" }
           ],

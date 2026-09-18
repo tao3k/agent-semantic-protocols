@@ -147,6 +147,34 @@ fn syntax_candidate(owner: &str, item: &str) -> WorkspaceSearchSyntaxCandidate {
 }
 
 #[test]
+fn topology_owner_membership_emits_a_queryable_root_selector() {
+    let owner = "crates/runtime/src/lib.rs";
+    let result = synthesize_workspace_search_playbook_result(
+        vec![receipt(WorkspaceSearchAxisKind::Topology, 0, 0, &[owner])],
+        vec![WorkspaceSearchSyntaxCandidate {
+            owner: owner.to_owned(),
+            selector: format!("rust://{owner}"),
+            relation: "topology-owner-membership".to_owned(),
+            hit: crate::WorkspaceSearchHitProjection {
+                native: true,
+                ..Default::default()
+            },
+        }],
+        None,
+        EVIDENCE_ITEM_LIMIT,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.result,
+        WorkspaceSearchPlaybookResultKind::ExactSelectorReady
+    );
+    assert_eq!(result.evidence[0].selector, format!("rust://{owner}"));
+    assert_eq!(result.evidence[0].item, "owner-root");
+    assert_eq!(result.evidence[0].matched_by, ["topology:0"]);
+}
+
+#[test]
 fn fan_in_uses_agent_authored_clause_priority_without_graph() {
     let result = synthesize_workspace_search_playbook_result(
         vec![

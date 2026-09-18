@@ -41,6 +41,7 @@ pub struct WorkspaceSearchPlaybookRoute {
 pub struct WorkspaceSearchProgressivePlan {
     pub rg: Vec<Vec<String>>,
     pub tantivy: Vec<Vec<String>>,
+    pub topology: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookTopologyBlock>,
     pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
@@ -58,6 +59,7 @@ pub struct NormalizedWorkspaceSearchPlaybookRequest {
     pub workspace: Option<String>,
     pub rg: Vec<Vec<String>>,
     pub tantivy: Vec<Vec<String>>,
+    pub topology: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookTopologyBlock>,
     pub syntax: Vec<agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<crate::GraphNativeBlock>,
@@ -89,6 +91,7 @@ pub fn build_workspace_search_playbook_plan(
         workspace,
         rg,
         tantivy,
+        topology,
         syntax,
         native_syntax,
         graph,
@@ -186,6 +189,7 @@ pub fn build_workspace_search_playbook_plan(
         axes: WorkspaceSearchProgressivePlan {
             rg: rg.clone(),
             tantivy: tantivy.clone(),
+            topology: topology.clone(),
             syntax: syntax.clone(),
             native_syntax: native_syntax.clone(),
             graph: graph.clone(),

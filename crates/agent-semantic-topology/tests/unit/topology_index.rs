@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use agent_semantic_topology::{
-    TopologyHitV1, TopologyIndexV1, TopologyNodeKindV1, TopologyNodeV1, TopologyOwnerV1,
-    ranked_text_topology_selector_carrier, topology_feature_terms, topology_navigation_features,
+    TopologyHitV1, TopologyIndexV1, TopologyNodeKindV1, TopologyNodeV1, TopologyOwnerQueryV1,
+    TopologyOwnerV1, ranked_text_topology_selector_carrier, topology_feature_terms,
+    topology_navigation_features,
 };
 
 #[test]
@@ -63,6 +64,58 @@ fn indexes_repository_paths_symbols_and_document_headings_as_topology() {
             .exact_selector("rust://src/runtime/lib.rs#item/function/missing")
             .is_none()
     );
+}
+
+#[test]
+fn resident_owner_membership_uses_path_postings_without_source_bodies() {
+    let index = TopologyIndexV1::build([
+        owner(
+            "crates/runtime/src/lib.rs",
+            "rust://crates/runtime/src/lib.rs#item/function/run",
+            ["run"],
+        ),
+        owner(
+            "crates/runtime/src/server.rs",
+            "rust://crates/runtime/src/server.rs#item/function/serve",
+            ["serve"],
+        ),
+        owner(
+            "docs/runtime.org",
+            "org://docs/runtime.org#item/heading/Runtime",
+            ["Runtime"],
+        ),
+    ])
+    .unwrap();
+    let (owners, truncated) = index
+        .query_owners(
+            &TopologyOwnerQueryV1 {
+                exact_path: None,
+                path_prefix: Some("crates/runtime/"),
+                extension: Some("rs"),
+                path_glob: Some("crates/**/src/*.rs"),
+            },
+            8,
+        )
+        .unwrap();
+    assert_eq!(
+        owners,
+        ["crates/runtime/src/lib.rs", "crates/runtime/src/server.rs"]
+    );
+    assert!(!truncated);
+
+    let (bounded, truncated) = index
+        .query_owners(
+            &TopologyOwnerQueryV1 {
+                exact_path: None,
+                path_prefix: Some("crates/"),
+                extension: Some("rs"),
+                path_glob: None,
+            },
+            1,
+        )
+        .unwrap();
+    assert_eq!(bounded.len(), 1);
+    assert!(truncated);
 }
 
 #[test]

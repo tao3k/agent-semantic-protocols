@@ -116,6 +116,31 @@ impl RuntimeResidentReadClient {
         Ok(by_owner.into_values().collect())
     }
 
+    /// Resolve bounded owner-root topology inputs without projecting parser
+    /// selectors or relations for those owners.
+    pub fn topology_source_segments_for_owner_roots(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Result<Vec<crate::runtime_server_workspace::WorkspaceTopologySourceSegment>, String> {
+        owner_paths
+            .iter()
+            .map(|owner_path| {
+                let owner = self
+                    .owner_snapshot(owner_path)?
+                    .ok_or_else(|| format!("topology root owner is unavailable: {owner_path}"))?;
+                Ok(
+                    crate::runtime_server_workspace::WorkspaceTopologySourceSegment {
+                        owner_path: owner.owner_path,
+                        content_digest: owner.content_digest,
+                        authority: owner.authority,
+                        selectors: Vec::new(),
+                        relations: Vec::new(),
+                    },
+                )
+            })
+            .collect()
+    }
+
     pub fn owner_paths_for_graph_entry_node_ids<'a>(
         &self,
         node_ids: impl IntoIterator<Item = &'a str>,
@@ -312,6 +337,23 @@ impl RuntimeResidentReadClient {
         }
     }
 
+    /// Read generation-current owner membership from the immutable resident
+    /// Topology Index. A mutable overlay is filtered from its own atomically
+    /// published owner directory so removed base owners cannot leak.
+    pub fn read_topology_owner_membership(
+        &self,
+        query: &agent_semantic_topology::TopologyOwnerQueryV1<'_>,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), String> {
+        match (&self.exact_projection, &self.resident_lease) {
+            (Some(_), None) => self
+                .search_projection
+                .read_topology_owner_membership(query, limit),
+            (None, Some(lease)) => query.filter(lease.indexed_owner_paths(), limit),
+            _ => Err("Runtime resident read authority is inconsistent".to_owned()),
+        }
+    }
+
     /// Resolve an exact resident byte match without provider, scheduler, DB,
     /// filesystem, or socket work.
     pub fn smallest_enclosing_topology_anchor(
@@ -333,7 +375,6 @@ impl RuntimeResidentReadClient {
         }
     }
 
-    #[must_use]
     pub fn topology_node_count(&self) -> Result<usize, String> {
         self.search_projection.topology_node_count()
     }

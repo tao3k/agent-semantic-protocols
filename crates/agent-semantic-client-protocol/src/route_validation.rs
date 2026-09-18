@@ -104,6 +104,7 @@ impl AspClientWorkspaceSearchPlaybookRequest {
 
         let predicate_count = self.rg.as_ref().map_or(0, Vec::len)
             + self.tantivy.as_ref().map_or(0, Vec::len)
+            + self.topology.as_ref().map_or(0, Vec::len)
             + self.syntax.as_ref().map_or(0, Vec::len)
             + self.native_syntax.as_ref().map_or(0, Vec::len);
         let graph_count = self.graph.as_ref().map_or(0, Vec::len);
@@ -118,6 +119,7 @@ impl AspClientWorkspaceSearchPlaybookRequest {
         }
         if self.rg.as_deref().is_some_and(has_duplicates)
             || self.tantivy.as_deref().is_some_and(has_duplicates)
+            || self.topology.as_deref().is_some_and(has_duplicates)
             || self.syntax.as_deref().is_some_and(has_duplicates)
             || self.native_syntax.as_deref().is_some_and(has_duplicates)
             || self.graph.as_deref().is_some_and(has_duplicates)
@@ -156,6 +158,9 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                 AspClientSearchPlaybookClauseAxis::Rg => self.rg.as_ref().map_or(0, Vec::len),
                 AspClientSearchPlaybookClauseAxis::Tantivy => {
                     self.tantivy.as_ref().map_or(0, Vec::len)
+                }
+                AspClientSearchPlaybookClauseAxis::Topology => {
+                    self.topology.as_ref().map_or(0, Vec::len)
                 }
                 AspClientSearchPlaybookClauseAxis::Syntax => {
                     self.syntax.as_ref().map_or(0, Vec::len)
@@ -199,6 +204,31 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                 return Err("ASP workspace Search native argv must not be empty".to_owned());
             }
         }
+        if self.topology.iter().flatten().any(|block| {
+            block.kind != "file"
+                || [
+                    block.exact_path.as_ref(),
+                    block.path_prefix.as_ref(),
+                    block.extension.as_ref(),
+                    block.path_glob.as_ref(),
+                ]
+                .into_iter()
+                .all(|value| value.is_none())
+                || block.extension.as_deref().is_some_and(|extension| {
+                    extension.is_empty()
+                        || !extension.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'+' | b'-')
+                        })
+                })
+                || block
+                    .exact_path
+                    .iter()
+                    .chain(block.path_prefix.iter())
+                    .chain(block.path_glob.iter())
+                    .any(|path| invalid_topology_path_filter(path))
+        }) {
+            return Err("ASP workspace Search Topology owner block is invalid".to_owned());
+        }
         if self.syntax.iter().flatten().any(|block| {
             block.producer.is_empty()
                 || block.plan.language_id != block.producer
@@ -226,6 +256,16 @@ impl AspClientWorkspaceSearchPlaybookRequest {
         }
         Ok(())
     }
+}
+
+fn invalid_topology_path_filter(value: &str) -> bool {
+    let path = value.trim_end_matches('/');
+    path.is_empty()
+        || value.starts_with('/')
+        || value.contains('\\')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
 }
 
 fn has_duplicates<T: PartialEq>(values: &[T]) -> bool {
@@ -260,7 +300,7 @@ fn validate_search_composition(
         AspClientSearchPlaybookComposition::Intersect { children } => {
             if children.len() < 2 || !children.iter().all(composition_is_retrieval_set) {
                 return Err(
-                    "ASP workspace Search intersection requires at least two rg/Tantivy set branches"
+                    "ASP workspace Search intersection requires at least two rg/Tantivy/Topology set branches"
                         .to_owned(),
                 );
             }
@@ -276,7 +316,9 @@ fn composition_is_retrieval_set(composition: &AspClientSearchPlaybookComposition
     match composition {
         AspClientSearchPlaybookComposition::Leaf { clause } => matches!(
             clause.axis,
-            AspClientSearchPlaybookClauseAxis::Rg | AspClientSearchPlaybookClauseAxis::Tantivy
+            AspClientSearchPlaybookClauseAxis::Rg
+                | AspClientSearchPlaybookClauseAxis::Tantivy
+                | AspClientSearchPlaybookClauseAxis::Topology
         ),
         AspClientSearchPlaybookComposition::Intersect { children } => {
             children.len() >= 2 && children.iter().all(composition_is_retrieval_set)
@@ -303,9 +345,9 @@ impl AspClientWorkspaceQueryPlaybookRequest {
             || selected.iter().any(|producer| producer.is_empty())
             || self.selectors.is_empty()
             || self.selectors.iter().any(|selector| {
-                selector.split_once("://").is_none_or(|(producer, rest)| {
-                    !selected.contains(producer) || !rest.contains("#item/")
-                })
+                selector
+                    .split_once("://")
+                    .is_none_or(|(producer, rest)| !selected.contains(producer) || rest.is_empty())
             })
             || self.selectors.iter().collect::<BTreeSet<_>>().len() != self.selectors.len()
         {

@@ -86,7 +86,23 @@ fn workspace_search_playbook_command() -> Command {
                 .help("One (search ...) expression compiled by the MRR-owned Search Playbook macro"),
         )
         .after_help(
-            "Example: (search (producers (language rust)) (syntax rust \"((function_item) @item (#asp-select! @item \\\"kind\\\" \\\"name\\\" \\\"selector\\\"))\")). Choose rg for regex truth, Tantivy for ranked text, syntax for structural facts, and Query for a known exact selector. There is no mandatory engine pair. The rg leaf owns regex predicates, options, and globs but no path; the top-level Workspace binding owns scope. Intersect is an explicit conjunction over independently computed complete sets, chain adds typed scope transforms, and graph remains the final barrier. The MRR-owned macro may add new POO Flow forms before the normalized Runtime request admits them.",
+            "Examples: (search (producers (language rust)) (topology (owners (kind file) (extension \"rs\") (path-prefix \"crates/\")))); (search (producers (language rust)) (syntax rust \"((function_item) @item (#asp-select! @item \\\"kind\\\" \\\"name\\\" \\\"selector\\\"))\")). Choose topology for generation-bound file/path membership, rg for regex truth, Tantivy for ranked text, syntax for structural facts, and Query for a known canonical selector. There is no mandatory engine pair. The rg leaf owns regex predicates, options, and globs but no path; the top-level Workspace binding owns scope. Intersect is an explicit conjunction over independently computed complete sets, chain adds typed scope transforms, and graph remains the final barrier. The MRR-owned macro may add new POO Flow forms before the normalized Runtime request admits them.",
+        )
+}
+
+fn workspace_query_playbook_command() -> Command {
+    Command::new("playbook")
+        .bin_name("asp query playbook")
+        .about("Materialize exact parser-owned selectors from one V1 Scheme expression")
+        .override_usage("asp query playbook '<QUERY_SCHEME_EXPRESSION>'")
+        .arg(
+            Arg::new("expression")
+                .value_name("QUERY_SCHEME_EXPRESSION")
+                .required(true)
+                .help("One (query ...) expression over Search-returned canonical selectors"),
+        )
+        .after_help(
+            "Example: (query (producers (language rust)) (select (selectors \"rust://src/lib.rs#item/function/run\") (projection source))). Search-returned owner roots such as rust://src/lib.rs are also canonical selectors. Selectors are copied unchanged from Search results; Query does not repeat discovery. The supported select clauses are selectors, projection, and output. Projection defaults to source and may be source or callable-skeleton. Output defaults to human and may be human or json.",
         )
 }
 
@@ -355,10 +371,11 @@ fn selected_command_default(args: &[String]) -> Command {
             .bin_name("asp search")
             .about("Plan workspace Search routes")
             .subcommand(workspace_search_playbook_command()),
+        (Some("query"), Some("playbook")) => workspace_query_playbook_command(),
         (Some("query"), _) => Command::new("query")
-            .bin_name("asp query playbook")
-            .about("Materialize exact parser-owned selectors from one V1 Scheme expression")
-            .override_usage("asp query playbook '<one (query ...) Scheme expression>'"),
+            .bin_name("asp query")
+            .about("Materialize exact parser-owned selectors")
+            .subcommand(workspace_query_playbook_command()),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

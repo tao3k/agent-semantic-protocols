@@ -103,6 +103,46 @@ fn regex_ranked_text_and_structural_queries_do_not_require_a_partner() {
 }
 
 #[test]
+fn topology_owner_membership_is_a_complete_primary_set_leaf() {
+    let request = parse_progressive_search_playbook_args(&command(
+        r#"(search (producers (language rust))
+             (topology
+               (owners (kind file) (extension "rs") (path-prefix "crates/"))))"#,
+    ))
+    .expect("resident Topology owner membership");
+    assert_eq!(request.topology.len(), 1);
+    assert_eq!(request.topology[0].kind, "file");
+    assert_eq!(request.topology[0].extension.as_deref(), Some("rs"));
+    assert_eq!(
+        request.clause_order[0].axis,
+        SearchPlaybookClauseAxis::Topology
+    );
+
+    let intersect = parse_progressive_search_playbook_args(&command(
+        r#"(search (producers (language rust))
+             (intersect
+               (topology (owners (kind file) (path-glob "crates/**/src/*.rs")))
+               (rg "TopologyIndexV1|TopologyOwnerV1")))"#,
+    ))
+    .expect("explicit topology and regex set intersection");
+    assert_eq!(intersect.topology.len(), 1);
+    assert_eq!(intersect.rg.len(), 1);
+}
+
+#[test]
+fn topology_owner_membership_rejects_filesystem_scope_escape() {
+    let error = parse_progressive_search_playbook_args(&command(
+        r#"(search (producers (language rust))
+             (topology (owners (kind file) (path-prefix "../"))))"#,
+    ))
+    .expect_err("Topology paths are Workspace-relative metadata predicates");
+    assert_eq!(
+        error.reason_kind(),
+        "search-playbook-topology-filter-invalid"
+    );
+}
+
+#[test]
 fn topology_index_scenario_carries_one_valid_scheme_search_expression() {
     let scenario = toml::from_str::<toml::Value>(include_str!(
         "../../../agent-semantic-topology/tests/unit/scenarios/topology_selector_carrier/scenario.toml"

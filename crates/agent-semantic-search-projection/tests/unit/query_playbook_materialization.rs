@@ -23,6 +23,7 @@ const RUNTIME_BUNDLE_DIGEST: &str =
 const RUST_SELECTOR: &str =
     "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry";
 const ORG_SELECTOR: &str = "org://docs/publication.org#item/heading/Publication";
+const RUST_OWNER_ROOT: &str = "rust://src/topology_index.rs";
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
@@ -146,6 +147,26 @@ fn query_request_preserves_polyglot_caller_order_without_search_topology() {
     assert_eq!(
         admitted.as_json()["selectors"],
         serde_json::json!([RUST_SELECTOR, ORG_SELECTOR])
+    );
+}
+
+#[test]
+fn query_request_admits_a_canonical_owner_root_without_forging_an_item() {
+    let binding = runtime_binding();
+    let mut packet = request(&binding);
+    packet["selectors"] = serde_json::json!([RUST_OWNER_ROOT]);
+    let admitted = QueryPlaybookMaterializationRequest::admit_for_runtime(
+        packet,
+        &binding,
+        EXECUTION_PUBLICATION_DIGEST,
+        RUNTIME_BUNDLE_DIGEST,
+        &binding.project_workspace,
+    )
+    .expect("owner-root Query request");
+
+    assert_eq!(
+        admitted.as_json()["selectors"],
+        serde_json::json!([RUST_OWNER_ROOT])
     );
 }
 

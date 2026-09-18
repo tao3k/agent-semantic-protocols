@@ -160,6 +160,10 @@ fn runtime_reads_retrieval_semantics_from_the_operator_tree() {
         super::RetrievalCompositionKind::None
     );
     assert_eq!(
+        retrieval_composition_kind(&leaf(Axis::Topology)),
+        super::RetrievalCompositionKind::Single
+    );
+    assert_eq!(
         retrieval_composition_kind(&Composition::Chain {
             children: vec![Composition::Intersect {
                 children: vec![leaf(Axis::Rg), leaf(Axis::Tantivy)],
@@ -167,6 +171,25 @@ fn runtime_reads_retrieval_semantics_from_the_operator_tree() {
         }),
         super::RetrievalCompositionKind::Intersect
     );
+}
+
+#[test]
+fn topology_owner_language_is_derived_from_admitted_provider_routes() {
+    let route = agent_semantic_search::WorkspaceSearchPlaybookRoute {
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        producer_axis: agent_semantic_search::WorkspaceSearchProducerAxis::Language,
+        generation_digest: format!("blake3-256:{}", "1".repeat(64)),
+        extensions: vec!["rs".to_owned()],
+    };
+    assert!(matches!(
+        super::topology_owner_language("crates/runtime/src/lib.rs", &[route.clone()]),
+        Ok(Some(language)) if language == "rust"
+    ));
+    assert!(matches!(
+        super::topology_owner_language("docs/runtime.org", &[route]),
+        Ok(None)
+    ));
 }
 
 #[test]

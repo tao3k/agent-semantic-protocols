@@ -134,6 +134,51 @@ async fn normalized_owner_path_projects_complete_source_from_the_admitted_genera
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn canonical_owner_root_projects_complete_source_without_parser_item_materialization() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"pub fn indexed() {}\n";
+    let owner_path = "src/topology_index.rs";
+    let owner_root = "rust://src/topology_index.rs";
+    registry
+        .publish(
+            "owner-root-source",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-owner-root-source",
+                1,
+                owner(
+                    owner_path,
+                    "rust://src/topology_index.rs#item/function/indexed",
+                    source,
+                ),
+            ),
+        )
+        .await
+        .expect("publish owner-root generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-owner-root-source");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open owner-root generation");
+
+    match client
+        .read_runtime_selector(ExactProjectionKind::Source, owner_root)
+        .expect("project canonical owner root")
+    {
+        WorkspaceRuntimeSelectorRead::Projection {
+            resolved_selector,
+            bytes,
+            ..
+        } => {
+            assert_eq!(resolved_selector, owner_root);
+            assert_eq!(bytes, source);
+        }
+        read => panic!("canonical owner root must project complete source: {read:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn selector_on_a_parserless_owner_projects_admitted_source_not_a_repair_packet() {
     let temporary = tempdir().expect("temporary runtime root");
     let registry =

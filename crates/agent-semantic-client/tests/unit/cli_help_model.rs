@@ -144,8 +144,10 @@ fn search_playbook_help_owns_the_composed_root_contract() {
         "SCHEME_COMPOSITION_EXPRESSION",
         "One (search ...) expression",
         "(producers (language rust))",
+        "(topology (owners (kind file)",
         "((function_item) @item (#asp-select!",
-        "Choose rg for regex truth",
+        "Choose topology for generation-bound file/path membership",
+        "rg for regex truth",
         "There is no mandatory engine pair",
         "Intersect is an explicit conjunction",
         "graph remains the final barrier",
@@ -177,6 +179,25 @@ fn search_playbook_help_owns_the_composed_root_contract() {
         !language_help.contains("evidence"),
         "removed language Evidence leaked: {language_help}"
     );
+}
+
+#[test]
+fn query_playbook_help_exposes_the_exact_search_handoff_grammar() {
+    let mut command = help_model::selected_command(&owned_args(&["query", "playbook", "--help"]));
+    let help = command.render_help().to_string();
+    for token in [
+        "QUERY_SCHEME_EXPRESSION",
+        "One (query ...) expression",
+        "(select (selectors",
+        "(projection source)",
+        "copied unchanged from Search results",
+        "selectors, projection, and output",
+    ] {
+        assert!(help.contains(token), "missing {token}: {help}");
+    }
+    for removed in ["--selector", "--projection", "--language"] {
+        assert!(!help.contains(removed), "legacy flag leaked: {help}");
+    }
 }
 
 #[test]

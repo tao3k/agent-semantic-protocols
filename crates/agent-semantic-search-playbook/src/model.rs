@@ -13,12 +13,30 @@ pub struct ProgressiveSearchPlaybookRequest {
     pub workspace: Option<String>,
     pub rg: Vec<Vec<String>>,
     pub tantivy: Vec<Vec<String>>,
+    pub topology: Vec<TopologyOwnerMembershipBlock>,
     pub syntax: Vec<ProducerNativeBlock>,
     pub native_syntax: Vec<String>,
     pub graph: Vec<GraphNativeBlock>,
     pub clause_order: Vec<SearchPlaybookClauseRef>,
     pub composition: SearchPlaybookComposition,
     pub normalized_composition: SearchPlaybookNormalizedComposition,
+}
+
+/// One language-neutral owner-membership predicate over the resident
+/// generation-bound Topology Index.  It contains path metadata only; source
+/// bytes and parser bodies never cross this boundary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopologyOwnerMembershipBlock {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_glob: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -39,6 +57,7 @@ pub struct GraphNativeBlock {
 pub enum SearchPlaybookLeaf {
     Rg(Vec<String>),
     Tantivy(Vec<String>),
+    Topology(TopologyOwnerMembershipBlock),
     Syntax(ProducerNativeBlock),
     NativeSyntax(String),
     Graph(GraphNativeBlock),
@@ -113,6 +132,7 @@ pub struct SearchPlaybookProducerDeclaration {
 pub enum SearchPlaybookClauseAxis {
     Rg,
     Tantivy,
+    Topology,
     Syntax,
     #[serde(rename = "native-syntax")]
     NativeSyntax,

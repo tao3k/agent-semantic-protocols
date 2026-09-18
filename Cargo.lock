@@ -602,6 +602,7 @@ dependencies = [
  "asp-rust 0.1.2",
  "asp-rust-project-harness-policy",
  "blake3",
+ "globset",
  "orgize",
  "serde",
  "serde_json",

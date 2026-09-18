@@ -57,12 +57,11 @@ fn query_playbook_terminal(
     })
 }
 
-fn selector_owner_path(selector: &str) -> Option<&str> {
-    selector
-        .split_once("://")
-        .and_then(|(_, suffix)| suffix.split_once("#item/"))
-        .map(|(owner_path, _)| owner_path)
-        .filter(|owner_path| !owner_path.is_empty())
+fn selector_owner_path(selector: &str) -> Option<String> {
+    agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)
+        .ok()?
+        .owner_path()
+        .ok()
 }
 
 type ResidentQueryProjections = std::collections::VecDeque<
@@ -183,7 +182,7 @@ async fn admit_cold_query_owner_paths(
                 selectors.len(),
             ));
         };
-        let relative = std::path::Path::new(owner_path);
+        let relative = std::path::Path::new(&owner_path);
         if relative.is_absolute()
             || relative.components().any(|component| {
                 matches!(
@@ -540,27 +539,26 @@ pub(super) async fn dispatch_workspace_query_playbook(
             }
             // A durable exact-owner miss cannot authorize relocation or
             // repair. Escalate to the sole complete-generation authority.
+            let pointer_path = agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                workspace_registry.root(),
+                request.workspace_id.as_str(),
+                &initialized.project_root,
+            )
+            .map_err(|error| {
+                query_playbook_terminal("query-not-ready", error, params.selectors.len())
+            })?;
             let generation =
                 super::query_generation_support::request_and_await_runtime_query_generation_ready(
-                    generation_admission,
-                    request.workspace_id.as_str().to_owned(),
-                    initialized.project_root.clone(),
-                    provider_targets,
-                    query_generation,
-                    project_workspace_key,
-                    query_generation_authority,
-                    &agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
-                        workspace_registry.root(),
-                        request.workspace_id.as_str(),
-                        &initialized.project_root,
-                    )
-                    .map_err(|error| {
-                        query_playbook_terminal(
-                            "query-not-ready",
-                            error,
-                            params.selectors.len(),
-                        )
-                    })?,
+                    super::query_generation_support::RuntimeQueryGenerationReadinessRequest {
+                        generation_admission,
+                        workspace_identity: request.workspace_id.as_str().to_owned(),
+                        project_root: initialized.project_root.clone(),
+                        provider_targets,
+                        generations: query_generation,
+                        key: project_workspace_key,
+                        generation_authority: query_generation_authority,
+                        pointer_path: &pointer_path,
+                    },
                 )
                 .await
                 .map_err(|error| {
@@ -635,7 +633,7 @@ pub(super) async fn dispatch_workspace_query_playbook(
                     let owner_paths = materialization_params
                         .selectors
                         .iter()
-                        .filter_map(|selector| selector_owner_path(selector).map(str::to_owned))
+                        .filter_map(|selector| selector_owner_path(selector))
                         .collect::<std::collections::BTreeSet<_>>();
                     let owner_materialization = if projections_are_resident {
                         Ok(())

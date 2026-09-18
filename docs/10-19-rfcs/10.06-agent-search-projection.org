@@ -950,7 +950,7 @@ architecture, not a separate benchmark-only algorithm.  Generation
 publication phases may be ordered, while query axes remain an independent
 fan-out/fan-in set.  Evidence MUST measure the following phases independently:
 
-1. complete content-generation publication: =fd= inventory, repository
+1. complete content-generation publication: gix-bound Topology membership inventory, repository
    admission intersection, native parser facts, and one immutable Rust graph;
 2. cold lexical query before accelerator readiness: bounded =rg= over the
    admitted inventory plus content/native-syntax verification;
@@ -995,3 +995,33 @@ measurements over the same 4,096-owner generation.  Warm rank p99 MUST remain
 inside the public 500 ms playbook deadline.  The Rust receipt records Python
 receipt-validation time separately as =receiptValidationNanos=; it MUST NOT
 present validation time as Python Graph execution latency.
+
+** Agent-visible evidence closure
+
+The canonical Org/GQL renderer projects the already-admitted settlement
+=resultState=, inference state, queryability, terminal state, and incomplete
+reason before result nodes.  This is a projection of existing V1 authority, not
+a second receipt or a new schema version.  Request-local aliases are public;
+generation, topology-node, owner, content, and coverage hashes are not.
+
+The renderer MUST preserve one GQL source block.  A complete, queryable result
+begins with an equivalent compact fact:
+
+#+begin_src gql
+(evidence:SearchEvidence {state:"complete",result:"queryable",queryable:true,terminal:"ready"})
+#+end_src
+
+An incomplete result includes its typed reason.  An Agent may request another
+Search slice or repair the named producer, but MUST NOT infer absence or invoke
+an unrelated Workspace shell scan merely because the bounded projection lacks
+an item.  Exact source acquisition proceeds only through unchanged canonical
+selectors in Query Playbook.
+
+Canonical Query endpoints form a V1 disjoint union.  Ranked topology owners
+carry =ownerLocator= and parser nodes carry =selector=; either is queryable
+when its request-local projection has a positive rank.  Result-state
+calculation therefore counts ranked owner roots and canonical item selectors,
+while unranked owner nodes retained only as graph witnesses remain hidden.
+Every projection and receipt layer delegates endpoint decoding to the shared
+content-identity type; duplicated string tests such as =contains("#item/")=
+are not an admissible authority boundary.

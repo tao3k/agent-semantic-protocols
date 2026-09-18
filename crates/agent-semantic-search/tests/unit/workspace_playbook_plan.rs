@@ -102,6 +102,7 @@ fn request() -> NormalizedWorkspaceSearchPlaybookRequest {
         tantivy: vec![vec![
             "title:\"authority owner\"^2 OR body:impact".to_owned(),
         ]],
+        topology: vec![],
         syntax: vec![
             agent_semantic_client_protocol::AspClientSearchPlaybookSyntaxBlock {
                 producer: "rust".to_owned(),
@@ -205,6 +206,7 @@ fn request_without_a_producer_axis_is_rejected() {
             workspace: None,
             rg: vec![vec!["owner|consumer".to_owned()]],
             tantivy: vec![vec!["title:\"owner route\"^2 OR body:consumer".to_owned()]],
+            topology: vec![],
             syntax: vec![],
             native_syntax: vec![],
             graph: vec![],

@@ -57,6 +57,12 @@ mod search_materialization;
 #[path = "runtime_workspace_search_playbook.rs"]
 mod workspace_search_playbook;
 
+#[path = "runtime_workspace_search_topology.rs"]
+mod workspace_search_topology;
+
+#[path = "runtime_workspace_search_lexical.rs"]
+mod workspace_search_lexical;
+
 #[path = "runtime_workspace_search_resources.rs"]
 pub(crate) mod workspace_search_resources;
 

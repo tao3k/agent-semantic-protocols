@@ -230,26 +230,36 @@ fn discover_git_workspace_file_scope(
     })
 }
 
+struct RepositoryCandidateGenerationInput<'a> {
+    repository_id: &'a str,
+    worktree_id: &'a str,
+    head_id: Option<&'a str>,
+    candidate_scope: &'a RepositoryCandidateScope,
+    candidates: &'a [RepositoryCandidate],
+    index_state_digest: &'a str,
+    policy_overlay_digest: &'a str,
+    worktree_overlay_digest: &'a str,
+}
+
 fn repository_candidate_generation(
-    repository_id: &str,
-    worktree_id: &str,
-    head_id: Option<&str>,
-    candidate_scope: &RepositoryCandidateScope,
-    candidates: &[RepositoryCandidate],
-    index_state_digest: &str,
-    policy_overlay_digest: &str,
-    worktree_overlay_digest: &str,
+    input: RepositoryCandidateGenerationInput<'_>,
 ) -> RepositoryCandidateGeneration {
     let mut generation = blake3::Hasher::new();
     generation.update(b"agent.semantic-protocols.repository-candidate-snapshot\0");
-    generation.update(repository_id.as_bytes());
+    generation.update(input.repository_id.as_bytes());
     generation.update(b"\0");
-    generation.update(worktree_id.as_bytes());
+    generation.update(input.worktree_id.as_bytes());
     generation.update(b"\0head\0");
-    generation.update(head_id.unwrap_or("unborn").as_bytes());
+    generation.update(input.head_id.unwrap_or("unborn").as_bytes());
     generation.update(b"\0candidate-scope\0");
-    generation.update(candidate_scope.project_root.as_os_str().as_encoded_bytes());
-    for candidate in candidates {
+    generation.update(
+        input
+            .candidate_scope
+            .project_root
+            .as_os_str()
+            .as_encoded_bytes(),
+    );
+    for candidate in input.candidates {
         generation.update(b"\0");
         generation.update(candidate.path.as_os_str().as_encoded_bytes());
         generation.update(b"\0");
@@ -259,11 +269,11 @@ fn repository_candidate_generation(
         });
     }
     generation.update(b"\0index-state\0");
-    generation.update(index_state_digest.as_bytes());
+    generation.update(input.index_state_digest.as_bytes());
     generation.update(b"\0policy-overlay\0");
-    generation.update(policy_overlay_digest.as_bytes());
+    generation.update(input.policy_overlay_digest.as_bytes());
     generation.update(b"\0worktree-overlay\0");
-    generation.update(worktree_overlay_digest.as_bytes());
+    generation.update(input.worktree_overlay_digest.as_bytes());
     RepositoryCandidateGeneration {
         algorithm: "blake3-worktree-state-v1".to_owned(),
         digest: format!("blake3:{}", generation.finalize().to_hex()),
@@ -380,16 +390,17 @@ pub fn discover_repository_candidate_snapshot_cancellable(
         .count();
     let worktree_addition_count = candidates.len() - index_entry_count;
     let candidate_scope = RepositoryCandidateScope { project_root };
-    let candidate_generation = repository_candidate_generation(
-        &repository_id,
-        &worktree_id,
-        head_id.as_deref(),
-        &candidate_scope,
-        &candidates,
-        &scope.index_state_digest,
-        &policy_overlay_digest,
-        &overlay.digest,
-    );
+    let candidate_generation =
+        repository_candidate_generation(RepositoryCandidateGenerationInput {
+            repository_id: &repository_id,
+            worktree_id: &worktree_id,
+            head_id: head_id.as_deref(),
+            candidate_scope: &candidate_scope,
+            candidates: &candidates,
+            index_state_digest: &scope.index_state_digest,
+            policy_overlay_digest: &policy_overlay_digest,
+            worktree_overlay_digest: &overlay.digest,
+        });
 
     Ok(Some(RepositoryCandidateSnapshot {
         schema_id: "agent.semantic-protocols.repository-candidate-snapshot".to_owned(),

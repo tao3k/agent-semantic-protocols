@@ -6,6 +6,7 @@
 
 mod model;
 mod playbook;
+mod topology_owner;
 
 pub use model::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
@@ -13,7 +14,7 @@ pub use model::{
     SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
     SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
     SearchPlaybookCompositionMetrics, SearchPlaybookLeaf, SearchPlaybookNormalizedComposition,
-    SearchPlaybookProducerDeclaration,
+    SearchPlaybookProducerDeclaration, TopologyOwnerMembershipBlock,
 };
 pub use playbook::{
     parse_progressive_search_playbook_args, parse_query_playbook_producer_declaration,

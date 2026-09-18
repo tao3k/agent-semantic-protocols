@@ -525,7 +525,7 @@ result to a successful closure.
 
 *** SP-MAPPING-012 — Cross-axis mapping preserves provenance
 
-Each fd, rg, Tantivy, Tree-sitter, or Graph result is first admitted as its own
+Each topology-membership, rg, Tantivy, Tree-sitter, or Graph result is first admitted as its own
 =EvidenceAtom= with producer axis, native input/output digest, source locator,
 Workspace/Generation identity, and validity dependencies.  Fan-in may add
 typed =same-source=, =grounds=, =supports=, =contradicts=, or =derives-from=
@@ -597,3 +597,95 @@ only the first reference-model scenario, not end-to-end conformance closure.
 
 Interactive transition semantics are owned by
 [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10 Interactive SearchLoop]].
+
+*** SP-AGENT-CLOSURE-016 — Agent evidence closure precedes shell fallback
+
+Search and Query form one evidence protocol, not two unrelated commands.
+Search returns bounded canonical selectors plus one public closure state.  Query
+copies the selected canonical identities unchanged and materializes an ordered
+projection from the same admitted generation.  An Agent MUST NOT reconstruct a
+selector from display line ranges, owner hashes, or filenames.  The handoff
+invariant is:
+
+#+begin_src typst
+$ Selector_(query, i) = Selector_(search, i) $
+$ Complete = ASPAvailable and WorkspaceOwned and CoverageComplete $
+$ Complete arrow ShellLocatorFallbacks = 0 $
+#+end_src
+
+The sole Agent-facing GQL block exposes =complete= or =incomplete=, the semantic
+result state, whether exact Query is available, the terminal state, and a typed
+reason for incomplete evidence.  Internal generation, node, coverage, and
+content hashes remain admission evidence and MUST NOT become public names.
+Zero matches with complete coverage is an absence result; zero matches with an
+unavailable producer, truncation, or incomplete coverage is not.
+
+Shell fallback is authorized only outside the admitted Workspace authority or
+after a typed ASP terminal proves that the required capability is unavailable.
+Generic Agent uncertainty such as "more evidence is needed" is not fallback
+authority.  Hook guidance describes this contract but is not the evidence
+owner; Runtime receipts and the public closure projection are authoritative.
+
+#+begin_src mermaid :file ../../images/10.05-search-query-evidence-closure.svg
+flowchart LR
+  I[Agent predicate] --> R{Primary route}
+  R -->|regex truth| RG[rg leaf]
+  R -->|ranked prose| T[Tantivy leaf]
+  R -->|structural fact| S[syntax leaf]
+  R -->|owner membership| O[Topology membership]
+  R -->|known selector| Q[Exact Query]
+  RG --> C[Closure-qualified Search packet]
+  T --> C
+  S --> C
+  O --> C
+  C --> H[Canonical selector handoff]
+  H --> Q
+  Q --> E[Generation-bound source or skeleton evidence]
+#+end_src
+
+The corresponding executable proof model is
+=ASPProof.AgentSearchEvidenceClosure=.  It proves that one predicate has one
+primary route, complete Workspace evidence forbids shell fallback, and a valid
+Search-to-Query handoff preserves selector identity.
+
+*** SP-TOPOLOGY-MEMBERSHIP-017 — Repository enumeration is a topology query
+
+Repository member enumeration is not regex truth and MUST NOT be encoded as an
+=rg= path argument, source-byte pattern, Tantivy title query, or an external
+=find=/=fd= process.  Runtime owns a generation-bound Topology membership leaf
+over already-admitted owner records.  Its predicate algebra covers owner kind,
+producer, extension, exact path, path prefix, and path glob without reading
+source bodies.  Workspace remains a top-level Search binding.
+
+The public Scheme form is server-owned and typed:
+
+#+begin_src scheme
+(search
+  (workspace "registered-workspace")
+  (producers (language rust))
+  (topology
+    (owners (kind file) (extension "rs") (path-prefix "crates/"))))
+#+end_src
+
+Topology membership returns canonical owner selectors that are valid Query
+inputs.  It has complexity proportional to the smallest resident posting plus
+the bounded result, not to Workspace source bytes:
+
+An owner selector such as =rust://crates/topology/src/lib.rs= is a typed
+=owner-root= endpoint, not an incomplete parser-item selector.  Search
+settlement, Query admission, owner grouping, cold replay, resident reads, and
+materialization receipts MUST all consume the same V1 sum type
+=OwnerRoot | ParserItem=.  No layer may re-parse the wire value with a private
+=#item/= substring rule, require an item fragment for an owner root, or forge a
+synthetic item to reach source bytes.  Query =source= over an owner root returns
+the complete generation-bound owner; derived parser projections still require
+a canonical parser item and fail closed when it is absent.
+
+#+begin_src typst
+$ W_(membership) = O(p_min + K) $
+$ M_(membership) = O(K) $
+#+end_src
+
+Until this leaf passes parser, protocol, Runtime, projection, and Live Corpus
+qualification, ASP MUST report owner-membership capability as incomplete and
+MUST NOT claim that =find=/=fd= fallback has been eliminated.

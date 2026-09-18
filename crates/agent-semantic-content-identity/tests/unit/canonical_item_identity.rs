@@ -4,6 +4,7 @@
 
 use crate::canonical_item_identity::CanonicalItemIdentity;
 use crate::canonical_item_identity::CanonicalItemSelector;
+use crate::canonical_item_identity::CanonicalStructuralSelectorReference;
 
 #[test]
 fn canonical_item_identity_keeps_language_owned_scopes_generic() {
@@ -50,4 +51,22 @@ fn canonical_item_selector_rejects_malformed_exact_descendant() {
     .expect_err("segment identity is required");
 
     assert!(error.contains("<kind>/<identity>"));
+}
+
+#[test]
+fn canonical_structural_selector_preserves_owner_root_identity() {
+    let selector = CanonicalStructuralSelectorReference::parse("rust://crates/runtime/src/lib.rs")
+        .expect("canonical owner root");
+
+    assert_eq!(selector.language_id().as_str(), "rust");
+    assert_eq!(selector.owner_path().unwrap(), "crates/runtime/src/lib.rs");
+    assert!(selector.parser_item().is_none());
+}
+
+#[test]
+fn canonical_owner_root_rejects_traversal() {
+    let error = CanonicalStructuralSelectorReference::parse("rust://src/../Cargo.toml")
+        .expect_err("traversal must fail");
+
+    assert!(error.contains("not normalized"));
 }

@@ -93,4 +93,6 @@ fn query_rejects_duplicate_selectors_and_unknown_operators() {
     )
     .expect_err("unknown Scheme operator");
     assert!(unknown.contains("does not support operator `jq`"));
+    assert!(unknown.contains("select supports selectors, projection, and output"));
+    assert!(unknown.contains("(select (selectors"));
 }

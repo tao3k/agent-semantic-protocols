@@ -386,10 +386,8 @@ fn validate_materialization(
     projection: &str,
 ) -> Result<(), String> {
     let expected_owner =
-        agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-            selector,
-        )?
-        .owner_path()?;
+        agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)?
+            .owner_path()?;
     if materialization.selector != selector
         || materialization.language_id != language_id
         || materialization.provider_id.is_empty()

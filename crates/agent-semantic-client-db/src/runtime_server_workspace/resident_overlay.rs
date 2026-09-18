@@ -764,7 +764,7 @@ impl ResidentOverlaySnapshot {
 }
 
 fn selector_owner_path(selector: &str) -> Result<String, String> {
-    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+    agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)
         .map_err(|error| format!("exact structural selector is not canonical: {error}"))?
         .owner_path()
 }
@@ -951,16 +951,27 @@ fn read_owner_without_resolved_selector(
     generation_digest: &str,
     root_digest: &str,
     projection_kind: super::model::ExactProjectionKind,
-    _structural_selector: &str,
+    structural_selector: &str,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
     // Source is an owner-level projection when this admitted owner has no
     // parser selectors.  Derived projections still fail closed below: they
     // need parser materialization rather than raw source bytes.
-    if projection_kind == super::model::ExactProjectionKind::Source && owner.selectors.is_empty() {
+    let owner_root = agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
+        structural_selector,
+    )
+    .is_ok_and(|selector| {
+        matches!(
+            selector,
+            agent_semantic_content_identity::CanonicalStructuralSelectorReference::OwnerRoot(_)
+        )
+    });
+    if projection_kind == super::model::ExactProjectionKind::Source
+        && (owner_root || owner.selectors.is_empty())
+    {
         return Ok(WorkspaceRuntimeSelectorRead::Projection {
             generation_digest: generation_digest.to_owned(),
             root_digest: root_digest.to_owned(),
-            resolved_selector: owner.owner_path.clone(),
+            resolved_selector: structural_selector.to_owned(),
             bytes: owner.bytes.clone(),
         });
     }

@@ -18,6 +18,7 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
         workspace,
         rg,
         tantivy,
+        topology,
         syntax,
         native_syntax,
         graph,
@@ -27,6 +28,20 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
     } = request;
     let rg = (!rg.is_empty()).then_some(rg);
     let tantivy = (!tantivy.is_empty()).then_some(tantivy);
+    let topology = (!topology.is_empty()).then(|| {
+        topology
+            .into_iter()
+            .map(
+                |block| agent_semantic_client_protocol::AspClientSearchPlaybookTopologyBlock {
+                    kind: block.kind,
+                    exact_path: block.exact_path,
+                    path_prefix: block.path_prefix,
+                    extension: block.extension,
+                    path_glob: block.path_glob,
+                },
+            )
+            .collect()
+    });
     let syntax_sources = syntax;
     let native_syntax = (!native_syntax.is_empty()).then_some(native_syntax);
     let graph = (!graph.is_empty()).then(|| {
@@ -50,6 +65,9 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                                 }
                                 agent_semantic_search::SearchPlaybookClauseAxis::Tantivy => {
                                     agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy
+                                }
+                                agent_semantic_search::SearchPlaybookClauseAxis::Topology => {
+                                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Topology
                                 }
                                 agent_semantic_search::SearchPlaybookClauseAxis::Syntax => {
                                     agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax
@@ -93,6 +111,7 @@ pub(crate) async fn run_workspace_search_playbook(args: &[String]) -> Result<(),
                     workspace,
                     rg,
                     tantivy,
+                    topology,
                     syntax,
                     native_syntax,
                     graph,
@@ -138,6 +157,9 @@ pub(crate) fn lower_protocol_composition(
                     }
                     agent_semantic_search::SearchPlaybookClauseAxis::Tantivy => {
                         agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Topology => {
+                        agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Topology
                     }
                     agent_semantic_search::SearchPlaybookClauseAxis::Syntax => {
                         agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax

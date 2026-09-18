@@ -267,6 +267,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         tantivy: Some(vec![vec![
             "title:\"Runtime ASP client\"^2 OR body:transport".to_owned(),
         ]]),
+        topology: None,
         syntax: None,
         native_syntax: None,
         graph: None,
@@ -310,6 +311,7 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         selectors: vec![
             "org://docs/publication.org#item/heading/Publication".to_owned(),
             "rust://src/lib.rs#item/function/example".to_owned(),
+            "rust://crates/runtime/src/lib.rs".to_owned(),
         ],
         projection: "source".to_owned(),
     };
@@ -379,6 +381,7 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
         tantivy: Some(vec![vec![
             "title:\"Client frame\"^2 OR body:Endpoint".to_owned(),
         ]]),
+        topology: None,
         syntax: None,
         native_syntax: None,
         graph: Some(vec![AspClientSearchPlaybookGraphBlock {
@@ -477,6 +480,7 @@ fn workspace_search_v1_admits_independent_engine_routes() {
         workspace: None,
         rg: Some(vec![vec!["RuntimeClient|ResolvedRoute".to_owned()]]),
         tantivy: None,
+        topology: None,
         syntax: None,
         native_syntax: None,
         graph: None,
@@ -573,6 +577,7 @@ fn workspace_search_v1_rejects_flattened_or_domain_invalid_composition() {
         workspace: None,
         rg: Some(vec![vec!["RuntimeClient|ResolvedRoute".to_owned()]]),
         tantivy: None,
+        topology: None,
         syntax: None,
         native_syntax: None,
         graph: None,
@@ -629,6 +634,6 @@ fn workspace_search_v1_rejects_flattened_or_domain_invalid_composition() {
         request
             .validate_schema_identity()
             .unwrap_err()
-            .contains("rg/Tantivy set branches")
+            .contains("rg/Tantivy/Topology set branches")
     );
 }

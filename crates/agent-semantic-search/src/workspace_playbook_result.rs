@@ -73,6 +73,7 @@ const fn is_false(value: &bool) -> bool {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum WorkspaceSearchAxisKind {
     Rg,
+    Topology,
     Syntax,
     NativeSyntax,
     Tantivy,
@@ -82,6 +83,7 @@ impl WorkspaceSearchAxisKind {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Rg => "rg",
+            Self::Topology => "topology",
             Self::Syntax => "syntax",
             Self::NativeSyntax => "native-syntax",
             Self::Tantivy => "tantivy",
@@ -178,8 +180,9 @@ pub fn build_workspace_search_playbook_result(
             || item.matched_by.is_empty()
             || item.relation.is_empty()
             || !item.hit.is_valid()
-            || !is_exact_selector(&item.selector)
-            || exact_selector_item(&item.selector) != Some(item.item.as_str())
+            || selector_owner_and_item(&item.selector).is_none_or(|(owner, selector_item)| {
+                owner != item.owner || selector_item.unwrap_or("owner-root") != item.item.as_str()
+            })
             || item
                 .matched_by
                 .iter()
@@ -188,7 +191,7 @@ pub fn build_workspace_search_playbook_result(
             || !clause_references_are_progressive(&item.matched_by)
         {
             return Err(
-                "Search Playbook evidence requires owner, exact item, exact selector, supporting clauses, and semantic relation"
+                "Search Playbook evidence requires owner, canonical selector, supporting clauses, and semantic relation"
                     .to_owned(),
             );
         }
@@ -335,8 +338,9 @@ pub fn synthesize_workspace_search_playbook_result(
         .map(
             |(_, _, _, _, candidate, matched_by)| WorkspaceSearchPlaybookEvidence {
                 owner: candidate.owner.clone(),
-                item: exact_selector_item(&candidate.selector)
-                    .expect("syntax candidate carries an exact selector")
+                item: selector_owner_and_item(&candidate.selector)
+                    .map(|(_, item)| item.unwrap_or("owner-root"))
+                    .expect("syntax candidate carries a canonical root or exact selector")
                     .to_owned(),
                 selector: candidate.selector.clone(),
                 matched_by: matched_by.clone(),
@@ -382,21 +386,22 @@ fn index_owner_supports(
     support
 }
 
-fn is_exact_selector(selector: &str) -> bool {
-    let Some((producer, identity)) = selector.split_once("://") else {
-        return false;
-    };
-    !producer.is_empty()
-        && producer
+fn selector_owner_and_item(selector: &str) -> Option<(&str, Option<&str>)> {
+    let (producer, identity) = selector.split_once("://")?;
+    if producer.is_empty()
+        || !producer
             .chars()
             .all(|value| value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-')
-        && identity
-            .split_once("#item/")
-            .is_some_and(|(owner, item)| !owner.is_empty() && !item.is_empty())
-}
-
-fn exact_selector_item(selector: &str) -> Option<&str> {
-    selector.split_once("#item/").map(|(_, item)| item)
+        || identity.is_empty()
+        || identity.contains(char::is_whitespace)
+    {
+        return None;
+    }
+    match identity.split_once("#item/") {
+        Some((owner, item)) if !owner.is_empty() && !item.is_empty() => Some((owner, Some(item))),
+        None if !identity.contains('#') => Some((identity, None)),
+        _ => None,
+    }
 }
 
 fn is_clause_reference(value: &str) -> bool {
@@ -405,7 +410,7 @@ fn is_clause_reference(value: &str) -> bool {
     };
     matches!(
         axis,
-        "rg" | "tantivy" | "syntax" | "native-syntax" | "graph"
+        "rg" | "tantivy" | "topology" | "syntax" | "native-syntax" | "graph"
     ) && !index.is_empty()
         && index.bytes().all(|byte| byte.is_ascii_digit())
 }

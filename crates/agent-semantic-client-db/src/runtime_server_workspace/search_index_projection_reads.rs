@@ -35,12 +35,18 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         Ok(self.topology_index()?.query(query, limit))
     }
 
-    #[must_use]
+    pub fn read_topology_owner_membership(
+        &self,
+        query: &agent_semantic_topology::TopologyOwnerQueryV1<'_>,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), String> {
+        self.topology_index()?.query_owners(query, limit)
+    }
+
     pub fn topology_node_count(&self) -> Result<usize, String> {
         Ok(self.topology_index()?.node_count())
     }
 
-    #[must_use]
     pub fn exact_topology_selector(
         &self,
         selector: &str,

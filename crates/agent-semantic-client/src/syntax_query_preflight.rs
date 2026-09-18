@@ -75,7 +75,7 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
 }
 
 fn selector_owner_path(selector: &str) -> Option<String> {
-    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+    agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)
         .ok()?
         .owner_path()
         .ok()
@@ -94,10 +94,8 @@ fn non_structural_selector_language<'a>(
     if selector_path_before_range(selector) != selector {
         return None;
     }
-    if agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-        selector,
-    )
-    .is_ok()
+    if agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)
+        .is_ok()
     {
         return None;
     }

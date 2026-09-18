@@ -14,6 +14,7 @@ agent-semantic-content-identity = { path = "../agent-semantic-content-identity" 
 agent-semantic-workspace-scheduler.workspace = true
 agent-semantic-mrr.workspace = true
 blake3.workspace = true
+globset.workspace = true
 orgize.workspace = true
 serde.workspace = true
 serde_json.workspace = true

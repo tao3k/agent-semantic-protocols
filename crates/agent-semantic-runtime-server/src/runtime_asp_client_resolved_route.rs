@@ -13,7 +13,8 @@ use agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBusSender;
 use agent_semantic_client_server::{AspClientDispatchError, AspClientDispatchRequest};
 
 use super::query_generation_support::{
-    RequestDispatchBudget, request_and_await_runtime_query_generation_ready,
+    RequestDispatchBudget, RuntimeQueryGenerationReadinessRequest,
+    request_and_await_runtime_query_generation_ready,
 };
 use super::search_materialization::{
     SearchMaterializationPublicationGuard, search_materialization_dispatch_error,
@@ -543,20 +544,23 @@ pub(super) async fn dispatch_resolved_route(
         Some(RuntimeQueryGenerationState::Ready(_)) | None => {
             dispatch_budget.observe_miss();
             let wait_started = tokio::time::Instant::now();
+            let pointer_path = agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+                &workspace_store_root,
+                request.workspace_id.as_str(),
+                &project_root,
+            )
+            .map_err(AspClientOperationError::Message)?;
             let result = request_and_await_runtime_query_generation_ready(
-                generation_admission.as_ref(),
-                request.workspace_id.as_str().to_owned(),
-                project_root.clone(),
-                generation_provider_targets,
-                &query_generation,
-                &project_workspace_key,
-                &query_generation_authority,
-                &agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
-                    &workspace_store_root,
-                    request.workspace_id.as_str(),
-                    &project_root,
-                )
-                .map_err(AspClientOperationError::Message)?,
+                RuntimeQueryGenerationReadinessRequest {
+                    generation_admission: generation_admission.as_ref(),
+                    workspace_identity: request.workspace_id.as_str().to_owned(),
+                    project_root: project_root.clone(),
+                    provider_targets: generation_provider_targets,
+                    generations: &query_generation,
+                    key: &project_workspace_key,
+                    generation_authority: &query_generation_authority,
+                    pointer_path: &pointer_path,
+                },
             )
             .await;
             eprintln!(
@@ -804,7 +808,10 @@ pub(super) async fn dispatch_resolved_route(
                 .expect("exact Query decoded its request")
                 .selector
                 .as_str();
-            let owner_path = agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+            let owner_path =
+                agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
+                    selector,
+                )
                 .and_then(|selector| selector.owner_path())
                 .map_err(AspClientOperationError::Message)?;
             let owner_scope = std::collections::BTreeSet::from([owner_path]);
@@ -848,6 +855,7 @@ fn build_workspace_search_materialization_plan(
         workspace: params.workspace,
         rg: params.rg.unwrap_or_default(),
         tantivy: params.tantivy.unwrap_or_default(),
+        topology: params.topology.unwrap_or_default(),
         syntax: params.syntax.unwrap_or_default(),
         native_syntax: params.native_syntax.unwrap_or_default(),
         graph: params
@@ -870,6 +878,9 @@ fn build_workspace_search_materialization_plan(
                     }
                     agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy => {
                         agent_semantic_search::SearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Topology => {
+                        agent_semantic_search::SearchPlaybookClauseAxis::Topology
                     }
                     agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Syntax => {
                         agent_semantic_search::SearchPlaybookClauseAxis::Syntax

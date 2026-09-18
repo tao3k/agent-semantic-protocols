@@ -776,6 +776,21 @@ fn workspace_search_request_from_parsed(
 ) -> Result<AspClientWorkspaceSearchPlaybookRequest, String> {
     let rg = (!parsed.rg.is_empty()).then_some(parsed.rg);
     let tantivy = (!parsed.tantivy.is_empty()).then_some(parsed.tantivy);
+    let topology = (!parsed.topology.is_empty()).then(|| {
+        parsed
+            .topology
+            .into_iter()
+            .map(
+                |block| agent_semantic_client_protocol::AspClientSearchPlaybookTopologyBlock {
+                    kind: block.kind,
+                    exact_path: block.exact_path,
+                    path_prefix: block.path_prefix,
+                    extension: block.extension,
+                    path_glob: block.path_glob,
+                },
+            )
+            .collect()
+    });
     Ok(AspClientWorkspaceSearchPlaybookRequest {
         schema_id: "agent.semantic-protocols.asp-client-workspace-search-playbook-request"
             .to_owned(),
@@ -785,6 +800,7 @@ fn workspace_search_request_from_parsed(
         workspace: parsed.workspace,
         rg,
         tantivy,
+        topology,
         syntax,
         native_syntax: (!parsed.native_syntax.is_empty()).then_some(parsed.native_syntax),
         graph: (!parsed.graph.is_empty()).then(|| {
@@ -812,6 +828,9 @@ fn workspace_search_request_from_parsed(
                     }
                     agent_semantic_search::SearchPlaybookClauseAxis::Tantivy => {
                         AspClientSearchPlaybookClauseAxis::Tantivy
+                    }
+                    agent_semantic_search::SearchPlaybookClauseAxis::Topology => {
+                        AspClientSearchPlaybookClauseAxis::Topology
                     }
                     agent_semantic_search::SearchPlaybookClauseAxis::Syntax => {
                         AspClientSearchPlaybookClauseAxis::Syntax

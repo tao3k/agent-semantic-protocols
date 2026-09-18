@@ -59,6 +59,8 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
         } in [
             {"regex-truth"},
             {"ranked-text"},
+            {"structural-syntax"},
+            {"topology-membership"},
             {"explicit-conjunction"},
         ]
         assert set(entry["required_telemetry_events"]) == {
@@ -70,7 +72,19 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
         next(
             value
             for value in entry["scenario_classes"]
-            if value in {"regex-truth", "ranked-text", "explicit-conjunction"}
+            if value in {
+                "regex-truth",
+                "ranked-text",
+                "structural-syntax",
+                "topology-membership",
+                "explicit-conjunction",
+            }
         )
         for entry in plan["cases"]
-    } == {"regex-truth", "ranked-text", "explicit-conjunction"}
+    } == {
+        "regex-truth",
+        "ranked-text",
+        "structural-syntax",
+        "topology-membership",
+        "explicit-conjunction",
+    }

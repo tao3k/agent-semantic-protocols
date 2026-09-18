@@ -105,6 +105,52 @@ pub struct TopologyAnchorHitV1 {
     pub byte_end: usize,
 }
 
+/// Borrowed V1 owner-membership predicate shared by the immutable base index
+/// and the generation overlay.  Compilation of the optional glob is explicit
+/// and fail-closed.
+pub struct TopologyOwnerQueryV1<'a> {
+    pub exact_path: Option<&'a str>,
+    pub path_prefix: Option<&'a str>,
+    pub extension: Option<&'a str>,
+    pub path_glob: Option<&'a str>,
+}
+
+impl TopologyOwnerQueryV1<'_> {
+    pub fn filter(
+        &self,
+        owners: impl IntoIterator<Item = String>,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), String> {
+        let glob = self
+            .path_glob
+            .map(|pattern| {
+                globset::Glob::new(pattern)
+                    .map(|glob| glob.compile_matcher())
+                    .map_err(|error| format!("topology owner path-glob is invalid: {error}"))
+            })
+            .transpose()?;
+        let mut matches = owners
+            .into_iter()
+            .filter(|owner| {
+                self.exact_path.is_none_or(|exact| owner == exact)
+                    && self
+                        .path_prefix
+                        .is_none_or(|prefix| owner.starts_with(prefix))
+                    && self.extension.is_none_or(|expected| {
+                        owner.rsplit_once('.').is_some_and(|(_, actual)| {
+                            !actual.contains('/') && actual.eq_ignore_ascii_case(expected)
+                        })
+                    })
+                    && glob.as_ref().is_none_or(|matcher| matcher.is_match(owner))
+            })
+            .take(limit.saturating_add(1))
+            .collect::<Vec<_>>();
+        let truncated = matches.len() > limit;
+        matches.truncate(limit);
+        Ok((matches, truncated))
+    }
+}
+
 #[derive(Debug, Default)]
 /// Immutable postings over directories, owners, and parser-native nodes.
 pub struct TopologyIndexV1 {
@@ -112,6 +158,8 @@ pub struct TopologyIndexV1 {
     exact_selector_hits: BTreeMap<String, TopologyHitV1>,
     owner_shard_digests: BTreeMap<String, String>,
     owner_anchors: BTreeMap<String, Arc<[TopologyAnchorHitV1]>>,
+    owner_paths: Arc<[String]>,
+    owner_extensions: BTreeMap<String, Arc<[String]>>,
     node_count: usize,
     parser_native_node_count: usize,
 }
@@ -123,6 +171,7 @@ impl TopologyIndexV1 {
         let mut exact_selector_hits = BTreeMap::new();
         let mut owner_shard_digests = BTreeMap::new();
         let mut owner_anchors = BTreeMap::new();
+        let mut owner_extensions = BTreeMap::<String, Vec<String>>::new();
         let mut node_count = 0usize;
         let mut parser_native_node_count = 0usize;
         for mut owner in owners {
@@ -162,6 +211,17 @@ impl TopologyIndexV1 {
                     .then_with(|| left.structural_selector.cmp(&right.structural_selector))
             });
             owner_anchors.insert(owner.owner_path.clone(), Arc::from(anchors));
+            if let Some(extension) = owner
+                .owner_path
+                .rsplit_once('.')
+                .map(|(_, extension)| extension.to_ascii_lowercase())
+                .filter(|extension| !extension.contains('/'))
+            {
+                owner_extensions
+                    .entry(extension)
+                    .or_default()
+                    .push(owner.owner_path.clone());
+            }
 
             for directory in owner_directories(&owner.owner_path) {
                 node_count = node_count.saturating_add(1);
@@ -212,6 +272,7 @@ impl TopologyIndexV1 {
                 );
             }
         }
+        let owner_paths = owner_shard_digests.keys().cloned().collect::<Vec<_>>();
         Ok(Self {
             postings: postings
                 .into_iter()
@@ -227,9 +288,60 @@ impl TopologyIndexV1 {
             exact_selector_hits,
             owner_shard_digests,
             owner_anchors,
+            owner_paths: Arc::from(owner_paths),
+            owner_extensions: owner_extensions
+                .into_iter()
+                .map(|(extension, mut owners)| {
+                    owners.sort_unstable();
+                    owners.dedup();
+                    (extension, Arc::from(owners))
+                })
+                .collect(),
             node_count,
             parser_native_node_count,
         })
+    }
+
+    /// Evaluate one owner-membership predicate entirely against resident path
+    /// metadata. Exact lookup is logarithmic, prefix lookup starts at the
+    /// ordered lower bound, and extension lookup uses a prebuilt posting.
+    /// Glob matching never reads the filesystem or source bytes.
+    pub fn query_owners(
+        &self,
+        query: &TopologyOwnerQueryV1<'_>,
+        limit: usize,
+    ) -> Result<(Vec<String>, bool), String> {
+        if limit == 0 {
+            return Ok((Vec::new(), false));
+        }
+        let extension = query.extension.map(str::to_ascii_lowercase);
+        let candidates: Box<dyn Iterator<Item = &String> + '_> =
+            if let Some(exact) = query.exact_path {
+                Box::new(
+                    self.owner_paths
+                        .iter()
+                        .filter(move |owner| owner.as_str() == exact),
+                )
+            } else if let Some(extension) = extension.as_deref() {
+                Box::new(
+                    self.owner_extensions
+                        .get(extension)
+                        .into_iter()
+                        .flat_map(|owners| owners.iter()),
+                )
+            } else if let Some(prefix) = query.path_prefix {
+                let start = self
+                    .owner_paths
+                    .partition_point(|owner| owner.as_str() < prefix);
+                Box::new(
+                    self.owner_paths[start..]
+                        .iter()
+                        .take_while(move |owner| owner.starts_with(prefix)),
+                )
+            } else {
+                Box::new(self.owner_paths.iter())
+            };
+        query.filter(candidates.cloned(), limit)
     }
 
     /// Intersect normalized features, beginning with the shortest posting.

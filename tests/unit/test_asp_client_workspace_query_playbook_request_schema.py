@@ -35,6 +35,14 @@ def test_query_playbook_client_request_separates_code_and_document_producers() -
     schema_validator_for(SCHEMA).validate(request())
 
 
+def test_query_playbook_accepts_search_returned_owner_root_selector() -> None:
+    packet = request()
+    packet["documents"] = None
+    packet.pop("documents")
+    packet["selectors"] = ["rust://crates/runtime/src/lib.rs"]
+    schema_validator_for(SCHEMA).validate(packet)
+
+
 @pytest.mark.parametrize(
     "forbidden_field",
     [

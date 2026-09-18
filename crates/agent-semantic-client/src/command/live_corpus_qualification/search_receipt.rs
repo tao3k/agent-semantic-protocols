@@ -61,7 +61,11 @@ pub(super) fn workspace_search_qualification_receipt(
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|node| node.get("selector").and_then(serde_json::Value::as_str))
+        .filter_map(|node| {
+            node.get("selector")
+                .or_else(|| node.get("ownerLocator"))
+                .and_then(serde_json::Value::as_str)
+        })
         .map(str::to_owned)
         .fold(
             (std::collections::BTreeSet::new(), Vec::new()),
@@ -76,10 +80,8 @@ pub(super) fn workspace_search_qualification_receipt(
     let owner_paths = selectors
         .iter()
         .map(|selector| {
-            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-                selector,
-            )
-            .and_then(|selector| selector.owner_path())
+            agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(selector)
+                .and_then(|selector| selector.owner_path())
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()

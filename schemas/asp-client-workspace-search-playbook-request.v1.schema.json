@@ -14,6 +14,7 @@
     "workspace": {"description": "Explicit registered cross-workspace identity. Filesystem paths are not workspace identities.", "$ref": "#/$defs/registeredName"},
     "rg": {"description": "Regex acquisition blocks. Search scope is inherited from workspace; argv must not contain a search root.", "$ref": "#/$defs/nativeBlocks"},
     "tantivy": {"description": "Ranked-text acquisition blocks. They are independent unless an admitted composition explicitly intersects them with another carrier-compatible set.", "$ref": "#/$defs/nativeBlocks"},
+    "topology": {"description": "Generation-bound owner membership predicates over the resident Topology Index. These inspect path metadata, never source bytes.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/topologyOwnerMembershipBlock"}},
     "syntax": {"description": "Compiled resident structural query plans. A structural-only request starts directly from the immutable Workspace universe; Tree-sitter Query source does not cross this normalized boundary.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/residentSyntaxBlock"}},
     "nativeSyntax": {"description": "Exact selector predicates whose singleton matches establish structural scope. Exact materialization remains a Query operation.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/exactSelector"}},
     "graph": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/graphNativeBlock"}},
@@ -22,7 +23,7 @@
   },
   "allOf": [
     {"anyOf": [{"required": ["language"]}, {"required": ["documents"]}]},
-    {"anyOf": [{"required": ["rg"]}, {"required": ["tantivy"]}, {"required": ["syntax"]}, {"required": ["nativeSyntax"]}]}
+    {"anyOf": [{"required": ["rg"]}, {"required": ["tantivy"]}, {"required": ["topology"]}, {"required": ["syntax"]}, {"required": ["nativeSyntax"]}]}
   ],
   "$defs": {
     "registeredName": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"},
@@ -31,8 +32,10 @@
     "nativeArgv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
     "nativeBlocks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/nativeArgv"}},
     "residentSyntaxBlock": {"type": "object", "additionalProperties": false, "required": ["producer", "plan"], "properties": {"producer": {"$ref": "#/$defs/registeredName"}, "plan": {"$ref": "resident-syntax-query-plan.v1.schema.json"}}},
+    "topologyOwnerMembershipBlock": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "file"}, "exactPath": {"$ref": "#/$defs/topologyPathFilter"}, "pathPrefix": {"$ref": "#/$defs/topologyPathFilter"}, "extension": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9_+-]*$"}, "pathGlob": {"$ref": "#/$defs/topologyPathFilter"}}, "anyOf": [{"required": ["exactPath"]}, {"required": ["pathPrefix"]}, {"required": ["extension"]}, {"required": ["pathGlob"]}]},
+    "topologyPathFilter": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\).+$"},
     "graphNativeBlock": {"type": "object", "additionalProperties": false, "required": ["language", "argv"], "properties": {"language": {"enum": ["gql", "pgql"]}, "argv": {"$ref": "#/$defs/nativeArgv"}}},
-    "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}},
+    "clauseRef": {"type": "object", "additionalProperties": false, "required": ["axis", "blockIndex"], "properties": {"axis": {"enum": ["rg", "tantivy", "topology", "syntax", "native-syntax", "graph"]}, "blockIndex": {"type": "integer", "minimum": 0}}},
     "composition": {
       "oneOf": [
         {"type": "object", "additionalProperties": false, "required": ["operator", "children"], "properties": {"operator": {"const": "chain"}, "children": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/composition"}}}},

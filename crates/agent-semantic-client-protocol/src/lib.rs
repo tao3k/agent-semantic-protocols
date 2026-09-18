@@ -100,6 +100,7 @@ pub use routes::AspClientSearchPlaybookClauseRef;
 pub use routes::AspClientSearchPlaybookComposition;
 pub use routes::AspClientSearchPlaybookGraphBlock;
 pub use routes::AspClientSearchPlaybookSyntaxBlock;
+pub use routes::AspClientSearchPlaybookTopologyBlock;
 pub use routes::AspClientSourceIndexLookupRequest;
 pub use routes::AspClientWorkspaceQueryPlaybookRequest;
 pub use routes::AspClientWorkspaceSearchPlaybookRequest;

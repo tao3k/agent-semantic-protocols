@@ -56,11 +56,28 @@ pub struct AspClientSearchPlaybookGraphBlock {
     pub argv: Vec<String>,
 }
 
+/// One language-neutral owner-membership predicate over the resident
+/// generation-bound Topology Index.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientSearchPlaybookTopologyBlock {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_glob: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AspClientSearchPlaybookClauseAxis {
     Rg,
     Tantivy,
+    Topology,
     Syntax,
     #[serde(rename = "native-syntax")]
     NativeSyntax,
@@ -110,6 +127,8 @@ pub struct AspClientWorkspaceSearchPlaybookRequest {
     pub rg: Option<Vec<Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tantivy: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<Vec<AspClientSearchPlaybookTopologyBlock>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub syntax: Option<Vec<AspClientSearchPlaybookSyntaxBlock>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

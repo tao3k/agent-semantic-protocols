@@ -112,9 +112,12 @@ impl QueryPlaybookMaterializationRequest {
         let selectors = array(packet_object, "selectors")?;
         if selectors.is_empty()
             || selectors.iter().any(|selector| {
-                selector
-                    .as_str()
-                    .is_none_or(|value| !value.contains("://") || !value.contains("#item/"))
+                selector.as_str().is_none_or(|value| {
+                    agent_semantic_content_identity::CanonicalStructuralSelectorReference::parse(
+                        value,
+                    )
+                    .is_err()
+                })
             })
             || selectors
                 .iter()
