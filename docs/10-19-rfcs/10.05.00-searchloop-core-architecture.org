@@ -53,6 +53,14 @@ positive Search over the same generation settle against the same base topology.
 Request-local parser/Relation enrichment remains an on-demand overlay and does
 not rebuild or rename that base closure.
 
+Topology owner membership is a locator-plane operation.  Exact path, path
+prefix, extension, and glob predicates MUST execute from the generation's
+already admitted owner directory and MUST NOT hydrate selector records,
+parser-native anchors, Relation rows, or source bytes.  Detailed Topology
+feature search may materialize its parser-owned postings separately; sharing
+the public =topology= route does not permit owner membership to inherit that
+cost.
+
 ** Process-cold generation reuse is proof-bound
 
 A Runtime restart MUST NOT turn an unchanged workspace into an unconditional
@@ -63,6 +71,18 @@ policy overlay digest, source root digest, generation digest)=.  Provider
 Runtime bundle admission remains an independent conjunct.  Missing, malformed,
 non-Git-resident, stale, or cross-scope binding evidence fails closed to one
 normal generation build; it never weakens Query semantics.
+
+Source acquisition provenance is not a second content identity.  Recovery
+compares the canonical V1 content tuple
+=(schema, algorithm, source root, leaf count, provider/scope digest)=.  The
+=source kind= and overlay lineage prove how those bytes were obtained; they do
+not invalidate reuse when the complete content tuple is equal.  In particular,
+a Hook-published =DerivedOverlay= followed by a process-cold =Filesystem=
+observation of the same canonical root MUST be a content hit.  A changed root,
+membership, provider/scope digest, candidate binding, or Runtime execution
+binding still fails closed.  Comparing the serialized provenance records for
+structural equality is forbidden because it converts an unchanged restart into
+an O(workspace) rebuild.
 
 #+begin_src mermaid :exports code
 flowchart LR
@@ -82,6 +102,14 @@ $
   "restore"_("cold") =
     "pointer"_("exact") and "scope"_("exact") and "candidate"_("exact")
     and "generation"_("exact") and "source"_("exact") and "provider"_("exact")
+$
+
+$
+  "ContentId"(s) =
+    (s."schema", s."algorithm", s."root", s."leaf-count", s."provider-scope"),
+  quad
+  "ContentId"(s_1) = "ContentId"(s_2)
+  \not\Rightarrow s_1."provenance" = s_2."provenance"
 $
 
 $

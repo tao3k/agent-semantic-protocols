@@ -20,6 +20,7 @@ mod fixture;
 mod overlay_fixture;
 use overlay_fixture::fixture_root;
 use overlay_fixture::generation;
+use overlay_fixture::generation_with_authority_and_selectors;
 
 #[path = "runtime_server_overlay_admission/owner_content_mutation.rs"]
 mod owner_content_mutation;

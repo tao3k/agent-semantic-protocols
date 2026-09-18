@@ -282,6 +282,19 @@ async fn topology_source_segments_preserve_owner_attribution_across_resident_and
         Arc::ptr_eq(&restored, &reopened),
         "admission validation and query reads must share one mapped Search generation"
     );
+    let (owner_membership, truncated) = restored
+        .read_topology_owner_membership(
+            &agent_semantic_topology::TopologyOwnerQueryV1 {
+                exact_path: None,
+                path_prefix: Some("src/"),
+                extension: Some("rs"),
+                path_glob: None,
+            },
+            8,
+        )
+        .expect("mapped locator-plane owner membership");
+    assert_eq!(owner_membership, ["src/lib.rs"]);
+    assert!(!truncated);
     let restored_segments = restored
         .topology_source_segments()
         .expect("mapped topology source segments");
@@ -424,6 +437,75 @@ fn candidate_topology_owner_scope_is_scenario_measured() {
     let rendered = render_asp_rust_scenario_benchmark_toml(&scenario, &measurement)
         .expect("render candidate topology owner scope benchmark");
     assert!(rendered.contains("[metrics.unrequested_owner_projection_count]"));
+    assert!(rendered.contains("observed = 0"));
+    println!("{rendered}");
+}
+
+#[tokio::test]
+async fn mapped_topology_owner_membership_is_scenario_measured() {
+    use asp_rust_project_harness_policy::{
+        AspRustProjectHarnessScenarioObservation, MAPPED_TOPOLOGY_OWNER_MEMBERSHIP_SCENARIO_ID,
+        asp_search_scenario_package, measure_asp_rust_scenario,
+        render_asp_rust_scenario_benchmark_toml,
+    };
+
+    let temporary = tempfile::tempdir().expect("temporary mapped topology membership");
+    let project_root = temporary.path().join("project");
+    let generation = large_generation(&project_root, 4_096);
+    let publisher = crate::runtime_server_workspace::WorkspaceGenerationPublisher::new(
+        temporary.path().join("runtime"),
+    )
+    .await
+    .expect("workspace generation publisher");
+    publisher
+        .publish(generation, false)
+        .await
+        .expect("publish mapped topology fixture");
+    let mapped = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        publisher.pointer_path(),
+        &project_root,
+    )
+    .await
+    .expect("open mapped topology fixture");
+    assert!(!mapped.detailed_topology_materialized());
+
+    let scenario = asp_search_scenario_package()
+        .scenarios
+        .into_iter()
+        .find(|scenario| scenario.name == MAPPED_TOPOLOGY_OWNER_MEMBERSHIP_SCENARIO_ID)
+        .expect("mapped topology owner membership Scenario");
+    let measurement = measure_asp_rust_scenario(&scenario, || {
+        let started = std::time::Instant::now();
+        let (owners, truncated) = mapped
+            .read_topology_owner_membership(
+                &agent_semantic_topology::TopologyOwnerQueryV1 {
+                    exact_path: Some("src/generated/owner_4095.rs"),
+                    path_prefix: None,
+                    extension: None,
+                    path_glob: None,
+                },
+                1,
+            )
+            .expect("mapped exact owner membership");
+        let elapsed = started.elapsed();
+        assert_eq!(owners, ["src/generated/owner_4095.rs"]);
+        assert!(!truncated);
+        assert!(
+            !mapped.detailed_topology_materialized(),
+            "owner membership must not hydrate detailed selector or anchor records"
+        );
+        AspRustProjectHarnessScenarioObservation::default()
+            .with_timing("mapped_owner_membership", elapsed)
+            .with_metric("workspace_owner_count", 4_096)
+            .with_metric("returned_owner_count", 1)
+            .with_metric("selector_hydration_count", 0)
+            .with_metric("source_byte_read_count", 0)
+            .with_metric("detailed_topology_materialization_count", 0)
+    })
+    .expect("measure mapped topology owner membership Scenario");
+    let rendered = render_asp_rust_scenario_benchmark_toml(&scenario, &measurement)
+        .expect("render mapped topology owner membership benchmark");
+    assert!(rendered.contains("[metrics.selector_hydration_count]"));
     assert!(rendered.contains("observed = 0"));
     println!("{rendered}");
 }

@@ -61,7 +61,10 @@ pub(super) async fn recover_unchanged_generation(
             workspace_identity,
         )
         .await?;
-        if authority.source_snapshot != *source_snapshot {
+        if !authority
+            .source_snapshot
+            .has_same_content_identity(source_snapshot)
+        {
             eprintln!(
                 "[base-generation-recovery-stage] phase=mmap-identity-probe state=content-miss durableDbReadCount=0 elapsedMicros={}",
                 mmap_probe_started.elapsed().as_micros(),
@@ -84,7 +87,10 @@ pub(super) async fn recover_unchanged_generation(
     else {
         return Ok(None);
     };
-    if stats.source_snapshot != *source_snapshot {
+    if !stats
+        .source_snapshot
+        .has_same_content_identity(source_snapshot)
+    {
         return Ok(None);
     }
     eprintln!("[base-generation-recovery-stage] phase=canonical-load state=started");
@@ -97,7 +103,9 @@ pub(super) async fn recover_unchanged_generation(
     else {
         return Ok(None);
     };
-    if materialization.source_snapshot != *source_snapshot
+    if !materialization
+        .source_snapshot
+        .has_same_content_identity(source_snapshot)
         || materialization.project_resolutions != request.project_resolutions
         || !materialization
             .runtime_provider_execution_binding
@@ -115,7 +123,11 @@ pub(super) async fn recover_unchanged_generation(
     )
     .await?
     .ok_or_else(|| "recovery canonical generation has no active source-index facts".to_owned())?;
-    if active.snapshot.source_snapshot != *source_snapshot {
+    if !active
+        .snapshot
+        .source_snapshot
+        .has_same_content_identity(source_snapshot)
+    {
         return Err("recovery canonical/source-index generation drift".to_owned());
     }
     let import = crate::source_index::recovered_source_index_import(

@@ -142,6 +142,33 @@ async fn durable_recovery_requires_current_content_and_execution() {
         .unwrap();
     assert_eq!(recovered.materialization().owners.len(), 1);
     assert_eq!(recovered.materialization().owners[0].bytes, source);
+    let same_content_from_process_cold_filesystem =
+        snapshot.evidence(SourceSnapshotKind::Filesystem, digest("provider-and-scope"));
+    let same_content_from_hook_overlay = snapshot.evidence(
+        SourceSnapshotKind::DerivedOverlay,
+        digest("provider-and-scope"),
+    );
+    assert_ne!(
+        same_content_from_hook_overlay,
+        same_content_from_process_cold_filesystem
+    );
+    assert!(
+        same_content_from_hook_overlay
+            .has_same_content_identity(&same_content_from_process_cold_filesystem)
+    );
+    assert!(
+        recover_unchanged_generation(
+            &db_path,
+            &request,
+            workspace,
+            &same_content_from_hook_overlay,
+            &blobs,
+        )
+        .await
+        .unwrap()
+        .is_some(),
+        "source acquisition provenance must not turn equal canonical content into a cold miss"
+    );
     for changed in [
         snapshot.evidence(
             SourceSnapshotKind::Filesystem,

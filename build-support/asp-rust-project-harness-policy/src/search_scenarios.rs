@@ -7,6 +7,7 @@
 use crate::AspRustProjectHarnessScenarioPackage;
 
 use crate::canonical_replacement_search_scenario::canonical_replacement_resident_first_scenario;
+use crate::mapped_topology_owner_membership_scenario::mapped_topology_owner_membership_scenario;
 use crate::owner_content_mutation_search_scenario::owner_content_mutation_scenario;
 use crate::topology_index_search_scenario::topology_index_scenario;
 
@@ -361,6 +362,7 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                     ]
                 }
             ),
+            mapped_topology_owner_membership_scenario(),
             canonical_replacement_resident_first_scenario(),
             owner_content_mutation_scenario(),
             topology_index_scenario(),

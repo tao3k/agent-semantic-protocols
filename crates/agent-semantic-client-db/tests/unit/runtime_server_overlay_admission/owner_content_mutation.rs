@@ -24,7 +24,7 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
         .publish(
             "owner-content-base",
             WorkspaceRecoverySource::TursoGeneration,
-            super::fixture::generation_with_authority_and_selectors(
+            super::generation_with_authority_and_selectors(
                 workspace_identity,
                 &root,
                 1,

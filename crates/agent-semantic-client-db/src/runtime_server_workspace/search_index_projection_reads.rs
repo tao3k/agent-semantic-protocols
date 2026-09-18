@@ -40,7 +40,35 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         query: &agent_semantic_topology::TopologyOwnerQueryV1<'_>,
         limit: usize,
     ) -> Result<(Vec<String>, bool), String> {
-        self.topology_index()?.query_owners(query, limit)
+        // Owner membership belongs to the compact locator plane.  Hydrating
+        // SearchOwnerRecord selector/anchor payloads here made the first
+        // process-cold owner query O(detailed projection bytes), even though
+        // every predicate is decidable from the already decoded path keys.
+        if let Some(exact_path) = query.exact_path {
+            return query.filter(
+                self.owner_locator_records
+                    .contains_key(exact_path)
+                    .then(|| exact_path.to_owned()),
+                limit,
+            );
+        }
+        if let Some(path_prefix) = query.path_prefix {
+            return query.filter(
+                self.owner_locator_records
+                    .range(path_prefix.to_owned()..)
+                    .map(|(owner, _)| owner)
+                    .take_while(|owner| owner.starts_with(path_prefix))
+                    .cloned(),
+                limit,
+            );
+        }
+        query.filter(self.owner_locator_records.keys().cloned(), limit)
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub fn detailed_topology_materialized(&self) -> bool {
+        self.topology_index.get().is_some()
     }
 
     pub fn topology_node_count(&self) -> Result<usize, String> {

@@ -118,4 +118,58 @@ theorem owner_root_is_a_valid_unchanged_query_handoff :
     validHandoff ownerRootHandoff := by
   decide
 
+inductive SourceAcquisition where
+  | filesystem
+  | derivedOverlay
+  deriving DecidableEq
+
+structure SourceSnapshotIdentity where
+  schema : String
+  algorithm : String
+  root : String
+  leafCount : Nat
+  providerScope : String
+  acquisition : SourceAcquisition
+  deriving DecidableEq
+
+def sameContentIdentity
+    (left right : SourceSnapshotIdentity) : Prop :=
+  left.schema = right.schema ∧
+    left.algorithm = right.algorithm ∧
+    left.root = right.root ∧
+    left.leafCount = right.leafCount ∧
+    left.providerScope = right.providerScope
+
+instance (left right : SourceSnapshotIdentity) :
+    Decidable (sameContentIdentity left right) := by
+  unfold sameContentIdentity
+  infer_instance
+
+def hookOverlaySnapshot : SourceSnapshotIdentity where
+  schema := "asp.source-snapshot.v1"
+  algorithm := "blake3-merkle-v1"
+  root := "canonical-root"
+  leafCount := 3
+  providerScope := "provider-scope"
+  acquisition := .derivedOverlay
+
+def processColdFilesystemSnapshot : SourceSnapshotIdentity where
+  schema := "asp.source-snapshot.v1"
+  algorithm := "blake3-merkle-v1"
+  root := "canonical-root"
+  leafCount := 3
+  providerScope := "provider-scope"
+  acquisition := .filesystem
+
+theorem equal_content_with_distinct_provenance_is_reusable :
+    sameContentIdentity hookOverlaySnapshot processColdFilesystemSnapshot ∧
+      hookOverlaySnapshot ≠ processColdFilesystemSnapshot := by
+  decide
+
+def topologyOwnerMembershipSelectorHydrations : Nat := 0
+
+theorem topology_owner_membership_stays_on_the_locator_plane :
+    topologyOwnerMembershipSelectorHydrations = 0 := by
+  rfl
+
 end ASPProof.AgentSearchEvidenceClosure

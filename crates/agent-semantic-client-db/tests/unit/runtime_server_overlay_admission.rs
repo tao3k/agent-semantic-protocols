@@ -11,6 +11,7 @@ use agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource;
 mod fixture;
 use fixture::fixture_root;
 use fixture::generation;
+use fixture::generation_with_authority_and_selectors;
 use fixture::generation_with_selectors;
 
 #[path = "runtime_server_overlay_admission/canonical_materialization.rs"]

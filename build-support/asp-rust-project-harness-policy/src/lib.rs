@@ -9,6 +9,7 @@ pub use asp_rust;
 
 pub mod build_gate;
 mod canonical_replacement_search_scenario;
+mod mapped_topology_owner_membership_scenario;
 mod owner_content_mutation_search_scenario;
 mod topology_index_search_scenario;
 pub use build_gate::AspRustProjectHarnessMemberPolicyReceipt;
@@ -33,6 +34,7 @@ pub use asp_rust_build_support::asp_rust_scenario_package as asp_rust_project_ha
 pub use asp_rust_build_support::measure_asp_rust_scenario;
 pub use asp_rust_build_support::render_asp_rust_scenario_benchmark_toml;
 pub use asp_rust_build_support::write_asp_rust_scenario_benchmark_toml;
+pub use mapped_topology_owner_membership_scenario::MAPPED_TOPOLOGY_OWNER_MEMBERSHIP_SCENARIO_ID;
 pub use member_policy::AspRustProjectHarnessMemberPolicy;
 pub use member_policy::AspRustProjectHarnessOwnerPolicy;
 pub use member_policy::asp_workspace_member_forbidden_normal_dependencies;
