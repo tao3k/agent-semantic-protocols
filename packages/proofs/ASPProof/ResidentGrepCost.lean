@@ -697,6 +697,58 @@ theorem uninterrupted_continuity_admits_zero_io :
     admitsRecoveryFreshness .uninterruptedContinuity true 0 := by
   simp [admitsRecoveryFreshness]
 
+/-- Hook sequence contiguity is only event evidence.  Zero-I/O recovery also
+requires an identity-bound observer interval that covers both Runtime epochs
+and a completed handoff from that external observer. -/
+structure ContinuityCertificate where
+  identityBound : Bool
+  observerCoversInterval : Bool
+  sequenceGapFree : Bool
+  handoffComplete : Bool
+  deriving DecidableEq, Repr
+
+def admitsContinuityCertificate (certificate : ContinuityCertificate) : Prop :=
+  certificate.identityBound = true ∧
+  certificate.observerCoversInterval = true ∧
+  certificate.sequenceGapFree = true ∧
+  certificate.handoffComplete = true
+
+theorem contiguous_hook_events_without_interval_are_insufficient :
+    ¬ admitsContinuityCertificate ⟨true, false, true, true⟩ := by
+  simp [admitsContinuityCertificate]
+
+theorem covered_gap_free_handoff_admits_continuity :
+    admitsContinuityCertificate ⟨true, true, true, true⟩ := by
+  simp [admitsContinuityCertificate]
+
+theorem continuity_gap_rejects_zero_io_recovery
+    (certificate : ContinuityCertificate)
+    (gap : certificate.sequenceGapFree = false) :
+    ¬ admitsContinuityCertificate certificate := by
+  simp [admitsContinuityCertificate, gap]
+
+/-- Current-snapshot freshness partitions Git state by authority: HEAD owns the
+committed base, the stage-zero index digest owns staged state, and one
+index-to-worktree observation owns unstaged/removal/untracked state. -/
+structure GitCurrentSnapshotObservation where
+  headBound : Bool
+  indexStateBound : Bool
+  worktreeOverlayBound : Bool
+  deriving DecidableEq, Repr
+
+def admitsGitCurrentSnapshot (observation : GitCurrentSnapshotObservation) : Prop :=
+  observation.headBound = true ∧
+  observation.indexStateBound = true ∧
+  observation.worktreeOverlayBound = true
+
+theorem head_and_overlay_without_index_do_not_bind_staged_edits :
+    ¬ admitsGitCurrentSnapshot ⟨true, false, true⟩ := by
+  simp [admitsGitCurrentSnapshot]
+
+theorem partitioned_git_snapshot_is_complete :
+    admitsGitCurrentSnapshot ⟨true, true, true⟩ := by
+  simp [admitsGitCurrentSnapshot]
+
 theorem changed_execution_rejects_recovery (stored current : RecoveryIdentity)
     (changed : stored.execution ≠ current.execution) : ¬ mayReuseRecovery stored current := by
   intro same

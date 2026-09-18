@@ -69,22 +69,16 @@ impl fmt::Display for RemoteUrl {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum GitWorkspaceFileOrigin {
-    Tracked,
-    Untracked,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct GitWorkspaceFile {
     relative_path: PathBuf,
-    origin: GitWorkspaceFileOrigin,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 struct GitWorkspaceFileScope {
     worktree_root: PathBuf,
     files: Vec<GitWorkspaceFile>,
+    index_state_digest: String,
+    index: gix::worktree::IndexPersistedOrInMemory,
 }
 
 #[path = "git_candidate_model.rs"]
@@ -110,12 +104,6 @@ pub enum GitWorkspaceFileScopeError {
         git_dir: PathBuf,
     },
     LoadIndex {
-        message: String,
-    },
-    ConfigureDirwalk {
-        message: String,
-    },
-    WalkWorktree {
         message: String,
     },
     InspectWorktreeOverlay {
@@ -155,18 +143,6 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
             ),
             Self::LoadIndex { message } => {
                 write!(formatter, "failed to load Git worktree index: {message}")
-            }
-            Self::ConfigureDirwalk { message } => {
-                write!(
-                    formatter,
-                    "failed to configure Git worktree walk: {message}"
-                )
-            }
-            Self::WalkWorktree { message } => {
-                write!(
-                    formatter,
-                    "failed to walk Git worktree additions: {message}"
-                )
             }
             Self::InspectWorktreeOverlay { message } => {
                 write!(
@@ -227,63 +203,30 @@ fn discover_git_workspace_file_scope(
         .map_err(|error| GitWorkspaceFileScopeError::LoadIndex {
             message: error.to_string(),
         })?;
-    let mut files = std::collections::BTreeMap::new();
+    let mut files = std::collections::BTreeSet::new();
+    let mut index_state = blake3::Hasher::new();
+    index_state.update(b"agent.semantic-protocols.repository-index-state\0");
 
     for entry in index.entries() {
-        if entry.stage_raw() != 0 {
+        if entry.stage_raw() != 0 || !is_regular_index_entry(entry.mode) {
             continue;
         }
         let relative_path = gix::path::from_bstr(entry.path(&index)).into_owned();
-        if is_regular_workspace_file(&worktree_root, &relative_path) {
-            files.insert(relative_path, GitWorkspaceFileOrigin::Tracked);
-        }
-    }
-
-    let options = repository
-        .dirwalk_options()
-        .map_err(|error| GitWorkspaceFileScopeError::ConfigureDirwalk {
-            message: error.to_string(),
-        })?
-        .emit_tracked(false)
-        .emit_ignored(None)
-        .emit_untracked(gix::dir::walk::EmissionMode::Matching)
-        .emit_empty_directories(false)
-        .classify_untracked_bare_repositories(false);
-    let entries = repository
-        .dirwalk_iter(
-            index,
-            Vec::<gix::bstr::BString>::new(),
-            Default::default(),
-            options,
-        )
-        .map_err(|error| GitWorkspaceFileScopeError::WalkWorktree {
-            message: error.to_string(),
-        })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|error| GitWorkspaceFileScopeError::WalkWorktree {
-            message: error.to_string(),
-        })?;
-        if entry.entry.status != gix::dir::entry::Status::Untracked {
-            continue;
-        }
-        let relative_path = gix::path::from_bstring(entry.entry.rela_path);
-        if is_regular_workspace_file(&worktree_root, &relative_path) {
-            files
-                .entry(relative_path)
-                .or_insert(GitWorkspaceFileOrigin::Untracked);
-        }
+        index_state.update(relative_path.as_os_str().as_encoded_bytes());
+        index_state.update(b"\0");
+        index_state.update(&entry.mode.bits().to_le_bytes());
+        index_state.update(entry.id.as_bytes());
+        files.insert(relative_path);
     }
 
     Ok(GitWorkspaceFileScope {
         worktree_root,
         files: files
             .into_iter()
-            .map(|(relative_path, origin)| GitWorkspaceFile {
-                relative_path,
-                origin,
-            })
+            .map(|relative_path| GitWorkspaceFile { relative_path })
             .collect(),
+        index_state_digest: format!("blake3:{}", index_state.finalize().to_hex()),
+        index,
     })
 }
 
@@ -293,6 +236,7 @@ fn repository_candidate_generation(
     head_id: Option<&str>,
     candidate_scope: &RepositoryCandidateScope,
     candidates: &[RepositoryCandidate],
+    index_state_digest: &str,
     policy_overlay_digest: &str,
     worktree_overlay_digest: &str,
 ) -> RepositoryCandidateGeneration {
@@ -314,6 +258,8 @@ fn repository_candidate_generation(
             RepositoryCandidateState::Untracked => b"untracked",
         });
     }
+    generation.update(b"\0index-state\0");
+    generation.update(index_state_digest.as_bytes());
     generation.update(b"\0policy-overlay\0");
     generation.update(policy_overlay_digest.as_bytes());
     generation.update(b"\0worktree-overlay\0");
@@ -374,11 +320,20 @@ pub fn discover_repository_candidate_snapshot_cancellable(
     );
     let worktree_id = stable_identity("worktree", worktree_basis.as_bytes());
     let head_id = repository.head_id().ok().map(|id| id.detach().to_string());
+    let overlay = repository_worktree_overlay(
+        &repository,
+        &scope.worktree_root,
+        &worktree_prefix,
+        scope.index.clone(),
+    )?;
     let mut candidates = scope
         .files
         .iter()
         .filter_map(|file| {
             if probe.is_cancelled() {
+                return None;
+            }
+            if overlay.removed_paths.contains(&file.relative_path) {
                 return None;
             }
             let relative_path = if worktree_prefix == Path::new(".") {
@@ -389,32 +344,36 @@ pub fn discover_repository_candidate_snapshot_cancellable(
                     .ok()?
                     .to_path_buf()
             };
-            let (state, authority) = match file.origin {
-                GitWorkspaceFileOrigin::Tracked => (
-                    RepositoryCandidateState::Tracked,
-                    RepositoryCandidateAuthority::GitIndex,
-                ),
-                GitWorkspaceFileOrigin::Untracked => (
-                    RepositoryCandidateState::Untracked,
-                    RepositoryCandidateAuthority::GitWorktree,
-                ),
-            };
             Some(RepositoryCandidate {
                 path: relative_path,
-                state,
-                authority,
+                state: RepositoryCandidateState::Tracked,
+                authority: RepositoryCandidateAuthority::GitIndex,
             })
         })
         .collect::<Vec<_>>();
+    candidates.extend(
+        overlay
+            .untracked_paths
+            .iter()
+            .filter_map(|repository_path| {
+                let relative_path = if worktree_prefix == Path::new(".") {
+                    repository_path.clone()
+                } else {
+                    repository_path
+                        .strip_prefix(&worktree_prefix)
+                        .ok()?
+                        .to_path_buf()
+                };
+                Some(RepositoryCandidate {
+                    path: relative_path,
+                    state: RepositoryCandidateState::Untracked,
+                    authority: RepositoryCandidateAuthority::GitWorktree,
+                })
+            }),
+    );
     candidates.sort_by(|left, right| left.path.cmp(&right.path));
     let (policy_overlay_digest, policy_exclusions) =
         resolve_asp_discovery_policy(&scope.worktree_root, workspace, &candidates)?;
-    let worktree_overlay_digest = repository_worktree_overlay_digest(
-        &repository,
-        &scope.worktree_root,
-        &worktree_prefix,
-        &scope.files,
-    )?;
     let index_entry_count = candidates
         .iter()
         .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
@@ -427,8 +386,9 @@ pub fn discover_repository_candidate_snapshot_cancellable(
         head_id.as_deref(),
         &candidate_scope,
         &candidates,
+        &scope.index_state_digest,
         &policy_overlay_digest,
-        &worktree_overlay_digest,
+        &overlay.digest,
     );
 
     Ok(Some(RepositoryCandidateSnapshot {
@@ -464,53 +424,63 @@ pub fn discover_repository_candidate_snapshot_cancellable(
     }))
 }
 
-fn repository_worktree_overlay_digest(
+struct WorktreeOverlayObservation {
+    digest: String,
+    removed_paths: std::collections::BTreeSet<PathBuf>,
+    untracked_paths: std::collections::BTreeSet<PathBuf>,
+}
+
+fn repository_worktree_overlay(
     repository: &gix::Repository,
     worktree_root: &Path,
     worktree_prefix: &Path,
-    workspace_files: &[GitWorkspaceFile],
-) -> Result<String, GitWorkspaceFileScopeError> {
+    index: gix::worktree::IndexPersistedOrInMemory,
+) -> Result<WorktreeOverlayObservation, GitWorkspaceFileScopeError> {
     let status = repository
         .status(gix::progress::Discard)
         .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
             message: error.to_string(),
         })?
+        .index(index)
         .index_worktree_submodules(None)
-        .untracked_files(gix::status::UntrackedFiles::Files);
+        .untracked_files(gix::status::UntrackedFiles::Files)
+        .dirwalk_options(|options| {
+            options
+                .emit_ignored(None)
+                .emit_empty_directories(false)
+                .classify_untracked_bare_repositories(false)
+        });
     let changes = status
-        .into_iter(std::iter::empty::<gix::bstr::BString>())
+        .into_index_worktree_iter(std::iter::empty::<gix::bstr::BString>())
         .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
             message: error.to_string(),
         })?;
-    let mut paths = changes
-        .map(|change| {
-            change
-                .map(|item| gix::path::from_bstr(item.location()).into_owned())
-                .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
-                    message: error.to_string(),
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let directory_prefixes = paths
-        .iter()
-        .filter(|path| worktree_root.join(path).is_dir())
-        .cloned()
-        .collect::<Vec<_>>();
-    paths.retain(|path| !worktree_root.join(path).is_dir());
-    paths.extend(
-        workspace_files
-            .iter()
-            .filter(|file| {
-                directory_prefixes
-                    .iter()
-                    .any(|prefix| file.relative_path.starts_with(prefix))
-            })
-            .map(|file| file.relative_path.clone()),
-    );
+    let mut paths = Vec::new();
+    let mut untracked_paths = std::collections::BTreeSet::new();
+    for change in changes {
+        let item = change.map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
+            message: error.to_string(),
+        })?;
+        if item.summary().is_none() {
+            continue;
+        }
+        let path = gix::path::from_bstr(item.rela_path()).into_owned();
+        if matches!(
+            item,
+            gix::status::index_worktree::Item::DirectoryContents { .. }
+        ) {
+            if !is_regular_workspace_file(worktree_root, &path) {
+                continue;
+            }
+            untracked_paths.insert(path.clone());
+        }
+        paths.push(path);
+    }
     paths.sort();
     paths.dedup();
 
     let mut digest = blake3::Hasher::new();
+    let mut removed_paths = std::collections::BTreeSet::new();
     digest.update(b"agent.semantic-protocols.repository-worktree-overlay\0");
     for repository_path in paths {
         let scoped_path = if worktree_prefix == Path::new(".") {
@@ -523,13 +493,24 @@ fn repository_worktree_overlay_digest(
         digest.update(scoped_path.as_os_str().as_encoded_bytes());
         digest.update(b"\0");
         let absolute = worktree_root.join(&repository_path);
-        match std::fs::read(&absolute) {
-            Ok(bytes) => {
+        match std::fs::symlink_metadata(&absolute) {
+            Ok(metadata) if metadata.file_type().is_file() => {
+                let bytes = std::fs::read(&absolute).map_err(|error| {
+                    GitWorkspaceFileScopeError::ReadWorktreeOverlay {
+                        path: absolute.clone(),
+                        message: error.to_string(),
+                    }
+                })?;
                 digest.update(b"present\0");
                 digest.update(blake3::hash(&bytes).as_bytes());
             }
+            Ok(_) => {
+                digest.update(b"non-regular\0");
+                removed_paths.insert(repository_path);
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 digest.update(b"removed\0");
+                removed_paths.insert(repository_path);
             }
             Err(error) => {
                 return Err(GitWorkspaceFileScopeError::ReadWorktreeOverlay {
@@ -539,7 +520,11 @@ fn repository_worktree_overlay_digest(
             }
         }
     }
-    Ok(format!("blake3:{}", digest.finalize().to_hex()))
+    Ok(WorktreeOverlayObservation {
+        digest: format!("blake3:{}", digest.finalize().to_hex()),
+        removed_paths,
+        untracked_paths,
+    })
 }
 
 fn resolve_asp_discovery_policy(
@@ -625,6 +610,10 @@ mod repository_candidate_snapshot_tests;
 fn is_regular_workspace_file(worktree_root: &Path, relative_path: &Path) -> bool {
     std::fs::symlink_metadata(worktree_root.join(relative_path))
         .is_ok_and(|metadata| metadata.file_type().is_file())
+}
+
+fn is_regular_index_entry(mode: gix::index::entry::Mode) -> bool {
+    mode == gix::index::entry::Mode::FILE || mode == gix::index::entry::Mode::FILE_EXECUTABLE
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

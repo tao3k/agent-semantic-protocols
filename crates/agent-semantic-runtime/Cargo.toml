@@ -22,6 +22,7 @@ gix = { workspace = true, features = [
   "blocking-http-transport-reqwest-rust-tls",
   "sha1",
   "status",
+  "parallel",
   "worktree-mutation",
 ] }
 gix-config.workspace = true

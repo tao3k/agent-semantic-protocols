@@ -191,6 +191,70 @@ fn repository_workspace_candidate_contains_runtime_server_source() {
 }
 
 #[test]
+fn repository_current_snapshot_performance_contract_is_scenario_owned() {
+    let scenario_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/unit/scenarios/repository_candidate_current_snapshot");
+    let scenario = std::fs::read_to_string(scenario_root.join("scenario.toml"))
+        .expect("read current-snapshot scenario");
+    let benchmark = std::fs::read_to_string(scenario_root.join("benchmark.toml"))
+        .expect("read current-snapshot benchmark");
+
+    for contract in [
+        "tracked_metadata_prepass_count = 0",
+        "head_index_diff_count = 0",
+        "index_worktree_status_count = 1",
+        "full_workspace_content_read_count = 0",
+    ] {
+        assert!(
+            scenario.contains(contract),
+            "missing scenario gate: {contract}"
+        );
+        assert!(
+            benchmark.contains(contract),
+            "missing benchmark work metric: {contract}"
+        );
+    }
+    assert!(benchmark.contains("timing_is_diagnostic = true"));
+    assert!(benchmark.contains("work_metrics_are_acceptance_authority = true"));
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for _ in 0..3 {
+        discover_repository_candidate_snapshot(&workspace)
+            .expect("warm current-snapshot scenario")
+            .expect("repository workspace has a Git candidate snapshot");
+    }
+    let mut elapsed_micros = Vec::with_capacity(11);
+    let mut candidate_count = None;
+    for _ in 0..11 {
+        let started = std::time::Instant::now();
+        let snapshot = discover_repository_candidate_snapshot(&workspace)
+            .expect("measure current-snapshot scenario")
+            .expect("repository workspace has a Git candidate snapshot");
+        elapsed_micros.push(started.elapsed().as_micros());
+        assert_eq!(snapshot.metrics.full_workspace_reads, 0);
+        assert_eq!(snapshot.metrics.full_merkle_rebuilds, 0);
+        assert_eq!(snapshot.metrics.direct_db_opens, 0);
+        match candidate_count {
+            Some(expected) => assert_eq!(snapshot.candidates.len(), expected),
+            None => candidate_count = Some(snapshot.candidates.len()),
+        }
+    }
+    elapsed_micros.sort_unstable();
+    let percentile = |numerator: usize| {
+        let index = (elapsed_micros.len() * numerator).div_ceil(100) - 1;
+        elapsed_micros[index]
+    };
+    eprintln!(
+        "[repository-candidate-current-snapshot] samples={} candidateCount={} p50Micros={} p95Micros={} p99Micros={} timingAuthority=diagnostic workMetricsAuthority=acceptance",
+        elapsed_micros.len(),
+        candidate_count.expect("measured candidate count"),
+        percentile(50),
+        percentile(95),
+        percentile(99),
+    );
+}
+
+#[test]
 fn tracked_same_path_content_edit_advances_candidate_generation() {
     let fixture = Fixture::new("tracked-content-edit");
     fixture.git(&["init", "--quiet"]);
@@ -219,6 +283,84 @@ fn tracked_same_path_content_edit_advances_candidate_generation() {
     assert_ne!(
         baseline.candidate_generation.digest, edited.candidate_generation.digest,
         "same-path tracked edits must invalidate the admitted generation"
+    );
+}
+
+#[test]
+fn staged_same_path_content_edit_advances_candidate_generation() {
+    let fixture = Fixture::new("staged-content-edit");
+    fixture.git(&["init", "--quiet"]);
+    fixture.write("src/lib.rs", "pub fn value() -> u8 { 1 }\n");
+    fixture.git(&["add", "src/lib.rs"]);
+    fixture.git(&[
+        "-c",
+        "user.name=ASP Test",
+        "-c",
+        "user.email=asp@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "baseline",
+    ]);
+    let baseline = discover_repository_candidate_snapshot(&fixture.root)
+        .expect("discover clean generation")
+        .expect("Git snapshot exists");
+
+    fixture.write("src/lib.rs", "pub fn value() -> u8 { 2 }\n");
+    fixture.git(&["add", "src/lib.rs"]);
+    let staged = discover_repository_candidate_snapshot(&fixture.root)
+        .expect("discover staged generation")
+        .expect("Git snapshot exists");
+
+    assert_eq!(baseline.candidates, staged.candidates);
+    assert_ne!(
+        baseline.candidate_generation.digest, staged.candidate_generation.digest,
+        "the stage-zero index digest must bind staged same-path edits"
+    );
+}
+
+#[test]
+fn deleted_tracked_file_is_removed_from_candidates_and_advances_generation() {
+    let fixture = Fixture::new("tracked-delete");
+    fixture.git(&["init", "--quiet"]);
+    fixture.write("src/lib.rs", "pub fn retained() {}\n");
+    fixture.write("src/deleted.rs", "pub fn deleted() {}\n");
+    fixture.git(&["add", "src/lib.rs", "src/deleted.rs"]);
+    fixture.git(&[
+        "-c",
+        "user.name=ASP Test",
+        "-c",
+        "user.email=asp@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "baseline",
+    ]);
+    let baseline = discover_repository_candidate_snapshot(&fixture.root)
+        .expect("discover clean generation")
+        .expect("Git snapshot exists");
+
+    std::fs::remove_file(fixture.root.join("src/deleted.rs")).expect("delete tracked file");
+    let deleted = discover_repository_candidate_snapshot(&fixture.root)
+        .expect("discover generation after deletion")
+        .expect("Git snapshot exists");
+
+    assert!(
+        baseline
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == Path::new("src/deleted.rs"))
+    );
+    assert!(
+        deleted
+            .candidates
+            .iter()
+            .all(|candidate| candidate.path != Path::new("src/deleted.rs")),
+        "a removed tracked file must not remain parseable candidate work"
+    );
+    assert_ne!(
+        baseline.candidate_generation.digest, deleted.candidate_generation.digest,
+        "the removal must remain bound into current-snapshot identity"
     );
 }
 

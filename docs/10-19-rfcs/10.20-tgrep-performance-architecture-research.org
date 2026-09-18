@@ -951,6 +951,41 @@ long-lived owner publishes =uninterrupted-continuity= with a gap-free interval,
 the Rust recovery path MUST retain current-workspace discovery. A timing target
 cannot weaken this premise.
 
+The Hook mutation inbox is evidence *inside* an observation interval; it is not
+the owner of that interval.  Consecutive inbox sequence numbers prove ordering
+only among events that were written.  They cannot prove that an editor, build
+tool, Git operation, or another process did not change the worktree while no
+Hook invocation was active.  A V1 continuity certificate is admissible only
+when a supervisor that outlives the Runtime binds all of the following:
+
+- the exact repository, worktree, project scope, and prior source generation;
+- an observer epoch whose start precedes the prior admitted snapshot and whose
+  end covers the new Runtime handoff;
+- a gap-free observer event interval and its first/last sequence;
+- the Runtime handoff nonce and a terminal =complete= observation state.
+
+Inbox contiguity without observer interval coverage MUST fail closed to
+=current-snapshot=.  Runtime exit, observer exit, queue overflow, sequence gap,
+identity drift, or an incomplete handoff invalidates the certificate.  The
+current per-tool Hook producer therefore MUST NOT mint
+=uninterrupted-continuity= by itself.
+
+The =current-snapshot= fallback is one Git-owned observation, not two full
+worktree passes.  The stage-zero index owns the tracked regular-file candidate
+set and an ordered digest of =(path, mode, object-id)=; one Gix index-to-worktree
+status traversal owns tracked modifications, removals, and untracked files.
+Implementations MUST NOT pre-stat every tracked index entry and then repeat the
+same tracked comparison in status.  Only changed paths may require content I/O;
+removed paths are excluded from the current candidate set while their removal
+remains bound into the overlay digest.  The index digest, rather than a second
+HEAD-to-index traversal, binds staged same-path edits.  Thus HEAD, staged,
+unstaged, deletion, and untracked state each have one authority.  This removes
+redundant =O(N)= metadata/diff work without weakening current-snapshot freshness.
+The Gix status engine runs with its safe parallel feature so index-to-worktree
+comparison and the untracked dirwalk may execute concurrently.  This is bounded
+blocking CPU/filesystem work, not Tokio reactor work; Runtime still owns the
+outer blocking-task lifecycle and cancellation boundary.
+
 The V1 Runtime performance observation reports the admitted proof as
 =freshnessAuthority=. Rust MUST emit =current-snapshot= for the existing
 process-cold restore path and MUST reject =persisted-lane= as an observation
@@ -978,6 +1013,36 @@ theorem zero_io_without_continuity_cannot_admit
     (sourceEqual : Bool) :
     ¬ admitsRecoveryFreshness .persistedLane sourceEqual 0 := by
   simp [admitsRecoveryFreshness]
+
+structure ContinuityCertificate where
+  identityBound : Bool
+  observerCoversInterval : Bool
+  sequenceGapFree : Bool
+  handoffComplete : Bool
+
+def admitsContinuityCertificate (certificate : ContinuityCertificate) : Prop :=
+  certificate.identityBound = true ∧
+  certificate.observerCoversInterval = true ∧
+  certificate.sequenceGapFree = true ∧
+  certificate.handoffComplete = true
+
+theorem contiguous_hook_events_without_interval_are_insufficient :
+    ¬ admitsContinuityCertificate ⟨true, false, true, true⟩ := by
+  simp [admitsContinuityCertificate]
+
+structure GitCurrentSnapshotObservation where
+  headBound : Bool
+  indexStateBound : Bool
+  worktreeOverlayBound : Bool
+
+def admitsGitCurrentSnapshot (observation : GitCurrentSnapshotObservation) : Prop :=
+  observation.headBound = true ∧
+  observation.indexStateBound = true ∧
+  observation.worktreeOverlayBound = true
+
+theorem head_and_overlay_without_index_do_not_bind_staged_edits :
+    ¬ admitsGitCurrentSnapshot ⟨true, false, true⟩ := by
+  simp [admitsGitCurrentSnapshot]
 #+end_src
 
 #+begin_src typst
