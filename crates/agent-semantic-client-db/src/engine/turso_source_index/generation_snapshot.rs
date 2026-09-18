@@ -140,6 +140,12 @@ impl std::fmt::Display for ClientDbSourceIndexGenerationSnapshotError {
     }
 }
 
+pub(super) enum ClientDbSourceIndexGenerationLoad {
+    Missing,
+    Ready(Box<ClientDbSourceIndexGenerationSnapshot>),
+    ReuseRejected(ClientDbSourceIndexGenerationSnapshotError),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Canonical selector fact persisted for one source-index generation.
 pub struct ClientDbSourceIndexSelectorFact {
@@ -436,6 +442,28 @@ pub(super) async fn load_turso_source_index_generation_snapshot(
     schema_id: &str,
     schema_version: &str,
 ) -> Result<Option<ClientDbSourceIndexGenerationSnapshot>, String> {
+    match load_turso_source_index_generation_candidate(
+        connection,
+        project_root,
+        schema_id,
+        schema_version,
+    )
+    .await?
+    {
+        ClientDbSourceIndexGenerationLoad::Missing => Ok(None),
+        ClientDbSourceIndexGenerationLoad::Ready(snapshot) => Ok(Some(*snapshot)),
+        ClientDbSourceIndexGenerationLoad::ReuseRejected(error) => Err(format!(
+            "failed to materialize Turso source-index generation: {error}"
+        )),
+    }
+}
+
+pub(super) async fn load_turso_source_index_generation_candidate(
+    connection: &turso::Connection,
+    project_root: &str,
+    schema_id: &str,
+    schema_version: &str,
+) -> Result<ClientDbSourceIndexGenerationLoad, String> {
     let Some((generation_id, file_hashes_json, source_snapshot_json, owner_count, selector_count)) =
         latest_turso_source_index_generation_on_connection(
             connection,
@@ -445,7 +473,7 @@ pub(super) async fn load_turso_source_index_generation_snapshot(
         )
         .await?
     else {
-        return Ok(None);
+        return Ok(ClientDbSourceIndexGenerationLoad::Missing);
     };
     let (owner_generation_id, owner_rows) = super::prepare::active_turso_source_index_owner_rows(
         connection,
@@ -467,17 +495,20 @@ pub(super) async fn load_turso_source_index_generation_snapshot(
         generation_id.as_str(),
     )
     .await?;
-    materialize_turso_source_index_generation_snapshot(
-        generation_id,
-        &file_hashes_json,
-        &source_snapshot_json,
-        owner_count,
-        selector_count,
-        owner_rows,
-        relations,
+    Ok(
+        match materialize_turso_source_index_generation_snapshot(
+            generation_id,
+            &file_hashes_json,
+            &source_snapshot_json,
+            owner_count,
+            selector_count,
+            owner_rows,
+            relations,
+        ) {
+            Ok(snapshot) => ClientDbSourceIndexGenerationLoad::Ready(Box::new(snapshot)),
+            Err(error) => ClientDbSourceIndexGenerationLoad::ReuseRejected(error),
+        },
     )
-    .map_err(|error| format!("failed to materialize Turso source-index generation: {error}"))
-    .map(Some)
 }
 
 pub(super) fn materialize_turso_source_index_generation_snapshot(

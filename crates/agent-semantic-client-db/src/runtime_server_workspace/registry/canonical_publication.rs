@@ -409,3 +409,7 @@ fn elapsed_micros(started: tokio::time::Instant) -> u64 {
 #[cfg(test)]
 #[path = "../../../tests/unit/runtime_server_workspace/canonical_publication.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/unit/runtime_server_workspace/generation_delta_digest_overlay.rs"]
+mod generation_delta_digest_overlay_tests;

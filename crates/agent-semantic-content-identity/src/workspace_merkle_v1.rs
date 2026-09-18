@@ -108,6 +108,35 @@ impl WorkspacePathMerkleTreeV1 {
         Some(proof)
     }
 
+    /// Derive the canonical root after replacing one existing owner's content.
+    ///
+    /// Membership and ordering stay fixed, so only the leaf-to-root path is
+    /// rehashed. This preserves the original V1 balanced-tree root domain while
+    /// avoiding a complete leaf fold for the common one-file Hook mutation.
+    pub fn root_after_replacing_source_digest(
+        &self,
+        path: &str,
+        source_blob_digest: &ContentDigestV1,
+    ) -> Option<ContentDigestV1> {
+        let mut target_index = self.leaf_index(path)?;
+        let mut current = derive_owner_subtree_digest_v1(path, source_blob_digest);
+        for level in self.levels.iter().take(self.levels.len().saturating_sub(1)) {
+            let target_is_left = target_index % 2 == 0;
+            let sibling_index = if target_is_left {
+                (target_index + 1).min(level.len() - 1)
+            } else {
+                target_index - 1
+            };
+            current = if target_is_left {
+                hash_node(&current, &level[sibling_index])
+            } else {
+                hash_node(&level[sibling_index], &current)
+            };
+            target_index /= 2;
+        }
+        Some(current)
+    }
+
     fn leaf_index(&self, path: &str) -> Option<usize> {
         self.leaves
             .binary_search_by(|leaf| leaf.path.as_bytes().cmp(path.as_bytes()))

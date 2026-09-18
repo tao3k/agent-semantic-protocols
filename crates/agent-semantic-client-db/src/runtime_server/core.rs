@@ -755,10 +755,12 @@ impl RuntimeServer {
                                 ) && durable_materialization.has_same_generation_identity(
                                     &published_materialization_identity,
                                 ) => None,
-                            Ok(_) => Some(
-                                "durable Source Index identity differs from the published resident generation"
-                                    .to_owned(),
-                            ),
+                            Ok((_, durable_materialization)) => Some(format!(
+                                "durable Source Index identity differs from the published resident generation: fields={}",
+                                published_materialization_identity
+                                    .generation_identity_mismatch_fields(&durable_materialization)
+                                    .join(",")
+                            )),
                             Err(error) => Some(error.message),
                         };
                         emit_source_index_durability_attachment(

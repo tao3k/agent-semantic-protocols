@@ -70,6 +70,9 @@ pub use session_control_plane::{
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
 pub(crate) use turso::shared_turso_database;
+pub(crate) use turso_source_index::{
+    ClientDbActiveSourceIndexGenerationCandidate, active_turso_source_index_generation_candidate,
+};
 
 pub use turso_migration::{
     ClientDbTurso07ActiveMigration, ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,

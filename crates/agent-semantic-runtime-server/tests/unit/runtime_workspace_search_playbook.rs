@@ -183,7 +183,7 @@ fn topology_owner_language_is_derived_from_admitted_provider_routes() {
         extensions: vec!["rs".to_owned()],
     };
     assert!(matches!(
-        super::topology_owner_language("crates/runtime/src/lib.rs", &[route.clone()]),
+        super::topology_owner_language("crates/runtime/src/lib.rs", std::slice::from_ref(&route)),
         Ok(Some(language)) if language == "rust"
     ));
     assert!(matches!(

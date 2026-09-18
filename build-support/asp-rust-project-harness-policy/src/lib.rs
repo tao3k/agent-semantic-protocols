@@ -9,6 +9,7 @@ pub use asp_rust;
 
 pub mod build_gate;
 mod canonical_replacement_search_scenario;
+mod generation_delta_digest_overlay_scenario;
 mod mapped_topology_owner_membership_scenario;
 mod owner_content_mutation_search_scenario;
 mod topology_index_search_scenario;
@@ -34,6 +35,7 @@ pub use asp_rust_build_support::asp_rust_scenario_package as asp_rust_project_ha
 pub use asp_rust_build_support::measure_asp_rust_scenario;
 pub use asp_rust_build_support::render_asp_rust_scenario_benchmark_toml;
 pub use asp_rust_build_support::write_asp_rust_scenario_benchmark_toml;
+pub use generation_delta_digest_overlay_scenario::GENERATION_DELTA_DIGEST_OVERLAY_SCENARIO_ID;
 pub use mapped_topology_owner_membership_scenario::MAPPED_TOPOLOGY_OWNER_MEMBERSHIP_SCENARIO_ID;
 pub use member_policy::AspRustProjectHarnessMemberPolicy;
 pub use member_policy::AspRustProjectHarnessOwnerPolicy;

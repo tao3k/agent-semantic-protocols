@@ -62,6 +62,27 @@ fn changed_source_or_root_fails_closed() {
 }
 
 #[test]
+fn one_leaf_replacement_root_matches_a_complete_v1_rebuild() {
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests(entries()).expect("tree");
+    let replacement = digest('9');
+    let incremental_root = tree
+        .root_after_replacing_source_digest("crates/b/src/lib.rs", &replacement)
+        .expect("existing leaf replacement");
+    let rebuilt = WorkspacePathMerkleTreeV1::from_file_digests([
+        ("crates/a/src/lib.rs".to_owned(), digest('a')),
+        ("crates/b/src/lib.rs".to_owned(), replacement),
+        ("crates/c/src/lib.rs".to_owned(), digest('c')),
+    ])
+    .expect("rebuilt tree");
+
+    assert_eq!(&incremental_root, rebuilt.root_digest());
+    assert!(
+        tree.root_after_replacing_source_digest("missing.rs", &digest('8'))
+            .is_none()
+    );
+}
+
+#[test]
 fn invalid_and_duplicate_paths_are_rejected() {
     assert_eq!(
         WorkspacePathMerkleTreeV1::from_file_digests([("../outside".to_owned(), digest('a'))]),

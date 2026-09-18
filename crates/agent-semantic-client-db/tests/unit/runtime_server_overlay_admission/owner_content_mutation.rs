@@ -194,6 +194,14 @@ async fn one_owner_content_mutation_is_atomic_and_does_not_republish_the_generat
             .0,
         ["src/lib.rs"]
     );
+    let byte_first_topology = resident
+        .topology_source_segments_for_owner_scope(&std::collections::BTreeSet::from([
+            "src/lib.rs".to_owned()
+        ]))
+        .expect("content mutation retains an owner-root topology source");
+    assert_eq!(byte_first_topology.len(), 1);
+    assert_eq!(byte_first_topology[0].owner_path, "src/lib.rs");
+    assert!(byte_first_topology[0].selectors.is_empty());
     assert!(
         resident
             .resident_grep_candidate_owner_paths(&previous_plan, 8)

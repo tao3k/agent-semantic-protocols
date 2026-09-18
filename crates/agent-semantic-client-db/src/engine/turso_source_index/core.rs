@@ -243,7 +243,7 @@ async fn prepare_turso_source_index_refresh(
     )?;
     materialization.finalize_generation_evidence(workspace_snapshot, source_snapshot.clone())?;
     materialization.validate_persisted(materialization.workspace_identity.as_str())?;
-    materialization.validate_incremental_source_index_proofs(&import)?;
+    materialization.validate_incremental_source_index_proofs(&writer_import)?;
     let source_snapshot_json = serde_json::to_string(&source_snapshot).map_err(|error| {
         format!("failed to serialize Turso source-index source snapshot evidence: {error}")
     })?;
@@ -454,12 +454,15 @@ async fn persist_prepared_source_index_refresh(
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
     let (write_stats, effective_materialization) = write_turso_source_index_rows(
         connection,
-        &prepared.writer_import,
         materialization,
-        &prepared.membership_change_set,
-        &prepared.project_root,
-        &prepared.file_hashes_json,
-        &prepared.source_snapshot_json,
+        super::facts::TursoSourceIndexWriteInput {
+            writer_import: &prepared.writer_import,
+            canonical_import: &prepared.import,
+            membership_change_set: &prepared.membership_change_set,
+            project_root: &prepared.project_root,
+            file_hashes_json: &prepared.file_hashes_json,
+            source_snapshot_json: &prepared.source_snapshot_json,
+        },
     )
     .await?;
     *materialization = effective_materialization;

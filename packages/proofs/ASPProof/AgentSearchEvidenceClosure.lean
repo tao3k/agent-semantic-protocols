@@ -172,4 +172,105 @@ theorem topology_owner_membership_stays_on_the_locator_plane :
     topologyOwnerMembershipSelectorHydrations = 0 := by
   rfl
 
+structure GenerationDeltaWork where
+  totalOwnerBytes : Nat
+  changedOwnerBytes : Nat
+  successorByteReads : Nat
+  deriving DecidableEq
+
+def byteOptimalDelta (work : GenerationDeltaWork) : Prop :=
+  work.successorByteReads = work.changedOwnerBytes ∧
+    work.changedOwnerBytes ≤ work.totalOwnerBytes
+
+instance (work : GenerationDeltaWork) : Decidable (byteOptimalDelta work) := by
+  unfold byteOptimalDelta
+  infer_instance
+
+def oneOwnerDelta : GenerationDeltaWork where
+  totalOwnerBytes := 1000000
+  changedOwnerBytes := 4096
+  successorByteReads := 4096
+
+theorem exact_changed_owner_cut_forbids_unchanged_byte_reads :
+    byteOptimalDelta oneOwnerDelta := by
+  decide
+
+def fullByteRebuildForOneOwner : GenerationDeltaWork where
+  totalOwnerBytes := 1000000
+  changedOwnerBytes := 4096
+  successorByteReads := 1000000
+
+theorem full_byte_rebuild_is_not_an_incremental_successor :
+    ¬ byteOptimalDelta fullByteRebuildForOneOwner := by
+  decide
+
+structure TopologyOwnerCoverage where
+  selected : Bool
+  detailed : Bool
+  deriving DecidableEq
+
+def validTopologyOwnerCoverage (owner : TopologyOwnerCoverage) : Prop :=
+  owner.detailed = true → owner.selected = true
+
+def ownerRootFallback (owner : TopologyOwnerCoverage) : Bool :=
+  owner.selected && !owner.detailed
+
+def topologyCovered (owner : TopologyOwnerCoverage) : Bool :=
+  owner.detailed || ownerRootFallback owner
+
+theorem byte_first_topology_is_total_for_each_selected_owner
+    (owner : TopologyOwnerCoverage)
+    (_valid : validTopologyOwnerCoverage owner)
+    (selected : owner.selected = true) :
+    topologyCovered owner = true := by
+  cases detailed : owner.detailed <;>
+    simp [topologyCovered, ownerRootFallback, detailed, selected]
+
+theorem owner_root_fallback_does_not_forge_a_detailed_item
+    (owner : TopologyOwnerCoverage) :
+    ¬ (owner.detailed = true ∧ ownerRootFallback owner = true) := by
+  cases detailed : owner.detailed <;>
+    simp [ownerRootFallback, detailed]
+
+structure CompleteSourceMembership where
+  snapshotPaths : Nat
+  blobPaths : Nat
+  importHashPaths : Nat
+  deriving DecidableEq
+
+def completeSourceMembership (membership : CompleteSourceMembership) : Prop :=
+  membership.snapshotPaths = membership.blobPaths ∧
+    membership.snapshotPaths = membership.importHashPaths
+
+instance (membership : CompleteSourceMembership) :
+    Decidable (completeSourceMembership membership) := by
+  unfold completeSourceMembership
+  infer_instance
+
+def searchableOwnersOnly : CompleteSourceMembership where
+  snapshotPaths := 3103
+  blobPaths := 3036
+  importHashPaths := 3036
+
+theorem searchable_owner_rows_cannot_prove_auxiliary_leaf_completeness :
+    ¬ completeSourceMembership searchableOwnersOnly := by
+  decide
+
+inductive RefreshAuthority where
+  | ownerLocalDelta
+  | completeProviderInventory
+  deriving DecidableEq
+
+def mayReplaceRejectedBase : RefreshAuthority → Bool
+  | .ownerLocalDelta => false
+  | .completeProviderInventory => true
+
+theorem rejected_base_does_not_authorize_partial_reconstruction :
+    mayReplaceRejectedBase .ownerLocalDelta = false := by
+  rfl
+
+theorem complete_provider_inventory_can_reestablish_a_baseline :
+    mayReplaceRejectedBase .completeProviderInventory = true := by
+  rfl
+
 end ASPProof.AgentSearchEvidenceClosure

@@ -66,3 +66,63 @@ fn overlay_delta_identity_is_order_independent() {
             .dirty_paths_digest
     );
 }
+
+#[test]
+fn canonical_delta_reuses_digest_leaves_and_matches_full_rebuild() {
+    let unchanged_digest = hash_blob(b"unchanged").value;
+    let replacement_digest = hash_blob(b"replacement").value;
+    let added_digest = hash_blob(b"added").value;
+    let base = WorkspaceSnapshot::from_file_hashes([
+        ("src/unchanged.rs", unchanged_digest.clone()),
+        ("src/replaced.rs", hash_blob(b"old").value),
+        ("src/removed.rs", hash_blob(b"removed").value),
+    ]);
+
+    let successor = base.canonical_with_overlay_delta(
+        [
+            ("src/replaced.rs", replacement_digest.clone()),
+            ("src/added.rs", added_digest.clone()),
+        ],
+        ["src/removed.rs"],
+    );
+    let rebuilt = WorkspaceSnapshot::from_file_hashes([
+        ("src/added.rs", added_digest),
+        ("src/replaced.rs", replacement_digest),
+        ("src/unchanged.rs", unchanged_digest),
+    ]);
+
+    assert_eq!(successor, rebuilt);
+    assert_eq!(successor.file_digests().count(), 3);
+    assert!(
+        successor
+            .evidence(SourceSnapshotKind::DerivedOverlay, "provider")
+            .base_root_digest
+            .is_none(),
+        "canonical successor folds acquisition lineage into a complete leaf proof"
+    );
+}
+
+#[test]
+fn deserialized_snapshot_revalidates_root_instead_of_trusting_process_cache() {
+    let snapshot = WorkspaceSnapshot::from_file_hashes([
+        ("src/a.rs", hash_blob(b"a").value),
+        ("src/b.rs", hash_blob(b"b").value),
+    ]);
+    let encoded = serde_json::to_value(&snapshot).expect("snapshot serializes");
+    let restored: WorkspaceSnapshot =
+        serde_json::from_value(encoded.clone()).expect("snapshot deserializes");
+
+    restored
+        .validate()
+        .expect("an untampered persisted snapshot revalidates");
+
+    let mut tampered = encoded;
+    tampered["root_digest"] = serde_json::Value::String("0".repeat(64));
+    let tampered: WorkspaceSnapshot =
+        serde_json::from_value(tampered).expect("tampered shape still deserializes");
+
+    assert_eq!(
+        tampered.validate(),
+        Err("workspace snapshot root digest does not match its leaves".to_owned())
+    );
+}

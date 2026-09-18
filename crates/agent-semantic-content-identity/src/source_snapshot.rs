@@ -226,7 +226,7 @@ impl ResolutionEvidence {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 /// Workspace path-to-digest snapshot with deterministic root and overlay operations.
 pub struct WorkspaceSnapshot {
     root_digest: String,
@@ -234,7 +234,23 @@ pub struct WorkspaceSnapshot {
     base_root_digest: Option<String>,
     dirty_paths_digest: Option<String>,
     overlay_base_leaves: BTreeMap<String, Option<String>>,
+    #[serde(skip)]
+    merkle_tree: std::sync::OnceLock<crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1>,
+    #[serde(skip)]
+    root_validated: bool,
 }
+
+impl PartialEq for WorkspaceSnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.root_digest == other.root_digest
+            && self.leaves == other.leaves
+            && self.base_root_digest == other.base_root_digest
+            && self.dirty_paths_digest == other.dirty_paths_digest
+            && self.overlay_base_leaves == other.overlay_base_leaves
+    }
+}
+
+impl Eq for WorkspaceSnapshot {}
 
 /// Normalized changed and removed paths for one workspace overlay.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -291,13 +307,18 @@ impl WorkspaceSnapshot {
             .into_iter()
             .map(|(path, hash)| (normalize_snapshot_path(&path.into()), hash.into()))
             .collect::<BTreeMap<_, _>>();
-        let root_digest = merkle_root(&leaves);
+        let tree = workspace_merkle_tree(&leaves);
+        let root_digest = tree.root_digest().as_str().to_owned();
+        let merkle_tree = std::sync::OnceLock::new();
+        let _ = merkle_tree.set(tree);
         Self {
             root_digest,
             leaves,
             base_root_digest: None,
             dirty_paths_digest: None,
             overlay_base_leaves: BTreeMap::new(),
+            merkle_tree,
+            root_validated: true,
         }
     }
 
@@ -318,9 +339,20 @@ impl WorkspaceSnapshot {
         self.file_digest(workspace_relative_path).is_some()
     }
 
+    /// Iterate the canonical path-to-content-digest leaves.
+    ///
+    /// Generation overlay owners use this proof surface to derive a successor
+    /// without reopening unchanged source bytes. The returned digests remain
+    /// owned by this validated snapshot; callers cannot mutate the base.
+    pub fn file_digests(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.leaves
+            .iter()
+            .map(|(path, digest)| (path.as_str(), digest.as_str()))
+    }
+
     /// Validate the complete canonical-root plus accumulated-overlay evidence.
     pub fn validate(&self) -> Result<(), String> {
-        if self.root_digest != merkle_root(&self.leaves) {
+        if !self.root_validated && self.root_digest != merkle_root(&self.leaves) {
             return Err("workspace snapshot root digest does not match its leaves".to_owned());
         }
         if self
@@ -475,6 +507,66 @@ impl WorkspaceSnapshot {
         self.snapshot_from_overlay(leaves, overlay_base_leaves)
     }
 
+    /// Derive a canonical successor from explicit digest updates.
+    ///
+    /// Unlike [`Self::with_overlay_delta`], this folds prior provenance and
+    /// returns a complete canonical leaf set. It is the generation-publication
+    /// boundary: unchanged leaves are reused as digests and their source bytes
+    /// are never read or hashed again.
+    pub fn canonical_with_overlay_delta<I, P, H, D, Q>(
+        &self,
+        file_hashes: I,
+        deleted_paths: D,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (P, H)>,
+        P: Into<String>,
+        H: Into<String>,
+        D: IntoIterator<Item = Q>,
+        Q: Into<String>,
+    {
+        let overlay_leaves = file_hashes
+            .into_iter()
+            .map(|(path, hash)| (normalize_snapshot_path(&path.into()), hash.into()))
+            .collect::<BTreeMap<_, _>>();
+        let deleted_paths = deleted_paths
+            .into_iter()
+            .map(Into::into)
+            .map(|path| normalize_snapshot_path(&path))
+            .collect::<BTreeSet<_>>();
+        let fast_root = if overlay_leaves.len() == 1 && deleted_paths.is_empty() {
+            overlay_leaves.iter().next().and_then(|(path, digest)| {
+                self.leaves.contains_key(path).then(|| {
+                    crate::exact_selector_merkle::parse_content_digest_v1(digest)
+                        .ok()
+                        .and_then(|digest| {
+                            self.merkle_tree()
+                                .root_after_replacing_source_digest(path, &digest)
+                        })
+                })?
+            })
+        } else {
+            None
+        };
+        let (leaves, _) = self.apply_overlay_delta(overlay_leaves, deleted_paths);
+        let root_digest =
+            fast_root.map_or_else(|| merkle_root(&leaves), |digest| digest.as_str().to_owned());
+        Self {
+            root_digest,
+            leaves,
+            base_root_digest: None,
+            dirty_paths_digest: None,
+            overlay_base_leaves: BTreeMap::new(),
+            merkle_tree: std::sync::OnceLock::new(),
+            root_validated: true,
+        }
+    }
+
+    fn merkle_tree(&self) -> &crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1 {
+        self.merkle_tree
+            .get_or_init(|| workspace_merkle_tree(&self.leaves))
+    }
+
     fn apply_overlay_delta(
         &self,
         overlay_leaves: BTreeMap<String, String>,
@@ -539,6 +631,8 @@ impl WorkspaceSnapshot {
             base_root_digest,
             dirty_paths_digest,
             overlay_base_leaves,
+            merkle_tree: std::sync::OnceLock::new(),
+            root_validated: true,
         }
     }
 
@@ -617,6 +711,15 @@ fn overlay_dirty_paths_digest(
 }
 
 fn merkle_root(leaves: &BTreeMap<String, String>) -> String {
+    workspace_merkle_tree(leaves)
+        .root_digest()
+        .as_str()
+        .to_owned()
+}
+
+fn workspace_merkle_tree(
+    leaves: &BTreeMap<String, String>,
+) -> crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1 {
     let file_digests = leaves.iter().map(|(path, digest)| {
         let digest =
             crate::exact_selector_merkle::parse_content_digest_v1(digest).unwrap_or_else(|_| {
@@ -626,7 +729,4 @@ fn merkle_root(leaves: &BTreeMap<String, String>) -> String {
     });
     crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(file_digests)
         .expect("workspace snapshot paths are normalized and unique")
-        .root_digest()
-        .as_str()
-        .to_owned()
 }

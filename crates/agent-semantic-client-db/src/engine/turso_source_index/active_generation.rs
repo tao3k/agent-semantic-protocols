@@ -7,7 +7,8 @@ use std::path::Path;
 use agent_semantic_client_core::{SemanticSchemaId, SemanticSchemaVersion};
 
 use super::generation_snapshot::{
-    ClientDbActiveGenerationSourceBlobs, ClientDbSourceIndexGenerationSnapshot,
+    ClientDbActiveGenerationSourceBlobs, ClientDbSourceIndexGenerationLoad,
+    ClientDbSourceIndexGenerationSnapshot,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -17,27 +18,61 @@ pub struct ClientDbActiveSourceIndexGeneration {
     pub source_blobs: ClientDbActiveGenerationSourceBlobs,
 }
 
+pub(crate) enum ClientDbActiveSourceIndexGenerationCandidate {
+    Missing,
+    Ready(Box<ClientDbActiveSourceIndexGeneration>),
+    ReuseRejected(String),
+}
+
 pub async fn active_turso_source_index_generation(
     db_path: &Path,
     project_root: &Path,
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<ClientDbActiveSourceIndexGeneration>, String> {
+    match active_turso_source_index_generation_candidate(
+        db_path,
+        project_root,
+        schema_id,
+        schema_version,
+    )
+    .await?
+    {
+        ClientDbActiveSourceIndexGenerationCandidate::Missing => Ok(None),
+        ClientDbActiveSourceIndexGenerationCandidate::Ready(active) => Ok(Some(*active)),
+        ClientDbActiveSourceIndexGenerationCandidate::ReuseRejected(reason) => Err(reason),
+    }
+}
+
+pub(crate) async fn active_turso_source_index_generation_candidate(
+    db_path: &Path,
+    project_root: &Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+) -> Result<ClientDbActiveSourceIndexGenerationCandidate, String> {
     if !db_path.exists() {
-        return Ok(None);
+        return Ok(ClientDbActiveSourceIndexGenerationCandidate::Missing);
     }
     let normalized_project_root = crate::types::normalized_project_root(project_root)?;
     let connection = crate::engine::turso::connect_turso_client_db(db_path).await?;
     super::core::ensure_turso_source_index_schema(&connection).await?;
-    let Some(snapshot) = super::generation_snapshot::load_turso_source_index_generation_snapshot(
+    let snapshot = match super::generation_snapshot::load_turso_source_index_generation_candidate(
         &connection,
         normalized_project_root.as_str(),
         schema_id.as_str(),
         schema_version.as_str(),
     )
     .await?
-    else {
-        return Ok(None);
+    {
+        ClientDbSourceIndexGenerationLoad::Missing => {
+            return Ok(ClientDbActiveSourceIndexGenerationCandidate::Missing);
+        }
+        ClientDbSourceIndexGenerationLoad::Ready(snapshot) => *snapshot,
+        ClientDbSourceIndexGenerationLoad::ReuseRejected(error) => {
+            return Ok(ClientDbActiveSourceIndexGenerationCandidate::ReuseRejected(
+                format!("failed to materialize Turso source-index generation: {error}"),
+            ));
+        }
     };
     let source_blobs =
         super::generation_snapshot::load_turso_source_index_generation_blobs_on_connection(
@@ -48,10 +83,12 @@ pub async fn active_turso_source_index_generation(
             &snapshot,
         )
         .await?;
-    Ok(Some(ClientDbActiveSourceIndexGeneration {
-        snapshot,
-        source_blobs,
-    }))
+    Ok(ClientDbActiveSourceIndexGenerationCandidate::Ready(
+        Box::new(ClientDbActiveSourceIndexGeneration {
+            snapshot,
+            source_blobs,
+        }),
+    ))
 }
 
 pub(crate) async fn active_turso_workspace_generation_materialization(

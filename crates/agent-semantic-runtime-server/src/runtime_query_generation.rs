@@ -379,7 +379,17 @@ impl RuntimeQueryGeneration {
                     .iter()
                     .map(|segment| segment.owner_path.as_str())
                     .collect::<BTreeSet<_>>();
-                owner_roots.retain(|owner| !detailed_owners.contains(owner.as_str()));
+                if detailed_owners
+                    .iter()
+                    .any(|owner| !owner_scope.contains(*owner))
+                    || owner_roots.iter().any(|owner| !owner_scope.contains(owner))
+                {
+                    return Err(
+                        "reasonKind=runtime-project-topology-selector-scope-escape".to_owned()
+                    );
+                }
+                owner_roots =
+                    topology_owner_root_fallback_scope(owner_scope, &detailed_owners, owner_roots);
                 source.extend(resident.topology_source_segments_for_owner_roots(&owner_roots)?);
                 source
             }
@@ -764,6 +774,20 @@ fn execution_source_root_matches_resident(
         || execution_source_root
             .strip_prefix("blake3-256:")
             .is_some_and(|content| content == resident_source_root)
+}
+
+fn topology_owner_root_fallback_scope(
+    owner_scope: &BTreeSet<String>,
+    detailed_owners: &BTreeSet<&str>,
+    mut explicit_owner_roots: BTreeSet<String>,
+) -> BTreeSet<String> {
+    explicit_owner_roots.extend(
+        owner_scope
+            .iter()
+            .filter(|owner| !detailed_owners.contains(owner.as_str()))
+            .cloned(),
+    );
+    explicit_owner_roots
 }
 
 fn topology_node_id(kind: &str, value: &str) -> String {

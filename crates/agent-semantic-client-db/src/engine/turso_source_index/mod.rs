@@ -11,6 +11,9 @@ pub(crate) use active_generation::active_turso_workspace_generation_materializat
 pub use active_generation::{
     ClientDbActiveSourceIndexGeneration, active_turso_source_index_generation,
 };
+pub(crate) use active_generation::{
+    ClientDbActiveSourceIndexGenerationCandidate, active_turso_source_index_generation_candidate,
+};
 pub(in crate::engine) use contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 pub use generation_snapshot::{
     ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs,

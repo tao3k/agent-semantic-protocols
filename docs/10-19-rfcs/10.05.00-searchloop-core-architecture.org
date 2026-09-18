@@ -142,6 +142,86 @@ durability attachment after resident publication.  Different workspaces remain
 independent.  This prevents a targeted provider successor from racing the
 previous generation's Turso commit while preserving early resident visibility.
 
+** Delta materialization is proof reuse, not a full-byte rebuild
+
+A Hook mutation already supplies an exact changed-owner cut.  The successor
+generation MUST therefore derive its canonical workspace snapshot from the
+active generation's path-to-content-digest leaves plus the changed and removed
+leaf set.  It MUST NOT hash, decode, or re-read unchanged owner bytes merely to
+reconstruct the same Merkle leaves.  Provider projection, selector proof
+validation, and source-byte hashing are bounded by the delta; unchanged owners,
+selectors, relations, and auxiliary owners are immutable generation proofs.
+
+The canonical materialization may still emit a complete immutable successor,
+but completeness is an output property and does not authorize complete input
+work.  Its byte-work law is:
+
+#+begin_src typst :tangle no
+$
+  B_(successor) = sum_(p in Delta^+) |bytes(p)|,
+  quad B_(unchanged) = 0,
+  quad T_(root) = O(|Delta| log N)
+$
+#+end_src
+
+An implementation that constructs the successor root with
+=WorkspaceSnapshot::from_file_bytes(full_import)= violates this law even when
+the resulting digest is correct.  This prohibition applies at both resident
+publication and the later durability attachment: the Turso writer MUST persist
+the already validated complete materialization and MUST NOT independently
+reconstruct a second generation identity from all source blobs.  The admitted
+construction is an overlay over the active digest leaves, followed by equality
+checks against the changed owner's parser proof and a complete import-metadata
+digest check.  Until the persistent Merkle tree reaches the stated
+=O(|Delta| log N)= bound, an =O(N)= digest-only fold is an allowed intermediate
+implementation; an =O(total source bytes)= fold is not.
+
+The active source membership includes both searchable owners and provider
+auxiliary owners used to prove or parse them.  An owner-local successor MUST
+retain unchanged auxiliary leaves from the active canonical materialization;
+loading only searchable owner rows is not a complete base.  Before durability,
+the path sets of the canonical workspace snapshot, content-addressed source
+blobs, and non-scope import hash records MUST be equal.  A resident generation
+whose auxiliary leaves cannot be reproduced by its import is rejected before
+the durable pointer advances, because otherwise restart recovery would observe
+a different Merkle domain than the resident generation.
+
+Rejection of an active durable base removes only its reuse authority; it does
+not make current source unbuildable.  A refresh carrying complete provider
+authority and the provider's current owner inventory MUST construct a fresh
+baseline without consulting the rejected generation.  An owner-local delta
+MUST NOT do so, because its input cut cannot prove unchanged membership.  It
+fails with the active-base rejection and requires a complete provider refresh.
+Storage transport failures are not reuse rejections and MUST remain terminal.
+This distinction prevents damaged cache state from permanently blocking Search
+without silently treating an incomplete delta as a complete generation.
+
+** Byte-first topology settlement is total over the selected owner cut
+
+Regex truth may select a changed owner before its parser item projection is
+available.  Project Topology settlement MUST therefore cover every owner in the
+bounded selected owner cut.  Item selectors contribute detailed topology nodes;
+for every selected owner not covered by an admitted item selector, Runtime MUST
+use that owner's canonical owner-root selector.  An empty item-selector set is
+not an empty topology source when the selected owner cut is non-empty.
+
+Let =O= be the selected owner cut and =D= the owners represented by validated
+item selectors.  The owner-root fallback is exactly =O \\ D=, so the source
+coverage law is =D union (O \\ D) = O=.  Both =D= and any explicit owner-root
+selector MUST be subsets of =O=; a selector scope escape fails closed.  This is
+not a parser fallback and does not forge an item selector: it preserves byte
+Search truth while parser materialization independently enriches the same owner
+later.
+
+#+begin_src typst :tangle no
+$
+  R = O minus D,
+  quad D subset.eq O,
+  quad D union R = O,
+  quad D inter R = emptyset
+$
+#+end_src
+
 Normative architectural root for RFC 10.05.
 
 This file is intentionally a compact index.  Detailed state machines,

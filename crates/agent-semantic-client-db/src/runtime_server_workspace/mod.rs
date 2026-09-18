@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 mod canonical_materialization;
+mod canonical_materialization_overlay;
 mod canonical_snapshot;
 mod client;
 mod context;
@@ -20,6 +21,7 @@ pub use canonical_materialization::{
     ValidatedWorkspaceCanonicalMaterialization, WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID,
     WorkspaceCanonicalMaterialization, WorkspaceCanonicalMaterializationLoad,
 };
+pub(crate) use canonical_materialization_overlay::WorkspaceCanonicalMaterializationOverlay;
 
 pub(crate) use memory_backend::WorkspaceMemoryBackend;
 pub(crate) use model::{
