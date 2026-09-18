@@ -1,0 +1,86 @@
+{
+  "$id": "urn:agent-semantic-protocols:schema:anthropic-agent-frontmatter",
+  "x-asp-schema-version": 1,
+  "title": "Anthropic Claude Code agent frontmatter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tools": {
+      "$ref": "#/$defs/toolList"
+    },
+    "disallowedTools": {
+      "$ref": "#/$defs/toolList"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "permissionMode": {
+      "enum": [
+        "default",
+        "acceptEdits",
+        "auto",
+        "dontAsk",
+        "bypassPermissions",
+        "plan"
+      ]
+    },
+    "maxTurns": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "skills": {
+      "$ref": "#/$defs/stringList"
+    },
+    "mcpServers": {},
+    "hooks": {},
+    "memory": {
+      "enum": ["user", "project", "local"]
+    },
+    "background": {
+      "type": "boolean"
+    },
+    "effort": {
+      "enum": ["low", "medium", "high", "xhigh", "max"]
+    },
+    "isolation": {
+      "enum": ["worktree"]
+    },
+    "color": {
+      "enum": ["red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"]
+    },
+    "initialPrompt": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "toolList": {
+      "$ref": "#/$defs/stringList"
+    }
+  }
+}

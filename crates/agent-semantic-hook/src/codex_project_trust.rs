@@ -1,10 +1,15 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Codex project-trust install helpers without hook event state.
 
 use crate::codex_config::validate_codex_config_toml;
 use crate::codex_trust::merge_codex_project_trust_config;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Install user-level Codex project trust without writing hook event trust state.
 pub fn install_codex_user_project_trust(project_config_path: &Path) -> Result<PathBuf, String> {

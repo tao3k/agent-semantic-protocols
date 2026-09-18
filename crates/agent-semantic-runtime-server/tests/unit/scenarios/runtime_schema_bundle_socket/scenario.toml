@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "runtime-schema-bundle-socket"
+title = "Runtime distributes canonical V1 schema bundles over the public socket"
+package = "agent-semantic-runtime-server"
+phase = "runtime-socket"
+intent = "qualify cache identity, profile drift, and digest rejection without workspace generation"
+case_catalog = "cases.toml"
+
+[coverage]
+required_cases = [
+  "ready",
+  "unchanged",
+  "stale-digest",
+  "unknown-language",
+  "root-set-drift",
+  "digest-corruption",
+]
+transport = "grpc-loopback-socket"
+schema_version = "1"
+
+[gate]
+policy = "RUNTIME-SCHEMA-BUNDLE-SOCKET-001"
+require_public_client_frame = true
+require_single_initialized_session = true
+forbid_workspace_generation = true
+forbid_package_schema_materialization = true

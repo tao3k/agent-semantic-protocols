@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-provider-search-receipt.v1.schema.json",
+  "title": "Runtime Provider Search Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "operationId",
+    "status",
+    "languageId",
+    "generationDigest",
+    "rootDigest",
+    "providerDigest",
+    "indexArtifactDigest",
+    "candidateCount",
+    "selectorProjectionBudget",
+    "projectedOwnerCount",
+    "selectors",
+    "ownerPaths",
+    "residentReadElapsedMicros",
+    "serviceElapsedMicros",
+    "elapsedMicros",
+    "workCounters"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-provider-search-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "operationId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["matches", "no-matches"] },
+    "languageId": { "type": "string", "minLength": 1 },
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rootDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "providerDigest": { "type": "string", "minLength": 1 },
+    "indexArtifactDigest": { "type": "string", "minLength": 1 },
+    "candidateCount": { "type": "integer", "minimum": 0 },
+    "selectorProjectionBudget": { "type": "integer", "minimum": 1 },
+    "projectedOwnerCount": { "type": "integer", "minimum": 0, "maximum": 16 },
+    "selectors": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "ownerPaths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "residentReadElapsedMicros": { "type": "integer", "minimum": 0 },
+    "serviceElapsedMicros": { "type": "integer", "minimum": 0 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "workCounters": { "$ref": "#/$defs/zeroWorkCounters" }
+  },
+  "$defs": {
+    "zeroWorkCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "databaseReadCount",
+        "filesystemReadCount",
+        "providerProcessCount",
+        "socketOperationCount",
+        "schedulerTaskCount"
+      ],
+      "properties": {
+        "databaseReadCount": { "const": 0 },
+        "filesystemReadCount": { "const": 0 },
+        "providerProcessCount": { "const": 0 },
+        "socketOperationCount": { "const": 0 },
+        "schedulerTaskCount": { "const": 0 }
+      }
+    }
+  }
+}

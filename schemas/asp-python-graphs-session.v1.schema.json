@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/asp-python-graphs-session.v1.schema.json",
+  "title": "ASP Python Graphs Session Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "serviceEpoch",
+    "requestId",
+    "sequence",
+    "messageKind",
+    "payloadSchemaId",
+    "payload"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-python-graphs-session"},
+    "schemaVersion": {"const": "1"},
+    "sessionId": {"type": "string", "minLength": 1},
+    "serviceEpoch": {"type": "string", "minLength": 1},
+    "requestId": {"type": "string", "minLength": 1},
+    "clientRequestId": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "messageKind": {
+      "enum": [
+        "hello",
+        "generation-graph",
+        "evaluate-resident",
+        "release-generation",
+        "timeline",
+        "cancel",
+        "health",
+        "shutdown",
+        "receipt"
+      ]
+    },
+    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "generationDigest": {"$ref": "#/$defs/blake3Digest"},
+    "runtimeArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
+    "executionArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
+    "deadlineUnixMillis": {"type": "integer", "minimum": 0},
+    "cancellationId": {"type": "string", "minLength": 1},
+    "payloadSchemaId": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"messageKind": {"const": "hello"}}},
+      "then": {
+        "required": ["runtimeArtifactDigest", "executionArtifactDigest"]
+      }
+    },
+    {
+      "if": {"properties": {"messageKind": {"const": "cancel"}}},
+      "then": {"required": ["cancellationId"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "messageKind": {
+            "enum": ["generation-graph", "evaluate-resident", "release-generation"]
+          }
+        }
+      },
+      "then": {"required": ["workspaceIdentity", "generationDigest"]}
+    }
+  ],
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

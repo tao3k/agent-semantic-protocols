@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "hook-memory-inbox-workspace-mutation-v1"
+title = "PostToolUse hands one exact owner cut to Runtime without IPC"
+package = "agent-semantic-hook"
+phase = "host-to-runtime-workspace-mutation"
+intent = "make edit invalidation independent from Search and workspace cardinality"
+
+[gate]
+changed_owner_count = 1
+hook_runtime_socket_count = 0
+hook_runtime_process_start_count = 0
+hook_workspace_scan_count = 0
+inbox_record_count = 1
+checksum_count = 1
+published_boundary_count = 1
+runtime_content_delta_publication_count = 1
+runtime_topology_terminal_count = 1
+durable_acknowledgement_count = 1
+search_generation_build_count = 0
+canonical_generation_publication_count = 0
+
+[identity]
+schema_version = 1
+workspace_identity_owner = "runtime-admission-catalog"
+mutation_identity_owner = "host-tool-use-or-canonical-payload"
+content_identity_owner = "runtime-changed-owner-reader"
+
+[failure]
+runtime_unavailable = "pending"
+writer_lock_contended = "typed-terminal"
+capacity_exhausted = "typed-terminal"
+checksum_mismatch = "typed-terminal"

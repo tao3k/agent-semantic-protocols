@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Patch safety schema tests for semantic query packets."""
 
 from __future__ import annotations
@@ -46,7 +50,7 @@ def test_compact_match_can_declare_ast_patch_replace_item_safety() -> None:
         },
         "preimageSource": "exact-read",
         "sourceFingerprint": "src/lib.rs:6:6:39",
-        "parserVersion": "rust:rs-harness",
+        "parserVersion": "rust:asp-rust",
         "allowedOperations": ["replace_item"],
         "losslessStructure": True,
         "notes": ["provider apply reparses and formats"],

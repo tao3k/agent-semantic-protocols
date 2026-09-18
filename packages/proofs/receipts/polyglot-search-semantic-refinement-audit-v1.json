@@ -1,0 +1,138 @@
+{"sourcePath": "ASPProof/PolyglotSearchSemanticRefinement.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.PolyglotSearchSemanticRefinement",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluateGQL ASPProof.PolyglotSearchSemanticRefinement.referenceQuery\n    ASPProof.PolyglotSearchSemanticRefinement.referenceGraph =\n  ASPProof.PolyglotSearchSemanticRefinement.expectedGQLRows",
+   "theoremFamily": "gql-one-hop-semantics",
+   "rfcClauseIds": ["ASP-RFC-PSSR-GQL", "ASP-RFC-PSSR-SOUNDNESS"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.one_hop_evaluation_matches_reference_relation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.PolyglotSearchSemanticRefinement.evaluateGQL ASPProof.PolyglotSearchSemanticRefinement.referenceQuery\n      ASPProof.PolyglotSearchSemanticRefinement.referenceGraph).length =\n  3",
+   "theoremFamily": "gql-bag-multiplicity",
+   "rfcClauseIds": ["ASP-RFC-PSSR-GQL", "ASP-RFC-PSSR-MULTIPLICITY"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.one_hop_evaluation_preserves_parallel_edge_witnesses",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluateGQL ASPProof.PolyglotSearchSemanticRefinement.stringMismatchQuery\n    ASPProof.PolyglotSearchSemanticRefinement.referenceGraph =\n  []",
+   "theoremFamily": "typed-equality-no-coercion",
+   "rfcClauseIds": ["ASP-RFC-PSSR-TYPES", "ASP-RFC-PSSR-WHERE"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.typed_equality_has_no_case_coercion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluateGQL ASPProof.PolyglotSearchSemanticRefinement.shadowedAliasQuery\n    ASPProof.PolyglotSearchSemanticRefinement.referenceGraph =\n  []",
+   "theoremFamily": "alias-scope",
+   "rfcClauseIds": ["ASP-RFC-PSSR-RETURN", "ASP-RFC-PSSR-SCOPE"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.alias_shadowing_is_rejected_before_evaluation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluateGQL ASPProof.PolyglotSearchSemanticRefinement.referenceQuery\n    ASPProof.PolyglotSearchSemanticRefinement.noncanonicalGraph =\n  []",
+   "theoremFamily": "canonical-graph-order",
+   "rfcClauseIds": ["ASP-RFC-PSSR-DETERMINISM", "ASP-RFC-PSSR-ORDER"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.noncanonical_graph_order_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.joinCandidateCoverage\n    ASPProof.PolyglotSearchSemanticRefinement.expectedGQLRows\n    ASPProof.PolyglotSearchSemanticRefinement.referenceCoverage =\n  ASPProof.PolyglotSearchSemanticRefinement.expectedLogicRows",
+   "theoremFamily": "logic-join-binding",
+   "rfcClauseIds": ["ASP-RFC-PSSR-BINDING", "ASP-RFC-PSSR-LOGIC"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.conjunctive_join_preserves_shared_candidate_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.PolyglotSearchSemanticRefinement.joinCandidateCoverage\n      ASPProof.PolyglotSearchSemanticRefinement.expectedGQLRows\n      ASPProof.PolyglotSearchSemanticRefinement.referenceCoverage).length =\n  3",
+   "theoremFamily": "logic-bag-multiplicity",
+   "rfcClauseIds": ["ASP-RFC-PSSR-LOGIC", "ASP-RFC-PSSR-MULTIPLICITY"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.conjunctive_join_preserves_bag_multiplicity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.sourceASTBindingAdmitted\n    ASPProof.PolyglotSearchSemanticRefinement.validBinding =\n  true",
+   "theoremFamily": "source-ast-binding-positive",
+   "rfcClauseIds": ["ASP-RFC-PSSR-AST", "ASP-RFC-PSSR-DIGEST"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.exact_source_ast_binding_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.sourceASTBindingAdmitted\n    ASPProof.PolyglotSearchSemanticRefinement.tamperedASTBinding =\n  false",
+   "theoremFamily": "ast-digest-tamper",
+   "rfcClauseIds": ["ASP-RFC-PSSR-AST", "ASP-RFC-PSSR-DIGEST"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.tampered_ast_digest_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.semanticTraceAdmitted\n    ASPProof.PolyglotSearchSemanticRefinement.validSemanticTrace =\n  true",
+   "theoremFamily": "semantic-trace-positive",
+   "rfcClauseIds": ["ASP-RFC-PSSR-REFINEMENT", "ASP-RFC-PSSR-TRACE"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.valid_semantic_trace_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.semanticTraceAdmitted\n    ASPProof.PolyglotSearchSemanticRefinement.mutatedGraphTrace =\n  false",
+   "theoremFamily": "semantic-trace-read-only",
+   "rfcClauseIds": ["ASP-RFC-PSSR-READ-ONLY", "ASP-RFC-PSSR-TRACE"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.semantic_evaluation_is_read_only",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchSemanticRefinement.semanticTraceAdmitted\n    ASPProof.PolyglotSearchSemanticRefinement.tamperedTraceDigest =\n  false",
+   "theoremFamily": "semantic-trace-tamper",
+   "rfcClauseIds": ["ASP-RFC-PSSR-DIGEST", "ASP-RFC-PSSR-TRACE"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.tampered_trace_digest_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (query : ASPProof.PolyglotSearchSemanticRefinement.OneHopGQL)\n  (graph : ASPProof.PolyglotSearchSemanticRefinement.PropertyGraph),\n  ASPProof.PolyglotSearchSemanticRefinement.evaluateDeterministically query graph =\n    ASPProof.PolyglotSearchSemanticRefinement.evaluateDeterministically query graph",
+   "theoremFamily": "evaluator-determinism",
+   "rfcClauseIds": ["ASP-RFC-PSSR-DETERMINISM", "ASP-RFC-PSSR-EVALUATOR"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluator_is_deterministic",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (query : ASPProof.PolyglotSearchSemanticRefinement.OneHopGQL)\n  (graph : ASPProof.PolyglotSearchSemanticRefinement.PropertyGraph),\n  ASPProof.PolyglotSearchSemanticRefinement.graphAfterEvaluation query graph = graph",
+   "theoremFamily": "evaluator-nonmutation",
+   "rfcClauseIds": ["ASP-RFC-PSSR-EVALUATOR", "ASP-RFC-PSSR-READ-ONLY"],
+   "name":
+   "ASPProof.PolyglotSearchSemanticRefinement.evaluator_cannot_mutate_graph",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 14,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 14,
+ "axiomDependentDeclarationCount": 0}

@@ -60,16 +60,14 @@
     "scope": {
       "enum": [
         "workspace",
-        "prime",
+        "search-playbook",
         "owner",
         "dependency",
         "policy",
         "query",
         "query-set",
-        "lexical",
         "text",
         "tests",
-        "ingest",
         "custom"
       ]
     },
@@ -241,15 +239,13 @@
         "scope": {
           "enum": [
             "workspace",
-            "prime",
+            "search-playbook",
             "owner",
             "dependency",
             "policy",
             "query",
             "query-set",
-            "lexical",
             "tests",
-            "ingest",
             "failure",
             "custom"
           ]
@@ -314,10 +310,7 @@
           }
         },
         "seeds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nextAction"
-          }
+          "$ref": "#/$defs/nextActionList"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -368,10 +361,16 @@
         }
       }
     },
+    "nextActionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nextAction"
+      }
+    },
     "nextAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target"],
+      "required": ["kind", "target", "command"],
       "properties": {
         "kind": {
           "type": "string",
@@ -387,6 +386,25 @@
         "scope": {
           "type": "string",
           "minLength": 1
+        },
+        "command": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["executable", "argv"],
+          "properties": {
+            "executable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "argv": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         },
         "fields": {
           "$ref": "#/$defs/fields"

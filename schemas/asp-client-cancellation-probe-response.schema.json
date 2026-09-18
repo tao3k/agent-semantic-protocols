@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-cancellation-probe-response.schema.json",
+  "title": "ASP Client Cancellation Probe Response",
+  "description": "Catalog contract for a lifecycle probe whose conforming terminal wire outcome is ClientOutcome::Cancelled rather than a successful result payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-cancellation-probe-response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "const": "armed"
+    }
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shared artifact fixtures for graph turbo timeline tests."""
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
             search_dir / f"rust-search-owner-{name}.json",
             _search_packet(
                 "rust",
-                "search/owner",
+                "search/playbook",
                 owner="crates/agent-semantic-protocol/src/command/provider.rs",
             ),
             mtime=mtime,
@@ -57,16 +61,16 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
 def _mixed_provider_commands() -> list[dict[str, object]]:
     return [
         {
-            "argv": ["py-harness", "search", "owner", "src/" + "types.py"],
+            "argv": ["asp-python", "search", "owner", "src/" + "types.py"],
             "languageId": "python",
         },
         {
-            "argv": ["rs-harness", "search", "owner", "src/" + "lib.rs"],
+            "argv": ["asp-rust", "search", "owner", "src/" + "lib.rs"],
             "languageId": "rust",
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -78,7 +82,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--selector",
                 "src/" + "lib.rs",
@@ -89,7 +93,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -102,7 +106,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -115,7 +119,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -128,7 +132,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -141,7 +145,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "search",
                 "--view",
                 "seeds",
@@ -157,7 +161,7 @@ def _search_packet(
     language: str, method: str, *, query: str = "", owner: str = ""
 ) -> dict[str, object]:
     packet = {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
         "languageId": language,
         "method": method,
     }
@@ -177,9 +181,9 @@ def write_timeline_prime(path: Path, *, mtime: int) -> None:
     write_timeline_json(
         path,
         {
-            "schemaId": "agent.semantic-protocols.semantic-search-packet",
+            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
             "languageId": "rust",
-            "method": "search/prime",
+            "method": "search/playbook",
             "owners": [{"path": "src/lib.rs"}],
         },
         mtime=mtime,

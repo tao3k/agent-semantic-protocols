@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-artifact-bundle-binding.v2.schema.json",
+  "title": "Runtime Artifact Bundle Binding V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "providerRegistrationDigest",
+    "providerArtifactSetDigest",
+    "evaluatorPolicyDigest",
+    "evaluatorAbiDigest",
+    "schemaBundleDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-bundle-binding"},
+    "schemaVersion": {"const": "2"},
+    "providerRegistrationDigest": {"$ref": "#/$defs/blake3Digest"},
+    "providerArtifactSetDigest": {"$ref": "#/$defs/blake3Digest"},
+    "evaluatorPolicyDigest": {"$ref": "#/$defs/blake3Digest"},
+    "evaluatorAbiDigest": {"$ref": "#/$defs/blake3Digest"},
+    "schemaBundleDigest": {"$ref": "#/$defs/blake3Digest"}
+  },
+  "$defs": {
+    "blake3Digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+  }
+}

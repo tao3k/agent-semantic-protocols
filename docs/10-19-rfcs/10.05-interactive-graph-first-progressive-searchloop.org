@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Interactive Graph-First Progressive SearchLoop
+#+OPTIONS: toc:2 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05-root
+
+* Normative role
+
+This file is the stable RFC 10.05 entry point and dependency anchor.  It owns
+only the architecture identity, the public boundary, the cross-module
+invariants, and the module map.  Detailed protocol clauses, algorithms,
+mathematical expressions, implementation ownership, and qualification gates
+belong to the linked child RFCs.
+
+Git history is the only historical architecture archive.  The current tree
+contains only the current server-first V1 architecture; child RFCs are
+normative owners, not appendices or compatibility descriptions.
+
+* Global architecture invariant
+
+ASP Server-First Agent Search Architecture.
+The public gRPC ClientFrame is the sole public Search/Query route; the command
+entry is a thin typed CLI adapter.  The CLI, Hook, Live Corpus, integrations,
+and language clients are equal clients of the same Runtime route and own no
+provider execution, workspace generation, cache construction, projection
+truth, lifecycle recovery, or semantic fast path.
+
+The V1 public Search request is exactly one Scheme =(search ...)= expression.
+Search performs bounded candidate discovery and routing.  Query consumes a
+known parser-owned selector through the active generation's exact owner index;
+it does not repeat lexical acquisition.  A round chooses a bounded action and
+every admitted request reaches exactly one typed terminal.
+
+Provider installation may advance the Runtime-owned Provider Register while
+the daemon remains healthy.  Each request retains one immutable register and
+generation snapshot from admission through its terminal, preventing mixed
+authority without requiring a daemon restart.
+
+ASP Runtime Server owns workspace identity, provider admission, generation
+publication, bounded execution, cancellation, and lifecycle receipts.  Each
+interactive round chooses a
+bounded action and reaches exactly one typed terminal.
+
+* Cross-module invariants
+
+1. *One authority:* Runtime owns identity, admission, lifecycle, publication,
+   budgets, cancellation, and terminal receipts.
+2. *One public language:* Search and Query admit one Scheme source into one
+   Rust-native AST path; no flags or parallel JSON DSL redefine semantics.
+3. *Graph-first, not graph-eager:* graph facts guide routing and reasoning,
+   while expensive Relation/callable projection is materialized only for the
+   selected owner/selector cut.
+4. *Generation-bound truth:* every result binds workspace, source, provider,
+   schema, policy, parser, and generation authority.  Drift or corruption
+   fails closed.
+5. *Content reuse is distinct from generation proof:* content-addressed parser
+   artifacts may survive generation change, but generation publication and
+   process-cold restoration require their own exact durable binding.
+6. *Resident work is corpus-independent:* a ready hit may normalize identity,
+   perform bounded resident lookups, and encode its terminal; it may not scan,
+   parse, activate, mutate, or rediscover the workspace.
+7. *Search and Query have different algorithms:* Search pays acquisition,
+   intersection, grounding, and rank costs; an exact Query pays direct-index
+   lookup plus only the selected materialization miss.
+8. *Performance claims are phase-qualified:* process startup, first compute,
+   resident semantic dispatch, serialization, transport, and client admission
+   are measured separately.  One phase cannot be relabelled as another.
+9. *Proofs constrain implementation:* RFC equations, Lean definitions,
+   executable traces, Scenarios, and Rust behavior share named identities.
+   A theorem is not runtime evidence, and a benchmark is not semantic proof.
+
+* Normative module map
+
+| Owner | Normative responsibility |
+|-
+| [[file:10.05.00-searchloop-core-architecture.org][10.05.00 Core Architecture]] | server/client boundary, status, durable recovery, decisions, and naming |
+| [[file:10.05.10-public-search-playbook.org][10.05.10 Public Scheme PlayBook]] | Scheme grammar, composition algebra, progressive loop, and typed terminals |
+| [[file:10.05.20-search-query-wire-replay.org][10.05.20 Wire and Replay]] | Top-K outcome, request identity, transport observations, and deterministic replay |
+| [[file:10.05.30-runtime-invariants-ownership.org][10.05.30 Runtime Invariants]] | lifecycle, lazy admission, generation authority, cancellation, ownership map, and hard cuts |
+| [[file:10.05.40-projection-materialization.org][10.05.40 Projection and Materialization]] | lexical recall, parser grounding, topology, Relation/Query projection, and on-demand detail |
+| [[file:10.05.50-qualification-write-policy.org][10.05.50 Qualification]] | real-project gates, workload/latency evidence, and write policy |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.00-foundations-invariants/00-overview.org][10.05 Foundations]] | evidence obligations and invariant algebra |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05 Interactive SearchLoop]] | state transitions, inspection scheduling, and merge algebra |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00-overview.org][10.05 Evidence Graph Routing]] | graph search, Pareto routing, completeness, provenance, and replay |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-server-resident-search-generation/00-overview.org][10.05 Resident Generation]] | generation construction, async admission, incremental publication, and readiness |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00-overview.org][10.05 Cache Identity]] | semantic identity, invalidation, receipts, and cache-credit separation |
+| [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00-overview.org][10.05 RFC-Lean Mathematical System]] | RFC equations, Lean refinement, Typst projection, JSON receipts, and AXLE audit |
+| [[file:10.06-agent-search-projection.org][10.06 Agent Search Projection]] | agent-facing graph projection, rendering, and graph-derived rank |
+
+* Reading and change protocol
+
+Start here to identify the normative owner, then edit that owner rather than
+growing this root.  A change to shared Search behavior follows:
+
+#+begin_example
+RFC owner -> shared V1 schema -> provider alignment -> Rust implementation
+          -> Scenario/Live Corpus evidence -> measured optimization
+#+end_example
+
+Mathematical or performance claims additionally follow:
+
+#+begin_example
+named RFC clause -> Lean definition/theorem or counterexample
+                 -> proof receipt -> executable implementation trace
+                 -> Scenario distribution and workload receipt
+#+end_example
+
+The correspondence is called the *RFC-Lean mathematical system*.  It is not an
+=IFCLEAN= feature flag, cache state, schema version, or compatibility mode.

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/hook-memory-inbox-failure.v1.schema.json",
+  "title": "Hook Memory Inbox Failure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "reasonKind", "detail", "retryAfterMs"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook.memory-inbox-failure" },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "failed" },
+    "reasonKind": {
+      "enum": [
+        "capacity-exhausted",
+        "checksum-mismatch",
+        "compact-encode",
+        "decode-record",
+        "encode-event",
+        "encode-observation",
+        "encode-performance-observation",
+        "encode-record",
+        "flush-schedule",
+        "header-decode",
+        "header-range",
+        "length-decode",
+        "lock-budget-exceeded",
+        "lock-failed",
+        "lock-open",
+        "magic-mismatch",
+        "mmap",
+        "open",
+        "preallocate",
+        "record-size-overflow",
+        "record-too-large",
+        "sequence-overflow",
+        "size-mismatch",
+        "stat",
+        "truncated-header",
+        "truncated-record",
+        "unlock",
+        "write-offset-invalid"
+      ]
+    },
+    "detail": { "type": "string", "minLength": 1 },
+    "retryAfterMs": { "const": 0 }
+  }
+}

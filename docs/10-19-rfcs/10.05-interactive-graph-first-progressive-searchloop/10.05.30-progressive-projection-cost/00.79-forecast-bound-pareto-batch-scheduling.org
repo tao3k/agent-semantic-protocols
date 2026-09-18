@@ -1,0 +1,187 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 00.79 Forecast-Bound Pareto Batch Scheduling
+#+startup: overview
+
+#+property: rfc_layer 10.05.30-progressive-projection-cost
+
+* Status
+
+This module specifies Pareto-safe inspect batch scheduling under explicit cache
+forecasts.  It does not implement a Rust or Python runtime.
+
+* Problem
+
+Once inspect convergence is bounded, the router must choose the next non-empty
+batch.  No scalar score faithfully represents every objective:
+
+- disclosed tokens,
+- latency,
+- LLM rounds,
+- expected provider work,
+- expected proof work,
+- expected uncached model tokens,
+- decision value, and
+- missing-edge progress.
+
+Cache hit probabilities further complicate comparison.  Two plans scored under
+different forecasts are not directly comparable, and a forecast is never
+authorization evidence.
+
+* Contract
+
+** ASP-RFC-10.05-FPBS-FORECAST
+
+A cache forecast MUST bind a forecast digest and search, proof, and
+model-prefix hit estimates in basis points.  Every estimate MUST lie in
+~[0, 10000]~.
+
+** ASP-RFC-10.05-FPBS-IDENTITY
+
+Plans are comparable only when request, chain, policy, and complete cache
+forecast identities are equal.  Equal forecast digest alone is insufficient
+in the finite model unless digest injectivity is separately established.
+
+** ASP-RFC-10.05-FPBS-FEASIBLE
+
+A feasible batch MUST be non-empty, preserve the order of remaining edges,
+report progress equal to batch length, and account for at least one disclosed
+token unit per edge.
+
+** ASP-RFC-10.05-FPBS-ESTIMATE
+
+Estimated provider, proof, and model-token work MUST be computed from their
+corresponding gross work and cache-hit estimate.  Forecast estimates influence
+ranking only; realized receipts remain authoritative.
+
+** ASP-RFC-10.05-FPBS-DOMINANCE
+
+A plan dominates another only when it is no worse in every cost coordinate, no
+worse in decision value and progress, and strictly better in at least one
+coordinate.
+
+** ASP-RFC-10.05-FPBS-PARETO
+
+A chosen plan is Pareto-optimal only when it is feasible, belongs to the
+candidate set, and no feasible candidate dominates it.
+
+** ASP-RFC-10.05-FPBS-TRADEOFF
+
+Lower token cost alone MUST NOT establish dominance.  A lower-token,
+lower-value batch and a higher-token, higher-value batch may be Pareto
+incomparable.
+
+** ASP-RFC-10.05-FPBS-AUTHORIZATION
+
+Batch authorization MUST independently require verified chain evidence, valid
+selective disclosure, and batch feasibility.  Forecast or Pareto ranking does
+not authorize execution.
+
+** ASP-RFC-10.05-FPBS-REALIZATION
+
+The provider receipt MUST record realized cache hits and realized cost
+coordinates.  Forecast error and realized Pareto regret are audit facts; they
+must not rewrite the pre-execution forecast snapshot.
+
+** ASP-RFC-10.05-FPBS-ROUTER
+
+The router SHOULD choose a feasible non-dominated batch from one comparable
+forecast snapshot.  If several plans remain incomparable, it should preserve
+the frontier and use policy to choose, rather than inventing an undocumented
+scalar weight.
+
+* Org-Babel Typst model
+
+#+name: forecast-bound-pareto-batch-scheduling-math
+#+begin_src typst
+#let forecast = (
+  digest: 900,
+  search-hit-bps: 5000,
+  proof-hit-bps: 5000,
+  model-hit-bps: 5000,
+)
+
+#let low-token = (
+  tokens: 1,
+  latency: 2,
+  rounds: 1,
+  provider-calls: 1,
+  proof-checks: 1,
+  model-tokens: 100,
+  value: 2,
+  progress: 1,
+)
+
+#let high-value = (
+  tokens: 2,
+  latency: 2,
+  rounds: 1,
+  provider-calls: 1,
+  proof-checks: 1,
+  model-tokens: 100,
+  value: 8,
+  progress: 2,
+)
+
+#let expected(work, hit-bps) = work * (10000 - hit-bps)
+
+(
+  forecast-valid:
+    forecast.search-hit-bps <= 10000
+    and forecast.proof-hit-bps <= 10000
+    and forecast.model-hit-bps <= 10000,
+  low-token-is-cheaper:
+    low-token.tokens < high-value.tokens,
+  low-token-has-lower-value:
+    low-token.value < high-value.value,
+  low-token-has-less-progress:
+    low-token.progress < high-value.progress,
+  expected-provider-work:
+    expected(low-token.provider-calls, forecast.search-hit-bps),
+  expected-proof-work:
+    expected(low-token.proof-checks, forecast.proof-hit-bps),
+  expected-model-work:
+    expected(low-token.model-tokens, forecast.model-hit-bps),
+  pareto-incomparable: true,
+)
+#+end_src
+
+The expected record shows that the low-token plan is cheaper but has lower
+value and progress.  Neither plan dominates the other.
+
+* SearchLoop consequence
+
+The provider may return a compact Pareto frontier rather than a complex CLI
+scoring grammar.  The agent or policy layer selects among incomparable batches.
+Every choice still feeds the bounded inspect state machine, so optimization
+cannot remove strict progress, coverage, or authorization obligations.
+
+* Machine-checked status
+
+- Lean module:
+  ~packages/proofs/ASPProof/SearchRouteForecastBoundParetoBatchScheduling.lean~
+- Modular Lean audit:
+  ~packages/proofs/ASPProof/Audit/SearchRouteForecastBoundParetoBatchScheduling.lean~
+- Audit driver:
+  ~packages/proofs/audit/SearchRouteForecastBoundParetoBatchSchedulingAudit.lean~
+- Lean audit receipt:
+  ~packages/proofs/receipts/searchroute-forecast-bound-pareto-batch-scheduling-audit-v1.json~
+- AXLE receipt:
+  ~packages/proofs/receipts/searchroute-forecast-bound-pareto-batch-scheduling-axle-audit-v1.json~
+- Verified declarations: 17 total, 13 axiom-free, 4 axiom-dependent,
+  with inventory exactly ~Quot.sound~ and ~propext~, and no ~sorryAx~.
+- AXLE audit SHA-256:
+  ~a91880481b2399935e018d3a9410fd8ddcad3b8ee6c3c4d568c938a33055cc01~
+- The named Org-Babel Typst block was extracted by ~orgize eval plan~ and
+  evaluated through interactive standard input with
+  ~typst eval --in - none~; the evaluator exited successfully.
+
+The proof-to-audit pass found that prose-only estimate and realization clauses
+were insufficient.  The final model adds an axiom-free lane-scoped estimate
+theorem, a forecast-digest realization binding, and a counterexample proving
+that one forecast can yield different realized cache hits.  The four dependent
+theorems are the positive-progress and arithmetic Pareto contradiction proofs;
+all identity, feasibility, authorization, estimate, realization, and frontier
+safety theorems are axiom-free.

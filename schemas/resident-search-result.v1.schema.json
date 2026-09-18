@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/resident-search-result.v1.schema.json",
+  "title": "Resident Search Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "generationDigest",
+    "rootDigest",
+    "providerDigest",
+    "indexArtifactDigest",
+    "hits",
+    "workCounters"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.resident-search-result" },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "Ready" },
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rootDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "providerDigest": { "type": "string", "minLength": 1 },
+    "indexArtifactDigest": { "type": "string", "minLength": 1 },
+    "hits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hit" }
+    },
+    "workCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" }
+  },
+  "$defs": {
+    "hit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "ownerContentDigest",
+        "projectionTier",
+        "lineCount",
+        "queryKeys"
+      ],
+      "properties": {
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "ownerContentDigest": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "projectionTier": {
+          "enum": ["shallow-navigation", "owner-local-dynamic"]
+        },
+        "lineCount": { "type": "integer", "minimum": 1 },
+        "queryKeys": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "selector": { "type": "string", "minLength": 1 },
+        "score": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

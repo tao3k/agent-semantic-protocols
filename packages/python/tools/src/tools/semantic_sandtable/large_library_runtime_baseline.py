@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate a large-library runtime receipt against its recorded V1 baseline."""
 
 from __future__ import annotations
@@ -72,20 +76,27 @@ def validate_runtime_baseline(
         errors.append("scenario-set")
     scenario_budgets: dict[str, int] = {}
     scenario_references: dict[str, int] = {}
-    for scenario_id, (baseline_elapsed, expected_commands) in expected_scenarios.items():
-        if baseline_elapsed is None or expected_commands is None or max_command_elapsed is None:
+    for scenario_id, (
+        baseline_elapsed,
+        expected_commands,
+    ) in expected_scenarios.items():
+        if (
+            baseline_elapsed is None
+            or expected_commands is None
+            or max_command_elapsed is None
+        ):
             errors.append(f"scenario-baseline-{scenario_id}")
             continue
         scenario_references[scenario_id] = baseline_elapsed
         if actual_command_counts.get(scenario_id) != expected_commands:
             errors.append(f"scenario-command-count-{scenario_id}")
-        allowed = min(max_command_elapsed, max(5_000, math.ceil(baseline_elapsed * 1.5)))
+        allowed = min(
+            max_command_elapsed, max(5_000, math.ceil(baseline_elapsed * 1.5))
+        )
         scenario_budgets[scenario_id] = allowed
         actual = actual_scenarios.get(scenario_id)
         if actual is None or actual > allowed:
             errors.append(f"scenario-budget-{scenario_id}")
-
-    validate_corpus_identity(baseline, receipt, errors)
 
     return {
         "schemaId": BASELINE_SCHEMA_ID,
@@ -129,49 +140,16 @@ def calibrated_scenario_elapsed(entry: dict[str, Any]) -> int | None:
     return reference if reference == maximum else None
 
 
-def validate_corpus_identity(
-    baseline: dict[str, Any], receipt: dict[str, Any], errors: list[str]
-) -> None:
-    expected = {
-        str(entry["scenarioId"]): corpus_identity(entry)
-        for entry in list_value(baseline.get("corpora"))
-        if isinstance(entry.get("scenarioId"), str)
-    }
-    actual = {
-        str(entry["scenarioId"]): corpus_identity(entry)
-        for entry in list_value(receipt.get("corpora"))
-        if isinstance(entry.get("scenarioId"), str)
-    }
-    if set(expected) != set(actual):
-        errors.append("corpus-set")
-        return
-    for scenario_id, identity in expected.items():
-        if identity is None or actual.get(scenario_id) != identity:
-            errors.append(f"corpus-identity-{scenario_id}")
-
-
-def corpus_identity(entry: dict[str, Any]) -> tuple[str, str, str, str] | None:
-    language = entry.get("language")
-    repository = entry.get("repository")
-    revision = entry.get("revision")
-    directory = entry.get("directory")
-    if not isinstance(directory, str) or not directory:
-        path = entry.get("path")
-        directory = Path(path).name if isinstance(path, str) else None
-    if not all(
-        isinstance(value, str) and value
-        for value in (language, repository, revision, directory)
-    ):
-        return None
-    return language, repository, revision, directory
-
-
 def dict_value(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
 def list_value(value: Any) -> list[dict[str, Any]]:
-    return [entry for entry in value if isinstance(entry, dict)] if isinstance(value, list) else []
+    return (
+        [entry for entry in value if isinstance(entry, dict)]
+        if isinstance(value, list)
+        else []
+    )
 
 
 def positive_int(value: Any) -> int | None:

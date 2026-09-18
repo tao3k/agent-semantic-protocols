@@ -1,15 +1,19 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Code Intelligence Lane — harness server as typed Flight service
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
 #+RFC: 003
 #+DEPENDS: docs/10-19-rfcs/10.01-cargo-execution-lanes.org (001), docs/10-19-rfcs/10.02-evidence-layer-architecture.org (002)
-#+SEE_ALSO: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005) — the public CLI protocol.  RFC 003
+#+SEE_ALSO: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005) — the public CLI protocol.  RFC 003
 #+  describes /what/ routes a code-intel service exposes; RFC 005 describes
 #+  /how/ agents invoke them — through stable CLI commands, not MCP.
 
 * One-sentence summary
 
-Each language harness should be a /long-running code-intelligence server/
+Each ASP language provider should be a /long-running code-intelligence server/
 exposed through Arrow Flight typed routes — not a one-shot CLI tool.
 Diagnostics is just one route among many.
 
@@ -18,7 +22,7 @@ Diagnostics is just one route among many.
 ** Before: tool → CLI
 
 #+begin_example
-LLM calls run_typescript_harness
+LLM calls run_asp_typescript
   → spawns tsc / node / harness CLI
   → reads stdout
   → parses compact text
@@ -46,7 +50,7 @@ LLM calls plan_code_edit
 * The core insight
 
 This is not about copying generic agent-tool code search.  The advantage is that
-each language harness already owns:
+each ASP language provider already owns:
 
 - Compiler-native parser facts (TypeScript Compiler API, =syn=, Python =ast=,
   JuliaSyntax.jl)
@@ -211,7 +215,7 @@ BuildTools[]
 
 The existing =renderTypeScriptReasoningTree= already produces =Modules:=,
 =Extensions:=, =BuildTools:=, =OwnerBranches:=, =OwnerDependencies:=,
-=FindingGroups:= sections [typescript-lang-project-harness README].
+=FindingGroups:= sections [asp-typescript README].
 
 ** =edit/plan=
 
@@ -286,7 +290,7 @@ Instead of:
 
 #+begin_example
 agent-extension-typescript-harness
-  └── run_typescript_harness tool + renderer
+  └── run_asp_typescript tool + renderer
 #+end_example
 
 It becomes:
@@ -449,8 +453,8 @@ Rust Agent Server
 The TypeScript harness already exports =TypeScriptReasoningTree=,
 =TypeScriptReasoningOwnerBranchFact=, =TypeScriptReasoningOwnerDependencyFact=,
 =TypeScriptReasoningDiagnosticFact=, =renderTypeScriptReasoningTree=,
-=renderTypeScriptProjectHarnessAgentCompactText=, and other agent-facing APIs
-[typescript-lang-project-harness].  The extension path is inheriting these
+=renderAspTypeScriptAgentCompactText=, and other agent-facing APIs
+[asp-typescript].  The extension path is inheriting these
 into a service, not starting from scratch.
 
 * Naming

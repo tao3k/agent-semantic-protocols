@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the semantic dev command log event schema."""
 
 from __future__ import annotations
@@ -23,19 +27,19 @@ def minimal_event() -> dict[str, object]:
         "timestampUtc": "2026-06-02T10:20:31Z",
         "startedAtUtc": "2026-06-02T10:20:30Z",
         "finishedAtUtc": "2026-06-02T10:20:31Z",
-        "eventId": "rs-harness-1",
+        "eventId": "asp-rust-1",
         "sessionId": "session-1",
         "sessionOrdinal": 1,
         "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "argv": ["rs-harness", "search", "lexical", "metadata", "."],
+        "providerId": "asp-rust",
+        "binary": "asp-rust",
+        "argv": ["asp-rust", "search", "lexical", "metadata", "."],
         "cwd": "/repo",
         "projectRoot": "/repo",
         "projectRootHash": "0123456789abcdef",
         "command": {
             "namespace": "search",
-            "method": "search/lexical",
+            "method": "search/playbook",
             "view": "lexical",
             "query": "metadata",
             "querySetCount": 0,

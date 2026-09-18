@@ -1,0 +1,125 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/src/build-api
+namespace: asp-gerbil-scheme/src/build-api/native-build-spec
+
+(%#begin (%#import
+          (spec: (:std/srfi/13) (0 string-prefix? 0 string-prefix?))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/package-build)
+           (0
+            asp-gerbil-scheme-package-configure-build-root!
+            0
+            asp-gerbil-scheme-package-configure-build-root!)
+           (0
+            asp-gerbil-scheme-package-build-package-name
+            0
+            asp-gerbil-scheme-package-build-package-name)
+           (0
+            asp-gerbil-scheme-package-build-active-gerbil-path
+            0
+            asp-gerbil-scheme-package-build-active-gerbil-path))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/source-coverage)
+           (0
+            asp-gerbil-scheme-source-coverage-roots
+            0
+            asp-gerbil-scheme-source-coverage-roots)
+           (0
+            asp-gerbil-scheme-source-coverage-exclude-directories
+            0
+            asp-gerbil-scheme-source-coverage-exclude-directories)
+           (0
+            asp-gerbil-scheme-source-coverage-files
+            0
+            asp-gerbil-scheme-source-coverage-files))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/package-native-plan)
+           (0
+            asp-gerbil-scheme-package-api-spec
+            0
+            asp-gerbil-scheme-package-api-spec)))
+         (%#export
+          (spec: 0 package-root package-root)
+          (spec: 0 source-root source-root)
+          (spec: 0 configure-build-root! configure-build-root!)
+          (spec: 0 ensure-build-root! ensure-build-root!)
+          (spec: 0 source-output-prefix source-output-prefix)
+          (spec: 0 test-output-prefix test-output-prefix)
+          (spec: 0 package-api-output-root package-api-output-root)
+          (spec: 0 package-build-spec package-build-spec)
+          (spec: 0 library-spec library-spec)
+          (spec: 0 compile-spec compile-spec))
+         (%#define-runtime
+          package-root
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-root)
+         (%#define-runtime
+          source-root
+          asp-gerbil-scheme/src/build-api/native-build-spec#source-root)
+         (%#define-runtime
+          current-package-gerbil-modules-key
+          asp-gerbil-scheme/src/build-api/native-build-spec#current-package-gerbil-modules-key)
+         (%#define-runtime
+          current-package-gerbil-modules
+          asp-gerbil-scheme/src/build-api/native-build-spec#current-package-gerbil-modules)
+         (%#define-runtime
+          package-name
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-name)
+         (%#define-runtime
+          configure-build-root!
+          asp-gerbil-scheme/src/build-api/native-build-spec#configure-build-root!)
+         (%#define-runtime
+          ensure-build-root!
+          asp-gerbil-scheme/src/build-api/native-build-spec#ensure-build-root!)
+         (%#define-runtime
+          package-output-prefix
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-output-prefix)
+         (%#define-runtime
+          source-output-prefix
+          asp-gerbil-scheme/src/build-api/native-build-spec#source-output-prefix)
+         (%#define-runtime
+          test-output-prefix
+          asp-gerbil-scheme/src/build-api/native-build-spec#test-output-prefix)
+         (%#define-runtime
+          excluded-library-files
+          asp-gerbil-scheme/src/build-api/native-build-spec#excluded-library-files)
+         (%#define-runtime
+          +library-excluded-dirs+
+          asp-gerbil-scheme/src/build-api/native-build-spec#+library-excluded-dirs+)
+         (%#define-runtime
+          +default-excluded-dirs+
+          asp-gerbil-scheme/src/build-api/native-build-spec#+default-excluded-dirs+)
+         (%#define-runtime
+          runtime-library-module?
+          asp-gerbil-scheme/src/build-api/native-build-spec#runtime-library-module?)
+         (%#define-runtime
+          library-excluded-dir-module?
+          asp-gerbil-scheme/src/build-api/native-build-spec#library-excluded-dir-module?)
+         (%#define-runtime
+          library-spec
+          asp-gerbil-scheme/src/build-api/native-build-spec#library-spec)
+         (%#define-runtime
+          package-gerbil-modules-cache-key
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-gerbil-modules-cache-key)
+         (%#define-runtime
+          all-package-gerbil-modules
+          asp-gerbil-scheme/src/build-api/native-build-spec#all-package-gerbil-modules)
+         (%#define-runtime
+          source-runtime-module-path
+          asp-gerbil-scheme/src/build-api/native-build-spec#source-runtime-module-path)
+         (%#define-runtime
+          source-runtime-modules
+          asp-gerbil-scheme/src/build-api/native-build-spec#source-runtime-modules)
+         (%#define-runtime
+          coverage-excluded-directories
+          asp-gerbil-scheme/src/build-api/native-build-spec#coverage-excluded-directories)
+         (%#define-runtime
+          package-build-spec
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-build-spec)
+         (%#define-runtime
+          package-api-output-root
+          asp-gerbil-scheme/src/build-api/native-build-spec#package-api-output-root)
+         (%#define-runtime
+          compile-spec
+          asp-gerbil-scheme/src/build-api/native-build-spec#compile-spec))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/src/build-api/native-build-spec~0"))

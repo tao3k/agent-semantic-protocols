@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "parser-artifact-content-reuse"
+title = "Parser artifacts reuse content across generation proofs"
+package = "agent-semantic-client-db"
+phase = "incremental-generation"
+intent = "unchanged owners reuse parser products while content and applicable auxiliary changes invalidate only dependent owners"
+
+[identity]
+artifact = ["provider", "parser", "query-pack", "owner-path", "owner-content", "applicable-auxiliary-cut"]
+generation_proof_is_separate = true
+
+[gate]
+unchanged_owner_provider_process_count = 0
+duplicated_persistent_read_count = 0
+changed_owner_cache_miss_count = 1
+unrelated_owner_invalidation_count = 0
+auxiliary_bytes_hashes_per_generation = 2

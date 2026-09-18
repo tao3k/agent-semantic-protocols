@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchLoop Trace Proof and Lean-to-AXLE Audit Receipt v1
+#+property: header-args :eval never
+
+* Status
+
+This receipt records the first executable SearchLoop trace model and the first
+Lean-owned JSON audit admitted by AXLE.  It does not claim universal SearchLoop
+liveness, merge confluence, graph-escalation completeness, or mechanical
+equivalence to an AXLE-produced declaration bundle.
+
+* Artifact identities
+
+| Artifact                                                  | SHA-256                                                            |
+|-----------------------------------------------------------+--------------------------------------------------------------------|
+| =packages/proofs/ASPProof/SearchLoopTrace.lean=           | =5ff630ba6c1f99d20f520a7bea139e6bef6265fe07a8e349ce67dea7aa4b4bff= |
+| =packages/proofs/ASPProof/Audit.lean=                     | =c8dbd1c837088b6f6aa9bb96eaa0b00ab7828ac38db3351b483b782a597caa83= |
+| =packages/proofs/receipts/searchloop-trace-audit-v1.json= | =513dc279522c6f11f69ae5a84549a4e772e4dd0a63be2d7d77f1f9f672be1257= |
+| =packages/python/tools/src/tools/axle_lean_audit.py=      | =161879abf538117b06f66ce2d894bbac035574125e187798f10bff0250fde025= |
+| =schemas/lean-proof-audit.v1.schema.json=                 | =c9c7952dcc035ae1a2ed44cf1e81acf022192ac4cb05f64e820a9a1e3873035b= |
+| =schemas/axle-lean-audit-receipt.v1.schema.json=          | =c6bc67dc2c3762e5ed08e9107984a8562ceeafe6e82a2c1d042a2f03bab897a4= |
+| =00.12-searchloop-trace-and-lean-json-audit.org=          | =cc61bb432407df1b1d78ccd73175e988b479467ae6eb8cd3af2862718e1d0d06= |
+
+The AXLE canonical semantic audit digest is
+=412db849f31defd63117e02a9df3a87baa0fde44fb7f4fd32119c17c6781e3eb=.
+It is intentionally distinct from the raw JSON file digest.
+
+* Executed checks
+
+#+begin_src sh
+cd packages/proofs
+lake build
+lake env lean audit/SearchLoopTraceAudit.lean
+
+cd ../..
+uv run --project packages/proofs --frozen \
+  python -m unittest discover -s packages/proofs/tests -p 'test_*.py' -v
+
+uv run --project packages/proofs --frozen \
+  python -m asp_proofs lean-audit \
+  packages/proofs/receipts/searchloop-trace-audit-v1.json \
+  --allow-axiom propext \
+  --require-family trace-safety \
+  --require-family bounded-progress \
+  --require-family typed-progress \
+  --require-family counterexample \
+  --require-rfc-clause ASP-RFC-10.05-CFR-GOD-DECISION \
+  --require-rfc-clause ASP-RFC-10.05-RPGE-CLOSED-WORLD \
+  --require-rfc-clause ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET \
+  --require-rfc-clause ASP-RFC-10.05-BECA-STATES
+#+end_src
+
+| Check                     | Result         |
+|---------------------------+----------------|
+| Lake build                | PASS, six jobs |
+| Lean JSON generation      | PASS           |
+| repeated raw audit digest | deterministic  |
+| JSON Schema validation    | PASS           |
+| AXLE focused tests        | PASS, 10 tests |
+| AXLE admission            | PASS           |
+
+* Lean audit summary
+
+| Field                     | Value                     |
+|---------------------------+---------------------------|
+| schema                    | =asp.lean-proof-audit.v1= |
+| Lean                      | =4.32.2=                  |
+| audited theorems          | 12                        |
+| axiom-free theorems       | 6                         |
+| axiom-dependent theorems  | 6                         |
+| aggregate axiom inventory | =propext=                 |
+| =sorryAx=                 | false                     |
+
+The admitted theorem families are =trace-safety=, =bounded-progress=,
+=typed-progress=, and =counterexample=.
+
+* Lean-discovered RFC repairs
+
+1. Complete-trace closure safety requires an admitted initial-state invariant.
+2. Zero remaining mandatory work does not imply safe closure.
+3. Productive steps decrease \(m+u\); terminal steps need not.
+4. The general progress proposition is decrease-or-typed-terminal.
+5. A mandatory-only budget can undercount unresolved discovery or graph work.
+6. Bounded productive traces do not prove environmental retry fairness.
+
+These repairs are normative in
+=00.12-searchloop-trace-and-lean-json-audit.org= and explained in the embedded
+Typst projection in =00.11-clause-first-mathematical-model.org=.
+
+* Open obligations
+
+- generate the audited Lean target list from an AXLE declaration bundle;
+- prove clause-result merge confluence;
+- model cache invalidation and provider recovery as trace transitions;
+- prove graph-escalation completeness for declared scenario classes;
+- separate internal-work, provider-call, and wall-clock budgets;
+- define and prove scheduler fairness under explicit replenishment assumptions.

@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.06.14 - Search Evidence Output Reflection
+#+LANGUAGE: en
+#+DATE: 2026-09-05
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:reflection:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:CONTRACT_ORG: [[../../../org/contracts/agent.sdd.v1.org][agent.sdd.v1]]
+:END:
+
+* SDD Search Evidence Output Reflection
+:PROPERTIES:
+:ID: 3086cbb2-6d60-49b2-a14f-05f49775334f
+:CUSTOM_ID: asp-search-evidence-output-reflection-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: adversarial reflection over decision-sufficient search evidence
+:SDD_SCOPE: Search and Query Agent-facing output
+:SDD_OWNER: ASP shared search contract
+:TRACEABILITY_STATUS: abstract-model-mapped
+:EVIDENCE_STATUS: see linked evidence receipt
+:REVIEW_STATUS: reflection-boundary-accepted
+:END:
+
+** Purpose And Non-Goals
+
+This RFC owns reflection questions and counterexamples. It does not own CLI
+grammar, output layout, topology storage, topology settlement, or an
+implementation ledger. Those responsibilities are split into:
+
+- [[file:10.06.15-search-query-playbook-contract.org][RFC 10.06.15]]: Search and Query Playbook contract.
+- [[file:10.06.16-project-topology-reasoning-library.org][RFC 10.06.16]]: reusable project topology library.
+- [[file:10.06.17-gql-ascent-search-reasoning.org][RFC 10.06.17]]: reusable Project Topology, internal logical inference, and single-GQL settlement.
+
+Git is the history. This document must not become an append-only change diary.
+
+** System Boundary
+
+This SDD governs the shared Agent-facing evidence semantics. Provider parsing,
+runtime storage, and UI rendering are dependencies, not alternate authorities.
+
+** Stakeholders And Consumers
+
+Consumers are search Agents, provider maintainers, Runtime admission owners,
+schema authors, proof authors, and reviewers of source-owned Org contracts.
+
+** Requirements And Constraints
+
+Evidence is content-bound, language-neutral, replayable, compact, and
+fail-closed. No presentation shortcut may mint authority or completeness.
+
+** Quality Attributes
+
+Primary qualities are decision sufficiency, epistemic precision, bounded
+context, deterministic replay, cross-language symmetry, and drift safety.
+
+** Design Concerns
+
+The design separates facts from proposals, content identity from transaction
+generation, complete evidence from bounded rendering, and Search from Query.
+
+** Architecture Views
+
+*** Runtime View
+
+Runtime admits acquisition receipts, provider projections, topology identity,
+derivation, ranking, and one typed terminal before rendering.
+
+*** Data And State View
+
+Durable state consists of source-owned contracts and content-addressed facts.
+Packet-local aliases and display order are derived state.
+
+*** Dependency And Integration View
+
+RFC 10.06.15 owns operations, RFC 10.06.16 owns reusable topology, RFC 10.06.17
+owns reasoning projection, and the Lean model supplies counterexamples.
+
+** Interfaces And Contracts
+
+The public interface is defined by the three child RFCs and their future shared
+schemas. This parent defines the constraints all child contracts must satisfy.
+
+** Decisions And Competing Candidates
+
+The accepted decomposition replaces one cumulative RFC. Rejected alternatives
+are one monolithic document, duplicated full SDD templates, and implementation
+notes appended to the reflection owner.
+
+** Data Model And Invariants
+
+Facts, witnesses, coverage, topology, derivations, frontiers, selectors, and
+source excerpts are distinct typed values. Rendering cannot change support.
+
+** Accepted Boundary
+
+A successful Search gives the Agent enough bound knowledge to Query an exact
+selector, refine Search, or stop. It does not force an owner/member/Query
+sequence when a direct selector is already admitted. Exact Query alone
+materializes selector-owned source.
+
+** Reflection Dimensions
+
+1. =Decision sufficiency=: can the Agent choose a justified next operation?
+2. =Epistemic typing=: is each claim a parser fact, declared meaning, accepted
+   synthesis, proposal, retrieval witness, or derived conclusion?
+3. =Non-redundancy=: is each fact rendered at one owning layer?
+4. =Concision=: is presentation small without deleting required support?
+5. =Replay value=: can a later turn recover identities and witnesses?
+6. =Drift safety=: can changed source or interpretation invalidate reuse?
+
+Redundancy, concision, and cost are separate properties.
+
+** Counterexample Catalogue
+
+| ID | Invalid shortcut | Required correction |
+|----+------------------+---------------------|
+| R01 | Equal names imply equal nodes | Bind canonical identity and interpretation |
+| R02 | A discovered path is an owner | Keep path evidence until parser admission |
+| R03 | One skeleton answers every question | Declare coverage and boundaries |
+| R04 | Displayed members are complete | Use complete, partial, or unknown coverage |
+| R05 | Repeated text is duplicate evidence | Deduplicate atoms, retain collectors |
+| R06 | Irredundant means concise | Measure tokens and decision value separately |
+| R07 | Local aliases support replay | Bind aliases to packet and content identity |
+| R08 | Graph compression preserves reasoning | Retain witness closure |
+| R09 | Relations may follow =#+end_src= | Attach them before the native block |
+| R10 | Search must add two steps before Query | Permit direct Query for admitted selectors |
+| R11 | Valid premises always compose | Require joint satisfiability |
+| R12 | Clause hits prove a Boolean query | Bind the full-query receipt |
+| R13 | Display limits prove absence | Require certified complete coverage |
+| R14 | Compression may change support | Make support invariant under rendering |
+| R15 | Every queryable edge should execute | Require bounded decreasing progress |
+| R16 | Paths or suffixes mint syntax | Only a registered provider emits nodes |
+| R17 | Flat top-k is sufficient | Rank witness-connected closure |
+| R18 | Ascent may become a second Agent-facing language | Execute logical inference internally and settle the Project Topology projection into GQL |
+| R19 | One provider may fill the frontier | Reward cross-region marginal coverage |
+| R20 | Fired Ascent rules help the Agent reason | Keep engine traces internal and settle novel topology results into one GQL graph |
+| R21 | Every content edit invalidates topology | Separate content, locator, and structural-skeleton identities |
+| R22 | No edge in a partial slice means missing | Only certified complete coverage may derive missing; otherwise unknown |
+| R23 | Rank alone defines the decision core | Retain proof-path dependencies and reject disconnected selections |
+| R24 | Semi-naive evaluation handles cross-version deletion | Rebuild affected strata and atomically admit a complete generation |
+| R25 | Numbered Query and Search steps clarify the plan | Let the Agent select directly from selector-bearing GQL nodes and keep explicit graph frontiers |
+| R26 | A model-written summary is a topology fact | Keep semantic annotations proposed until contract admission |
+| R27 | Natural language should stay outside the graph | Bind summaries, premises, producer, and admission state in GQL |
+
+** Fixed Decisions
+
+- The evidence graph is the default; there is no =--evidence-skeleton= switch.
+- fd, rg, and Tantivy are independent acquisition routes.
+- Runtime adds no implicit extension filter.
+- Native enrichment is provider-owned and automatic.
+- =--native-syntax= accepts canonical selectors only.
+- GQL is the sole default Agent-facing graph and owns direct facts, settled
+  derivations, frontiers, semantic annotations, and Query handles.
+- Ascent runs an internal, versioned topology-inference program. Runtime settles derived
+  knowledge and coverage-sensitive frontiers into GQL with explicit modality,
+  proof, and program provenance.
+- Python Graphs ranks after derivation; Runtime then certifies topology witness closure,
+  compatibility, coverage, and minimality before rendering.
+- A source excerpt is not selector-failure recovery.
+- Query returns the complete selector-owned scope without generated ellipses.
+- Natural-language annotations remain premise-bound proposals until human or
+  source-owned Org contract admission. They may guide Search but cannot prove
+  structure, behavior, completeness, or absence.
+
+** Open Questions And Fixed Invariants
+
+Open: the production GQL grammar, typed topology-inference bridge schema, lattice join,
+retraction strategy, ranking calibration, proof retention, and measured context
+budget remain to be validated. Fixed invariants are listed
+above and may change only through a new reviewed RFC decision.
+
+** Fitness Criteria
+
+Measure commands to the correct edit boundary, packet size, first-selector
+latency, witness closure, repeated searches, false absence, cross-language
+coverage, and stale-binding rejection.
+
+** Traceability Matrix
+
+| Concern | Owner |
+|---------+-------|
+| Reflection and counterexamples | RFC 10.06.14 and SearchEvidenceDerivation |
+| Search and Query grammar | RFC 10.06.15 |
+| Topology identity and reuse | RFC 10.06.16 |
+| GQL settlement, topology inference, ranking, rendering | RFC 10.06.17 |
+| Executable validation | search-evidence-output-reflection receipt |
+
+** Evidence Loop
+
+Run the Lean executable, Org lint, schema tests, provider round trips, sandtable
+scenarios, and real-project trials. Feed observed ambiguity back to the owning
+child RFC, then rerun this adversarial catalogue.
+
+** Failure Modes And Recovery
+
+Missing ownership, stale identity, incompatible premises, incomplete coverage,
+or invalid witnesses fail closed. Recovery rebuilds the responsible derived
+artifact from source-owned contracts; it never guesses selectors or ranges.
+
+** Rollout And Migration
+
+Adopt the split RFCs before shared schemas. Then align providers, implement the
+Rust path, validate sandtables, and measure a real project. Old monolithic
+sections are replaced by Git history and these responsibility links.
+
+** Adversarial Review
+
+R01 through R27 remain the required review suite. A child contract cannot claim
+closure merely because its syntax lints or one provider renders it.
+
+** Formal And Evidence Mapping
+
+The model is [[file:../../../packages/proofs/ASPProof/SearchEvidenceDerivation.lean][SearchEvidenceDerivation]];
+the audit is [[file:../../../packages/proofs/ASPProof/Audit/SearchEvidenceDerivation.lean][SearchEvidenceDerivation Audit]];
+the executable receipt is
+[[file:../../../packages/proofs/receipts/search-evidence-output-reflection.org][search-evidence-output-reflection]].
+Finite identifiers are counterexample abstractions, not production digests.
+
+Implementation work updates its responsible RFC, never this reflection index.
+
+** Linked Implementation
+
+Current formal implementation is the linked Lean model and audit. Production
+schema, renderer, provider, and Runtime links are added to their child RFCs only
+after executable gates exist.

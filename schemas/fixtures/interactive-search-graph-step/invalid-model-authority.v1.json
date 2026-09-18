@@ -1,0 +1,103 @@
+{
+  "schemaId": "agent.semantic-protocols.interactive-search-graph-step",
+  "schemaVersion": "1",
+  "sessionId": "session-owner-model",
+  "beforeState": {
+    "stateDigest": "state-7",
+    "graphGeneration": 7,
+    "workspaceGeneration": "workspace-generation-42",
+    "currentNode": "goal:model-owner",
+    "remainingBudget": 2,
+    "obligations": ["claim:effective-owner"],
+    "frontier": ["symbol:ModelConfig"],
+    "visited": [],
+    "routeMeasure": {
+      "semanticGraphHops": 0,
+      "executedGraphHops": 0,
+      "toolRounds": 0,
+      "searchTokens": 0,
+      "uncachedModelTokens": 0
+    },
+    "routeBudget": {
+      "maxEvidenceTokens": 1024,
+      "maxRawTokens": 2048,
+      "maxUncachedTokens": 512,
+      "maxRounds": 2,
+      "maxGraphHops": 2,
+      "maxTransitions": 2
+    }
+  },
+  "action": {
+    "actionId": "action:model-assertion",
+    "kind": "semantic-provider-search",
+    "toolId": "tool:model",
+    "vertical": "semantic",
+    "queryIdentity": "query:model-assertion",
+    "anchors": ["symbol:ModelConfig"],
+    "budgetBefore": 2
+  },
+  "observation": {
+    "invocationId": "invocation:model-assertion",
+    "toolId": "tool:model",
+    "providerId": "provider:model",
+    "authority": "model",
+    "vertical": "semantic",
+    "workspaceGeneration": "workspace-generation-42",
+    "queryIdentity": "query:model-assertion",
+    "anchors": ["symbol:ModelConfig"],
+    "facts": [],
+    "edges": [],
+    "supportsClaims": ["claim:effective-owner"],
+    "rejectsClaims": [],
+    "rejections": [],
+    "noHit": false,
+    "provenanceIds": ["receipt:model-assertion"]
+  },
+  "delta": {
+    "nodesAdded": [],
+    "factIdsAdded": [],
+    "edgeIdsAdded": [],
+    "evidenceAccepted": ["receipt:model-assertion"],
+    "evidenceRejected": [],
+    "obligationsOpened": [],
+    "obligationsDischarged": ["claim:effective-owner"],
+    "frontierAdded": [],
+    "frontierRemoved": ["symbol:ModelConfig"],
+    "visitedAdded": ["symbol:ModelConfig"],
+    "branchReceipts": [],
+    "remainingBudget": 1
+  },
+  "afterState": {
+    "stateDigest": "state-8",
+    "graphGeneration": 8,
+    "workspaceGeneration": "workspace-generation-42",
+    "currentNode": "goal:model-owner",
+    "remainingBudget": 1,
+    "obligations": [],
+    "frontier": [],
+    "visited": ["symbol:ModelConfig"],
+    "routeMeasure": {
+      "semanticGraphHops": 1,
+      "executedGraphHops": 1,
+      "toolRounds": 1,
+      "searchTokens": 32,
+      "uncachedModelTokens": 32
+    },
+    "routeBudget": {
+      "maxEvidenceTokens": 1024,
+      "maxRawTokens": 2048,
+      "maxUncachedTokens": 512,
+      "maxRounds": 2,
+      "maxGraphHops": 2,
+      "maxTransitions": 2
+    }
+  },
+  "datalogDerivations": [],
+  "recommendedTransitions": [],
+  "receipt": {
+    "graphStepId": "graph-step:8",
+    "continuationIdentity": "continuation:invalid-model-authority",
+    "transitionDigest": "transition:invalid-model-authority",
+    "replayStatus": "not-replayed"
+  }
+}

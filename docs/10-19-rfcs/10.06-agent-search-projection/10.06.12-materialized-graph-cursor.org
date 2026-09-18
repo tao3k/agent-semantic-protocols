@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 10.06.12 Materialized graph cursor
+#+subtitle: Typed node navigation without SearchLoop replay
+#+options: toc:2 num:t
+
+* Status
+
+This module is normative under [[file:../10.06-agent-search-projection.org][10.06 Agent Search Projection]].
+It refines =interactive-search-graph-step.v1= graph state for direct node
+navigation.
+
+* Ownership boundary
+
+=agent-semantic-loop= owns the language-neutral cursor and jump invariants.
+=agent-semantic-search= owns graph projection.  A runtime adapter binds the two
+using stable node ids and the active workspace generation.  Neither layer may
+parse Compact Render output to recover a node.
+
+The cursor contains:
+
+- validated graph state from =interactive-search-graph-step.v1=;
+- the explicit set of materialized node ids; and
+- no command, argv, provider handle, source body, or bearer token.
+
+The durable form is the =search-graph-cursor.v1= artifact.  It binds the
+cursor to one =loopId= and one content-addressed graph artifact.  The cursor
+artifact reuses the graph-state definition from
+=interactive-search-graph-step.v1=; it must not introduce a second state
+shape.
+
+An open envelope and every active-panel runtime binding MUST reference the
+cursor artifact explicitly.  A choice panel or proposal set is not a cursor:
+those artifacts describe available actions, while the cursor owns navigation
+state.  A terminal runtime has no active cursor binding because its closure
+and exact-query handoff are already authoritative.
+
+* Bootstrap admission
+
+Bootstrap fails unless the materialized node set is non-empty and contains the
+current node, every frontier node, and every visited node.  Empty identities,
+duplicate schema sets, and route measures exceeding their declared route
+budget are typed failures.
+
+* Direct jump
+
+A direct jump is navigation over existing graph state, not a provider action.
+It is admitted only when:
+
+- the target differs from the current node;
+- the target is already materialized;
+- the authority supplies a new state digest; and
+- graph/workspace generation bindings remain unchanged.
+
+The jump changes =currentNode= and records the prior current node in =visited=.
+It preserves obligations, frontier, remaining budget, route budget, semantic
+graph hops, executed graph hops, tool rounds, search tokens, and uncached model
+tokens.  Therefore a history jump does not replay the Playbook or consume a
+provider dispatch.
+
+Selecting a frontier action that executes a provider remains a separate
+=interactive-search-graph-step= transition and follows its normal budget and
+receipt rules.
+
+* Runtime and IPC binding
+
+Cursor persistence is artifact-addressed and flows through the existing
+SearchLoop runtime store and typed Runtime Server IPC.  CLI text and Compact
+Render are projections only.  Runtime admission MUST reject an open or active
+binding whose cursor artifact schema is not
+=agent.semantic-protocols.search-graph-cursor=.
+
+The graph artifact referenced by the cursor is the authority for the complete
+materialized node universe.  =materializedNodeIds= is the deterministic
+navigation index for that artifact; bootstrap validates that current,
+frontier, and visited nodes are members.  A direct jump writes a new cursor
+artifact and atomically advances the active-panel cursor binding.  It does not
+rewrite the graph artifact or the Context Product evidence state.
+
+* Verification mapping
+
+The Lean =SearchRouteMaterializedGraphCursor= model proves generation,
+session, budget, measure, obligations, and frontier conservation.  Rust tests
+load the canonical graph-step fixture and prove both frontier and historical
+jumps preserve the same fields, while unknown-node and current-node replay are
+rejected.

@@ -1,0 +1,76 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinQuorumRealization.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate →\n    policy.quorumWeight ≤\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.realizedVotingWeight policy certificate.signers",
+   "theoremFamily": "weighted-quorum-realization",
+   "rfcClauseIds": ["CRQR-ACCEPT", "CRQR-WEIGHT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.accepted_certificate_realizes_weight_threshold",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate →\n    policy.minimumFailureDomains ≤ certificate.failureDomains.length",
+   "theoremFamily": "failure-domain-realization",
+   "rfcClauseIds": ["CRQR-ACCEPT", "CRQR-DOMAIN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.accepted_certificate_realizes_failure_domain_threshold",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.realizedVotingWeight policy certificate.signers <\n      policy.quorumWeight →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate",
+   "theoremFamily": "insufficient-weight-rejection",
+   "rfcClauseIds": ["CRQR-REJECT", "CRQR-WEIGHT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.insufficient_voting_weight_rejects_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme),\n  certificate.failureDomains.length < policy.minimumFailureDomains →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate",
+   "theoremFamily": "insufficient-domain-rejection",
+   "rfcClauseIds": ["CRQR-DOMAIN", "CRQR-REJECT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.insufficient_failure_domain_coverage_rejects_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme)\n  (signer : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.NodeId),\n  signer ∈ certificate.signers →\n    (¬∃ member, member ∈ policy.members ∧ member.nodeId = signer) →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate",
+   "theoremFamily": "membership-bounded-signers",
+   "rfcClauseIds": ["CRQR-REJECT", "CRQR-SIGNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.unknown_signer_rejects_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme),\n  ¬List.Nodup certificate.signers →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme policy certificate",
+   "theoremFamily": "duplicate-signer-rejection",
+   "rfcClauseIds": ["CRQR-REJECT", "CRQR-SIGNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.duplicate_signer_rejects_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicyWellFormed\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.infeasiblePolicy ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.MembershipPolicyFeasible\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.infeasiblePolicy",
+   "theoremFamily": "policy-feasibility-counterexample",
+   "rfcClauseIds": ["CRQR-FEASIBLE", "CRQR-GAP"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.canonical_membership_well_formedness_does_not_imply_feasibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 7,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 7,
+ "axiomDependentDeclarationCount": 0}

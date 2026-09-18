@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-multi-agent-v2-host-lifecycle-event.v1.schema.json",
+  "title": "Codex Multi-Agent V2 Host Lifecycle Event V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "platform",
+    "hostEventId",
+    "hostEventSequence",
+    "eventKind",
+    "rootSessionId",
+    "parentSessionId",
+    "childSessionId",
+    "agentName",
+    "namespaceId",
+    "observedAtUnixMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.codex-multi-agent-v2-host-lifecycle-event"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "platform": {
+      "const": "codex"
+    },
+    "hostEventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hostEventSequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "eventKind": {
+      "enum": [
+        "subagent-start",
+        "subagent-resume",
+        "subagent-stop",
+        "subagent-achieved"
+      ]
+    },
+    "rootSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agentName": {
+      "type": "string",
+      "pattern": "^@[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "namespaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observedAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

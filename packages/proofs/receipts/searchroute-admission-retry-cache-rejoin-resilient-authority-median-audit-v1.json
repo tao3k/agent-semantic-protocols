@@ -1,0 +1,59 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (first second third : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ∃ median,\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.MedianOfThree first second third median",
+   "theoremFamily": "three-authority-median-totality",
+   "rfcClauseIds": ["RAM-MEDIAN", "RAM-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.median_order_exists",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (actualFaultWeight liveUpperBound first second third median :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.MedianOfThree first second third median →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.AtLeastTwoHonestBounds actualFaultWeight\n        liveUpperBound first second third →\n      actualFaultWeight ≤ median ∧ median ≤ liveUpperBound",
+   "theoremFamily": "one-byzantine-median-safety-liveness",
+   "rfcClauseIds": ["RAM-COVERAGE", "RAM-MEDIAN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.resilient_median_is_safe_and_live",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ actualFaultWeight liveUpperBound first second byzantine,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.HonestBound actualFaultWeight liveUpperBound\n      first ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.HonestBound actualFaultWeight liveUpperBound\n        second ∧\n      liveUpperBound <\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.maximumOfThree first second byzantine",
+   "theoremFamily": "maximum-liveness-counterexample",
+   "rfcClauseIds": ["RAM-COUNTEREXAMPLE", "RAM-LIVENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.maximum_can_violate_live_upper_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ actualFaultWeight liveUpperBound first second byzantine,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.HonestBound actualFaultWeight liveUpperBound\n      first ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.HonestBound actualFaultWeight liveUpperBound\n        second ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.minimumOfThree first second byzantine <\n        actualFaultWeight",
+   "theoremFamily": "minimum-safety-counterexample",
+   "rfcClauseIds": ["RAM-COUNTEREXAMPLE", "RAM-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.minimum_can_violate_actual_fault_lower_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type} (authority otherAuthority : AuthorityId),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.PairwiseDistinct authority authority\n      otherAuthority",
+   "theoremFamily": "distinct-authority-equivocation-rejection",
+   "rfcClauseIds": ["RAM-DISTINCT", "RAM-EQUIVOCATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.equivocation_cannot_fill_two_distinct_authority_slots",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

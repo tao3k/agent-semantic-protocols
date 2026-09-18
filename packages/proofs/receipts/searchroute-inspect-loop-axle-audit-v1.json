@@ -1,0 +1,34 @@
+{
+  "auditSha256": "c44e4977ad85003ff190d409f5905a1bb0abdafa4f178d8a54bf2bc757434fa5",
+  "axiomDependentDeclarationCount": 14,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 14,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SIL-COVERAGE",
+    "ASP-RFC-10.05-SIL-DECISION",
+    "ASP-RFC-10.05-SIL-TERMINAL",
+    "ASP-RFC-10.05-SIL-TRACE-BOUND",
+    "ASP-RFC-10.05-SIL-WORK-DECREASE"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "bounded-global-optimality",
+    "counterexample",
+    "coverage-conservation",
+    "loop-invariant",
+    "loop-work-decrease",
+    "safe-pruning",
+    "selected-non-regression",
+    "terminal-closure",
+    "terminal-global-optimality",
+    "terminal-optimality",
+    "trace-bound",
+    "trace-invariant"
+  ]
+}

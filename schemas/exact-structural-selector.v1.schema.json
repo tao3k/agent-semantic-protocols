@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-structural-selector.v1.schema.json",
+  "title": "Exact Structural Selector v1",
+  "description": "A parser-owned, generation-bound selector for an item or a queryable structural descendant. Display locations are deliberately excluded from selector identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "ownerPath",
+    "selector",
+    "generationIdentityDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "rootItemSelector",
+    "segments"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.exact-structural-selector.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/].*"
+    },
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The provider-minted selector accepted by exact query. Consumers must not construct it from display locations."
+    },
+    "generationIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "parserIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "queryPackDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "rootItemSelector": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
+    },
+    "segments": {
+      "type": "array",
+      "description": "Parser-owned semantic descent from the root item. An empty array selects the root item.",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation",
+        "kind",
+        "identity"
+      ],
+      "properties": {
+        "relation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque parser-owned identity within the selected generation; never a line or byte offset."
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Active ASP Artifact Merkle Receipt v1
+
+* Status
+
+Worktree implementation.
+
+* Problem
+
+Health and freshness checks currently compare the running ASP executable with
+the executable on =PATH= by reading and hashing both files.  This repeats work
+that the build or install materializer already performed and makes a read-only
+health command proportional to binary size.  Activation is also parsed more
+than once by the health flow.
+
+Increasing a timeout does not address this ownership error.
+
+* Contract
+
+The build or install materializer MUST publish one
+=agent.semantic-protocols.active-asp-artifact-receipt= v1 document after all
+artifact bytes are final.  The receipt is the canonical full verification
+result for the active artifact set.
+
+Every leaf binds a logical path, artifact kind, BLAKE3-256 digest, and byte
+length.  Leaves are sorted by logical path.  The artifact root is the
+domain-separated Merkle root of those canonical leaves.
+
+The receipt MUST include exactly one =asp-binary= leaf and one =activation=
+leaf.  Provider binaries and registry/config artifacts that participate in
+the activation are additional leaves.
+
+* Digest-addressed materialization
+
+Every ASP and provider executable MUST be installed beneath the shared
+digest-addressed artifact store:
+
+#+begin_example
+runtime/artifacts/blake3-256/<binary-digest>/<binary-name>
+#+end_example
+
+The configured PATH-visible =asp= entry is a link or atomic pointer to that
+immutable target. The =runtime/bin/asp= compatibility alias points to the
+PATH-visible entry, never the reverse. The receipt is published atomically
+only after the target and activation are durable.
+
+A regular provider executable discovered at =runtime/bin/<binary-name>= is a
+pre-store runtime state, not an unmanaged external artifact.  The installer
+MUST migrate it by staging the same verified bytes in the artifact store and
+atomically switching the public runtime entry.  An external symlink that
+resolves outside the store remains invalid and MUST fail closed.
+
+Binary switching and provider-lock reconciliation form one ordered install
+transition.  Receipt currency MUST be evaluated after the public entry has
+been switched.  A receipt snapshot captured before migration cannot authorize
+the post-migration symlink metadata; the same install invocation MUST update
+the typed provider lock before activation or active-artifact publication reads
+it.  This is self-repair of a registered runtime generation, not a query-path
+fallback and not a provider rebuild.
+
+* Multi-session publication CAS
+
+Atomic rename prevents a torn receipt, but it does not prevent a complete stale
+receipt from replacing a newer one. Every materializer therefore binds its
+candidate to the exact previous receipt bytes (or to absence for first
+publication). Publication acquires the receipt's writer lock, re-reads the
+current receipt, and performs a compare-and-swap before the atomic rename.
+
+A changed base rejects the whole candidate with an explicit CAS conflict. The
+stale materializer MUST NOT recompute from its old activation, overwrite the
+new artifact root, or repair on the query path. Concurrent sessions may build
+independently, but only a candidate derived from the current complete root may
+advance the active receipt. Readers remain lock-free and observe either the old
+complete receipt or the new complete receipt.
+
+The executable proof obligation is owned by
+=ASPProof.ExactSelectorGenerationAdmission=: a stale artifact base cannot
+publish, while a matching base publishes exactly one complete successor root.
+
+* Lightweight verifier
+
+The Runtime invoker MUST fail closed when the executable that requests server
+startup is not the currently active digest-addressed artifact.  Verification
+uses the published executable identity receipt and filesystem metadata; it MUST
+NOT re-hash the large executable on every warm startup.  A mismatch returns the
+typed =invoker-artifact-not-active= failure and points to =asp install binary=.
+The active candidate may advance to readiness only after this check; a failed
+readiness check MUST preserve the previous healthy slot and MUST NOT silently
+spawn an older stable binary.
+
+Healthcheck is a read-only verifier, not a materializer.  It:
+
+1. resolves project state paths;
+2. reads activation and the active-artifact receipt once each;
+3. validates receipt schema, sorted unique leaves, leaf digests, and Merkle
+   root;
+4. checks that current and =PATH= ASP resolve to the receipt's
+   digest-addressed binary target;
+5. checks file kind and byte length from metadata;
+6. reports the receipt/root/binary digest and freshness state.
+
+The verified path MUST NOT start Cargo, a provider, a DB engine, or a resident
+agent.  It MUST NOT re-hash the ASP binary.  A missing or invalid receipt is a
+typed degraded result and does not fall back to large-file hashing.
+
+* Materialized path authority
+Every provider executable resolved by the activation materializer MUST be a
+=provider-binary= leaf.  The materializer reads and hashes those bytes once;
+the warm verifier checks their canonical path, file kind, and byte length only.
+
+Every leaf MUST bind its canonical absolute =materializedPath=.  This receipt
+is a machine-local runtime receipt, not a portable build manifest, so a
+verifier MUST NOT guess the physical root from =logicalPath=.  The
+=materializedPath= participates in the leaf digest and therefore in the
+artifact root.
+
+All public ASP entries installed by one materialization MUST resolve to the
+same BLAKE3-addressed immutable target.  Per-PATH copies addressed by another
+digest algorithm are not active-artifact authority.
+
+The repository build recipe MUST delegate binary publication to
+=asp install binary=. Runtime configuration owns the stable install slot.
+Shell recipes may build the executable, but callers do not own target
+selection, digest selection, immutable target layout, or atomic pointer
+switching.
+
+* Performance gate
+
+The invoker-active check is metadata/path-digest based and belongs on the warm
+startup path without a full executable read.  Publication may use a same-volume
+hard link into the content store after Cargo's atomic rename, with copy/reflink
+fallback for unsupported filesystems; the content-addressed slot and receipt
+remain the sole authority.
+
+The warm health path has a 10 millisecond p95 process-internal budget after
+argument parsing.  Its receipt MUST report zero subprocesses, zero DB opens,
+zero manifest writes, and zero binary-byte reads.  End-to-end CLI startup is
+measured separately and cannot be hidden by a larger timeout.

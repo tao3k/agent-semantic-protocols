@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate provider-owned semantic read packet schema boundaries."""
 
 from __future__ import annotations
@@ -17,9 +21,9 @@ def semantic_read_minimal_packet() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+        "providerId": "asp-rust",
+        "binary": "asp-rust",
+        "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         "method": "query/direct-source-read",
         "projectRoot": "/workspace/project",
         "ownerPath": "src/lib.rs",
@@ -60,7 +64,7 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
 
     def test_read_packet_accepts_git_source_version_metadata(self) -> None:
         packet = semantic_read_minimal_packet()
-        packet["repositoryRoot"] = "/workspace/project/languages/rust-lang-project-harness"
+        packet["repositoryRoot"] = "/workspace/project/languages/asp-rust"
         packet["sourceVersion"] = "index"
         packet["gitBlobOid"] = "a" * 40
 

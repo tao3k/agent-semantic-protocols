@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Registered-language large-library report-chain performance gates."""
 
 from __future__ import annotations
@@ -20,7 +24,9 @@ from .test_large_library_report_chain import (
 _ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_large_library_report_chain_unblocks_tuning_with_registered_language_depths() -> None:
+def test_large_library_report_chain_unblocks_tuning_with_registered_language_depths() -> (
+    None
+):
     report = build_large_library_report_chain(_ROOT)
 
     _validate_schema(report)
@@ -45,21 +51,14 @@ def test_large_library_report_chain_unblocks_tuning_with_registered_language_dep
     assert report["optimizationBatch"]["variantRunCount"] == 130
     assert report["benchmarkData"]["scenarioCount"] == 23
     assert report["benchmarkData"]["searchCommandCount"] == 56
-    assert report["benchmarkData"]["uniqueSearchCommandCount"] == 47
+    assert report["benchmarkData"]["uniqueSearchCommandCount"] == 43
     assert report["benchmarkData"]["optimizationRunCount"] == 26
     assert report["benchmarkData"]["optimizationVariantRunCount"] == 130
     assert report["benchmarkData"]["ablationVariantCount"] == 5
     assert report["benchmarkData"]["coveredSearchMethods"] == [
-        "search/deps",
-        "search/ingest",
-        "search/lexical",
-        "search/owner",
-        "search/pipe",
-        "search/prime",
-        "search/tests",
-        "search/workspace",
+        "search/playbook",
     ]
-    assert len(report["searchCommandSet"]) == 47
+    assert len(report["searchCommandSet"]) == 43
     _assert_no_legacy_search_commands(report)
     assert "no-local-evidence" in report["optimizationBatch"]["ablationVariants"]
     assert report["optimizationBatch"]["aggregationAxes"] == [
@@ -68,12 +67,10 @@ def test_large_library_report_chain_unblocks_tuning_with_registered_language_dep
         "depthBucket",
         "ablationVariant",
     ]
-    assert "frontierFollowRate" in report["optimizationBatch"][
-        "requiredReceiptMetrics"
-    ]
-    assert "answerQualityJudgment" in report["optimizationBatch"][
-        "requiredAnswerMetrics"
-    ]
+    assert "frontierFollowRate" in report["optimizationBatch"]["requiredReceiptMetrics"]
+    assert (
+        "answerQualityJudgment" in report["optimizationBatch"]["requiredAnswerMetrics"]
+    )
     assert len(report["optimizationMatrix"]) == 26
     assert _matrix_depth_counts(report) == {
         "julia": {"deep": 1, "medium": 1, "strict": 1},
@@ -96,7 +93,9 @@ def test_large_library_report_chain_unblocks_tuning_with_registered_language_dep
     assert _finding_kinds(by_language["typescript"]) == set()
 
 
-def test_large_library_report_chain_benchmarks_all_registered_search_languages() -> None:
+def test_large_library_report_chain_benchmarks_all_registered_search_languages() -> (
+    None
+):
     report = build_large_library_report_chain(
         _ROOT,
         languages=("julia", "python", "rust", "typescript"),
@@ -108,28 +107,21 @@ def test_large_library_report_chain_benchmarks_all_registered_search_languages()
     assert report["rollup"]["languageCount"] == 4
     assert benchmark["scenarioCount"] == 23
     assert benchmark["searchCommandCount"] == 56
-    assert benchmark["uniqueSearchCommandCount"] == 47
+    assert benchmark["uniqueSearchCommandCount"] == 43
     assert benchmark["optimizationRunCount"] == 26
     assert benchmark["optimizationVariantRunCount"] == 130
     assert benchmark["coveredSearchMethods"] == [
-        "search/deps",
-        "search/ingest",
-        "search/lexical",
-        "search/owner",
-        "search/pipe",
-        "search/prime",
-        "search/tests",
-        "search/workspace",
+        "search/playbook",
     ]
-    assert len(report["searchCommandSet"]) == 47
+    assert len(report["searchCommandSet"]) == 43
     assert _language_benchmark_counts(report) == {
-        "julia": (4, 9, 7, 3, 15),
-        "python": (5, 11, 10, 3, 15),
+        "julia": (4, 9, 6, 3, 15),
+        "python": (5, 11, 9, 3, 15),
         "rust": (5, 9, 7, 13, 65),
-        "typescript": (9, 27, 23, 7, 35),
+        "typescript": (9, 27, 21, 7, 35),
     }
     assert all(
-        "search/lexical" in entry["coveredSearchMethods"]
+        "search/playbook" in entry["coveredSearchMethods"]
         for entry in benchmark["byLanguage"]
     )
     _assert_no_legacy_search_commands(report)

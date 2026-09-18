@@ -1,80 +1,26 @@
-//! Grammarless tree-sitter query ABI planning.
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Compatibility projection from the official Query grammar AST into the
+//! provider-native syntax metadata ABI.
 //!
-//! This compiler validates the S-expression query surface and extracts the
-//! portable pieces a native provider needs for tree-sitter-compatible capture
-//! projection. It intentionally does not require a grammar `Language`.
+//! This is not a second Query parser. Both the resident-plan compiler and the
+//! older native-provider projection consume [`crate::parse_enhanced_query_source`].
 
 use std::collections::BTreeSet;
 
-/// Grammarless ABI plan extracted from tree-sitter-compatible query source.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyntaxQueryAbiPlan {
-    pub patterns: Vec<SyntaxQueryAbiPattern>,
-    pub captures: Vec<String>,
-    pub node_types: Vec<String>,
-    pub fields: Vec<String>,
-    pub predicates: Vec<SyntaxQueryAbiPredicate>,
-}
+use crate::{
+    EnhancedQueryExpression, EnhancedQueryOperand, EnhancedQueryPredicate,
+    EnhancedQueryPredicateKind, parse_enhanced_query_source,
+};
 
-impl SyntaxQueryAbiPlan {
-    #[must_use]
-    pub fn pattern_count(&self) -> usize {
-        self.patterns.len()
-    }
-}
+pub use agent_semantic_provider_protocol::SyntaxQueryPattern as SyntaxQueryAbiPattern;
+pub use agent_semantic_provider_protocol::SyntaxQueryPlan as SyntaxQueryAbiPlan;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicate as SyntaxQueryAbiPredicate;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicateOp;
+pub use agent_semantic_provider_protocol::SyntaxQueryPredicateValue;
 
-/// Predicate operator extracted from a tree-sitter-compatible query.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum SyntaxQueryPredicateOp {
-    Eq,
-    AnyEq,
-    AnyOf,
-    Match,
-    AnyMatch,
-    NotEq,
-    NotMatch,
-}
-
-impl SyntaxQueryPredicateOp {
-    #[must_use]
-    pub fn as_abi_str(&self) -> &'static str {
-        match self {
-            Self::Eq => "eq",
-            Self::AnyEq => "any-eq",
-            Self::AnyOf => "any-of",
-            Self::Match => "match",
-            Self::AnyMatch => "any-match",
-            Self::NotEq => "not-eq",
-            Self::NotMatch => "not-match",
-        }
-    }
-}
-
-/// Predicate operand extracted from a tree-sitter-compatible query.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum SyntaxQueryPredicateValue {
-    String(String),
-    Capture(String),
-}
-
-/// Predicate ABI fact extracted from one tree-sitter query predicate form.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SyntaxQueryAbiPredicate {
-    pub op: SyntaxQueryPredicateOp,
-    pub capture: String,
-    pub values: Vec<SyntaxQueryPredicateValue>,
-}
-
-/// Per-pattern ABI facts extracted from one top-level query pattern.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyntaxQueryAbiPattern {
-    pub index: usize,
-    pub captures: Vec<String>,
-    pub node_types: Vec<String>,
-    pub fields: Vec<String>,
-}
-
-/// Error returned when grammarless query ABI planning rejects a source string.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SyntaxQueryAbiError {
     pub message: String,
@@ -88,401 +34,141 @@ impl std::fmt::Display for SyntaxQueryAbiError {
 
 impl std::error::Error for SyntaxQueryAbiError {}
 
-/// Compile tree-sitter-compatible query source into a grammarless ABI plan.
+/// Project the hierarchy-preserving official Query AST into the transitional
+/// flat metadata passed to provider-native query execution.
 pub fn compile_query_abi_source(source: &str) -> Result<SyntaxQueryAbiPlan, SyntaxQueryAbiError> {
-    let tokens = tokenize_query(source)?;
-    AbiParser::new(tokens).parse()
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum Token {
-    LParen,
-    RParen,
-    LBracket,
-    RBracket,
-    Ident(String),
-    Field(String),
-    Capture(String),
-    StringLiteral(String),
-    Quantifier,
-}
-
-fn tokenize_query(source: &str) -> Result<Vec<Token>, SyntaxQueryAbiError> {
-    let chars = source.chars().collect::<Vec<_>>();
-    let mut tokens = Vec::new();
-    let mut index = 0usize;
-    while index < chars.len() {
-        let character = chars[index];
-        match character {
-            character if character.is_whitespace() => index += 1,
-            ';' => {
-                index += 1;
-                while index < chars.len() && chars[index] != '\n' {
-                    index += 1;
-                }
-            }
-            '(' => {
-                tokens.push(Token::LParen);
-                index += 1;
-            }
-            ')' => {
-                tokens.push(Token::RParen);
-                index += 1;
-            }
-            '[' => {
-                tokens.push(Token::LBracket);
-                index += 1;
-            }
-            ']' => {
-                tokens.push(Token::RBracket);
-                index += 1;
-            }
-            '"' => {
-                let (literal, next) = read_string_literal(&chars, index)?;
-                index = next;
-                tokens.push(Token::StringLiteral(literal));
-            }
-            '@' => {
-                let (capture, next) = read_atom(&chars, index + 1);
-                let capture = trim_capture_quantifier(&capture);
-                if capture.is_empty() {
-                    return Err(error("empty capture name"));
-                }
-                tokens.push(Token::Capture(capture.to_string()));
-                index = next;
-            }
-            '?' | '+' | '*' => {
-                tokens.push(Token::Quantifier);
-                index += 1;
-            }
-            _ => {
-                let (atom, next) = read_atom(&chars, index);
-                if atom.is_empty() {
-                    return Err(error(format!("unexpected character `{character}`")));
-                }
-                if let Some(field) = atom.strip_suffix(':')
-                    && !field.is_empty()
-                {
-                    tokens.push(Token::Field(field.to_string()));
-                } else {
-                    tokens.push(Token::Ident(atom.to_string()));
-                }
-                index = next;
-            }
-        }
-    }
-    Ok(tokens)
-}
-
-fn read_atom(chars: &[char], start: usize) -> (String, usize) {
-    let mut end = start;
-    while end < chars.len() && !is_atom_delimiter(chars[end]) {
-        end += 1;
-    }
-    (chars[start..end].iter().collect(), end)
-}
-
-fn is_atom_delimiter(character: char) -> bool {
-    character.is_whitespace() || matches!(character, '(' | ')' | '[' | ']' | '"' | ';')
-}
-
-fn read_string_literal(
-    chars: &[char],
-    start: usize,
-) -> Result<(String, usize), SyntaxQueryAbiError> {
-    let mut index = start + 1;
-    let mut escaped = false;
-    let mut literal = String::new();
-    while index < chars.len() {
-        let character = chars[index];
-        if escaped {
-            literal.push(character);
-            escaped = false;
-        } else if character == '\\' {
-            escaped = true;
-        } else if character == '"' {
-            return Ok((literal, index + 1));
-        } else {
-            literal.push(character);
-        }
-        index += 1;
-    }
-    Err(error("unterminated string literal"))
-}
-
-fn trim_capture_quantifier(capture: &str) -> &str {
-    capture
-        .strip_suffix('?')
-        .or_else(|| capture.strip_suffix('+'))
-        .or_else(|| capture.strip_suffix('*'))
-        .unwrap_or(capture)
-}
-
-#[derive(Clone, Debug)]
-struct FormContext {
-    kind: FormKind,
-    expects_head: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum FormKind {
-    Paren,
-    Bracket,
-}
-
-#[derive(Clone, Debug)]
-struct PatternBuilder {
-    index: usize,
-    captures: BTreeSet<String>,
-    node_types: BTreeSet<String>,
-    fields: BTreeSet<String>,
-}
-
-impl PatternBuilder {
-    fn new(index: usize) -> Self {
-        Self {
-            index,
-            captures: BTreeSet::new(),
-            node_types: BTreeSet::new(),
-            fields: BTreeSet::new(),
-        }
-    }
-
-    fn finish(self) -> Result<SyntaxQueryAbiPattern, SyntaxQueryAbiError> {
-        if self.captures.is_empty() && self.node_types.is_empty() {
-            return Err(error(format!("empty query pattern {}", self.index)));
-        }
-        Ok(SyntaxQueryAbiPattern {
-            index: self.index,
-            captures: self.captures.into_iter().collect(),
-            node_types: self.node_types.into_iter().collect(),
-            fields: self.fields.into_iter().collect(),
-        })
-    }
-}
-
-struct AbiParser {
-    tokens: Vec<Token>,
-    stack: Vec<FormContext>,
-    current: Option<PatternBuilder>,
-    patterns: Vec<SyntaxQueryAbiPattern>,
-}
-
-impl AbiParser {
-    fn new(tokens: Vec<Token>) -> Self {
-        Self {
-            tokens,
-            stack: Vec::new(),
-            current: None,
-            patterns: Vec::new(),
-        }
-    }
-
-    fn parse(mut self) -> Result<SyntaxQueryAbiPlan, SyntaxQueryAbiError> {
-        if self.tokens.is_empty() {
-            return Err(error("empty query source"));
-        }
-        let tokens = std::mem::take(&mut self.tokens);
-        let predicates = query_predicates(&tokens);
-        for token in tokens {
-            self.accept(token)?;
-        }
-        if !self.stack.is_empty() {
-            return Err(error("unclosed query pattern"));
-        }
-        self.finish_current_pattern()?;
-        if self.patterns.is_empty() {
-            return Err(error("query source contains no patterns"));
-        }
-        let captures = union_sorted(self.patterns.iter().flat_map(|pattern| &pattern.captures));
-        let node_types = union_sorted(self.patterns.iter().flat_map(|pattern| &pattern.node_types));
-        let fields = union_sorted(self.patterns.iter().flat_map(|pattern| &pattern.fields));
-        Ok(SyntaxQueryAbiPlan {
-            patterns: self.patterns,
-            captures,
-            node_types,
-            fields,
-            predicates,
-        })
-    }
-
-    fn accept(&mut self, token: Token) -> Result<(), SyntaxQueryAbiError> {
-        match token {
-            Token::LParen => {
-                self.open_pattern_if_needed()?;
-                self.stack.push(FormContext {
-                    kind: FormKind::Paren,
-                    expects_head: true,
-                });
-            }
-            Token::LBracket => {
-                self.open_pattern_if_needed()?;
-                self.stack.push(FormContext {
-                    kind: FormKind::Bracket,
-                    expects_head: false,
-                });
-            }
-            Token::RParen => self.close_form(FormKind::Paren)?,
-            Token::RBracket => self.close_form(FormKind::Bracket)?,
-            Token::Field(field) => {
-                if self.stack.is_empty() {
-                    return Err(error(format!(
-                        "field `{field}` appears outside a query form"
-                    )));
-                }
-                let current = self.current.as_mut().ok_or_else(|| {
-                    error(format!("field `{field}` appears outside a query pattern"))
-                })?;
-                current.fields.insert(field);
-                self.mark_head_consumed();
-            }
-            Token::Capture(capture) => {
-                let current = self.current.as_mut().ok_or_else(|| {
-                    error(format!(
-                        "capture `{capture}` appears outside a query pattern"
-                    ))
-                })?;
-                current.captures.insert(capture);
-                self.mark_head_consumed();
-            }
-            Token::Ident(identifier) => {
-                if self.consume_node_head(&identifier)
-                    && identifier != "_"
-                    && !identifier.starts_with('#')
-                    && let Some(current) = self.current.as_mut()
-                {
-                    current.node_types.insert(identifier);
-                }
-            }
-            Token::StringLiteral(_) | Token::Quantifier => self.mark_head_consumed(),
-        }
-        Ok(())
-    }
-
-    fn open_pattern_if_needed(&mut self) -> Result<(), SyntaxQueryAbiError> {
-        if self.stack.is_empty() {
-            self.finish_current_pattern()?;
-            self.current = Some(PatternBuilder::new(self.patterns.len()));
-        }
-        Ok(())
-    }
-
-    fn close_form(&mut self, expected: FormKind) -> Result<(), SyntaxQueryAbiError> {
-        let context = self
-            .stack
-            .pop()
-            .ok_or_else(|| error("unexpected closing delimiter"))?;
-        if context.kind != expected {
-            return Err(error("mismatched query delimiters"));
-        }
-        Ok(())
-    }
-
-    fn finish_current_pattern(&mut self) -> Result<(), SyntaxQueryAbiError> {
-        if let Some(current) = self.current.take() {
-            self.patterns.push(current.finish()?);
-        }
-        Ok(())
-    }
-
-    fn consume_node_head(&mut self, identifier: &str) -> bool {
-        let Some(context) = self.stack.last_mut() else {
-            return false;
-        };
-        if !context.expects_head {
-            return false;
-        }
-        context.expects_head = false;
-        !identifier.starts_with('#')
-    }
-
-    fn mark_head_consumed(&mut self) {
-        if let Some(context) = self.stack.last_mut() {
-            context.expects_head = false;
-        }
-    }
-}
-
-fn query_predicates(tokens: &[Token]) -> Vec<SyntaxQueryAbiPredicate> {
+    let document = parse_enhanced_query_source(source).map_err(|error| SyntaxQueryAbiError {
+        message: error.message,
+    })?;
+    let mut patterns = Vec::with_capacity(document.patterns.len());
     let mut predicates = BTreeSet::new();
-    let mut index = 0usize;
-    while index + 3 < tokens.len() {
-        if let Some((predicate, closing_index)) = query_predicate_at(tokens, index) {
-            if let Some(predicate) = predicate {
+    for pattern in document.patterns {
+        let mut captures = BTreeSet::new();
+        let mut node_types = BTreeSet::new();
+        let mut fields = BTreeSet::new();
+        collect_structure(
+            &pattern.structure,
+            &mut captures,
+            &mut node_types,
+            &mut fields,
+        );
+        for predicate in &pattern.predicates {
+            if let Some(predicate) = project_predicate(predicate) {
                 predicates.insert(predicate);
             }
-            index = closing_index;
         }
-        index += 1;
+        patterns.push(SyntaxQueryAbiPattern {
+            index: pattern.index,
+            captures: captures.into_iter().collect(),
+            node_types: node_types.into_iter().collect(),
+            fields: fields.into_iter().collect(),
+        });
     }
-    predicates.into_iter().collect()
+    let captures = union_sorted(patterns.iter().flat_map(|pattern| &pattern.captures));
+    let node_types = union_sorted(patterns.iter().flat_map(|pattern| &pattern.node_types));
+    let fields = union_sorted(patterns.iter().flat_map(|pattern| &pattern.fields));
+    Ok(SyntaxQueryAbiPlan {
+        patterns,
+        captures,
+        node_types,
+        fields,
+        predicates: predicates.into_iter().collect(),
+    })
 }
 
-fn query_predicate_at(
-    tokens: &[Token],
-    index: usize,
-) -> Option<(Option<SyntaxQueryAbiPredicate>, usize)> {
-    let (op, capture) = predicate_header_at(tokens, index)?;
-    let (values, closing_index) = predicate_values_until_rparen(tokens, index + 3);
-    let predicate = (!values.is_empty()).then_some(SyntaxQueryAbiPredicate {
+fn collect_structure(
+    expression: &EnhancedQueryExpression,
+    captures: &mut BTreeSet<String>,
+    node_types: &mut BTreeSet<String>,
+    fields: &mut BTreeSet<String>,
+) {
+    match expression {
+        EnhancedQueryExpression::NamedNode {
+            name,
+            captures: node_captures,
+            children,
+            ..
+        } => {
+            if name != "_" {
+                node_types.insert(name.clone());
+            }
+            captures.extend(node_captures.iter().cloned());
+            for child in children {
+                collect_structure(child, captures, node_types, fields);
+            }
+        }
+        EnhancedQueryExpression::AnonymousNode {
+            captures: node_captures,
+            ..
+        } => captures.extend(node_captures.iter().cloned()),
+        EnhancedQueryExpression::Field { name, value } => {
+            fields.insert(name.clone());
+            collect_structure(value, captures, node_types, fields);
+        }
+        EnhancedQueryExpression::NegatedField(name) => {
+            fields.insert(name.clone());
+        }
+        EnhancedQueryExpression::Alternation {
+            captures: expression_captures,
+            alternatives,
+            ..
+        } => {
+            captures.extend(expression_captures.iter().cloned());
+            for alternative in alternatives {
+                collect_structure(alternative, captures, node_types, fields);
+            }
+        }
+        EnhancedQueryExpression::Group {
+            captures: expression_captures,
+            terms,
+            ..
+        } => {
+            captures.extend(expression_captures.iter().cloned());
+            for term in terms {
+                collect_structure(term, captures, node_types, fields);
+            }
+        }
+        EnhancedQueryExpression::Anchor => {}
+    }
+}
+
+fn project_predicate(predicate: &EnhancedQueryPredicate) -> Option<SyntaxQueryAbiPredicate> {
+    if predicate.kind != EnhancedQueryPredicateKind::Predicate {
+        return None;
+    }
+    let op = match predicate.name.as_str() {
+        "eq" => SyntaxQueryPredicateOp::Eq,
+        "any-eq" => SyntaxQueryPredicateOp::AnyEq,
+        "any-of" => SyntaxQueryPredicateOp::AnyOf,
+        "match" => SyntaxQueryPredicateOp::Match,
+        "any-match" => SyntaxQueryPredicateOp::AnyMatch,
+        "not-eq" => SyntaxQueryPredicateOp::NotEq,
+        "not-match" => SyntaxQueryPredicateOp::NotMatch,
+        _ => return None,
+    };
+    let (first, rest) = predicate.operands.split_first()?;
+    let EnhancedQueryOperand::Capture(capture) = first else {
+        return None;
+    };
+    let values = rest
+        .iter()
+        .filter_map(|operand| match operand {
+            EnhancedQueryOperand::Capture(value) => {
+                Some(SyntaxQueryPredicateValue::Capture(value.clone()))
+            }
+            EnhancedQueryOperand::String(value) => {
+                Some(SyntaxQueryPredicateValue::String(value.clone()))
+            }
+            EnhancedQueryOperand::Bare(_) => None,
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then(|| SyntaxQueryAbiPredicate {
         op,
-        capture,
+        capture: capture.clone(),
         values,
-    });
-    Some((predicate, closing_index))
-}
-
-fn predicate_header_at(tokens: &[Token], index: usize) -> Option<(SyntaxQueryPredicateOp, String)> {
-    match (
-        tokens.get(index)?,
-        tokens.get(index + 1)?,
-        tokens.get(index + 2)?,
-    ) {
-        (Token::LParen, Token::Ident(predicate), Token::Capture(capture)) => {
-            predicate_op(predicate).map(|op| (op, capture.clone()))
-        }
-        _ => None,
-    }
-}
-
-fn predicate_values_until_rparen(
-    tokens: &[Token],
-    start_index: usize,
-) -> (Vec<SyntaxQueryPredicateValue>, usize) {
-    let mut cursor = start_index;
-    let mut values = BTreeSet::new();
-    while cursor < tokens.len() && !matches!(tokens[cursor], Token::RParen) {
-        if let Some(value) = predicate_value_token(&tokens[cursor]) {
-            values.insert(value);
-        }
-        cursor += 1;
-    }
-    (values.into_iter().collect(), cursor)
-}
-
-fn predicate_value_token(token: &Token) -> Option<SyntaxQueryPredicateValue> {
-    match token {
-        Token::StringLiteral(value) if !value.is_empty() => {
-            Some(SyntaxQueryPredicateValue::String(value.clone()))
-        }
-        Token::Capture(value) if !value.is_empty() => {
-            Some(SyntaxQueryPredicateValue::Capture(value.clone()))
-        }
-        _ => None,
-    }
-}
-
-fn predicate_op(predicate: &str) -> Option<SyntaxQueryPredicateOp> {
-    match predicate {
-        "#eq?" => Some(SyntaxQueryPredicateOp::Eq),
-        "#any-eq?" => Some(SyntaxQueryPredicateOp::AnyEq),
-        "#any-of?" => Some(SyntaxQueryPredicateOp::AnyOf),
-        "#match?" => Some(SyntaxQueryPredicateOp::Match),
-        "#any-match?" => Some(SyntaxQueryPredicateOp::AnyMatch),
-        "#not-eq?" => Some(SyntaxQueryPredicateOp::NotEq),
-        "#not-match?" => Some(SyntaxQueryPredicateOp::NotMatch),
-        _ => None,
-    }
+    })
 }
 
 fn union_sorted<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
@@ -491,10 +177,4 @@ fn union_sorted<'a>(values: impl Iterator<Item = &'a String>) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-
-fn error(message: impl Into<String>) -> SyntaxQueryAbiError {
-    SyntaxQueryAbiError {
-        message: message.into(),
-    }
 }

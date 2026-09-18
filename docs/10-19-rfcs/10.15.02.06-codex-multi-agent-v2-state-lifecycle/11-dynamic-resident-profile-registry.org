@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Dynamic Resident Profile Registry
+#+OPTIONS: toc:2
+
+* Status
+
+This module corrects an overly narrow description of canonical residents.
+ASP does not own a fixed enumeration such as =asp-explore= and =asp-testing=.
+The authoritative profile set is discovered from
+=ASP_STATE_HOME/agents/config.toml= and may expand without changing the Agent
+Session lifecycle implementation.  Other files in =ASP_STATE_HOME/agents= are
+profile artifacts referenced by that registry; directory presence alone does
+not configure a resident.
+
+* Canonicality is pointwise
+
+For a configured profile-name set $A$ and resident relation $R$, canonicality
+means that every configured name has at most one live canonical binding:
+
+#+begin_src typst
+#let configured = ("asp-explore", "asp-testing", "domain-review")
+#let resident_count = (
+  "asp-explore": 1,
+  "asp-testing": 1,
+  "domain-review": 0,
+)
+
+#for name in configured {
+  assert(resident_count.at(name) <= 1)
+}
+#+end_src
+
+The example names are data, not protocol constants.  Adding a profile extends
+the quantified domain; it does not require a new CLI subcommand, enum variant,
+or lifecycle branch.
+
+* State machine
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> LoadConfiguredProfiles
+    LoadConfiguredProfiles --> ProfileAbsent: for each configured name
+    ProfileAbsent --> AuditHostTree: route requested
+    AuditHostTree --> ResumeCanonical: same name exists
+    AuditHostTree --> CreateCanonical: name proven absent
+    ResumeCanonical --> LiveBinding
+    CreateCanonical --> LiveBinding: SubagentStart records identity
+    LiveBinding --> ArchiveRequested: replacement required
+    ArchiveRequested --> PathReleased: host archive + termination receipt
+    PathReleased --> CreateCanonical: same configured name, newer generation
+    LiveBinding --> ProfileRemoved: configuration no longer contains name
+    ProfileRemoved --> ArchiveRequested
+    LoadConfiguredProfiles --> LoadConfiguredProfiles: agents config changes
+#+end_src
+
+* Contract
+
+1. The =agents= table in =ASP_STATE_HOME/agents/config.toml= is the
+   authoritative profile-name domain.
+2. Reconcile iterates configured profiles; it never switches on built-in
+   =asp-explore= or =asp-testing= names.
+3. Canonical task identity is derived from the configured profile name.
+4. One name has at most one live binding for a root session.
+5. Replacement archives and releases the same name before installing a newer
+   generation; suffixes do not create replacement authority.
+6. Removing a profile makes its binding non-routable and schedules archival.
+7. Host-specific projections such as =~/.codex/agents/*.toml= are derived views,
+   not the source of configured profile identity.
+8. An orphan =*_codex.toml= artifact absent from the =agents= table is not
+   routable and must not be projected into the host agent directory.
+
+* Lean correspondence
+
+The proof owner is
+=packages/proofs/ASPProof/ASPDynamicResidentProfiles.lean=.  It models the
+registry as a function from arbitrary configured names to optional residents,
+proves pointwise uniqueness by construction, proves that installing one profile
+preserves every other profile, and proves that replacement retains the same
+dynamic name.  It also proves that a profile artifact without a configuration
+record cannot become routable.
+
+* Rust refinement boundary
+
+Configuration loading, host projection sync, bootstrap selection, reconcile,
+archive, and replacement must consume one shared configured-profile iterator.
+Default profiles may seed a newly created registry as ordinary configuration
+records, but they must not be reinserted after an existing =agents= table
+removes them, and their names must not appear in lifecycle control flow.  Tests
+must add a third temporary profile and demonstrate sync, create/resume, archive,
+and replacement without modifying Rust source.  A separate regression test must
+prove that updating global model configuration does not resurrect a removed
+default profile.

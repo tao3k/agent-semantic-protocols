@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Interactive SearchLoop
+#+PROPERTY: rfc_layer interactive-searchloop
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Ownership
+
+This layer owns agent-facing progressive transitions: discovery, compact
+inspection, focused expansion, exact materialization, merge, stop, and reroute.
+The CLI is one adapter and is not the protocol state machine.
+
+It does not own graph ranking internals, cache identity, or formal audit
+execution.
+
+All entry paths construct the same typed seed topology before compact
+rendering.  Exact selectors contribute executable owner/item relations only
+after canonical validation; presentation ordinals never become durable graph
+identities.
+
+* Canonical RFCs
+
+- [[file:00.01-search-loop-architecture.org][SearchLoop architecture]]
+- [[file:00.06-clause-first-retrieval-and-graph-on-demand.org][Clause-first retrieval and graph on demand]]
+- [[file:00.13-searchloop-merge-algebra.org][SearchLoop merge algebra]]
+- [[file:00.20-searchroute-partial-route-inspect-scheduler.org][SearchRoute partial-route inspect scheduler]]
+- [[file:00.22-searchroute-total-inspect-driver.org][SearchRoute total inspect driver]]

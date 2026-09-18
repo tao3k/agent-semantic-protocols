@@ -1,0 +1,215 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.39.01 — Agent Session Host Registry Semantic Abstraction and Discriminator Conformance
+
+* Status
+Focused formal verification is complete. This RFC discharges the next assumption boundary exposed by [[file:../10.05.39-agent-session-host-registry-both-valid-ambiguity-refinement/00-overview.org][RFC 10.05.39 — Both-Valid Ambiguity Refinement]]. The focused Lean source and refreshed compiled module pass direct audit; all 21 theorem declarations are axiom-free.
+
+This is a proof-model and protocol refinement only. It does not claim that an installed discriminator artifact, canonical production encoding, or independent runtime replay receipt exists. No Rust implementation is authorized in this session.
+
+* Problem
+RFC 10.05.39 left two assumptions implicit: compact terminal-semantics equality was treated as if it preserved every adjudication distinction, and a nonzero discriminator identity was treated as if it could stand in for executable conformance.
+
+Neither implication is valid. A constant abstraction maps different observations to the same value. A constant encoding is not injective. A total function may always prefer the accepted terminal. A process may exit zero while returning an undecoded or wrong decision. Replaying under the same executor is correlated evidence.
+
+The protocol separates four obligations: abstraction adequacy, encoding injectivity, reference-decision agreement, and independently replayed executable conformance.
+
+* Terminal observation and abstraction adequacy
+=TerminalObservation= declares standard-output digest, standard-error digest, exit code, and externally visible effect digest. Observational equivalence requires equality of all four. A newly relevant field changes this proof boundary; it cannot remain hidden inside an implementation-private digest.
+
+#+name: searchloop-asad-abstraction-adequacy
+#+begin_src typst
+#let ObsEq(x, y) = $upright("ObsEq")(x, y)$
+#let Abs(x) = $upright("abstract")(x)$
+#let Adequate = $upright("AbstractionAdequate")$
+$
+  Adequate(Abs) := forall x, y,
+  Abs(x) = Abs(y) => ObsEq(x, y).
+$
+$
+  exists x, y,
+  x != y and upright("constant")(x) = upright("constant")(y).
+$
+#+end_src
+
+The second formula is a Lean-checked counterexample. Equality under an arbitrary abstraction is insufficient; adequacy must be admitted over the declared observation domain.
+
+* Encoding injectivity
+An encoding used as semantic identity must be injective over the trusted adjudication domain. Collision resistance is an assumption about a concrete construction, not a theorem derived from digest equality.
+
+#+name: searchloop-asad-encoding-injectivity
+#+begin_src typst
+#let Enc(x) = $upright("encode")(x)$
+#let Injective = $upright("EncodingInjective")$
+$
+  Injective(Enc) := forall x, y,
+  Enc(x) = Enc(y) => x = y.
+$
+$ not Injective(upright("constantEncoding")). $
+#+end_src
+
+This RFC does not bless a hash algorithm. A future receipt must identify the encoding version, artifact, and trusted domain in which injectivity or collision resistance is admitted.
+
+* Reference decision and executable conformance
+A =ReferenceDiscriminator= is a total Lean function returning =equivalent=, =preferAccepted=, =preferConflicting=, or =ambiguous=. Totality proves only that a decision exists. It does not prove soundness or external execution.
+
+Executable conformance binds the exact artifact, exact input, successful exit, successful decode, response, and equality with the reference decision.
+
+#+name: searchloop-asad-executable-conformance
+#+begin_src typst
+#let Conf(r, a, i, x, y) = $upright("Conforms")(r, a, i, x, y)$
+#let Art(r) = $upright("artifact")(r)$
+#let Input(r) = $upright("input")(r)$
+#let Exit(r) = $upright("exitZero")(r)$
+#let Decode(r) = $upright("decoded")(r)$
+#let Decide(r) = $upright("decision")(r)$
+#let Ref(x, y) = $upright("reference")(x, y)$
+$
+  forall r, a, i, x, y,
+  Conf(r, a, i, x, y) =>
+  Art(r) = a and Input(r) = i and Exit(r) and Decode(r) and
+  Decide(r) = Ref(x, y).
+$
+#+end_src
+
+An =exitZero= receipt alone is explicitly constructible in Lean and proves no conformance. Artifact drift, input drift, and reference mismatch each reject admission.
+
+* Independent replay
+The replay receipt binds the same artifact, input, response, and decision while naming an executor distinct from the primary executor and marking the execution as replayed.
+
+#+name: searchloop-asad-independent-replay
+#+begin_src typst
+#let Replay(p, q) = $upright("ReplayConforms")(p, q)$
+#let Art(r) = $upright("artifact")(r)$
+#let Input(r) = $upright("input")(r)$
+#let Response(r) = $upright("response")(r)$
+#let Decision(r) = $upright("decision")(r)$
+#let Executor(r) = $upright("executor")(r)$
+$
+  forall p, q,
+  Replay(p, q) => Art(q) = Art(p) and Input(q) = Input(p) and
+  Response(q) = Response(p) and Decision(q) = Decision(p) and
+  Executor(q) != Executor(p).
+$
+#+end_src
+
+* Stateful architecture
+#+begin_src mermaid
+flowchart LR
+  O["Terminal pair\nstate: BothValidQuarantined"]
+  A["Observation projection\nstate: FieldsDeclared | Inadequate"]
+  E["Semantic encoding\nstate: InjectiveOnDomain | CollisionUnknown"]
+  R["Reference discriminator\nstate: TotalDecision | UnsoundPolicy"]
+  X["Executable invocation\nstate: ArtifactInputBound | Drifted"]
+  P["Independent replay\nstate: CrossExecutorMatched | Correlated"]
+  G["Admission gate\nstate: Conformant | Quarantined"]
+  O -->|"transition; state: BothValidQuarantined -> FieldsDeclared; project declared fields"| A
+  A -->|"guard; state: Adequate -> InjectiveOnDomain; reflect observation equality"| E
+  E -->|"transition; state: InjectiveOnDomain -> TotalDecision; stabilize input"| R
+  R -->|"capability; state: ReferenceDecision -> ArtifactInputBound; invoke"| X
+  X -->|"transition; state: DecodedAndMatched -> CrossExecutorPending; seal response"| P
+  P -->|"capability; state: CrossExecutorMatched -> Conformant; admit decision"| G
+  A -->|"prohibitedEffect; state: Inadequate -> Quarantined; reject constant abstraction"| G
+  E -->|"prohibitedEffect; state: CollisionUnknown -> Quarantined; reject digest-only equality"| G
+  X -->|"prohibitedEffect; state: DriftedOrMismatch -> Quarantined; preserve pair"| G
+  P -->|"prohibitedEffect; state: SameExecutorOrResponseDrift -> Quarantined; preserve pair"| G
+#+end_src
+
+* Conformance state machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Quarantined\nstate: BothValid" as Q
+  state "Abstracted\nstate: AdequacyWitnessed" as A
+  state "Encoded\nstate: InjectiveDomainBound" as E
+  state "ReferenceReady\nstate: DecisionComputed" as R
+  state "Invoked\nstate: ArtifactInputResponseBound" as I
+  state "Replayed\nstate: IndependentMatch" as P
+  state "Admitted\nstate: ConformantDecision" as D
+  state "Rejected\nstate: EvidenceInsufficient" as X
+  Q --> A: "guard; state: BothValid -> AdequacyWitnessed"
+  A --> E: "guard; state: AdequacyWitnessed -> InjectiveDomainBound"
+  E --> R: "transition; state: CanonicalInput -> DecisionComputed"
+  R --> I: "transition; state: DecisionComputed -> ArtifactInputResponseBound"
+  I --> P: "guard; state: DecodedReferenceMatch -> IndependentMatch"
+  P --> D: "capability; state: IndependentMatch -> ConformantDecision"
+  A --> X: "prohibitedEffect; state: ConstantOrIncomplete -> EvidenceInsufficient"
+  E --> X: "prohibitedEffect; state: NonInjectiveOrUnversioned -> EvidenceInsufficient"
+  I --> X: "prohibitedEffect; state: ExitOnlyOrDrifted -> EvidenceInsufficient"
+  P --> X: "prohibitedEffect; state: SameExecutorOrMismatch -> EvidenceInsufficient"
+  X --> Q: "transition; state: EvidenceInsufficient -> BothValid; quarantine preserved"
+#+end_src
+
+* Executable replay sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant C as "Controller [state: BothValidQuarantined]"
+  participant M as "Lean Model [state: ReferenceReady]"
+  participant X as "Primary Executor [state: ArtifactBound]"
+  participant Y as "Replay Executor [state: Independent]"
+  participant G as "Admission Gate [state: Closed]"
+  C->>M: "transition; state: BothValidQuarantined -> ReferenceReady; canonical observations"
+  M->>X: "capability; state: ReferenceReady -> InvocationPending; artifact and input"
+  X->>G: "transition; state: InvocationPending -> PrimaryReceipt; decoded response"
+  G->>Y: "guard; state: PrimaryReceipt -> ReplayPending; same artifact and input"
+  Y->>G: "transition; state: ReplayPending -> ReplayReceipt; independent response"
+  alt all bindings match reference and executors differ
+    G->>C: "capability; state: Closed -> ConformantDecision; admit witness"
+  else artifact, input, response, decision, decode, or executor mismatch
+    G-->>C: "prohibitedEffect; state: EvidenceMismatch -> BothValidQuarantined; deny admission"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+#+begin_src lean
+def AbstractionAdequate {α : Type}
+    (abstract : TerminalObservation → α) : Prop :=
+  ∀ left right,
+    abstract left = abstract right → ObservationallyEquivalent left right
+
+def EncodingInjective {α : Type}
+    (encode : TerminalObservation → α) : Prop :=
+  Function.Injective encode
+
+structure ExecutableDiscriminatorConforms (...) : Prop where
+  invocationArtifact : invocation.artifactDigest = expectedArtifact
+  invocationInput : invocation.inputDigest = expectedInput
+  invocationExitZero : invocation.exitZero = true
+  invocationDecoded : invocation.decoded = true
+  invocationDecision : invocation.decision = reference accepted conflicting
+  replayArtifact : replay.artifactDigest = expectedArtifact
+  replayInput : replay.inputDigest = expectedInput
+  replayResponse : replay.responseDigest = invocation.responseDigest
+  replayDecision : replay.decision = invocation.decision
+  independentExecutor : replay.executorId ≠ primaryExecutor
+  replayed : replay.replayed = true
+#+end_src
+
+* Lean-discovered defects and corrections
+1. Abstraction equality is not observational equivalence; the constant-abstraction counterexample is constructive.
+2. Digest equality is not semantic equality; injectivity or an explicit collision-resistance assumption is required.
+3. A total discriminator is not a sound discriminator; =alwaysPreferAccepted= is a counterexample policy.
+4. Successful exit is not executable conformance; decode and reference agreement are separate obligations.
+5. Re-execution is not independent replay when the executor identity is unchanged.
+6. Source compilation and consumer audit differ; the direct audit must consume a refreshed =.olean= or it may report stale axioms.
+
+* Formal receipts
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistrySemanticAbstractionDiscriminatorConformance.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistrySemanticAbstractionDiscriminatorConformance.lean=
+- audit runner: =packages/proofs/audit/AgentSessionHostRegistrySemanticAbstractionDiscriminatorConformance.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-semantic-abstraction-discriminator-conformance-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-semantic-abstraction-discriminator-conformance-axle-audit-v1.json=
+- admitted audit SHA-256: =af4b2f39f3789d1913ca8bb943a0ce57a9f318321954379ea6ae4f4cd860f673=
+
+* Verification plan
+- compile the focused source and refresh its module artifact;
+- build and run the axiom audit against the refreshed artifact;
+- execute the audit runner and emit Lean JSON;
+- admit all theorem families through AXLE;
+- evaluate each named Typst block through parser-owned Org content on stdin;
+- run =orgize lint=, receipt schema checks, and restricted =git diff --check=;
+- add no Rust implementation.
+
+* Next boundary
+The next boundary is a versioned terminal-observation encoding and executable discriminator test-vector receipt. It must name the installed artifact, canonical serialization, trusted domain, primary and replay executor identities, exact input and response digests, and the admitted collision-resistance assumption. Until then, this proof establishes contract shape but does not authorize runtime adjudication.

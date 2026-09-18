@@ -1,0 +1,107 @@
+{"sourcePath":
+ "packages/proofs/ASPProof/SearchRouteInspectFiniteCommitment.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectFiniteCommitment",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity}\n  {left right : SearchRouteInspectFiniteCommitment.CanonicalManifest identity},\n  SearchRouteInspectFiniteCommitment.universeRoot identity left =\n      SearchRouteInspectFiniteCommitment.universeRoot identity right →\n    left.codes = right.codes",
+   "theoremFamily": "root-binding",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-FCM-BINDING",
+    "ASP-RFC-10.05-FCM-CANONICAL",
+    "ASP-RFC-10.05-FCM-IDENTITY"],
+   "name": "SearchRouteInspectFiniteCommitment.universe_root_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity)\n  (universeManifest frontierManifest : SearchRouteInspectFiniteCommitment.CanonicalManifest identity),\n  SearchRouteInspectFiniteCommitment.universeRoot identity universeManifest ≠\n    SearchRouteInspectFiniteCommitment.frontierRoot identity frontierManifest",
+   "theoremFamily": "domain-separation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-FCM-CANONICAL",
+    "ASP-RFC-10.05-FCM-DOMAIN",
+    "ASP-RFC-10.05-FCM-IDENTITY"],
+   "name":
+   "SearchRouteInspectFiniteCommitment.universe_and_frontier_roots_are_domain_separated",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate) (proof : SearchRouteInspectFiniteCommitment.CanonicalManifest identity),\n  SearchRouteInspectFiniteCommitment.finiteVerifyMembership identity root candidate proof = true →\n    SearchRouteInspectFiniteCommitment.finiteContains identity root candidate",
+   "theoremFamily": "membership-soundness",
+   "rfcClauseIds": ["ASP-RFC-10.05-FCM-MEMBERSHIP", "ASP-RFC-10.05-FCM-SCHEME"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_membership_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate),\n  SearchRouteInspectFiniteCommitment.finiteContains identity root candidate →\n    ∃ proof, SearchRouteInspectFiniteCommitment.finiteVerifyMembership identity root candidate proof = true",
+   "theoremFamily": "membership-completeness",
+   "rfcClauseIds": ["ASP-RFC-10.05-FCM-MEMBERSHIP", "ASP-RFC-10.05-FCM-SCHEME"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_membership_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate),\n  SearchRouteInspectFiniteCommitment.finiteContains identity root candidate →\n    SearchRouteInspectFiniteCommitment.finiteValidRoot identity root",
+   "theoremFamily": "root-validity",
+   "rfcClauseIds": ["ASP-RFC-10.05-FCM-VALID-ROOT"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_contained_root_is_valid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate) (proof : SearchRouteInspectFiniteCommitment.CanonicalManifest identity),\n  SearchRouteInspectFiniteCommitment.finiteVerifyExclusion identity root candidate proof = true →\n    ¬SearchRouteInspectFiniteCommitment.finiteContains identity root candidate",
+   "theoremFamily": "exclusion-soundness",
+   "rfcClauseIds": ["ASP-RFC-10.05-FCM-BINDING", "ASP-RFC-10.05-FCM-EXCLUSION"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_exclusion_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate) (proof : SearchRouteInspectFiniteCommitment.CanonicalManifest identity),\n  SearchRouteInspectFiniteCommitment.finiteVerifyExclusion identity root candidate proof = true →\n    SearchRouteInspectFiniteCommitment.finiteValidRoot identity root",
+   "theoremFamily": "root-validity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-FCM-EXCLUSION", "ASP-RFC-10.05-FCM-VALID-ROOT"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_exclusion_root_is_valid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity) (root : Nat)\n  (candidate : SearchRouteDAG.GraphCandidate),\n  SearchRouteInspectFiniteCommitment.finiteValidRoot identity root →\n    ¬SearchRouteInspectFiniteCommitment.finiteContains identity root candidate →\n      ∃ proof, SearchRouteInspectFiniteCommitment.finiteVerifyExclusion identity root candidate proof = true",
+   "theoremFamily": "exclusion-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-FCM-EXCLUSION", "ASP-RFC-10.05-FCM-VALID-ROOT"],
+   "name": "SearchRouteInspectFiniteCommitment.finite_exclusion_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity}\n  (proof : SearchRouteInspectFiniteCommitment.CanonicalManifest identity),\n  SearchRouteInspectFiniteCommitment.finiteOpeningCodeCount proof = proof.codes.length",
+   "theoremFamily": "opening-size-boundary",
+   "rfcClauseIds": ["ASP-RFC-10.05-FCM-COST-BOUNDARY"],
+   "name":
+   "SearchRouteInspectFiniteCommitment.finite_opening_materializes_manifest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {identity : SearchRouteInspectFiniteCommitment.IdealContentIdentity} {root : Nat}\n  {candidate : SearchRouteDAG.GraphCandidate}\n  (membership :\n    SearchRouteInspectCommittedUniverse.MembershipOpening\n      (SearchRouteInspectFiniteCommitment.finiteCandidateCommitmentScheme identity) root candidate)\n  (exclusion :\n    SearchRouteInspectCommittedUniverse.ExclusionOpening\n      (SearchRouteInspectFiniteCommitment.finiteCandidateCommitmentScheme identity) root candidate),\n  False",
+   "theoremFamily": "opening-consistency",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-FCM-EXCLUSION",
+    "ASP-RFC-10.05-FCM-MEMBERSHIP",
+    "ASP-RFC-10.05-FCM-SCHEME"],
+   "name":
+   "SearchRouteInspectFiniteCommitment.finite_verified_membership_and_exclusion_conflict",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 10,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 6}

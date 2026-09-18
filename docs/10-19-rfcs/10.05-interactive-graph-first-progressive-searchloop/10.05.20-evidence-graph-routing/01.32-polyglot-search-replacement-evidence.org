@@ -1,0 +1,376 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Typed Polyglot Search and Replacement Evidence
+#+property: header-args:typst :lint typst-eval :runtime typst :format typst
+
+* Status
+
+This module replaces the S-expression-only agent grammar in
+=01.31-typed-search-projection-render-interface.org=.  It is normative for the
+agent-facing language boundary, the progressive frontier, and the evidence
+required before the old search interface may be retired.
+
+This RFC does not claim that the Rust provider implements the architecture.
+The architecture becomes replaceable only after the formal, conformance,
+empirical, publication, and canary gates in this module all close.
+
+Parser/source-summary and cross-packet executable refinement is specified in
+[[file:01.33-polyglot-parser-conformance-executable-refinement.org][Polyglot Parser Conformance and Executable Refinement]].
+
+* Decision
+
+The agent surface is a typed polyglot search document.  It contains four
+separate languages joined through a versioned typed-relation ABI:
+
+1. ASP Search Control owns snapshot, budget, continuation, selection, and emit
+   policy;
+2. ASP GQL Core owns read-only property-graph pattern matching;
+3. ASP Logic Query Core owns read-only goals over registered predicates;
+4. Graph Turbo profiles produce planning feature relations.
+
+A canonical S-expression may encode control metadata internally, but it MUST
+NOT replace GQL syntax, Logic Query syntax, or their independent parsers.  JSON
+remains an internal receipt, persistence, and test-fixture encoding.  It is not
+the default agent language.
+
+* Agent-facing document grammar
+
+The concrete surface is intentionally small and preserves the native logical
+shape of each embedded language:
+
+#+begin_src text
+SEARCH
+  SNAPSHOT @snapshot:42
+  BUDGET NODES 10
+  SELECT AT MOST 3
+
+GQL
+  MATCH (f:Callable)-[:OWNED_BY]->(o:Owner)
+  WHERE f.name = 'open_runtime_project_proxy'
+  RETURN f AS function, o AS candidate
+
+LOGIC
+  ?- gql_candidate(Function, Candidate),
+     frontier_member(Candidate),
+     covers(Candidate, Obligation).
+
+TURBO
+  USE evidence-frontier-v1
+
+EMIT
+  FRONTIER
+#+end_src
+
+The public grammar is a framed document grammar, not an S-expression grammar:
+
+#+begin_src ebnf
+search-document  = control-section, gql-section?, logic-section?,
+                   turbo-section?, emit-section ;
+control-section  = "SEARCH", snapshot-clause, budget-clause,
+                   selection-clause, continuation-clause? ;
+gql-section      = "GQL", gql-core-query ;
+logic-section    = "LOGIC", logic-query-goal ;
+turbo-section    = "TURBO", "USE", profile-id ;
+emit-section     = "EMIT", ("FRONTIER" | "EVIDENCE" | "CLOSURE") ;
+#+end_src
+
+Each section has a separate parser and typed AST.  A parser MUST reject text
+that crosses a language boundary or attempts to close one section from inside
+another section.
+
+* ASP GQL Core profile v0.1
+
+ASP GQL Core is an ISO-inspired, versioned, read-only subset.  It does not
+claim complete ISO GQL conformance.
+
+The first profile admits:
+
+- =MATCH= node, edge, and bounded path patterns;
+- labels, edge types, properties, and typed variables;
+- =WHERE= typed scalar predicates and Boolean composition;
+- =RETURN= bindings and aliases;
+- explicitly bounded path quantifiers.
+
+The first profile rejects:
+
+- =CREATE=, =INSERT=, =DELETE=, =SET=, and graph catalog mutation;
+- arbitrary procedures and user-defined functions;
+- unbounded path traversal;
+- provider-private syntax not declared by the profile;
+- query-local authority or proof assertions.
+
+=LIMIT= is not an agent GQL budget.  Exposure, selection, token, hop, and round
+budgets remain in ASP Search Control so that GQL, Graph Turbo, and SearchLoop do
+not apply conflicting truncation policies.
+
+* ASP Logic Query Core profile v0.1
+
+The logic section is a Datalog-style goal language.  It compiles to calls over
+registered Ascent predicates but does not expose Rust macros or rule creation.
+
+The profile admits conjunction, typed variables, registered predicates, and
+safe stratified negation where the ruleset declares it.  It rejects rule heads,
+asserted facts, recursive rule injection, host expressions, arbitrary code,
+and unregistered predicates.
+
+The trusted Ascent ruleset is server-owned, digest-bound, finite for the
+declared search budget, and independent of agent text.
+
+* Typed relation ABI
+
+GQL and Logic Query Core communicate only through admitted relations:
+
+#+begin_src text
+RELATION gql_candidate(
+  function  NodeRef,
+  candidate NodeRef,
+  path      PathRef
+)
+
+RELATION turbo_feature(
+  candidate CandidateRef,
+  algorithm AlgorithmId,
+  dimension FeatureDimension,
+  value     Score,
+  receipt   ReceiptRef
+)
+#+end_src
+
+Every relation binds relation name, ABI version, graph snapshot, ordered column
+schema, producer identity, and provenance.  A version, snapshot, column, or
+producer mismatch fails closed.  A Graph Turbo feature has candidate authority;
+it cannot become observed or derived evidence without exact admission.
+
+* Shared schema family
+
+The internal parsed packets and receipts are versioned independently from the
+agent-facing text grammar:
+
+- [[file:../../../../schemas/semantic-polyglot-search-document.v1.schema.json][semantic-polyglot-search-document.v1]] binds source snapshot, provider,
+  control budgets, and the independently parsed language-section summaries;
+- [[file:../../../../schemas/semantic-search-relation-batch.v1.schema.json][semantic-search-relation-batch.v1]] binds relation ABI version, namespaced
+  relation identity, typed columns, producer, authority, rows, and provenance;
+- [[file:../../../../schemas/semantic-progressive-search-turn.v1.schema.json][semantic-progressive-search-turn.v1]] binds the exposed frontier,
+  model-selected subset, omission certificate, obligations, and continuation;
+- [[file:../../../../schemas/semantic-search-replacement-certificate.v1.schema.json][semantic-search-replacement-certificate.v1]] binds formal, conformance,
+  benchmark, runtime, canary, safety, and rollback evidence.
+
+These JSON schemas validate parser output and receipts.  They do not parse GQL
+or Logic Query source text.  The language parsers must prove that their emitted
+clause/form summaries correspond to the accepted source; accepting a safe
+summary beside mutating source is a parser conformance failure.
+
+* Stateful execution architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> ControlParsed: SEARCH control accepted
+  ControlParsed --> Rejected: mutation or malformed frame
+  ControlParsed --> GQLParsed: optional GQL section
+  GQLParsed --> Rejected: write or unbounded pattern
+  GQLParsed --> BaseRelations: read-only bounded match
+  BaseRelations --> Rejected: ABI, snapshot, or provenance drift
+  BaseRelations --> LogicClosure: registered predicates only
+  LogicClosure --> Rejected: unregistered or non-finite relation
+  LogicClosure --> TurboFeatures: candidate feature relations
+  TurboFeatures --> CertifiedFrontier: authority-separated Pareto construction
+  CertifiedFrontier --> AgentSelection: expose at most 10 candidates
+  AgentSelection --> BranchExecution: select at most 3 exposed candidates
+  BranchExecution --> CertifiedFrontier: unresolved obligations and continuation
+  BranchExecution --> Closed: every obligation has admitted evidence
+  CertifiedFrontier --> Partial: exposure budget reached
+  Partial --> CertifiedFrontier: fresh continuation resumes
+  Partial --> Rejected: stale continuation
+  Closed --> Receipt
+  Rejected --> TypedFailure
+  Receipt --> [*]
+  TypedFailure --> [*]
+#+end_src
+
+The frontier exposure budget and the model selection budget are different
+invariants.  The default profile exposes at most ten candidates and admits a
+model-selected subset of at most three.  The server does not emit a
+=recommendedNext= decision.
+
+* Mathematical refinement model
+
+Let =O= be the old search machine, =N= the new polyglot progressive machine,
+=q= a query, =s= a graph snapshot, and =t= a completed trace.  Let =E(t)= be
+the admitted evidence, =K(t)= the discharged obligations, and =C(t)= the
+abstract cost vector.
+
+#+begin_src typst
+#{
+  let refines(old, new) = $ E(new) = E(old) and K(new) = K(old) $
+  let cost(c) = $ (c_tok, c_round, c_node, c_edge, c_subagent) $
+
+  $ N <=_"ref" O quad "iff" quad
+    forall q, s, t_O,
+      "Valid"_O(q, s, t_O) arrow
+      exists t_N,
+        "Valid"_N(q, s, t_N) and
+        refines(t_O, t_N) $
+
+  $ "Replace"(N, O) =
+      (N <=_"ref" O) and
+      forall q in W,
+        C(t_N) <=_P C(t_O) $
+}
+#+end_src
+
+The Pareto order =<=_P= is component-wise.  Lean may prove it only for an
+explicit workload model and explicit router, finiteness, fairness, and
+compression assumptions.  Lower cost never substitutes for semantic
+equivalence.
+
+The bounded first page is deliberately not complete.  If candidates are
+zero-indexed, candidate ten is the eleventh candidate and is absent from the
+first exposure of ten.  Fair continuation makes it visible on the second page:
+
+#+begin_src typst
+#{
+  let visible(b, p, i) = $ i < (p + 1) b $
+
+  $ not visible(10, 0, 10) $
+  $ visible(10, 1, 10) $
+
+  $ T_"proj"(n) <= T_"base" + n T_"candidate" $
+  $ X_"next" <= B_"select" X_"branch" $
+}
+#+end_src
+
+This counterexample prevents a false theorem that the first bounded projection
+always contains the witness.  The required property is eventual witness
+exposure under a fresh, fair continuation.
+
+* Lean obligations
+
+The formal owner is
+[[file:../../../../packages/proofs/ASPProof/SearchProjectionRenderInterface.lean][ASPProof.SearchProjectionRenderInterface]].
+Its modular audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/SearchProjectionRenderInterface.lean][ASPProof.Audit.SearchProjectionRenderInterface]].
+The generated kernel and AXLE receipts are
+[[file:../../../../packages/proofs/receipts/search-projection-render-interface-audit-v1.json][search-projection-render-interface-audit-v1.json]] and
+[[file:../../../../packages/proofs/receipts/search-projection-render-interface-axle-v1.json][search-projection-render-interface-axle-v1.json]].
+
+The proof model MUST cover:
+
+1. control grammar mutation and arbitrary-command rejection;
+2. read-only, bounded ASP GQL Core admission;
+3. Logic Query rule, fact, recursion, and host-code rejection;
+4. typed relation ABI well-formedness and version-drift rejection;
+5. registered-predicate admission and unregistered-predicate rejection;
+6. Graph Turbo candidate non-authority;
+7. exposure-ten and selection-three as separate bounds;
+8. rejection of unexposed selections and selections over budget;
+9. the eleventh-witness first-page counterexample and fair resume witness;
+10. monotone disclosure, omission certificates, and stale-continuation rejection;
+11. semantic refinement before cost dominance;
+12. linear projection-token and selected-branch expansion bounds;
+13. search-result cache identity independent of encoder identity;
+14. adapters cannot mint evidence authority;
+15. machine-level semantic refinement for every query and snapshot;
+16. explicit finite-graph, fair-continuation, admissible-router, and projection
+    compression assumptions;
+17. evidence digest preservation under qualified machine replacement.
+
+Lean does not prove LLM selection quality, real latency, runtime cache hit rate,
+provider completeness, or deployed cross-language compatibility.  Those are
+empirical and conformance obligations.
+
+* Independent subagent validation
+
+The registered subagents have distinct, non-authoritative roles:
+
+- =asp_explorer= searches for counterexamples, missing owners, hidden language
+  crossings, stale ABI acceptance, witness loss, and duplicate graph routes;
+- =asp_testing= executes blinded paired trials, verifies receipts, and reports
+  non-inferiority and efficiency intervals.
+
+Neither subagent may declare replacement from its own output.  Their compact
+receipts become inputs to the replacement certificate and remain replayable
+against the same snapshot and runtime digests.
+
+* Paired empirical qualification
+
+Arm A is the current search interface.  Arm B is the typed polyglot progressive
+SearchLoop.  Every pair uses the same repository snapshot, task, model, seed,
+provider versions, token accounting, and declared cache state.
+
+The corpus covers Rust, TypeScript, Python, Julia, and Gerbil; small, medium,
+and large repositories; and at least twenty percent adversarial fixtures.  The
+fixtures include same-name symbols, re-export chains, generated code, stale
+indexes, missing providers, dependency cycles, huge fan-out, interrupted
+continuations, and misleading locators.
+
+Each measured task records:
+
+- evidence precision, recall, obligation closure, and answer correctness;
+- tokens to first evidence and tokens to closure;
+- interaction rounds, graph expansions, path length, and subagent overhead;
+- cold and warm latency distributions;
+- search-cache hits separately from model-prefix-cache hits;
+- stale-continuation behavior and deterministic replay digest.
+
+After three warmups, each task has at least thirty paired measurements.  The
+report uses paired deltas, effect sizes, bootstrap ninety-five percent
+confidence intervals, and latency/token distribution tests.
+
+* Candidate replacement gates
+
+Safety gates are absolute:
+
+- no unsound closure;
+- no accepted stale continuation;
+- no accepted ABI or schema drift;
+- no Graph Turbo feature treated as evidence;
+- deterministic replay produces the same semantic receipt digest.
+
+Initial non-inferiority gates are:
+
+- evidence recall and precision no more than two percentage points below A;
+- closure rate no more than one percentage point below A.
+
+Initial efficiency gates are:
+
+- median token cost at most seventy percent of A and p95 at most eighty-five
+  percent of A;
+- median interaction rounds at most seventy-five percent of A and p95 no worse
+  than A;
+- median graph path no longer than A, with at most one extra hop at p95;
+- median latency at most eighty percent of A and p95 no worse than A;
+- fan-out/fan-in overhead at most ten percent of tokens and fifteen percent of
+  wall time.
+
+These values are candidate RFC thresholds.  They become normative only after
+the baseline corpus and measurement method are frozen.  They MUST NOT be
+changed after observing Arm B merely to make replacement pass.
+
+* Replacement certificate and cutover
+
+The final =search-replacement-certificate.v1= binds:
+
+- RFC and shared-schema digests;
+- Lean module, theorem inventory, axiom audit, and counterexample corpus;
+- Rust, TypeScript, Python, Julia, and Gerbil conformance receipts;
+- paired benchmark corpus, statistical report, and cache-state classification;
+- installed binary digest, live runtime digest, and provider registry digests;
+- canary result, rollback binary, and rollback configuration.
+
+Cutover requires two independent corpus slices to pass all gates.  The new
+interface then receives ten percent canary traffic.  Two consecutive gate
+breaches, a closure drop above one percent, a stale-continuation rate above one
+percent, a p95 latency regression, or a schema/receipt mismatch automatically
+restores the old interface and invalidates the new semantic cache generation.
+
+* Current closure state
+
+The Lean model and audit establish the first formal skeleton.  They do not yet
+establish replacement.  Current parser-owned discovery reports that the Rust
+provider still implements a query-bundle/seed-plan and Graph Turbo frontier,
+without the complete GQL Core, Logic Query Core, typed relation ABI, and
+progressive selection chain described here.  Runtime/provider receipt drift
+also blocks a fresh exact owner projection.  These remain explicit blockers,
+not compatibility exceptions.

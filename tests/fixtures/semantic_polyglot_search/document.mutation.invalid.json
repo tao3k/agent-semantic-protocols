@@ -1,0 +1,30 @@
+{
+  "schemaId": "agent.semantic-protocols.polyglot-search-document.v1",
+  "schemaVersion": "1",
+  "sourceSnapshot": {
+    "rootDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "algorithm": "blake3-256",
+    "dirtyPathsDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "provider": {
+    "languageId": "rust",
+    "providerId": "asp-rust",
+    "artifactDigest": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "control": {
+    "snapshotRef": "snapshot:42",
+    "exposureBudget": 10,
+    "selectionBudget": 3,
+    "graphHopBudget": 6,
+    "roundBudget": 4,
+    "projectedTokenBudget": 700,
+    "emit": "frontier"
+  },
+  "sections": {
+    "gql": {
+      "profile": "asp-gql-core:0.1",
+      "source": "CREATE (n:Injected)",
+      "clauses": ["create-graph"]
+    }
+  }
+}

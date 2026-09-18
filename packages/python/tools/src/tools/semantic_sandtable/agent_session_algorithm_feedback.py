@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build graph-turbo algorithm feedback from agent-session reports."""
 
 from __future__ import annotations
@@ -8,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from asp_graph_turbo.calibration import profile_calibration_from_feedback
+from asp_python_graphs.calibration import profile_calibration_from_feedback
 
 from .utils import dict_value, list_value, require_str
 

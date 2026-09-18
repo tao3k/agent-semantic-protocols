@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/host-workspace-initialization-binding.v1.schema.json",
+  "title": "Host Workspace Initialization Binding V1",
+  "description": "The independently admitted Project Workspace and Host-local worktree instance retained by Runtime workspace initialization. This is not an Agent-facing handle or a Query parameter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "projectWorkspace", "worktreeInstanceId"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.host-workspace-initialization-binding"},
+    "schemaVersion": {"const": "1"},
+    "projectWorkspace": {"$ref": "project-workspace-binding.v1.schema.json"},
+    "worktreeInstanceId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque Host-local worktree identity minted and supplied by workspace initialization; never inferred from projectId, workspaceId, sessionId, or a filesystem path."
+    }
+  }
+}

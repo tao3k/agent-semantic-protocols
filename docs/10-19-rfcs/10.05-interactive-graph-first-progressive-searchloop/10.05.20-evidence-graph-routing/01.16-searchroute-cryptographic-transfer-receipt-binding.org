@@ -1,0 +1,284 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute cryptographic transfer-receipt binding
+#+property: rfc_layer 10.05.20-evidence-graph-routing
+
+* Status and authority
+
+This RFC is canonical for the signed receipt that authorizes reuse of a
+vector-coverage proof across an authority-rotation edge.
+
+It refines
+[[file:01.15-searchroute-authority-rotation-chain-continuity.org][authority-rotation chain continuity]].
+It defines the proof obligations surrounding cryptographic verification; it
+does not select or implement a signature algorithm.
+
+The proof and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteCryptographicTransferReceiptBinding.lean][SearchRouteCryptographicTransferReceiptBinding.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteCryptographicTransferReceiptBinding.lean][Lean JSON audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-cryptographic-transfer-receipt-binding-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-cryptographic-transfer-receipt-binding-axle-audit-v1.json][AXLE admission receipt]]
+
+* Lean-discovered cryptographic boundary
+
+A Boolean =oldAuthorityApproved= or =newAuthorityAccepted= records a logical
+decision but does not bind that decision to a signed statement.
+
+A rotation-safe receipt must bind:
+
+- one canonical transfer payload;
+- the complete old and new registry domains;
+- semantic coverage identity;
+- a unique nonce;
+- issuance and expiry times;
+- one replay-domain digest;
+- each signer role;
+- each authority digest;
+- each signer key epoch;
+- each signature-algorithm digest;
+- the payload digest presented to verification.
+
+Lean also demonstrates that digest equality alone does not establish payload
+identity. A constant digest maps two distinct payloads to the same value.
+Payload uniqueness therefore requires a separately justified injective or
+collision-resistant digest assumption.
+
+* Verification abstraction
+
+The proof kernel treats signature verification as an external proposition:
+
+#+begin_example
+verify : SignatureEnvelope -> Prop
+#+end_example
+
+Lean proves that every accepted envelope has the required role, authority, key
+epoch, algorithm, replay domain, and payload digest before =verify= may
+authorize it.
+
+The theorem does not claim that a concrete signature scheme is secure. A
+provider must supply an independently tested verifier and bind its algorithm
+identity into the envelope.
+
+* Signed payload
+
+The canonical payload contains:
+
+- =semanticIdentity=;
+- =fromDomain=;
+- =toDomain=;
+- =replayDomainDigest=;
+- =nonce=;
+- =issuedAt=;
+- =expiresAt=.
+
+Both signatures bind the same payload digest. The old signature uses role
+=oldApprover= and the source-domain authority. The new signature uses role
+=newAcceptor= and the destination-domain authority.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CTRB-CANONICAL-PAYLOAD
+
+The receipt MUST contain one canonical transfer payload. The payload MUST equal
+the logical authority-transfer certificate in semantic identity and both
+registry domains.
+
+Field omission, alternate serialization, or an unbound nonce rejects the
+receipt.
+
+** ASP-RFC-10.05-CTRB-DIGEST-BOUNDARY
+
+The stored payload digest MUST equal the result of the selected canonical
+payload-digest function.
+
+Digest equality MUST NOT be interpreted as payload equality unless the digest
+function has a separately admitted collision-resistance or injectivity
+obligation.
+
+** ASP-RFC-10.05-CTRB-DUAL-SIGNATURE-CONTEXT
+
+Both signature envelopes MUST bind the same payload digest. The old envelope
+MUST bind role =oldApprover= and the source authority. The new envelope MUST
+bind role =newAcceptor= and the destination authority.
+
+Successful verification without these context equalities is insufficient.
+
+** ASP-RFC-10.05-CTRB-REPLAY-DOMAIN
+
+The payload and both signatures MUST equal the active replay-domain digest.
+
+Verification of the same signature bytes in a different workspace, project,
+protocol, or publication domain MUST fail closed.
+
+** ASP-RFC-10.05-CTRB-KEY-EPOCH
+
+Each signature MUST bind the exact admitted key epoch for its authority.
+Revoked key epochs reject new transfer admission even when the signature
+verifier still accepts the bytes.
+
+Historical audit may retain the receipt under the archived key registry, but it
+does not authorize new coverage reuse.
+
+** ASP-RFC-10.05-CTRB-ALGORITHM
+
+Each signature envelope MUST bind the admitted signature-algorithm digest.
+Changing or migrating the algorithm policy rejects an old receipt unless a
+separate migration certificate explicitly reauthorizes it.
+
+** ASP-RFC-10.05-CTRB-TEMPORAL-SCOPE
+
+Transfer admission requires:
+
+#+begin_example
+issuedAt <= now < expiresAt
+#+end_example
+
+An expired payload or a revoked signer key rejects the receipt.
+
+** ASP-RFC-10.05-CTRB-CHAIN-PROJECTION
+
+Every cryptographically valid rotation edge MUST also be a valid logical
+authority-rotation edge. A cryptographic rotation chain MUST project to the
+authority-rotation chain and retain its exact epoch span.
+
+Cryptographic verification cannot repair a disconnected or forked registry
+chain.
+
+** ASP-RFC-10.05-CTRB-GLOBAL-LIFT
+
+Only cryptographic-chain-admitted vector coverage may lift frontier-local
+Pareto minimality to global Pareto minimality across authority rotation.
+
+* Org-Babel Typst executable mathematics
+
+#+name: cryptographic-transfer-receipt-binding-math
+#+begin_src typst
+#let payload = (
+  semantic: 17,
+  from-domain: (snapshot: 108, authority: 77, epoch: 8),
+  to-domain: (snapshot: 209, authority: 88, epoch: 9),
+  replay-domain: 900,
+  nonce: 1,
+  issued-at: 5,
+  expires-at: 10,
+)
+
+#let collision-payload = (
+  semantic: 17,
+  from-domain: (snapshot: 108, authority: 77, epoch: 8),
+  to-domain: (snapshot: 209, authority: 88, epoch: 9),
+  replay-domain: 900,
+  nonce: 2,
+  issued-at: 5,
+  expires-at: 10,
+)
+
+#let constant-digest(value) = 501
+
+#let old-signature = (
+  role: "old-approver",
+  authority: 77,
+  key-epoch: 3,
+  algorithm: 101,
+  replay-domain: 900,
+  payload-digest: 501,
+)
+
+#let new-signature = (
+  role: "new-acceptor",
+  authority: 88,
+  key-epoch: 4,
+  algorithm: 202,
+  replay-domain: 900,
+  payload-digest: 501,
+)
+
+#let temporal-valid(now) = (
+  payload.issued-at <= now
+  and now < payload.expires-at
+)
+
+#let context-bound(signature, role, authority, key-epoch, algorithm) = (
+  signature.role == role
+  and signature.authority == authority
+  and signature.key-epoch == key-epoch
+  and signature.algorithm == algorithm
+  and signature.replay-domain == payload.replay-domain
+  and signature.payload-digest == constant-digest(payload)
+)
+
+#metadata((
+  schema-id: "asp.searchroute.cryptographic-transfer-receipt-binding.v1",
+  old-context-bound:
+    context-bound(old-signature, "old-approver", 77, 3, 101),
+  new-context-bound:
+    context-bound(new-signature, "new-acceptor", 88, 4, 202),
+  temporally-valid: temporal-valid(7),
+  expired: not temporal-valid(12),
+  digest-collision:
+    constant-digest(payload) == constant-digest(collision-payload),
+  payloads-differ: payload != collision-payload,
+)) <cryptographic-transfer-receipt-binding>
+
+$ "ValidTime"(p, t) = (p_"issued" <= t) and (t < p_"expires") $
+
+$ "OldSignature" =
+  (r_"old", a_"old", k_"old", a_"alg-old", d_"replay", H(p)) $
+
+$ "NewSignature" =
+  (r_"new", a_"new", k_"new", a_"alg-new", d_"replay", H(p)) $
+
+$ not ((H(p_1) = H(p_2)) ⇒ (p_1 = p_2)) $
+#+end_src
+
+The Typst program is evaluated from the Org source block through =typst eval=
+on stdin.
+
+* Lean theorem correspondence
+
+| RFC obligation | Lean theorem |
+|-
+| Payload and digest binding | =valid_receipt_binds_payload= |
+| Replay-domain binding | =valid_receipt_binds_replay_domain= |
+| Temporal scope | =valid_receipt_is_temporally_scoped= |
+| Expiry rejection | =expired_payload_rejects_receipt= |
+| Old-key revocation | =revoked_old_key_rejects_receipt= |
+| New-key revocation | =revoked_new_key_rejects_receipt= |
+| Cross-domain replay rejection | =changed_replay_domain_rejects_receipt= |
+| Algorithm substitution | =old_algorithm_substitution_rejects_receipt= |
+| Key-epoch substitution | =new_key_epoch_substitution_rejects_receipt= |
+| Digest uniqueness assumption | =injective_payload_digest_makes_bound_payload_unique= |
+| Digest collision counterexample | =constant_digest_collision_does_not_identify_payload= |
+| Weak verification counterexample | =signature_verification_only_allows_cross_domain_replay= |
+| Logical rotation projection | =valid_cryptographic_rotation_edge_is_valid_rotation= |
+| Chain projection | =valid_cryptographic_chain_projects_authority_rotation_chain= |
+| Exact chain span | =valid_cryptographic_chain_exact_epoch_span= |
+| Global Pareto lift | =cryptographic_chain_admitted_vector_coverage_lifts_global_pareto= |
+
+* Failure behavior
+
+The receipt fails closed when:
+
+- payload and logical transfer fields disagree;
+- the canonical payload digest does not match;
+- signer role or authority differs;
+- either signature binds a different payload;
+- replay-domain digest differs;
+- key epoch differs or is revoked;
+- algorithm digest differs;
+- the payload is not yet valid or has expired;
+- the cryptographic edge does not project to a valid logical rotation edge.
+
+Failure invalidates new proof reuse. Archived receipts remain available for
+historical audit under their original verifier, key registry, and replay
+domain.
+
+* Remaining boundary
+
+The abstract =verify= proposition still needs a provider-facing conformance
+contract proving canonical byte serialization, signature-verifier invocation,
+key-registry resolution, and independent replay. Digest and Lean-proof success
+alone do not establish executable cryptographic verification.

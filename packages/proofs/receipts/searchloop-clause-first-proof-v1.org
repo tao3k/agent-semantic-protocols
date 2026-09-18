@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Clause-first Lean Proof Receipt v1
+#+PROPERTY: ID ASP-PROOF-RECEIPT-SEARCHLOOP-CLAUSE-FIRST-V1
+
+* Status
+
+This receipt records the first executable proof bundle for the Clause-first
+SearchLoop model.  It proves the named local theorems under the model encoded in
+Lean.  It does not establish full RFC closure, runtime conformance, or
+equivalence between the Org RFC and an AXLE-generated declaration bundle.
+
+* Ownership
+
+- proof container: =packages/proofs=
+- Lake package and Lean library: =ASPProof=
+- Lean model: =packages/proofs/ASPProof/SearchLoopClauseFirst.lean=
+- AXLE extraction owner: =packages/python/tools=
+- mathematical explanation and embedded Typst block:
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00.11-clause-first-mathematical-model.org=
+
+The current Lean file is a direct RFC bootstrap model.  A later receipt must
+bind it to an AXLE-produced, versioned declaration bundle before claiming the
+RFC-to-Lean translation itself is checked.
+
+* Input identities
+
+| Artifact                                                    | SHA-256                                                            |
+|-------------------------------------------------------------+--------------------------------------------------------------------|
+| =packages/proofs/ASPProof/SearchLoopClauseFirst.lean=       | =c8b3fa7269078e31ac24b2b2d532f8e0a09c20ed31f2f48e747ebd391cbb5516= |
+| =packages/proofs/ASPProof.lean=                             | =d6a90c4b290526bb316a24462d370fc40cd41933d0a5bd0a784abd042a3da491= |
+| =packages/proofs/lakefile.toml=                             | =9bfb6c85401decaf71c6ba51ce6b054e0563c1c473fe98b54c38e94c7dac438b= |
+| =packages/proofs/lean-toolchain=                            | =2bdc48adfa58d0017e538a0ad117c5d73d35deec879978f909406a80c8037273= |
+| =00.02-axle-lean-rfc-validation.org=                        | =b0b769ab324eb7b5496beaa6607c7f2758f18aaeba1b66821529fde9c3118dc1= |
+| =00.09-clause-first-design-rationale-and-risk-register.org= | =4929604c6cccd9c81921880aef9d566960ebb6742fefaf677d1edd7cc22f0095= |
+| =00.10-clause-first-lean-proof-plan.org=                    | =152ffaca527424ab238a1e4ad8bc4e45853b9b4aebfdb5593807067b7f75e7d8= |
+
+* Toolchain
+
+| Tool  | Version                                                     |
+|-------+-------------------------------------------------------------|
+| Lean  | =4.32.2=, commit =f3b06c705e6c85f5314019d5d3baab0fec5b580c= |
+| Lake  | =5.0.0-src+f3b06c7=                                         |
+| Typst | =0.15.1=                                                    |
+
+* Executed checks
+
+#+begin_src sh
+cd packages/proofs
+lake build
+lake env lean ASPProof/SearchLoopClauseFirst.lean
+lake env lean /tmp/SearchLoopClauseFirstAxioms.lean
+
+cd ../..
+asp query playbook --documents org \
+  --selector 'org://docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00.11-clause-first-mathematical-model.org#item/block/searchloop-clause-first-model' \
+  --projection source
+typst compile --diagnostic-format short --format pdf - /dev/null
+#+end_src
+
+| Check                                        | Result                                                               |
+|----------------------------------------------+----------------------------------------------------------------------|
+| Lake build                                   | PASS, =Build completed successfully (4 jobs)=                        |
+| Direct Lean file check                       | PASS, exit 0, no warning output                                      |
+| Named theorem declarations                   | 20                                                                   |
+| =sorry= / =admit= / =unsafe= token inventory | 0 / 0 / 0                                                            |
+| =sorryAx= dependency                         | 0 of 20 theorems                                                     |
+| No-axiom theorems                            | 4 of 20                                                              |
+| Lean-standard =propext=-only theorems        | 16 of 20                                                             |
+| Typst stdin lint                             | pending refreshed receipt; no source or rendered artifact is written |
+
+* Typst stdin refresh
+
+This refresh supersedes the pending Typst row above and the earlier =00.10=
+digest after the Org-owned projection was introduced.
+
+| Evidence               | Result                                                             |
+|------------------------+--------------------------------------------------------------------|
+| =00.10= SHA-256        | =d4976312258495e016703471ecec3464f6e79f6ee00d5ac548b1dce984bc8100= |
+| =00.11= SHA-256        | =9d2f63187177be8b4549dd9dae40001deca90029e5a4d13b8f3355670e9a65c5= |
+| Orgize selection       | PASS, exactly one =lang=typst= source block                        |
+| Extracted body         | 4,943 bytes                                                        |
+| Typst stdin lint       | PASS, Typst =0.15.1= exit 0                                        |
+| Materialized artifacts | none; no extracted =.typ= source or rendered PDF                   |
+
+The validation command was
+=typst compile --diagnostic-format short --format pdf - /dev/null= with the
+Orgize-selected block body written to process stdin.
+
+* Axiom audit
+
+The following theorems do not depend on any axioms:
+
+- =snapshot_drift_changes_action_identity=
+- =selector_drift_blocks_materialization=
+- =rank_cannot_disable_mandatory_escalation=
+- =provider_drift_changes_cache_identity=
+
+The other sixteen named theorems depend only on Lean's standard =propext=
+axiom.  No theorem reports =sorryAx=.  This receipt does not interpret
+=propext= as an RFC assumption; it records the kernel dependency separately so
+that a future constructive-proof policy can tighten it explicitly.
+
+* Formal findings fed back into the RFC
+
+The executable model rejects or repairs nine underspecified formulations:
+
+1. endpoint overlap is not fact identity;
+2. overlapping clause-state predicates require ordered classification;
+3. fairness at zero budget requires a typed =needs-budget= terminal state;
+4. action identity must include snapshot identity;
+5. no-hit cannot prove absence without complete scope and freshness;
+6. rank cannot substitute for closure evidence;
+7. selector drift blocks materialization;
+8. mandatory graph escalation is independent of rank;
+9. cache identity must include provider identity.
+
+These findings are recorded normatively in the RFC risk and proof-plan modules.
+
+* Open proof obligations
+
+- AXLE must emit a versioned declaration bundle from stable RFC clause IDs.
+- The Lean model must consume or be mechanically checked against that bundle.
+- Transition-system safety and liveness must be proved over complete traces,
+  not only the current local decision lemmas and finite witnesses.
+- Clause merge algebra, cache invalidation, graph-escalation completeness, and
+  bounded-progress theorem families remain open.
+- ASP currently exposes no Lean language facade; Lean source identity and exact
+  materialization are therefore not yet parser-owned by ASP.

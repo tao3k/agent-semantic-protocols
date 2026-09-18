@@ -1,0 +1,627 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/interactive-search-graph-step.v1.schema.json",
+  "title": "Interactive Search Graph Step v1",
+  "description": "A Search Router action, parser/provider-owned observation, admitted graph delta, deterministic derivations, and resumable next state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "beforeState",
+    "action",
+    "observation",
+    "delta",
+    "afterState",
+    "datalogDerivations",
+    "recommendedTransitions",
+    "receipt"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.interactive-search-graph-step"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sessionId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "beforeState": {
+      "$ref": "#/$defs/graphState"
+    },
+    "action": {
+      "$ref": "#/$defs/routerAction"
+    },
+    "observation": {
+      "$ref": "#/$defs/toolObservation"
+    },
+    "delta": {
+      "$ref": "#/$defs/graphDelta"
+    },
+    "afterState": {
+      "$ref": "#/$defs/graphState"
+    },
+    "datalogDerivations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/datalogDerivation"
+      }
+    },
+    "recommendedTransitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/routerChoice"
+      }
+    },
+    "receipt": {
+      "$ref": "#/$defs/stepReceipt"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stringSet": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      },
+      "uniqueItems": true
+    },
+    "graphState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stateDigest",
+        "graphGeneration",
+        "workspaceGeneration",
+        "currentNode",
+        "remainingBudget",
+        "obligations",
+        "frontier",
+        "visited"
+        ,
+        "routeMeasure",
+        "routeBudget"
+      ],
+      "properties": {
+        "stateDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "graphGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workspaceGeneration": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "currentNode": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "remainingBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "obligations": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "frontier": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "visited": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "routeMeasure": {
+          "$ref": "#/$defs/routeMeasure"
+        },
+        "routeBudget": {
+          "$ref": "#/$defs/graphRouteBudget"
+        }
+      }
+    },
+    "routeMeasure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semanticGraphHops",
+        "executedGraphHops",
+        "toolRounds",
+        "searchTokens",
+        "uncachedModelTokens"
+      ],
+      "properties": {
+        "semanticGraphHops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executedGraphHops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uncachedModelTokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "graphRouteBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxEvidenceTokens",
+        "maxRawTokens",
+        "maxUncachedTokens",
+        "maxRounds",
+        "maxGraphHops",
+        "maxTransitions"
+      ],
+      "properties": {
+        "maxEvidenceTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxRawTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxUncachedTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxGraphHops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxTransitions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "routerAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actionId",
+        "kind",
+        "toolId",
+        "vertical",
+        "queryIdentity",
+        "anchors",
+        "budgetBefore"
+      ],
+      "properties": {
+        "actionId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "kind": {
+          "enum": [
+            "lexical-search",
+            "native-syntax-search",
+            "semantic-provider-search",
+            "dependency-search",
+            "exact-selector-materialization",
+            "runtime-probe",
+            "delegate-branch",
+            "resume-frontier",
+            "stop-closure",
+            "stop-counterexample"
+          ]
+        },
+        "toolId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "vertical": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "queryIdentity": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "anchors": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "budgetBefore": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factId",
+        "predicate",
+        "arguments",
+        "vertical",
+        "provenanceIds"
+      ],
+      "properties": {
+        "factId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "predicate": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "arguments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "vertical": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "provenanceIds": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stringSet"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edgeId",
+        "source",
+        "target",
+        "relation",
+        "vertical",
+        "provenanceIds"
+      ],
+      "properties": {
+        "edgeId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "source": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "target": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "relation": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "vertical": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "provenanceIds": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stringSet"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "rejection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rejectionId",
+        "reasonKind",
+        "subjectId",
+        "provenanceIds"
+      ],
+      "properties": {
+        "rejectionId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "provenanceIds": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stringSet"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "toolObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "toolId",
+        "providerId",
+        "authority",
+        "vertical",
+        "workspaceGeneration",
+        "queryIdentity",
+        "anchors",
+        "facts",
+        "edges",
+        "supportsClaims",
+        "rejectsClaims",
+        "rejections",
+        "noHit",
+        "provenanceIds"
+      ],
+      "properties": {
+        "invocationId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "toolId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "providerId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "authority": {
+          "enum": [
+            "parser",
+            "provider",
+            "runtime"
+          ]
+        },
+        "vertical": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "workspaceGeneration": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "queryIdentity": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "anchors": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        },
+        "supportsClaims": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "rejectsClaims": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "rejections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rejection"
+          }
+        },
+        "noHit": {
+          "type": "boolean"
+        },
+        "provenanceIds": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stringSet"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "branchReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branchId",
+        "mergeBaseGeneration",
+        "candidateDeltaDigest",
+        "remainingBudget"
+      ],
+      "properties": {
+        "branchId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "mergeBaseGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateDeltaDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "remainingBudget": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "graphDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodesAdded",
+        "factIdsAdded",
+        "edgeIdsAdded",
+        "evidenceAccepted",
+        "evidenceRejected",
+        "obligationsOpened",
+        "obligationsDischarged",
+        "frontierAdded",
+        "frontierRemoved",
+        "visitedAdded",
+        "branchReceipts",
+        "remainingBudget"
+      ],
+      "properties": {
+        "nodesAdded": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "factIdsAdded": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "edgeIdsAdded": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "evidenceAccepted": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "evidenceRejected": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "obligationsOpened": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "obligationsDischarged": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "frontierAdded": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "frontierRemoved": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "visitedAdded": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "branchReceipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/branchReceipt"
+          }
+        },
+        "remainingBudget": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "datalogDerivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "derivationId",
+        "rulesetDigest",
+        "factGeneration",
+        "sourceFactIds",
+        "derivedFacts"
+      ],
+      "properties": {
+        "derivationId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "rulesetDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "factGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceFactIds": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/stringSet"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "derivedFacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        }
+      }
+    },
+    "routerChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "choiceId",
+        "kind",
+        "vertical",
+        "anchor",
+        "reasonKind"
+      ],
+      "properties": {
+        "choiceId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "kind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "vertical": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "anchor": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reasonKind": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "stepReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "graphStepId",
+        "continuationIdentity",
+        "transitionDigest",
+        "replayStatus"
+      ],
+      "properties": {
+        "graphStepId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "continuationIdentity": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "previousGraphStepId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "transitionDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "replayStatus": {
+          "enum": [
+            "not-replayed",
+            "replay-matched",
+            "replay-mismatched"
+          ]
+        }
+      }
+    }
+  }
+}

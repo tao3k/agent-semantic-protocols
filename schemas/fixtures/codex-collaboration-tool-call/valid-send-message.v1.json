@@ -1,0 +1,10 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "send_message",
+  "toolInput": {
+    "target": "asp_testing",
+    "message": "Preserve context without triggering a new turn."
+  }
+}

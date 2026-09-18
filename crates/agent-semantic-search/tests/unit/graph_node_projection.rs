@@ -1,4 +1,9 @@
-use crate::graph_node_projection::{owner_path_graph_nodes, stable_graph_node_id};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::graph_node_projection::owner_path_graph_nodes;
+use crate::graph_node_projection::stable_graph_node_id;
 
 #[test]
 fn stable_graph_node_id_normalizes_owner_paths() {

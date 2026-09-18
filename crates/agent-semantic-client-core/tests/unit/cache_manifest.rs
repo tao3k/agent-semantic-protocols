@@ -1,7 +1,13 @@
-use std::{fs, path::PathBuf};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::fs;
+use std::path::PathBuf;
 
 use crate::project_client_cache_dir;
 use crate::test_support::IsolatedAspStateHome;
+use crate::test_support::init_durable_repo;
 
 #[test]
 fn package_root_uses_git_toplevel_client_cache_root() {
@@ -9,7 +15,7 @@ fn package_root_uses_git_toplevel_client_cache_root() {
     let _state_home = IsolatedAspStateHome::activate(&root);
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_durable_repo(&root, "git-toplevel-cache-root");
     fs::write(
         package_root.join("Cargo.toml"),
         r#"[package]
@@ -23,8 +29,10 @@ edition = "2024"
     let cache_dir = project_client_cache_dir(&package_root).expect("client cache dir");
     let resolved =
         crate::state_core::ResolvedState::resolve(&package_root).expect("resolved state");
+    let workspace = resolved.workspace_state_paths().expect("workspace paths");
 
-    assert_eq!(cache_dir, resolved.paths.client_dir);
+    assert_eq!(cache_dir, workspace.root);
+    assert!(!resolved.state_home.join("projects").exists());
     assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
     let _ = fs::remove_dir_all(root);
 }

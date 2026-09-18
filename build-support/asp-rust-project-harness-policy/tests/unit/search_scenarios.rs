@@ -1,17 +1,23 @@
-use asp_rust_project_harness_policy::{
-    ASP_SEARCH_SCENARIO_PACKAGE_NAME, LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID,
-    SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID,
-    SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID,
-    SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID,
-    SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID, asp_search_scenario_package,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use asp_rust_project_harness_policy::ASP_SEARCH_SCENARIO_PACKAGE_NAME;
+use asp_rust_project_harness_policy::CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID;
+use asp_rust_project_harness_policy::GENERATION_DELTA_DIGEST_OVERLAY_SCENARIO_ID;
+use asp_rust_project_harness_policy::LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID;
+use asp_rust_project_harness_policy::PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID;
+use asp_rust_project_harness_policy::SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID;
+use asp_rust_project_harness_policy::asp_search_scenario_package;
 
 #[test]
 fn asp_search_scenario_package_exposes_search_performance_gates() {
     let package = asp_search_scenario_package();
 
     assert_eq!(package.package_name, ASP_SEARCH_SCENARIO_PACKAGE_NAME);
-    assert_eq!(package.scenarios.len(), 10);
 
     let names = package
         .scenarios
@@ -30,12 +36,78 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID
     ));
+    assert!(names.contains(&PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID));
+    assert!(names.contains(&CANDIDATE_TOPOLOGY_OWNER_SCOPE_SCENARIO_ID));
+    assert!(names.contains(&GENERATION_DELTA_DIGEST_OVERLAY_SCENARIO_ID));
+    assert!(names.contains(&"canonical-replacement-resident-first"));
     assert!(names.contains(&SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID));
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_DEGRADED_ROUTE_BOUNDED_SCENARIO_ID
     ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
+    ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID
+    ));
     assert!(names.contains(&"tree-sitter-querycursor-native-hot-path"));
+
+    let parser_reuse = package
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.name == PARSER_ARTIFACT_CONTENT_REUSE_SCENARIO_ID)
+        .expect("parser artifact content reuse Scenario is registered");
+    assert_eq!(parser_reuse.commands.len(), 2);
+    let benchmark = parser_reuse
+        .benchmark
+        .as_ref()
+        .expect("parser artifact reuse owns benchmark work metrics");
+    assert_eq!(benchmark.measure_iterations, 128);
+    assert!(
+        benchmark
+            .metrics
+            .iter()
+            .any(|metric| metric.name == "unrelated_owner_invalidation_count")
+    );
+
+    let runtime_resources = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::RUNTIME_SEARCH_TOKIO_RESOURCE_LIFECYCLE_SCENARIO_ID
+        })
+        .expect("Runtime Search resource lifecycle Scenario is registered");
+    let benchmark = runtime_resources
+        .benchmark
+        .as_ref()
+        .expect("Runtime Search Scenario owns executable benchmark metadata");
+    assert_eq!(benchmark.measure_iterations, 128);
+    assert!(
+        benchmark
+            .metrics
+            .iter()
+            .any(|metric| metric.name == "queue_wait_micros")
+    );
+
+    let resident_grep = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::RUNTIME_RESIDENT_GREP_SEMANTICS_SCENARIO_ID
+        })
+        .expect("resident GREP semantics Scenario is registered");
+    assert_eq!(resident_grep.commands.len(), 2);
+    assert_eq!(
+        resident_grep.commands[0].label,
+        "resident-zero-process-matrix"
+    );
+    assert_eq!(
+        resident_grep.commands[1].label,
+        "explicit-rg-differential-qualification"
+    );
 
     let lexical = package
         .scenarios
@@ -282,7 +354,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
         .expect("canonical Tree-sitter QueryCursor scenario is registered");
     assert_eq!(
         tree_sitter.fixture_root,
-        "languages/rust-lang-project-harness/tests/unit/cli/query/catalog"
+        "languages/asp-rust/tests/unit/cli/query/catalog"
     );
     assert!(tree_sitter.tags.contains(&"tree-sitter"));
     assert!(tree_sitter.tags.contains(&"native-runtime"));

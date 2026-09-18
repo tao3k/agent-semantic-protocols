@@ -22,21 +22,77 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "resourceId",
         "scenarioId",
+        "providerId",
         "language",
         "repository",
+        "git",
         "directory",
         "environment",
         "inputs"
       ],
       "properties": {
+        "resourceId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+        },
         "scenarioId": { "type": "string", "minLength": 1 },
+        "providerId": {
+          "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/identifier"
+        },
         "language": {
-          "enum": ["julia", "python", "rust", "typescript"]
+          "enum": [
+            "gerbil-scheme",
+            "julia",
+            "md",
+            "org",
+            "python",
+            "rust",
+            "typescript"
+          ]
         },
         "repository": { "type": "string", "minLength": 1 },
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["remote", "revision"],
+          "properties": {
+            "remote": {
+              "type": "string",
+              "pattern": "^\\S+$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        },
         "directory": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
         "environment": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+        "admission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "extensionAuthority",
+            "minimumMatchingFiles",
+            "minimumMatchingFileRatio"
+          ],
+          "properties": {
+            "extensionAuthority": {
+              "const": "provider-project-resolution"
+            },
+            "minimumMatchingFiles": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minimumMatchingFileRatio": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        },
         "inputs": {
           "type": "object",
           "additionalProperties": false,
@@ -47,7 +103,22 @@
             "dependency": { "type": "string", "minLength": 1 }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "language": {
+                "enum": ["md", "org"]
+              }
+            },
+            "required": ["language"]
+          },
+          "then": {
+            "required": ["admission"]
+          }
+        }
+      ]
     }
   }
 }

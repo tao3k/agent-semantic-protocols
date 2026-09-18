@@ -1,13 +1,28 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 [package]
 name = "asp-rust-project-harness-policy"
+license.workspace = true
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 publish = false
-build = "build.rs"
+
+[features]
+default = ["workspace-policy"]
+workspace-policy = ["dep:asp-rust"]
 
 [dependencies]
-rust-lang-project-harness = { workspace = true }
-serde = { version = "1", features = ["derive"] }
+blake3.workspace = true
+asp-rust = { workspace = true, optional = true }
+asp-rust-build-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "performance_verification"
+harness = false

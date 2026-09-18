@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Turso DB Engine Implementation Guide
 #+DATE: 2026-07-03
 #+PROPERTY: ASP_STATUS active
@@ -263,7 +267,7 @@ Current owner symbols:
 
 If a new Turso helper cannot fit this map, create a narrow owner module under
 =agent-semantic-client-db= first.  Do not put a new Turso implementation branch
-under =crates/agent-semantic-protocol/src/command/*=.
+under =crates/agent-semantic-client/src/command/*=.
 
 * Capability Report Contract
 

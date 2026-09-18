@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-schema-family-registry.v1.schema.json",
+  "title": "ASP Schema Family Registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "families"],
+  "properties": {
+    "schemaId": {"const": "asp.schema-family-registry.v1"},
+    "schemaVersion": {"const": "1"},
+    "families": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/family"}
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/nonEmptyString"}
+    },
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "filenamePrefixes": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "schemaIdentifierPrefixes": {"$ref": "#/$defs/nonEmptyStringArray"}
+      }
+    },
+    "membershipOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "includeSchemaPaths": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "excludeSchemaPaths": {"$ref": "#/$defs/nonEmptyStringArray"}
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "owner", "rationale", "priority", "namespace"],
+      "properties": {
+        "familyId": {
+          "type": "string",
+          "pattern": "^asp\\.schema-family\\.[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+        },
+        "owner": {"$ref": "#/$defs/nonEmptyString"},
+        "rationale": {"$ref": "#/$defs/nonEmptyString"},
+        "priority": {"type": "integer", "minimum": 0},
+        "parentFamilyId": {"$ref": "#/$defs/nonEmptyString"},
+        "definitionSchemaPath": {
+          "type": "string",
+          "pattern": "^schemas/.+\\.schema\\.json$"
+        },
+        "definitionVisibility": {
+          "enum": ["family", "descendants", "public"]
+        },
+        "namespace": {"$ref": "#/$defs/namespace"},
+        "membershipOverrides": {"$ref": "#/$defs/membershipOverrides"}
+      },
+      "dependentRequired": {
+        "definitionSchemaPath": ["definitionVisibility"],
+        "definitionVisibility": ["definitionSchemaPath"]
+      }
+    }
+  }
+}

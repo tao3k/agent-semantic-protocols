@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-memory-search-page.v1.schema.json",
+  "title": "Workspace Memory Search Page v1",
+  "type": "object",
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "pageDigest",
+    "pageKind",
+    "sectionKind",
+    "recordCount",
+    "encodedBytes"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-memory-search-page"
+    },
+    "schemaVersion": { "const": "1" },
+    "pageDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "pageKind": {
+      "enum": ["branch", "leaf", "owner-bytes"]
+    },
+    "sectionKind": {
+      "enum": [
+        "owner-directory",
+        "owner-bytes",
+        "lexical-index",
+        "selector-index",
+        "graph-relations"
+      ]
+    },
+    "recordCount": { "type": "integer", "minimum": 0 },
+    "encodedBytes": { "type": "integer", "minimum": 1 },
+    "minimumKey": { "type": "string" },
+    "maximumKey": { "type": "string" },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["minimumKey", "maximumKey", "pageDigest"],
+        "properties": {
+          "minimumKey": { "type": "string" },
+          "maximumKey": { "type": "string" },
+          "pageDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "pageKind": { "const": "branch" } } },
+      "then": { "required": ["minimumKey", "maximumKey", "children"] }
+    }
+  ],
+  "additionalProperties": false
+}

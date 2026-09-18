@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[project]
+name = "asp-proofs"
+version = "0.1.0"
+license = "Apache-2.0 AND LGPL-2.1-or-later"
+license-files = ["LICENSE"]
+description = "Lean, AXLE, and proof-receipt audit toolchain for Agent Semantic Protocols"
+requires-python = ">=3.13"
+dependencies = [
+  "axiom-axle==1.4.0",
+  "blake3>=1.0.9",
+  "jsonschema>=4.23,<5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asp_proofs"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-mrr"
+version.workspace = true
+edition.workspace = true
+description = "ASP maintenance facade for MRR, Ascent closure, GQL, and Scheme AOT program admission."
+license.workspace = true
+
+[dependencies]
+ascent.workspace = true
+blake3.workspace = true
+gql-catalog.workspace = true
+gql-compiler.workspace = true
+gql-ir.workspace = true
+meta-relational-reasoning.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

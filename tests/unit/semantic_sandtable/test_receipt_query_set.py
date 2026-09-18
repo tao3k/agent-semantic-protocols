@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Receipt query-set opportunity reporting tests."""
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                         "scenarioId": "typescript.render-location-queryset",
                         "language": "typescript",
                         "project": {
-                            "name": "typescript-lang-project-harness",
+                            "name": "asp-typescript",
                             "source": "checkout",
                         },
                         "intent": "Repair semantic-search render location formatting",
@@ -38,7 +42,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                                 "id": "text-location-path",
                                 "kind": "search",
                                 "argv": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "location.path",
@@ -92,7 +96,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                                 },
                                 "beforeCommandIds": ["text-location-path"],
                                 "recommendedCommand": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "--query-set",

@@ -34,10 +34,10 @@
       "pattern": "^[a-z][a-z0-9_.:-]*$"
     },
     "producer": {
-      "$ref": "#/$defs/producer"
+      "$ref": "semantic-assurance-definitions.v1.schema.json#/$defs/producer"
     },
     "project": {
-      "$ref": "#/$defs/project"
+      "$ref": "semantic-assurance-definitions.v1.schema.json#/$defs/project"
     },
     "summary": {
       "$ref": "#/$defs/summary"
@@ -80,43 +80,6 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
-    },
-    "producer": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["languageId", "providerId", "namespace"],
-      "properties": {
-        "languageId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "providerId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "namespace": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
-        }
-      }
-    },
-    "project": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["root"],
-      "properties": {
-        "root": {
-          "type": "string",
-          "minLength": 1
-        },
-        "package": {
-          "type": "string",
-          "minLength": 1
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
     },
     "summary": {
       "type": "object",
@@ -162,37 +125,6 @@
         "custom"
       ]
     },
-    "nodeKind": {
-      "enum": [
-        "owner",
-        "invariant-candidate",
-        "verification-receipt",
-        "behavior-snapshot",
-        "determinism-readiness",
-        "formal-proof-pilot",
-        "review-packet",
-        "waiver",
-        "review-action"
-      ]
-    },
-    "nodeStatus": {
-      "enum": [
-        "current",
-        "changed",
-        "missing",
-        "stale",
-        "expired",
-        "ready",
-        "needs-injection",
-        "blocked",
-        "unknown",
-        "proved",
-        "proved-bounded",
-        "failed",
-        "skipped",
-        "error"
-      ]
-    },
     "claim": {
       "type": "object",
       "additionalProperties": false,
@@ -221,6 +153,12 @@
         }
       }
     },
+    "nodeRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeRef"
+      }
+    },
     "nodeRef": {
       "type": "object",
       "additionalProperties": false,
@@ -231,14 +169,14 @@
           "pattern": "^[a-z][a-z0-9_.:-]*$"
         },
         "kind": {
-          "$ref": "#/$defs/nodeKind"
+          "$ref": "semantic-assurance-definitions.v1.schema.json#/$defs/nodeKind"
         },
         "label": {
           "type": "string",
           "minLength": 1
         },
         "status": {
-          "$ref": "#/$defs/nodeStatus"
+          "$ref": "semantic-assurance-definitions.v1.schema.json#/$defs/nodeStatus"
         },
         "summary": {
           "type": "string",
@@ -325,28 +263,16 @@
           "$ref": "#/$defs/projectPath"
         },
         "supportedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "observedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "reviewedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "waivedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "actions": {
           "type": "array",

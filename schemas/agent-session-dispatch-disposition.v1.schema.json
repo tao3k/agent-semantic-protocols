@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-session-dispatch-disposition.v1.schema.json",
+  "title": "Agent Session Dispatch Disposition V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "registryBinding", "hostPathObservation", "hostTaskObservation", "bootstrapState", "requiredAction", "reasonKind"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.agent-session-dispatch-disposition" },
+    "schemaVersion": { "const": "1" },
+    "registryBinding": { "enum": ["exact", "absent", "stale"] },
+    "hostPathObservation": { "enum": ["present", "absent", "unobserved"] },
+    "hostTaskObservation": { "enum": ["absent", "idle", "running", "completed", "errored", "unobserved"] },
+    "bootstrapState": { "enum": ["not-started", "pending", "registered", "typed-failure", "empty-payload"] },
+    "requiredAction": { "enum": ["followup-task", "register-existing", "spawn-agent", "observe-host-path", "await-bootstrap-terminal", "repair-existing"] },
+    "reasonKind": { "type": "string", "minLength": 1 },
+    "agentPath": { "type": "string", "pattern": "^/root/[^/]+$" },
+    "spawnTaskId": { "type": "string", "minLength": 1 },
+    "registrationReceiptDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "terminalIdentity": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "bootstrapState": { "const": "registered" } }, "required": ["bootstrapState"] },
+      "then": { "properties": { "registryBinding": { "const": "exact" }, "hostPathObservation": { "const": "present" }, "requiredAction": { "const": "followup-task" } }, "required": ["agentPath", "registrationReceiptDigest"] }
+    },
+    {
+      "if": { "properties": { "bootstrapState": { "enum": ["pending", "empty-payload"] }, "hostTaskObservation": { "enum": ["running", "unobserved"] } }, "required": ["bootstrapState", "hostTaskObservation"] },
+      "then": { "properties": { "requiredAction": { "const": "await-bootstrap-terminal" } }, "required": ["spawnTaskId"] }
+    },
+    {
+      "if": { "properties": { "bootstrapState": { "const": "empty-payload" }, "hostTaskObservation": { "enum": ["completed", "errored"] } }, "required": ["bootstrapState", "hostTaskObservation"] },
+      "then": { "properties": { "requiredAction": { "const": "repair-existing" } }, "required": ["agentPath", "spawnTaskId", "terminalIdentity"] }
+    },
+    {
+      "if": { "properties": { "bootstrapState": { "const": "typed-failure" } }, "required": ["bootstrapState"] },
+      "then": { "properties": { "requiredAction": { "const": "repair-existing" } } }
+    },
+    {
+      "if": { "properties": { "hostPathObservation": { "const": "unobserved" }, "bootstrapState": { "const": "not-started" } }, "required": ["hostPathObservation", "bootstrapState"] },
+      "then": { "properties": { "requiredAction": { "const": "observe-host-path" } } }
+    },
+    {
+      "if": { "properties": { "registryBinding": { "const": "absent" }, "hostPathObservation": { "const": "absent" }, "bootstrapState": { "const": "not-started" } }, "required": ["registryBinding", "hostPathObservation", "bootstrapState"] },
+      "then": { "properties": { "requiredAction": { "const": "spawn-agent" } } }
+    },
+    {
+      "if": { "properties": { "registryBinding": { "enum": ["absent", "stale"] }, "hostPathObservation": { "const": "present" }, "bootstrapState": { "const": "not-started" } }, "required": ["registryBinding", "hostPathObservation", "bootstrapState"] },
+      "then": { "properties": { "requiredAction": { "const": "register-existing" } }, "required": ["agentPath"] }
+    }
+  ]
+}

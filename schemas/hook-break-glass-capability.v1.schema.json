@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/hook-break-glass-capability.v1.schema.json",
+  "title": "ASP Hook one-shot break-glass capability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "nonce",
+    "workspaceRoot",
+    "rootSessionId",
+    "protectedCommandDigest",
+    "denyEvidenceRef",
+    "defectKind",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.hook-break-glass-capability"
+    },
+    "schemaVersion": { "const": "1" },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "protectedCommandDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "denyEvidenceRef": { "type": "string", "minLength": 1 },
+    "defectKind": {
+      "enum": [
+        "admitted-row-state-mismatch",
+        "missing-required-disclosure",
+        "invalid-history-cursor",
+        "exhausted-non-progress-cycle",
+        "runtime-workspace-unadmitted",
+        "provider-bootstrap-deadlock"
+      ]
+    },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+  }
+}

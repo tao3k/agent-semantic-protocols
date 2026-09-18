@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Failure-frontier receipt comparison for real-trigger sandtables."""
 
 from __future__ import annotations
@@ -319,12 +323,10 @@ def _selector_file(selector: str) -> str:
 
 def _declared_failure_frontier(receipt: dict[str, Any]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
-    for command in list_value(receipt.get("commands")):
-        if not isinstance(command, dict):
+    for policy_receipt in list_value(receipt.get("policyReceipts")):
+        if not isinstance(policy_receipt, dict):
             continue
-        if not _is_check_command(command):
-            continue
-        for item in list_value(command.get("failureFrontier")):
+        for item in list_value(policy_receipt.get("failureFrontier")):
             if isinstance(item, dict):
                 entries.append(dict(item))
     return entries
@@ -343,12 +345,10 @@ def _declared_hot_blocks(
             if target and target not in seen:
                 targets.append(target)
                 seen.add(target)
-    for command in list_value(receipt.get("commands")):
-        if not isinstance(command, dict):
+    for policy_receipt in list_value(receipt.get("policyReceipts")):
+        if not isinstance(policy_receipt, dict):
             continue
-        if not _is_check_command(command):
-            continue
-        for target in string_list(command.get("next")):
+        for target in string_list(policy_receipt.get("next")):
             if target and target not in seen:
                 targets.append(target)
                 seen.add(target)
@@ -366,10 +366,6 @@ def _read_targets(receipt: dict[str, Any]) -> set[str]:
         if selector:
             targets.add(selector)
     return targets
-
-
-def _is_check_command(command: dict[str, Any]) -> bool:
-    return command.get("kind") == "check" or "check" in _argv(command)
 
 
 def _target_covered(target: str, frontier_targets: set[str]) -> bool:

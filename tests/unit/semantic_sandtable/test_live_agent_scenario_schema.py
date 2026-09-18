@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema checks for prompt-only live agent sandtable scenarios."""
 
 from __future__ import annotations
@@ -7,7 +11,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -36,7 +40,7 @@ def _live_agent_scenario() -> dict[str, Any]:
                     "required": True,
                     "afterLastToolUse": True,
                 },
-                "pipeFlow": {
+                "commandFlow": {
                     "requiredStages": ["search-prime", "search-pipe"],
                     "forbiddenStages": ["repeated-prime"],
                 },
@@ -68,7 +72,7 @@ def _live_agent_scenario() -> dict[str, Any]:
 
 class LiveAgentScenarioSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.validator = Draft202012Validator(_load_json(SCHEMA_PATH))
+        self.validator = schema_validator_for(SCHEMA_PATH)
 
     def validation_errors(self, scenario: dict[str, Any]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(scenario)]
@@ -79,7 +83,7 @@ class LiveAgentScenarioSchemaTests(unittest.TestCase):
     def test_live_agent_rejects_scripted_prompt_field(self) -> None:
         scenario = _live_agent_scenario()
         scenario["liveAgent"]["prompt"] = (
-            "Run asp typescript search prime --workspace . --view seeds"
+            "Run asp search playbook --language typescript --rg --files . --tantivy term source"
         )
 
         errors = self.validation_errors(scenario)

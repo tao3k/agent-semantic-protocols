@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the semantic assurance case schema contract."""
 
 import json
@@ -5,10 +9,15 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from unit.schema_validation import schema_validator_for
+
+
+def _schema_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "schemas" / "semantic-assurance-case.v1.schema.json"
+
 
 def _load_schema() -> dict:
-    path = Path(__file__).resolve().parents[2] / "schemas" / "semantic-assurance-case.v1.schema.json"
-    return json.loads(path.read_text())
+    return json.loads(_schema_path().read_text())
 
 
 def test_semantic_assurance_case_schema_is_valid() -> None:
@@ -16,7 +25,6 @@ def test_semantic_assurance_case_schema_is_valid() -> None:
 
 
 def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
-    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-assurance-case",
         "schemaVersion": "1",
@@ -25,8 +33,8 @@ def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
         "caseSetId": "rust.assurance.case",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -93,11 +101,10 @@ def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
         ],
     }
 
-    Draft202012Validator(schema).validate(value)
+    schema_validator_for(_schema_path()).validate(value)
 
 
 def test_semantic_assurance_case_rejects_absolute_owner_paths() -> None:
-    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-assurance-case",
         "schemaVersion": "1",
@@ -106,8 +113,8 @@ def test_semantic_assurance_case_rejects_absolute_owner_paths() -> None:
         "caseSetId": "rust.assurance.case",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -131,5 +138,5 @@ def test_semantic_assurance_case_rejects_absolute_owner_paths() -> None:
         ],
     }
 
-    errors = list(Draft202012Validator(schema).iter_errors(value))
+    errors = list(schema_validator_for(_schema_path()).iter_errors(value))
     assert errors

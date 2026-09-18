@@ -1,0 +1,32 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-ascent-closure-candidate.v1",
+  "schemaVersion": "1",
+  "candidateKind": "ascent-closure",
+  "authority": "proved",
+  "graphSessionIdentity": {
+    "workspaceDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "sessionId": "session:a",
+    "nodeId": "node:owner",
+    "snapshotDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "workspaceGenerationRootDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "projectionDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "routeDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "rulesetDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+  "budget": {
+    "maxInputFacts": 1,
+    "maxRuleFirings": 1,
+    "maxDerivedFacts": 1,
+    "maxGraphHops": 1
+  },
+  "sourceFactIds": [],
+  "derivedFactIds": [],
+  "derivationTrace": [],
+  "accounting": {
+    "inputFactCount": 0,
+    "ruleFirings": 0,
+    "derivedFactCount": 0,
+    "maxDerivedGraphHops": 0
+  },
+  "canonicalFactOrderDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888"
+}

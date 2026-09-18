@@ -1,0 +1,24 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionLifecycle
+
+namespace ASPProof.AgentSessionLifecycleAudit
+
+open ASPProof.AgentSessionLifecycle
+
+#check created_has_no_child_identity
+#check created_cannot_self_register
+#check registration_requires_current_child
+#check registration_uses_host_bound_identity
+#check hook_role_selection_cannot_replace_host_identity
+#check naked_identity_is_insufficient
+#check accepted_registration_has_positive_generation
+#check failed_registration_retries_same_child
+#check resumed_identity_is_registration_identity
+#check authority_registration_is_idempotent
+#check authority_assigns_next_generation_to_different_child
+#check serialized_distinct_children_have_distinct_generations
+
+end ASPProof.AgentSessionLifecycleAudit

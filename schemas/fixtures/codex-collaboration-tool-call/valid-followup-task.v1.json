@@ -1,0 +1,10 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "followup_task",
+  "toolInput": {
+    "target": "/root/asp_testing",
+    "message": "Output hello."
+  }
+}

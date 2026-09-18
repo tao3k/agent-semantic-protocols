@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-session-delegation-admission.v1.schema.json",
+  "title": "ASP Agent Session Delegation Admission Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectId",
+    "rootSessionId",
+    "currentSessionId",
+    "proposedChildSessionId",
+    "capability",
+    "decision",
+    "reasonKind",
+    "preStateDigest",
+    "postStateDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-session-delegation-admission"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currentSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposedChildSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability": {
+      "enum": ["standard", "focused-leaf"]
+    },
+    "decision": {
+      "enum": ["accepted", "denied"]
+    },
+    "reasonKind": {
+      "type": ["string", "null"]
+    },
+    "preStateDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "postStateDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delegationGeneration": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "denied" }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": { "type": "string", "minLength": 1 },
+          "delegationGeneration": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "accepted" }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": { "type": "null" },
+          "delegationGeneration": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["delegationGeneration"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": { "const": "focused-leaf" },
+          "decision": { "const": "denied" }
+        },
+        "required": ["capability", "decision"]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": { "const": "focused-agent-delegation-denied" }
+        }
+      }
+    }
+  ]
+}

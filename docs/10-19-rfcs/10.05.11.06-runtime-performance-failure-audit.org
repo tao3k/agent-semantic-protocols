@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Performance Failure Audit
+
+* Status
+
+Normative. This RFC refines the Runtime Server Tokio lifecycle and search wall
+budget contracts.
+
+* Invariants
+
+1. Every agent-facing =budget-exceeded= result is a bug event, not a warning.
+2. One canonical failure produces exactly one resident observation and one
+   durable OpenTelemetry span, even if more than one renderer observes it.
+3. The producer seals an =eventIdentity= from workspace, surface, stage,
+   operation, elapsed budget facts, and reason. Observation time is excluded.
+4. Runtime Server performs de-duplication before span creation and Turso export.
+5. The agent-facing path performs one bounded, newline-framed Tokio IPC
+   exchange. It MUST NOT open, query, flush, or lock Turso.
+6. A producer accepts only a typed resident ingress receipt whose state is
+   =recorded= or =duplicate=. Successful socket write without this receipt is
+   not delivery evidence; connectionless telemetry ingress is forbidden.
+7. Telemetry IPC is ephemeral runtime transport. It MUST be sandbox reachable,
+   State-Home isolated, short enough for Unix socket limits, and removed during
+   daemon drain. Durable telemetry remains under State Home.
+8. Turso retains the original event attributes, including workspace, surface,
+   stage, reason, elapsed, budget, event identity, and observation time.
+9. =eventIdentity= and =observedAtUnixMicros= are typed Turso columns, not
+   JSON-only attributes. A partial unique index on =eventIdentity= preserves
+   idempotency across daemon epochs.
+10. Any performance gate observing =budgetFailureCount > 0= fails.
+
+* Acceptance
+
+- two submissions with one event identity yield one resident failure and one
+  durable span;
+- distinct identities remain independently queryable;
+- one event identity remains one durable row after daemon restart;
+- a sandboxed CLI receives a typed admission receipt through the ephemeral
+  Runtime Server stream;
+- multi-workspace concurrent producers never open Turso and do not block the
+  Tokio event loop;
+- daemon shutdown drains accepted observations and reports zero leaked tasks;
+- =graph-turbo-generation-open= is served from the resident load-once workspace
+  generation and remains inside its declared millisecond gate.

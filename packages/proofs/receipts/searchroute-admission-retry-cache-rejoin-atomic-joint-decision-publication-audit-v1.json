@@ -1,0 +1,131 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {before after : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState},\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.SafePublicationState before →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep before after →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.SafePublicationState after",
+   "theoremFamily": "publication-step-safety",
+   "rfcClauseIds": ["AJDP-SAFETY", "AJDP-STATE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.publication_step_preserves_safety",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {state : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState},\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.ReachablePublicationState state →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.SafePublicationState state",
+   "theoremFamily": "reachable-state-safety",
+   "rfcClauseIds": ["AJDP-REACHABLE", "AJDP-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.every_reachable_publication_state_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {state : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState},\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.ReachablePublicationState state →\n    state.phase = ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly →\n      state.decisionDurability =\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable",
+   "theoremFamily": "new-only-durable-decision",
+   "rfcClauseIds": ["AJDP-DURABLE", "AJDP-PHASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.reachable_new_only_implies_durable_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (revision : Nat),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.intent,\n        revision := revision }\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.intent,\n        revision := revision + 1 }",
+   "theoremFamily": "intent-phase-advance-rejection",
+   "rfcClauseIds": ["AJDP-INTENT", "AJDP-PHASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.intent_cannot_advance_phase",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (revision : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep\n    { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n      decisionDurability :=\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n      revision := revision }\n    { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly,\n      decisionDurability :=\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n      revision := revision + 1 }",
+   "theoremFamily": "durable-phase-advance",
+   "rfcClauseIds": ["AJDP-DURABLE", "AJDP-PHASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.durable_joint_state_can_advance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (revision : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep\n    { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n      decisionDurability :=\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.intent,\n      revision := revision }\n    { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n      decisionDurability :=\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.absent,\n      revision := revision + 1 }",
+   "theoremFamily": "invalid-intent-safe-abort",
+   "rfcClauseIds": ["AJDP-INTENT", "AJDP-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.intent_can_abort_without_phase_advance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {before after : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState},\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep before after →\n    before.revision ≤ after.revision",
+   "theoremFamily": "publication-revision-monotonicity",
+   "rfcClauseIds": ["AJDP-MONOTONE", "AJDP-REVISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.publication_step_revision_is_monotone",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState)\n  (expectedRevision : Nat),\n  expectedRevision ≠ state.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PhaseCasAuthorized state\n        expectedRevision",
+   "theoremFamily": "stale-revision-cas-rejection",
+   "rfcClauseIds": ["AJDP-CAS", "AJDP-REVISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.stale_revision_blocks_phase_cas",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.AtomicPublicationState)\n  (expectedRevision : Nat),\n  state.decisionDurability ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PhaseCasAuthorized state\n        expectedRevision",
+   "theoremFamily": "non-durable-cas-rejection",
+   "rfcClauseIds": ["AJDP-CAS", "AJDP-DURABLE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.non_durable_state_blocks_phase_cas",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId : Type} (decisionSnapshot currentSnapshot : SnapshotId),\n  decisionSnapshot ≠ currentSnapshot →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.VerificationSnapshotCurrent\n        decisionSnapshot currentSnapshot",
+   "theoremFamily": "verification-snapshot-fence",
+   "rfcClauseIds": ["AJDP-FENCE", "AJDP-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.changed_verification_snapshot_blocks_phase_advance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (revision : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n        revision := revision }\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n        revision := revision } ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationStep\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n        revision := revision }\n      { phase := ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly,\n        decisionDurability :=\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.DecisionDurability.durable,\n        revision := revision }",
+   "theoremFamily": "durable-replay-idempotency",
+   "rfcClauseIds": ["AJDP-IDEMPOTENT", "AJDP-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.durable_replay_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId DecisionReceiptId SnapshotId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationCommandKey TransitionId\n      DecisionReceiptId SnapshotId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationCommandCompatible left right →\n    left.jointDecisionReceiptId = right.jointDecisionReceiptId",
+   "theoremFamily": "publication-command-decision-binding",
+   "rfcClauseIds": ["AJDP-COMMAND", "AJDP-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.publication_command_compatibility_binds_decision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId DecisionReceiptId SnapshotId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationCommandKey TransitionId\n      DecisionReceiptId SnapshotId),\n  left.jointDecisionReceiptId ≠ right.jointDecisionReceiptId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.PublicationCommandCompatible left right",
+   "theoremFamily": "conflicting-replay-rejection",
+   "rfcClauseIds": ["AJDP-IDENTITY", "AJDP-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.changed_decision_rejects_publication_replay",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

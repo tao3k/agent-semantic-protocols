@@ -1,9 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::path::Path;
 
-use super::{
-    ProviderExecution, ResolvedProvider, normalize_project_path, project_child_path,
-    provider_ignores_path, provider_supports_source_file, relative_project_path, scoped_child_path,
-};
+use super::RuntimeProvider;
+use super::normalize_project_path;
+use super::project_child_path;
+use super::provider_supports_source_file;
+use super::relative_project_path;
+use super::scoped_child_path;
+use super::test_support::runtime_provider;
 
 #[test]
 fn scoped_child_path_rejects_absolute_and_parent_escape() {
@@ -48,59 +55,17 @@ fn provider_source_extension_matching_is_case_insensitive() {
     ));
 }
 
-#[test]
-fn provider_ignore_prefix_matching_is_project_relative() {
-    let provider = provider()
-        .with_ignored_path_prefixes(vec!["target".to_string(), ".cache/generated".to_string()]);
-    let root = Path::new("/repo");
-
-    assert!(provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/target/debug/lib.rlib")
-    ));
-    assert!(provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/.cache/generated/file.rs")
-    ));
-    assert!(!provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/src/targeted.rs")
-    ));
-}
-
-fn provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: "rust".into(),
-        provider_id: "rs-harness".into(),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: Vec::new(),
-        source_roots: Vec::new(),
-        config_files: Vec::new(),
-        source_extensions: Vec::new(),
-        ignored_path_prefixes: Vec::new(),
-    }
+fn provider() -> RuntimeProvider {
+    runtime_provider()
 }
 
 trait ProviderFixtureExt {
     fn with_source_extensions(self, source_extensions: Vec<String>) -> Self;
-    fn with_ignored_path_prefixes(self, ignored_path_prefixes: Vec<String>) -> Self;
 }
 
-impl ProviderFixtureExt for ResolvedProvider {
+impl ProviderFixtureExt for RuntimeProvider {
     fn with_source_extensions(mut self, source_extensions: Vec<String>) -> Self {
         self.source_extensions = source_extensions;
-        self
-    }
-
-    fn with_ignored_path_prefixes(mut self, ignored_path_prefixes: Vec<String>) -> Self {
-        self.ignored_path_prefixes = ignored_path_prefixes;
         self
     }
 }

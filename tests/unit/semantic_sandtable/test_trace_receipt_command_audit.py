@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Audit semantic command counts in trace receipts."""
 
 from __future__ import annotations
@@ -13,10 +17,10 @@ def test_trace_receipt_summary_counts_semantic_search_query_commands(tmp_path) -
     trace_path.write_text(
         "\n".join(
             [
-                "$ asp rust search prime --workspace . --view seeds",
-                "$ asp rust query --term Vec .",
-                "$ asp rust query --from-hook direct-source-read --selector src/lib.rs:1-2 .",
-                "$ asp rust search prime --workspace . --view seeds",
+                "$ asp search playbook --language rust --rg --files . --tantivy term source",
+                "$ asp query playbook --language rust --term Vec .",
+                "$ asp query playbook --language rust --from-hook direct-source-read --selector src/lib.rs:1-2 .",
+                "$ asp search playbook --language rust --rg --files . --tantivy term source",
                 "$ python helper.py",
             ]
         )
@@ -26,7 +30,7 @@ def test_trace_receipt_summary_counts_semantic_search_query_commands(tmp_path) -
     receipt = build_receipt_from_trace_path(
         trace_path,
         config=TraceReceiptConfig(
-            scenario_id="rust.tokio-claude-deep-question-flow",
+            scenario_id="rust.tokio-real-trigger-flow",
             language="rust",
             project_name="tokio",
             intent="audit semantic command count",
@@ -41,3 +45,26 @@ def test_trace_receipt_summary_counts_semantic_search_query_commands(tmp_path) -
     assert receipt["summary"]["repeatedCommands"] == 1
     assert receipt["summary"]["repeatedSearches"] == 1
     assert receipt["summary"]["compactSearches"] == 2
+
+
+def test_trace_receipt_requires_canonical_provider_binary(tmp_path) -> None:
+    trace_path = tmp_path / "commands.jsonl"
+    trace_path.write_text(
+        "$ asp-python query --catalog declarations --json .\n"
+        "$ retired-language-harness query --selector demo\n"
+        "$ asp-python-graphs benchmark\n"
+    )
+
+    receipt = build_receipt_from_trace_path(
+        trace_path,
+        config=TraceReceiptConfig(
+            scenario_id="python.canonical-provider-binary",
+            language="python",
+            project_name="fixture",
+            intent="Only canonical provider commands are semantic commands; the private graph service is not one.",
+        ),
+    )
+
+    assert receipt["summary"]["commandCount"] == 3
+    assert receipt["summary"]["aspCommands"] == 1
+    assert receipt["summary"]["searchCommands"] == 1

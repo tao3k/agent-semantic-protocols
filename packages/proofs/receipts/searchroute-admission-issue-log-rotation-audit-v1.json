@@ -1,0 +1,71 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionIssueLogRotation.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionIssueLogRotation",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Token : Type u} {before after : ASPProof.SearchRouteAdmissionIssueLogRotation.IssueLogState Token}\n  {liveReference : Token → Prop},\n  ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation before after liveReference →\n    ∀ {token : Token},\n      liveReference token →\n        ASPProof.SearchRouteAdmissionIssueLogRotation.AuthoritativelyIssued before token →\n          ASPProof.SearchRouteAdmissionIssueLogRotation.AuthoritativelyIssued after token",
+   "theoremFamily": "live-reference preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-AILR-LIVE-COVERAGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.live_reference_resolution_preserved",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Token : Type u} {before after : ASPProof.SearchRouteAdmissionIssueLogRotation.IssueLogState Token}\n  {liveReference : Token → Prop},\n  ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation before after liveReference →\n    ∀ {token : Token},\n      ASPProof.SearchRouteAdmissionIssueLogRotation.Acceptable after token →\n        ASPProof.SearchRouteAdmissionIssueLogRotation.AuthoritativelyIssued before token",
+   "theoremFamily": "no-fabrication preservation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AILR-ACCEPTANCE", "ASP-RFC-10.05-AILR-NO-FABRICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.accepted_after_rotation_was_authoritatively_issued_before",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Token : Type u} {before after : ASPProof.SearchRouteAdmissionIssueLogRotation.IssueLogState Token}\n  {liveReference : Token → Prop},\n  ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation before after liveReference →\n    ∀ {token : Token}, before.revoked token → ¬ASPProof.SearchRouteAdmissionIssueLogRotation.Acceptable after token",
+   "theoremFamily": "revocation preservation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AILR-ACCEPTANCE", "ASP-RFC-10.05-AILR-REVOCATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.revoked_token_cannot_be_reaccepted_after_rotation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(∀ (token : Bool),\n    ASPProof.SearchRouteAdmissionIssueLogRotation.currentPublicationReference token →\n      ASPProof.SearchRouteAdmissionIssueLogRotation.issuedAllState.issued token →\n        ASPProof.SearchRouteAdmissionIssueLogRotation.publicationOnlyState.issued token) ∧\n  ASPProof.SearchRouteAdmissionIssueLogRotation.pendingRetryReference true ∧\n    ASPProof.SearchRouteAdmissionIssueLogRotation.issuedAllState.issued true ∧\n      ¬ASPProof.SearchRouteAdmissionIssueLogRotation.publicationOnlyState.issued true",
+   "theoremFamily": "live-root counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AILR-LIVE-ROOTS", "ASP-RFC-10.05-AILR-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.publication_only_compaction_can_drop_retry_reference",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "(∀ (token : Bool),\n    ASPProof.SearchRouteAdmissionIssueLogRotation.noLiveReference token →\n      ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog.issued token →\n        ASPProof.SearchRouteAdmissionIssueLogRotation.fabricatedIssueLog.issued token) ∧\n  ASPProof.SearchRouteAdmissionIssueLogRotation.fabricatedIssueLog.issued true ∧\n    ¬ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog.issued true ∧\n      ¬ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation\n          ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog\n          ASPProof.SearchRouteAdmissionIssueLogRotation.fabricatedIssueLog\n          ASPProof.SearchRouteAdmissionIssueLogRotation.noLiveReference",
+   "theoremFamily": "no-fabrication counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AILR-NO-FABRICATION", "ASP-RFC-10.05-AILR-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.live_coverage_without_no_fabrication_admits_forged_issue_record",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.Acceptable\n    ASPProof.SearchRouteAdmissionIssueLogRotation.revocationLostAfterRotation true ∧\n  ASPProof.SearchRouteAdmissionIssueLogRotation.revokedBeforeRotation.revoked true ∧\n    ¬ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation\n        ASPProof.SearchRouteAdmissionIssueLogRotation.revokedBeforeRotation\n        ASPProof.SearchRouteAdmissionIssueLogRotation.revocationLostAfterRotation\n        ASPProof.SearchRouteAdmissionIssueLogRotation.revokedTokenLiveReference",
+   "theoremFamily": "revocation counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-AILR-NONIMPLICATION", "ASP-RFC-10.05-AILR-REVOCATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionIssueLogRotation.rotation_that_forgets_revocation_reaccepts_token",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 3,
+ "axiomDependentDeclarationCount": 3}

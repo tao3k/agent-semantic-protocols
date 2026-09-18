@@ -1,0 +1,123 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/src/build-api
+namespace: asp-gerbil-scheme/src/build-api/source-discovery
+
+(%#begin (%#export
+          (spec: 0 all-gerbil-modules all-gerbil-modules)
+          (spec: 0 all-gerbil-modules/config all-gerbil-modules/config)
+          (spec:
+           0
+           all-gerbil-modules/roots/config
+           all-gerbil-modules/roots/config)
+          (spec: 0 git-project? git-project?)
+          (spec:
+           0
+           +default-excluded-module-files+
+           +default-excluded-module-files+)
+          (spec:
+           0
+           +default-project-exclude-directories+
+           +default-project-exclude-directories+))
+         (%#import
+          (spec:
+           (:clan/building)
+           (0 %deps 0 %deps)
+           (0 %set-build-environment!__@ 0 %set-build-environment!__@)
+           (0 %set-build-environment! 0 %set-build-environment!)
+           (0 %version-path 0 %version-path)
+           (0 make-gsc-options__@ 0 make-gsc-options__@)
+           (0 default-exclude 0 default-exclude)
+           (0 $ 0 $)
+           (0 %set-build-environment!__% 0 %set-build-environment!__%)
+           (0 gsc-options/tcc 0 gsc-options/tcc)
+           (0 build-spec__% 0 build-spec__%)
+           (0 build-spec 0 build-spec)
+           (0 upstream-all-gerbil-modules 0 all-gerbil-modules)
+           (0 remove-build-file 0 remove-build-file)
+           (0 spec__@ 0 spec__@)
+           (0 make-gsc-options 0 make-gsc-options)
+           (0 create-version-file 0 create-version-file)
+           (0 make-gsc-options__% 0 make-gsc-options__%)
+           (0 gsc-options/no-optimize 0 gsc-options/no-optimize)
+           (0 all-gerbil-modules__% 0 all-gerbil-modules__%)
+           (0 %repo 0 %repo)
+           (0 source-file-matcher__% 0 source-file-matcher__%)
+           (0 compile 0 compile)
+           (0 normalize-spec 0 normalize-spec)
+           (0 default-exclude-dirs 0 default-exclude-dirs)
+           (0 pkg-config-options 0 pkg-config-options)
+           (0 compile__@ 0 compile__@)
+           (0 %pkg-config-libs 0 %pkg-config-libs)
+           (0 %spec 0 %spec)
+           (0 compile__% 0 compile__%)
+           (0 add-build-options 0 add-build-options)
+           (0 spec__% 0 spec__%)
+           (0 %name 0 %name)
+           (0 source-file-matcher 0 source-file-matcher)
+           (0 compile-getopt 0 compile-getopt)
+           (0 spec 0 spec)
+           (0 build-spec__@ 0 build-spec__@)
+           (0 %srcdir 0 %srcdir)
+           (0 init-build-environment! 0 init-build-environment!)
+           (0 all-gerbil-modules__@ 0 all-gerbil-modules__@)
+           (0 source-file-matcher__0 0 source-file-matcher__0)
+           (0 %nix-deps 0 %nix-deps)
+           (0 which? 0 which?))
+          (spec: (:clan/filesystem) (0 path-is-script? 0 path-is-script?))
+          (spec: (:std/misc/ports) (0 read-all-as-lines 0 read-all-as-lines))
+          (spec:
+           (:std/misc/process)
+           (0 run-process 0 run-process)
+           (0 filter-with-process 0 filter-with-process))
+          (spec: (:std/sort) (0 sort 0 sort))
+          (spec: (:std/srfi/1) (0 append-map 0 append-map))
+          (spec: (:std/misc/list) (0 unique 0 unique))
+          (spec: (:std/srfi/13) (0 string-prefix? 0 string-prefix?))
+          (spec: (:std/misc/string) (0 string-trim-eol 0 string-trim-eol)))
+         (%#define-runtime
+          +default-excluded-module-files+
+          asp-gerbil-scheme/src/build-api/source-discovery#+default-excluded-module-files+)
+         (%#define-runtime
+          +default-project-exclude-directories+
+          asp-gerbil-scheme/src/build-api/source-discovery#+default-project-exclude-directories+)
+         (%#define-runtime
+          path-under-excluded-directory?
+          asp-gerbil-scheme/src/build-api/source-discovery#path-under-excluded-directory?)
+         (%#define-runtime
+          project-module-file?
+          asp-gerbil-scheme/src/build-api/source-discovery#project-module-file?)
+         (%#define-runtime
+          git-project?
+          asp-gerbil-scheme/src/build-api/source-discovery#git-project?)
+         (%#define-runtime
+          upstream-project-modules
+          asp-gerbil-scheme/src/build-api/source-discovery#upstream-project-modules)
+         (%#define-runtime
+          git-ignored-modules
+          asp-gerbil-scheme/src/build-api/source-discovery#git-ignored-modules)
+         (%#define-runtime
+          without-ignored-modules
+          asp-gerbil-scheme/src/build-api/source-discovery#without-ignored-modules)
+         (%#define-runtime
+          effective-project-exclude-directories
+          asp-gerbil-scheme/src/build-api/source-discovery#effective-project-exclude-directories)
+         (%#define-runtime
+          source-root-module-path
+          asp-gerbil-scheme/src/build-api/source-discovery#source-root-module-path)
+         (%#define-runtime
+          source-root-project-modules
+          asp-gerbil-scheme/src/build-api/source-discovery#source-root-project-modules)
+         (%#define-runtime
+          project-modules/ignore-filter
+          asp-gerbil-scheme/src/build-api/source-discovery#project-modules/ignore-filter)
+         (%#define-runtime
+          all-gerbil-modules
+          asp-gerbil-scheme/src/build-api/source-discovery#all-gerbil-modules)
+         (%#define-runtime
+          all-gerbil-modules/config
+          asp-gerbil-scheme/src/build-api/source-discovery#all-gerbil-modules/config)
+         (%#define-runtime
+          all-gerbil-modules/roots/config
+          asp-gerbil-scheme/src/build-api/source-discovery#all-gerbil-modules/roots/config))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/src/build-api/source-discovery~0"))

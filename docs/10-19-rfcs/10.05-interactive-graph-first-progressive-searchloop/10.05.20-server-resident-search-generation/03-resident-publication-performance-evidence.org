@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Resident Publication Performance Evidence
+
+* Normative boundary
+
+Exact-query readiness and durable publication are two separate transitions.
+The resident owner MUST measure the execution time of the in-owner transition
+from an accepted canonical generation to a visible MemoryBackend generation.
+That service measurement MUST NOT include operating-system scheduling delay
+before the resident owner is polled.
+
+The empirical layer MUST report both:
+
+- =residentPublicationServiceElapsedMicros=: owner transition service time;
+- =observedElapsedMicros=: caller wall-clock time, including scheduler delay.
+
+The millisecond performance gate is:
+
+- at least 64 independent cold resident publications;
+- service p95 strictly below 1000 microseconds;
+- every service receipt has zero filesystem reads/writes, database opens,
+  provider spawns, schema bootstraps, lock probes, activation loads, and
+  control-socket round trips;
+- observed wall p95 and maximum are always reported and never substituted for
+  the service evidence.
+
+Wall-clock p100 is not a correctness invariant on a non-real-time operating
+system. A wall regression is actionable when its quantile regresses while the
+service receipt stays stable; this identifies scheduler/runtime admission as
+the owner instead of misattributing the delay to generation materialization.
+
+* Refinement obligation
+
+The Rust Runtime Server receipt refines this contract by publishing
+=residentPublicationElapsedMicros= from inside the workspace writer owner.
+Sandtable and installed tests MUST retain the observed caller latency as a
+separate empirical measurement.

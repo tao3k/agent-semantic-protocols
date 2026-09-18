@@ -1,0 +1,24 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteShortcutEnvelopeAdmission
+
+open ASPProof.SearchRouteShortcutEnvelopeAdmission
+
+#print axioms admission_gate_true_implies_facts
+#print axioms admission_facts_imply_gate_true
+#print axioms VerifiedCachedShortcut.toCachedShortcut
+#print axioms verifyRawShortcut
+#print axioms raw_without_witness_falls_back
+#print axioms witnessed_raw_becomes_verified
+#print axioms admitted_shortcut_is_accepted_under_policy
+#print axioms accepted_verified_replay_preserves_removal_soundness
+#print axioms changed_context_rejects_verified_shortcut
+#print axioms schema_mismatch_blocks_admission_witness
+#print axioms hash_algorithm_mismatch_blocks_admission_witness
+#print axioms canonical_digest_mismatch_blocks_admission_witness
+#print axioms commitment_mismatch_blocks_admission_witness
+#print axioms false_dominance_claim_blocks_admission_witness
+#print axioms verified_replay_projection_is_constant_shape
+#print axioms verified_replay_beats_nonempty_fallback_projection

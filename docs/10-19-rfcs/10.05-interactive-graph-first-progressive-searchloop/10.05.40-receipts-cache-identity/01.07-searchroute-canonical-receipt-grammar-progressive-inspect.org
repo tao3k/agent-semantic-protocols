@@ -1,0 +1,286 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Canonical Receipt Grammar and Progressive Inspect Bounds
+#+subtitle: RFC 10.05.40 / Proof stage 01.07
+#+startup: overview
+
+* Status
+
+Draft proof-bearing RFC.
+
+This stage realizes the abstract encoded-byte coefficients from stage 01.06
+against a canonical compact JSON receipt grammar. It also models progressive
+=inspect= as a finite, globally budgeted sequence. No Rust or Python
+implementation is authorized by this stage.
+
+* Abstract
+
+Candidate capacity is not enough to bound a projection unless every encoded
+candidate and comparison receipt is bounded. A compact overflow root is not
+enough to bound the overflow summary unless the encoded count field is also
+bounded. A per-step =inspect= cap is not enough to bound total interaction cost
+unless the number of expansions and cumulative bytes are bounded.
+
+This stage makes all three missing dimensions explicit:
+
+- exact array framing and separator bytes;
+- overflow count-field encoding;
+- cumulative progressive-inspection budgets.
+
+* Canonical JSON array grammar
+
+For an array containing =n= items with total already-encoded item payload =S=,
+the canonical byte grammar is:
+
+#+name: canonical-json-array-byte-grammar
+#+begin_src typst
+#let separators(count) = if count == 0 { 0 } else { count - 1 }
+#let array-bytes(count, encoded-items) = 2 + encoded-items + separators(count)
+
+#assert(separators(0) == 0)
+#assert(separators(1) == 0)
+#assert(separators(4) == 3)
+#assert(array-bytes(0, 0) == 2)
+#assert(array-bytes(3, 21) == 25)
+"ok"
+#+end_src
+
+The two fixed bytes are the opening and closing brackets. Each separator is one
+canonical comma byte. Whitespace is forbidden in the compact form.
+
+For =n <= C= and =S <= n R=:
+
+#+begin_example
+arrayBytes(n, S) <= 2 + C * R + C
+#+end_example
+
+The right side deliberately uses =C= instead of =C - 1=. It is a uniform safe
+bound that includes the empty case without a conditional.
+
+* Canonical compact projection grammar
+
+The compact projection contains:
+
+#+begin_example
+{
+  fixed scalar fields,
+  "candidates": [...],
+  "comparisons": [...],
+  "overflow": {...}
+}
+#+end_example
+
+Its byte accounting is:
+
+#+name: canonical-projection-and-inspect-budget
+#+begin_src typst
+#let projection-capacity(
+  fixed,
+  candidate_capacity,
+  candidate_item_max,
+  comparison_item_max,
+  overflow_max,
+) = (
+  fixed
+  + (2 + candidate_capacity * candidate_item_max + candidate_capacity)
+  + (2 + candidate_capacity * comparison_item_max + candidate_capacity)
+  + overflow_max
+)
+
+#let inspect-capacity(initial, max_steps, step_max) = initial + max_steps * step_max
+
+#assert(projection-capacity(20, 3, 10, 7, 12) == 93)
+#assert(inspect-capacity(93, 2, 15) == 123)
+"ok"
+#+end_src
+
+=fixed= MUST include every byte not charged to an array item or the overflow
+summary:
+
+- object braces;
+- canonical field names;
+- colons and inter-field commas;
+- fixed scalar values;
+- schema and renderer identity fields.
+
+Candidate and comparison item maxima MUST apply to fully encoded JSON values,
+not raw paths, symbols, snippets, or evidence payloads.
+
+The direct comparison certificate satisfies =comparisonCount <=
+candidateCount=. Therefore the candidate capacity also bounds the comparison
+array count.
+
+* Proof-discovered correction: compact root does not imply bounded summary
+
+An overflow summary normally contains at least:
+
+#+begin_example
+(encodedOverflowCount, accumulatorDigest, fixedMetadata)
+#+end_example
+
+The accumulator digest can be fixed width while the decimal count remains
+unbounded. Consequently:
+
+#+begin_example
+fixed digest width
+  does not imply
+fixed overflow-summary width
+#+end_example
+
+The protocol MUST select one of these count contracts:
+
+1. a fixed-width unsigned encoding with an explicit maximum;
+2. a bounded canonical decimal encoding and a fail-closed overflow state;
+3. a saturating public count plus a digest-bound exact count available through
+   a separately budgeted inspection.
+
+Silently truncating or wrapping the count is forbidden. If the count cannot be
+represented under the selected contract, the round MUST publish a typed
+count-encoding-exhausted receipt rather than an apparently valid smaller
+number.
+
+* Proof-discovered correction: per-step bounds do not bound an interaction
+
+Let every =inspect= response cost at most one byte. Without a step-count bound,
+an agent can request =B + 1= expansions and exceed any total budget =B=.
+
+Therefore progressive inspection needs two simultaneous limits:
+
+#+begin_example
+stepsUsed < maxSteps
+encodedBytesUsed + nextStepEncodedBytes <= maxEncodedBytes
+#+end_example
+
+An inspection is authorized only when both predicates hold. The transition is:
+
+#+begin_example
+stepsUsed       := stepsUsed + 1
+encodedBytesUsed := encodedBytesUsed + nextStepEncodedBytes
+#+end_example
+
+The transition preserves both global invariants. Exhausting either dimension
+MUST fail closed with a compact continuation receipt. The continuation receipt
+MUST NOT itself contain the omitted graph neighborhood.
+
+For a finite step sequence =s=:
+
+#+begin_example
+length(s) <= M
+and every stepBytes(s_i) <= R
+implies
+sum(stepBytes(s_i)) <= M * R
+#+end_example
+
+Observed byte and token charges remain runtime receipts. The theorem only
+provides a conservative maximum.
+
+* Inspect identity
+
+An inspect identity is:
+
+#+begin_example
+(workspaceSnapshotDigest,
+ projectionIdentityDigest,
+ selectorDigest,
+ depth,
+ expansionPolicyDigest)
+#+end_example
+
+Every component MUST match before an expansion result is reused. In particular:
+
+- changing the workspace snapshot invalidates the result;
+- changing depth invalidates the result even when the selector is unchanged;
+- changing projection or expansion policy invalidates ordering and cost;
+- a selector digest MUST identify the parser-owned semantic selector, not a
+  display line range.
+
+The identity prevents a stale neighborhood from being treated as evidence for
+a new graph state. It does not replace the separate search-result and model
+prefix cache keys defined in stage 01.06.
+
+* Interaction-first SearchLoop behavior
+
+The default packet SHOULD project:
+
+- the shortest selected route;
+- the bounded candidate and comparison certificate;
+- overflow digest and bounded count representation;
+- projection byte maximum and observed encoded bytes;
+- remaining =inspect= steps and bytes;
+- exact parser-owned selectors for permitted expansions.
+
+The agent then chooses one narrow expansion. The provider does not expose a
+large CLI grammar that asks the model to reconstruct graph traversal manually.
+The public interface is a small transition loop:
+
+#+begin_example
+observe compact route
+-> select one semantic pointer
+-> inspect under remaining budget
+-> stop, decide, or inspect again
+#+end_example
+
+This minimizes graph distance, prompt bytes, and interaction rounds while
+retaining auditable access to deeper evidence.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.lean
+#+end_example
+
+It proves:
+
+- exact separator counts for empty and non-empty arrays;
+- exact empty-array framing;
+- array byte bounds from count and encoded-item caps;
+- item count alone cannot bound payload bytes;
+- overflow summary bounds require an encoded count-field cap;
+- a fixed digest without a count-field cap cannot bound overflow bytes;
+- the complete canonical compact projection is capacity bounded;
+- authorized inspect transitions preserve step and byte budgets;
+- an exhausted step budget blocks inspection;
+- finite step-list sums are bounded by length times per-step maximum;
+- per-step bounds without an interaction cap do not bound total cost;
+- changing inspect depth or workspace snapshot invalidates identity.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.lean
+#+end_example
+
+Its receipt MUST remain modular, enumerate every theorem listed by this stage,
+report an empty axiom inventory, and report =hasSorryAx: false=.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and audit modules build;
+- every audited theorem is axiom-free;
+- the audit contains no =sorryAx=;
+- Org lint accepts this RFC;
+- Orgize extracts both named Typst blocks;
+- both exact Typst bodies pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Next proof boundary
+
+Stage 01.08 should model graph-route quality itself rather than only receipt
+size. It should define route hop count, interaction-round count, projected
+tokens, and proof-verification work as a cost vector. It should then determine
+which dominance or lexicographic relation is safe for router selection.
+
+The proof must reject a scalar score that allows an arbitrary coefficient to
+hide a catastrophic regression in one dimension. Cache-hit observations should
+remain separate dimensions: search-result reuse and model-prefix reuse have
+different keys and cannot be merged into one boolean =cacheHit=.

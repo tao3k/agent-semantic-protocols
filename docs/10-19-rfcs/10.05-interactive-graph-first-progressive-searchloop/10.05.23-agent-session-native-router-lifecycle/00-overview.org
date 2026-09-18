@@ -1,0 +1,587 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.23 — ASP Agent Session Native Router Lifecycle
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module is a counterexample-driven correction to RFC 10.05.22.  It
+specifies the control-plane lifecycle between an ASP Agent Session, the Host
+Runtime, registered subagents, the ASP Runtime Server, and parser-owned direct
+queries.
+
+The crash-safe dispatch transaction and exact guarantee boundary are refined
+by
+[[file:../10.05.24-agent-session-dispatch-transaction/00-overview.org][RFC 10.05.24 — ASP Agent Session Dispatch Transaction]].
+
+The design is intentionally narrower than a generic multi-agent framework.  It
+defines the minimum state and proof obligations needed for exact registered
+subagent dispatch, recovery, and low-cost SearchLoop execution.
+
+* Problem statement
+
+The current implementation has several independently harmful failure modes.
+They are not explained by one missing cache or one inaccurate string matcher.
+
+1. A parser-owned ASP command can be classified as uncontrolled raw source
+   access and redirected into a legacy bootstrap loop.
+2. Recovery can require a Resident Subagent, while the Resident Subagent route
+   requires Runtime Server workspace admission, and workspace admission asks
+   the same session route to recover.  This is a control-plane dependency
+   cycle.
+3. A registered native subagent may already exist in the Host Runtime, while
+   ASP attempts to reconstruct it through a pane/bootstrap/claim protocol.
+4. Plain prose, inferred role names, historical task paths, and exact registered
+   mentions are not sufficiently separated as trigger classes.
+5. A completed child can be selected again as the origin and destination of a
+   dispatch, causing recursive or repeated turn execution.
+6. Owner-scoped inspection of the lifecycle implementation can return zero
+   symbols even when the owner exists.  This makes the state machine difficult
+   to inspect through the same parser-owned interface that the hook requires.
+7. Cold materialization and read-only zero-match inspection have been observed
+   with different workspace generation identities.  A later warm probe was
+   stable, so the evidence does not justify the stronger claim that every
+   zero-match read mutates generation.  It does justify a mandatory
+   observational-stability contract and an audit boundary between background
+   materialization and semantic publication.
+
+These defects increase graph hops, control rounds, packet size, repeated
+triggers, and recovery ambiguity.  They also create a liveness failure: a safe
+action can be denied without a reachable safe continuation.
+
+* Current local audit evidence
+
+The RFC is based on local runtime observations, not only a proposed API shape.
+
+- A parser-owned search against the local =.data/codex= workspace failed with
+  =active workspace generation is not admitted= and required a registered
+  hook/supervisor Resident Subagent route before retry.
+- The enclosing hook redirected exact local ASP searches to
+  =asp agent session bootstrap --name asp-explore= even though the Host Runtime
+  already exposed the registered =asp_explorer= target to this session.
+- An =asp rg= invocation was classified as =raw-broad-search=.  The classifier
+  inspected the outer shell tool surface and failed to preserve the
+  parser-owned ASP envelope.
+- A bounded named Org block extraction followed by =typst eval= on stdin was
+  classified as =bulk-source-dump=, despite the extraction being parser-owned
+  and block-scoped.
+- Known Rust owner files for the Session registry and hook runtime were
+  discoverable, but owner-item queries for lifecycle terms returned zero
+  symbols.  Warm repeat probes were generation-stable; earlier cold probes
+  exposed different generations.
+- A combined validation command was denied while its separated proof, lint, and
+  diff checks were admissible.  Recovery therefore depends on command
+  packaging, not only on semantic effect.
+
+The evidence proves neither that every read mutates generation nor that every
+host has the same routing bug.  It proves that the current contract does not
+make safe route preservation, recovery reachability, or observational
+stability explicit enough to audit.
+
+* Design decision
+
+The lifecycle is split into two independent state machines.
+
+- The =ASP Agent Session= owns session graph revision, registered-name binding,
+  binding generation, turn consumption, and dispatch receipts.
+- The =ASP Runtime Server= owns workspace admission, search generations,
+  indexes, query leases, and generation-bound results.
+
+Neither state machine is a recovery prerequisite for reconstructing the other.
+Both may depend on Host Runtime evidence, but they do not depend on one another
+for control-plane recovery.
+
+The Host Runtime is the authority for native target existence and delivery.
+ASP records and validates the attestation; it does not infer a live target from
+role spelling or historical registry text.
+
+* Three-view specification contract
+
+=ASP-RFC-10.05-ASNR-THREE-VIEW=: Lifecycle clauses are specified through three
+coordinated views:
+
+- =Mermaid= describes observable principals, ownership boundaries, messages,
+  persistence points, and admissible transitions.
+- =Typst= presents mathematical predicates, costs, ranks, and counterexample
+  equations, with each named block executable through stdin evaluation.
+- =Lean= makes invalid states/transitions unconstructible and audits each named
+  theorem for axiom dependencies.
+
+The views have different authority.  A Mermaid edge is not a proof, and a
+Typst equation is not executable conformance.  Lean validates the formal model,
+but does not prove that an uninspected Rust implementation realizes it.
+
+Every safety-critical diagram edge MUST map to an RFC clause and at least one
+Lean declaration.  Every numeric or logical diagram claim MUST map to a named
+Typst block.  Planned implementation nodes that lack Rust evidence MUST be
+marked as planned or normative rather than current.
+
+=ASP-RFC-10.05-ASNR-DIAGRAM-STATE=: Every Mermaid flow or architecture node
+MUST expose its relevant lifecycle state or finite state domain.  A component
+name without state is insufficient.  Edges MUST identify the transition,
+guard, capability, or prohibited effect that relates the endpoint states.
+
+The versioned digest, invalidation, publication, and executable-conformance
+contract is refined by
+[[file:../10.05.26-three-view-specification-conformance/00-overview.org][RFC 10.05.26 — Three-View Specification Conformance]].
+
+#+name: native-router-authority-architecture
+#+begin_src mermaid
+flowchart LR
+  Agent["Agent turn<br/>state: TurnOpen | TurnReserved | Terminal"]
+  Hook["Host hook and typed mention parser<br/>state: Awaiting | Parsed | Rejected"]
+
+  subgraph SessionPlane["ASP Agent Session control plane"]
+    Session["Agent Session registry<br/>state: BindingAbsent | BindingLive | BindingStale"]
+    Binding["Exact binding snapshot<br/>state: Absent | Live | Revoked"]
+    Ledger["Reservation and dispatch receipt ledger<br/>state: Unreserved | Reserved | Delivered | Quarantined"]
+    Supervisor["Agent Session Supervisor<br/>state: Idle | Dispatching | Recovering"]
+  end
+
+  subgraph HostPlane["Host Runtime authority"]
+    Attestation["Live target attestation<br/>state: Unavailable | Live | Revoked"]
+    Resolve["Native target resolution<br/>state: Unresolved | Resolved | Failed"]
+    Dispatch["Idempotent native dispatch<br/>state: Pending | Accepted | Rejected"]
+  end
+
+  subgraph SearchPlane["ASP Runtime Server search data plane"]
+    Admission["Workspace admission<br/>state: NotAdmitted | Admitted"]
+    Generation["Active search generation<br/>state: Absent | Current | Stale"]
+    Provider["Parser-owned provider<br/>state: Unavailable | Ready | Failed"]
+  end
+
+  Child["Registered Resident Subagent<br/>state: Registered | Running | Terminal"]
+
+  Agent -->|"parse: TurnOpen to Parsed"| Hook
+  Hook -->|"admit explicit mention"| Session
+  Session -->|"load current snapshot"| Binding
+  Attestation -->|"validate Live"| Binding
+  Binding -->|"Live to Resolved"| Resolve
+  Resolve -->|"Resolved to Pending"| Dispatch
+  Dispatch -->|"Accepted to Running"| Child
+  Child -->|"Terminal task receipt"| Ledger
+  Supervisor -->|"Idle to Recovering"| Ledger
+  Session -->|"Unreserved to Reserved"| Ledger
+
+  Child -.->|"bounded query capability"| Admission
+  Session -.->|"bounded query capability"| Admission
+  Admission --> Generation
+  Generation --> Provider
+
+  Generation -. "must not mutate binding" .-> Binding
+  Child -. "must not self-bind" .-> Binding
+#+end_src
+
+The dotted query edges are capability invocations.  They do not transfer
+generation or binding authority.  The dotted prohibition edges are
+non-ownership constraints, not runtime calls.
+
+#+name: native-router-three-view-traceability
+#+begin_src mermaid
+flowchart LR
+  Clause["RFC clause ID<br/>state: Current | Changed"]
+  Diagram["Mermaid node or edge<br/>state: Missing | Present | Stale"]
+  Math["Named Typst block<br/>state: Missing | EvalPassed | EvalFailed | Stale"]
+  Proof["Lean declaration<br/>state: Missing | AxiomFree | Failed | Stale"]
+  Audit["Axiom audit and JSON receipt<br/>state: Missing | Current | Stale"]
+  Implementation["Rust conformance receipt<br/>state: Unverified | Conformant | Counterexample | Stale"]
+
+  Clause --> Diagram
+  Clause --> Math
+  Clause --> Proof
+  Diagram --> Implementation
+  Math --> Proof
+  Proof --> Audit
+  Audit --> Implementation
+#+end_src
+
+| Concern | Mermaid identity | Typst identity | Lean identity |
+|---------+------------------+----------------+---------------|
+| Exact typed dispatch | =native-router-authority-architecture= | =exact-dispatch-admissibility= | =DispatchAdmissible=, =plain_text_not_admissible= |
+| Recovery acyclicity | control-plane ownership edges | =acyclic-recovery-ranking= | =recovery_dependencies_decrease_rank= |
+| Read-only stability | Search-plane non-mutation edge | =observational-generation-stability= | =inspect_is_generation_stable= |
+| Native-route cost | three-view trace to receipt | =native-route-cost-dominance= | =native_route_strictly_dominates_legacy= |
+
+#+name: agent-session-authority-partition
+#+begin_src typst
+#let principal = (
+  host: "HostRuntime",
+  session: "AgentSession",
+  server: "RuntimeServer",
+  child: "RegisteredSubagent",
+)
+
+#table(
+  columns: 3,
+  [Principal], [Owns], [Does not own],
+  [#principal.host], [native target and delivery], [search generation],
+  [#principal.session], [binding and consumed turn], [workspace index],
+  [#principal.server], [admission, index, generation], [subagent binding],
+  [#principal.child], [task execution receipt], [self-rebinding],
+)
+
+"ok"
+#+end_src
+
+* Typed trigger model
+
+=ASP-RFC-10.05-ASNR-TRIGGER=: A dispatch trigger is a typed event, not an
+unstructured string match.
+
+The trigger kinds are:
+
+- =ExplicitRegisteredMention(root, registeredName, turn, origin)=;
+- =PlainText(text)=; and
+- =InferredRole(roleHint)=.
+
+Only =ExplicitRegisteredMention= can request native subagent dispatch.  Plain
+text and inferred roles may contribute to intent analysis, but they cannot
+create, rebind, replace, or dispatch a target.
+
+A syntax such as =@{{registeredSubagentName}}= is useful only when the host
+parser resolves it to a typed mention carrying the current root-session
+identity.  The punctuation itself is not authority.
+
+=ASP-RFC-10.05-ASNR-EXACT=: An admissible dispatch requires equality of:
+
+- root session;
+- registered name;
+- native target;
+- binding generation; and
+- host attestation generation.
+
+The binding and host attestation MUST both be live.
+
+#+name: exact-dispatch-admissibility
+#+begin_src typst
+#let admissible(c) = (
+  c.trigger == "explicit-registered-mention"
+  and c.mention-root == c.binding-root
+  and c.mention-name == c.binding-name
+  and c.host-target == c.binding-target
+  and c.host-generation == c.binding-generation
+  and c.binding-live
+  and c.host-live
+  and c.origin != c.binding-target
+  and not c.turn-reserved
+)
+
+#let statement = $ forall c, "Admissible"(c) => "ExactBinding"(c) $
+#statement
+
+"ok"
+#+end_src
+
+* Session state and transition rules
+
+The minimum binding state is:
+
+#+begin_example
+Binding {
+  rootSessionId,
+  registeredName,
+  nativeTargetId,
+  bindingGeneration,
+  live
+}
+#+end_example
+
+The minimum session state is:
+
+#+begin_example
+AgentSessionState {
+  revision,
+  binding?,
+  reservedTurn?,
+  inFlightDispatch?,
+  lastDispatchReceipt?
+}
+#+end_example
+
+=ASP-RFC-10.05-ASNR-BIND=: Binding creation and repair use a revision CAS and a
+fresh Host Runtime attestation.  A registry row without a matching live host
+attestation is historical evidence, not a live target.
+
+=ASP-RFC-10.05-ASNR-ONCE=: A turn is reserved by revision CAS together with a
+durable immutable dispatch intent.  It is not irreversibly consumed before the
+external dispatch outcome is recoverable.  Replaying the same turn cannot
+create a second intent even if all target fields still match.  RFC 10.05.24
+defines the crash-safe transaction and the exact guarantee boundary.
+
+=ASP-RFC-10.05-ASNR-ANTI-RECURSION=: A target cannot dispatch the same admitted
+turn to itself.  A terminal child receipt cannot be interpreted as a new
+parent-originated mention.
+
+=ASP-RFC-10.05-ASNR-STALE=: A stale binding generation, stale host attestation,
+cross-root mention, cross-name mention, dead target, or already-consumed turn
+fails closed.
+
+#+name: dispatch-rejection-boundary
+#+begin_src typst
+#let rejected(c) = (
+  c.trigger != "explicit-registered-mention"
+  or c.mention-root != c.binding-root
+  or c.mention-name != c.binding-name
+  or c.host-generation != c.binding-generation
+  or c.origin == c.binding-target
+  or c.turn-reserved
+)
+
+$ forall c, "Rejected"(c) <==> "AnyGuardFails"(c) $
+
+"ok"
+#+end_src
+
+* Acyclic recovery
+
+=ASP-RFC-10.05-ASNR-RECOVERY=: Control-plane recovery must be acyclic.
+
+The only normative recovery dependencies are:
+
+#+begin_example
+SessionBinding       -> HostAttestation
+RuntimeAdmission     -> HostAttestation
+NativeDispatch       -> SessionBinding
+ParserQuery          -> RuntimeAdmission
+#+end_example
+
+The following edges are forbidden:
+
+#+begin_example
+SessionBinding       -> RuntimeAdmission
+RuntimeAdmission     -> SessionBinding
+HostAttestation      -> SessionBinding
+HostAttestation      -> RuntimeAdmission
+#+end_example
+
+Consequently:
+
+- Session binding repair can run while the Runtime Server workspace is not
+  admitted.
+- Runtime Server admission can run while no Resident Subagent exists.
+- A parser-owned direct query requires Runtime Server admission, but it does not
+  require a Resident Subagent.
+- A native dispatch requires a live Session binding, but it does not require a
+  search generation unless the dispatched task subsequently requests search.
+
+Define the recovery rank:
+
+#+name: acyclic-recovery-ranking
+#+begin_src typst
+#let rank(node) = (
+  "HostAttestation": 0,
+  "SessionBinding": 1,
+  "RuntimeAdmission": 1,
+  "NativeDispatch": 2,
+  "ParserQuery": 2,
+).at(node)
+
+#let edges = (
+  ("SessionBinding", "HostAttestation"),
+  ("RuntimeAdmission", "HostAttestation"),
+  ("NativeDispatch", "SessionBinding"),
+  ("ParserQuery", "RuntimeAdmission"),
+)
+
+#assert(edges.all(edge => rank(edge.at(1)) < rank(edge.at(0))))
+
+$ forall (s,t) in "DependsOn", "rank"(t) < "rank"(s) $
+
+"ok"
+#+end_src
+
+Every dependency strictly decreases rank, so a recovery cycle is
+unconstructible in the model.  An implementation path that asks Session
+recovery to establish Runtime admission, then asks Runtime admission to resume
+the Session resident, violates this clause even if each local error message is
+individually reasonable.
+
+* Router precedence
+
+=ASP-RFC-10.05-ASNR-CLASSIFY=: The hook classifier first recognizes the
+parser-owned ASP command envelope.  It MUST NOT classify an =asp query playbook --documents org=,
+Search/Query Playbook or another registered control-plane facade as raw
+broad source access merely because the outer host tool is a shell executor.
+
+The precedence is:
+
+1. validate the ASP-owned command envelope and provider grammar;
+2. if the action is an exact registered mention, validate the Session binding
+   and ask the Host Runtime for one native dispatch;
+3. if the action is a valid parser-owned query, route it directly to the
+   Runtime Server/provider path;
+4. reject uncontrolled raw source access;
+5. return a typed recovery result whose continuation is reachable without
+   repeating the denied command.
+
+Legacy bootstrap is not a fallback for a verified live native binding.  It may
+exist only as an explicit migration operation for hosts that do not expose
+native target resolution.
+
+=ASP-RFC-10.05-ASNR-CONTINUATION=: A denial receipt MUST NOT recommend an action
+that the same hook deterministically denies into the same receipt.  The
+continuation relation must either reach a lower recovery rank or terminate with
+a stable, actionable rejection.
+
+* Runtime Server observational stability
+
+=ASP-RFC-10.05-ASNR-OBSERVE=: Read-only discovery and inspection do not publish
+a semantic workspace generation.
+
+For runtime state =S= and any match count =n=:
+
+#+name: observational-generation-stability
+#+begin_src typst
+#let inspect(state, matches) = (state, 0)
+#assert(inspect("S", 0).at(0) == "S")
+
+$ forall S, n,
+  "activeGeneration"("first"("inspect"(S,n))) =
+  "activeGeneration"(S) $
+
+$ forall S,
+  "first"("inspect"(S,0)) = S $
+
+"ok"
+#+end_src
+
+Background indexing may materialize caches or build a candidate generation.
+Publication requires a semantic-content change, complete validation, and the
+existing generation CAS.  Cache warming, generation-unavailable observations,
+selector projection, zero matches, or access-recovery bookkeeping are not semantic
+content changes.
+
+This clause distinguishes two caches:
+
+- a Runtime Server search/index cache, owned by the server data plane; and
+- a model prefix cache, observed by the client/model execution plane.
+
+Improving one does not prove improvement of the other.  Both must be measured
+with separate receipts.
+
+* Cost objective
+
+=ASP-RFC-10.05-ASNR-COST=: For an already registered live target, the native
+route is:
+
+#+begin_example
+TypedMention -> HostResolve -> NativeDispatch -> DispatchReceipt
+#+end_example
+
+The legacy route includes bootstrap, pane selection, claim, execute, and often
+retry or repeated source-access recovery.
+
+The protocol evaluates at least:
+
+- evidence-graph hops;
+- control rounds;
+- token units;
+- repeated-trigger count; and
+- failure-path reachability.
+
+The Lean model uses a conservative witness:
+
+#+name: native-route-cost-dominance
+#+begin_src typst
+#let native = (hops: 3, rounds: 1, tokens: 3)
+#let legacy = (hops: 7, rounds: 4, tokens: 9)
+
+#let dominates(a, b) = (
+  a.hops < b.hops and
+  a.rounds < b.rounds and
+  a.tokens < b.tokens
+)
+
+$ "StrictlyDominates"(native, legacy) $
+
+"ok"
+#+end_src
+
+The constants are not universal performance claims.  They are a constructive
+witness that the direct route can strictly reduce all three dimensions when a
+live binding already exists.  Real-project receipts must replace these witness
+values before performance closure.
+
+* Lean verification
+
+The executable formal model is:
+
+- =packages/proofs/ASPProof/AgentSessionNativeRouterLifecycle.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionNativeRouterLifecycle.lean=
+- =packages/proofs/audit/AgentSessionNativeRouterLifecycle.lean=
+- =packages/proofs/receipts/agent-session-native-router-lifecycle-v1.json=
+
+The proof obligations cover:
+
+1. plain-text and inferred-role non-dispatch;
+2. stale binding generation, stale revision CAS, cross-root, and cross-name
+   rejection;
+3. anti-recursion and duplicate rejection after atomic turn reservation;
+4. Session/Runtime Server state independence;
+5. read-only generation and revision stability;
+6. zero-match non-publication;
+7. correct parser-owned classification;
+8. a constructive counterexample for the legacy classifier;
+9. strictly decreasing recovery dependencies;
+10. absence of the Session/Runtime admission dependency cycle; and
+11. strict multi-dimensional cost dominance of the native route.
+
+The =legacy_classifier_misroutes_parser_owned_action= theorem is intentionally
+not a desired invariant.  It is a machine-checked counterexample model of the
+observed design flaw.  The replacement invariant is
+=parser_owned_action_routes_directly=.
+
+* Implementation consequences
+
+This RFC does not authorize Rust changes in the current proof session.  A later
+implementation phase must calibrate the model against the concrete Rust owner
+and add:
+
+- a typed trigger enum at the hook boundary;
+- exact root/name/target/generation binding validation;
+- Host Runtime target attestation;
+- atomic turn reservation with a durable intent;
+- anti-recursion;
+- classifier precedence for parser-owned ASP envelopes;
+- acyclic recovery receipts;
+- generation-stability instrumentation around read-only inspection; and
+- route-cost receipts.
+
+If the current Rust state machine cannot express these fields independently,
+the implementation should be restructured rather than encoding them into
+additional string heuristics.
+
+* Adversarial validation scenarios
+
+The implementation test plan must include:
+
+- plain prose containing a registered name does not dispatch;
+- =@{{name}}= under the wrong root session does not dispatch;
+- a stale binding generation does not dispatch;
+- a live registered binding performs one native dispatch without bootstrap;
+- replay of the same turn does not dispatch;
+- a child terminal receipt cannot redispatch to the same child;
+- =asp query playbook --documents org= is recognized as parser-owned when executed through a shell
+  host tool;
+- Session binding repair succeeds when Runtime Server admission is absent;
+- Runtime Server admission succeeds when no Resident Subagent exists;
+- a zero-match read-only query leaves active generation and revision unchanged;
+- background materialization cannot publish an incomplete generation; and
+- every denial continuation either lowers recovery rank or terminates.
+
+* Open evidence gaps
+
+The current parser-owned owner projection returned zero lifecycle symbols for
+the known registry and hook source owners.  Therefore the exact Rust transition
+names and storage representation are not yet calibrated in this RFC.
+
+That absence is itself a SearchLoop defect: an agent cannot efficiently audit a
+critical state machine when the owner is discoverable but its lifecycle items
+are not projected.  The provider must eventually expose state variants,
+transition functions, persistence boundaries, and test reachability as compact
+graph facts.  Until then, the Lean model is normative for the intended
+invariants but not evidence that the Rust implementation satisfies them.

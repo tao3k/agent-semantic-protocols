@@ -1,9 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Byte-oriented text helpers shared by provider transport consumers.
 
 use std::borrow::Cow;
 
-use bstr::{BStr, ByteSlice};
-use memchr::{memchr, memchr_iter, memchr2_iter};
+use bstr::BStr;
+use bstr::ByteSlice;
+use memchr::memchr;
+use memchr::memchr_iter;
+use memchr::memchr2_iter;
 
 /// Return a byte string view without assuming UTF-8 validity.
 pub fn as_bstr(bytes: &[u8]) -> &BStr {

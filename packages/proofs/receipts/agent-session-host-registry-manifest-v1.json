@@ -1,0 +1,12 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.AgentSessionHostRegistryManifest",
+  "sourcePath": "ASPProof/AgentSessionHostRegistryManifest.lean",
+  "leanVersion": "4.32.2",
+  "hasSorryAx": false,
+  "declarationCount": 23,
+  "axiomFreeDeclarationCount": 23,
+  "axiomDependentDeclarationCount": 0
+}

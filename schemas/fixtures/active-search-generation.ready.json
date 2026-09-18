@@ -1,0 +1,18 @@
+{
+  "schemaId": "agent.semantic-protocols.active-search-generation",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-test",
+  "publicationEpoch": 1,
+  "generationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceRootDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+  "providerCatalogDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "projectionCapabilityDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+  "providerContracts": [
+    {
+      "providerId": "asp-rust",
+      "artifactDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555",
+      "contractDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ],
+  "residentSections": ["lexical", "owner", "selector", "exact-source"]
+}

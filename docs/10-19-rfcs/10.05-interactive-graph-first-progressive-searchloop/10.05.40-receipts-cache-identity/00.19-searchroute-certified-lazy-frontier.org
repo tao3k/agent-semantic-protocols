@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Compatibility locator: SearchRoute certified lazy frontier
+
+* Canonical RFC
+
+The canonical graph-routing RFC is
+[[file:../10.05.20-evidence-graph-routing/00.19-searchroute-certified-lazy-frontier.org][SearchRoute certified lazy frontier]].

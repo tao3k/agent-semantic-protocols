@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/derived-source-artifact-evidence.v1.schema.json",
+  "title": "ASP derived source artifact evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "artifactKind",
+    "expectedArtifactDigest",
+    "authorityState",
+    "cacheDisposition",
+    "sourceSnapshot"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.derived-source-artifact-evidence.v1" },
+    "artifactKind": {
+      "enum": [
+        "parser-artifact",
+        "source-index",
+        "compact-graph",
+        "graph-owner-rank",
+        "evidence-graph"
+      ]
+    },
+    "expectedArtifactDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "resolvedArtifactDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "authorityState": { "enum": ["current", "missing", "stale"] },
+    "cacheDisposition": { "const": "disposable" },
+    "sourceSnapshot": {
+      "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "authorityState": { "const": "current" } },
+        "required": ["authorityState"]
+      },
+      "then": { "required": ["resolvedArtifactDigest"] },
+      "else": { "not": { "required": ["resolvedArtifactDigest"] } }
+    }
+  ]
+}

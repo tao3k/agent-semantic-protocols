@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-collaboration-wait-result.v1.schema.json",
+  "title": "Codex Collaboration Wait Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["message", "timed_out"],
+  "properties": {
+    "message": { "type": "string", "minLength": 1 },
+    "timed_out": { "type": "boolean" }
+  }
+}

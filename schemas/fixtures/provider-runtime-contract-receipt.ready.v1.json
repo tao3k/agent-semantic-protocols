@@ -1,0 +1,17 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-runtime-contract-receipt",
+  "schemaVersion": "1",
+  "providerId": "asp-rust",
+  "languageId": "rust",
+  "artifactDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "registrationDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "contractDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "transport": "framed-stdin-v1",
+  "operations": [
+    {
+      "operation": "query",
+      "requestSchema": {"schemaId": "agent.semantic-protocols.provider-native-exact-request", "schemaVersion": "1"},
+      "responseSchema": {"schemaId": "agent.semantic-protocols.provider-native-exact-projection", "schemaVersion": "1"}
+    }
+  ]
+}

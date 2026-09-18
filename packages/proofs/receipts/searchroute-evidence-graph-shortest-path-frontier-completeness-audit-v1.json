@@ -1,0 +1,148 @@
+{"sourcePath":
+ "ASPProof/SearchRouteEvidenceGraphShortestPathFrontierCompleteness.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (Edge : Nat → Nat → Prop) (node : Nat),\n  (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.stay node).hopCount = 0",
+   "theoremFamily": "stay-path-zero-hops",
+   "rfcClauseIds": ["EGSP-HOPS", "EGSP-PATH"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.stay_path_has_zero_hops",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop} {source next target : Nat} (edge : Edge source next)\n  (tail : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge next target),\n  (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.step edge tail).hopCount =\n    tail.hopCount.succ",
+   "theoremFamily": "step-path-successor-hop",
+   "rfcClauseIds": ["EGSP-HOPS", "EGSP-PATH"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.step_path_adds_one_hop",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SubEdge SuperEdge : Nat → Nat → Prop}\n  (lift : ∀ {source target : Nat}, SubEdge source target → SuperEdge source target) {source target : Nat}\n  (path : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath SubEdge source target),\n  (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.map ⋯ path).hopCount = path.hopCount",
+   "theoremFamily": "edge-subset-map-preserves-hops",
+   "rfcClauseIds": ["EGSP-PATH", "EGSP-SUBSET"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.map_preserves_hop_count",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {FrontierEdge GlobalEdge : Nat → Nat → Prop}\n  (sound : ∀ {source target : Nat}, FrontierEdge source target → GlobalEdge source target) {source target : Nat}\n  (candidate :\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath FrontierEdge source target),\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.IsShortest\n      (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.map ⋯ candidate) →\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.IsShortest candidate",
+   "theoremFamily": "global-implies-frontier-shortest",
+   "rfcClauseIds": ["EGSP-FRONTIER", "EGSP-GLOBAL"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.global_shortest_implies_shortest_in_sound_frontier",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {FrontierEdge GlobalEdge : Nat → Nat → Prop}\n  (sound : ∀ {source target : Nat}, FrontierEdge source target → GlobalEdge source target) {source target : Nat}\n  (candidate :\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath FrontierEdge source target),\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.IsShortest candidate →\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.HopCompleteBetween FrontierEdge GlobalEdge source\n        target →\n      ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.IsShortest\n        (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.map ⋯ candidate)",
+   "theoremFamily": "complete-frontier-lifts-optimality",
+   "rfcClauseIds": ["EGSP-COMPLETE", "EGSP-GLOBAL"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.shortest_in_hop_complete_frontier_implies_global_shortest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.MinimalAmong 2\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.FrontierOnlyTwo ∧\n  ¬ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.MinimalAmong 2\n      ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.GlobalOneOrTwo",
+   "theoremFamily": "frontier-minimum-insufficient",
+   "rfcClauseIds": ["EGSP-COUNTEREXAMPLE", "EGSP-FRONTIER"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.frontier_minimum_alone_does_not_imply_global_minimum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (Edge Authorized : Nat → Nat → Prop) {source target : Nat},\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.AuthorizedEdge Edge Authorized source target →\n    Edge source target",
+   "theoremFamily": "authorized-edge-soundness",
+   "rfcClauseIds": ["EGSP-AUTH", "EGSP-EDGE"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.authorized_edge_is_a_graph_edge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop} {source target : Nat}\n  (candidate alternative :\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge source target),\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.IsShortest candidate →\n    ∀ (hopBudget : Nat),\n      ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.PathWithinHopBudget hopBudget alternative →\n        ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.PathWithinHopBudget hopBudget candidate",
+   "theoremFamily": "shortest-path-hop-feasibility",
+   "rfcClauseIds": ["EGSP-BUDGET", "EGSP-SHORTEST"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.shortest_path_inherits_hop_budget_from_feasible_alternative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop} {source target : Nat}\n  (path : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge source target),\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.HopClaimValid path.hopCount path",
+   "theoremFamily": "derived-hop-claim-valid",
+   "rfcClauseIds": ["EGSP-CLAIM", "EGSP-HOPS"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.correct_hop_claim_is_valid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop} {source target : Nat}\n  (path : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge source target)\n  (claimedHops : Nat),\n  claimedHops ≠ path.hopCount →\n    ¬ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.HopClaimValid claimedHops path",
+   "theoremFamily": "changed-hop-claim-invalid",
+   "rfcClauseIds": ["EGSP-CLAIM", "EGSP-FAIL-CLOSED"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.changed_hop_claim_is_invalid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (remainingCost : Nat),\n  ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.AdmissibleEstimate remainingCost remainingCost",
+   "theoremFamily": "exact-heuristic-admissible",
+   "rfcClauseIds": ["EGSP-ADMISSIBLE", "EGSP-HEURISTIC"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.exact_remaining_cost_is_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (remainingCost : Nat),\n  ¬ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.AdmissibleEstimate remainingCost.succ remainingCost",
+   "theoremFamily": "overestimate-not-admissible",
+   "rfcClauseIds": ["EGSP-COUNTEREXAMPLE", "EGSP-HEURISTIC"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.overestimating_remaining_cost_is_not_admissible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidateCost lowerBound : Nat) (UnseenPathCost : Nat → Prop),\n  candidateCost ≤ lowerBound →\n    ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.LowerBoundsUnseen lowerBound UnseenPathCost →\n      ∀ (unseenCost : Nat), UnseenPathCost unseenCost → candidateCost ≤ unseenCost",
+   "theoremFamily": "unseen-lower-bound-certificate",
+   "rfcClauseIds": ["EGSP-HEURISTIC", "EGSP-UNSEEN"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.candidate_below_unseen_lower_bound_beats_every_unseen_path",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.GlobalUnreachableClaimAuthorized true",
+   "theoremFamily": "complete-frontier-unreachable",
+   "rfcClauseIds": ["EGSP-COMPLETE", "EGSP-REACHABILITY"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.complete_frontier_authorizes_global_unreachable_claim",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.GlobalUnreachableClaimAuthorized false",
+   "theoremFamily": "truncated-frontier-not-unreachable",
+   "rfcClauseIds": ["EGSP-REACHABILITY", "EGSP-TRUNCATED"],
+   "name":
+   "ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.truncated_frontier_cannot_authorize_global_unreachable_claim",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 15,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 15,
+ "axiomDependentDeclarationCount": 0}

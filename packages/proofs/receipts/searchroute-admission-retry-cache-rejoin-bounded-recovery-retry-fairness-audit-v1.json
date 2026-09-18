@@ -1,0 +1,121 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryState),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.nextRetry state).roundNumber =\n      state.roundNumber + 1 ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.nextRetry state).attemptsUsed =\n      state.attemptsUsed + 1",
+   "theoremFamily": "retry-round-attempt-advance",
+   "rfcClauseIds": ["BRRF-ATTEMPT", "BRRF-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.next_retry_increments_round_and_attempt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryState),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryAuthorized state →\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.nextRetry state).attemptsUsed ≤\n      state.maximumAttempts",
+   "theoremFamily": "authorized-retry-budget-bound",
+   "rfcClauseIds": ["BRRF-BUDGET", "BRRF-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.authorized_retry_stays_within_attempt_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryState),\n  state.maximumAttempts ≤ state.attemptsUsed →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryAuthorized state",
+   "theoremFamily": "exhausted-budget-rejection",
+   "rfcClauseIds": ["BRRF-BUDGET", "BRRF-TERMINAL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.exhausted_attempt_budget_blocks_retry",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryState),\n  state.roundNumber ≠\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.nextRetry state).roundNumber",
+   "theoremFamily": "previous-round-fence",
+   "rfcClauseIds": ["BRRF-FENCE", "BRRF-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.previous_round_is_fenced_after_retry",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expectedRound currentRound expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision : Nat),\n  expectedRound ≠ currentRound →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryRoundFence expectedRound\n        currentRound expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision",
+   "theoremFamily": "stale-round-rejection",
+   "rfcClauseIds": ["BRRF-FENCE", "BRRF-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.stale_round_blocks_retry_fence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (delay : Nat → Nat) (maximumDelay attempts : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.BoundedBackoff delay maximumDelay →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.TotalBackoff delay attempts ≤\n      attempts * maximumDelay",
+   "theoremFamily": "cumulative-backoff-bound",
+   "rfcClauseIds": ["BRRF-BACKOFF", "BRRF-BOUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.total_backoff_is_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type": "∃ schedule, ∀ (round : Nat), schedule round ≠ true",
+   "theoremFamily": "unconditional-liveness-counterexample",
+   "rfcClauseIds": ["BRRF-COUNTEREXAMPLE", "BRRF-FAIRNESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.adversarial_scheduler_can_starve_a_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Candidate : Type} (candidate : Candidate) (maximumRounds : Nat)\n  (scheduled eligible selected committed : Candidate → Nat → Prop),\n  (∃ round, round < maximumRounds ∧ scheduled candidate round ∧ eligible candidate round ∧ selected candidate round) →\n    (∀ (round : Nat),\n        scheduled candidate round → eligible candidate round → selected candidate round → committed candidate round) →\n      ∃ round, round < maximumRounds ∧ committed candidate round",
+   "theoremFamily": "fairness-conditional-liveness",
+   "rfcClauseIds": ["BRRF-FAIRNESS", "BRRF-LIVENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.conditional_bounded_recovery_liveness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateId SnapshotId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandKey TransitionId CandidateId\n      SnapshotId PolicyId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandCompatible left right →\n    left.roundNumber = right.roundNumber",
+   "theoremFamily": "retry-command-round-binding",
+   "rfcClauseIds": ["BRRF-COMMAND", "BRRF-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.retry_command_compatibility_binds_round",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateId SnapshotId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandKey TransitionId CandidateId\n      SnapshotId PolicyId),\n  left.roundNumber ≠ right.roundNumber →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandCompatible left right",
+   "theoremFamily": "cross-round-replay-rejection",
+   "rfcClauseIds": ["BRRF-REPLAY", "BRRF-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.changed_round_rejects_retry_replay",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateId SnapshotId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandKey TransitionId CandidateId\n      SnapshotId PolicyId),\n  left.candidateId = right.candidateId →\n    left.roundNumber ≠ right.roundNumber →\n      left.candidateId = right.candidateId ∧\n        ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandCompatible left right",
+   "theoremFamily": "same-candidate-round-separation",
+   "rfcClauseIds": ["BRRF-COUNTEREXAMPLE", "BRRF-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.same_candidate_does_not_imply_retry_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateId SnapshotId PolicyId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandKey TransitionId CandidateId\n      SnapshotId PolicyId),\n  left.maximumAttempts ≠ right.maximumAttempts →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.RetryCommandCompatible left right",
+   "theoremFamily": "attempt-budget-cache-invalidation",
+   "rfcClauseIds": ["BRRF-BUDGET", "BRRF-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedRecoveryRetryFairness.changed_attempt_budget_rejects_retry_replay",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 12,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 12,
+ "axiomDependentDeclarationCount": 0}

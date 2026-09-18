@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/lexical-postings-work-reduction-receipt.schema.json",
+  "title": "ASP Lexical Postings Work Reduction Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "fullScanCandidates", "indexedCandidates", "reductionFactor"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.lexical-postings-work-reduction-receipt" },
+    "schemaVersion": { "const": "1" },
+    "fullScanCandidates": { "type": "integer", "minimum": 1 },
+    "indexedCandidates": { "type": "integer", "minimum": 1 },
+    "reductionFactor": { "type": "integer", "minimum": 1000 }
+  }
+}

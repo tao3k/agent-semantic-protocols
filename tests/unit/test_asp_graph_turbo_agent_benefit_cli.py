@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Agent-benefit report CLI tests for graph turbo behavior quality."""
 
 from __future__ import annotations
@@ -10,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/unit"))
 
-from asp_graph_turbo_cli_support import validate_shared_schema
+from unit.asp_graph_turbo_cli_support import validate_shared_schema
 
 
 def test_graph_turbo_agent_benefit_reports_read_locator_feedback_and_matrix() -> None:
@@ -98,7 +102,7 @@ def _run_agent_benefit_process(
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "agent-benefit",
             str(packet_path),
             *args,
@@ -117,7 +121,7 @@ def _fixture_path(name: str) -> Path:
 
 def _subprocess_env() -> dict[str, str]:
     repo_root = Path(__file__).resolve().parents[2]
-    package_src = repo_root / "packages/python/asp_graph_turbo/src"
+    package_src = repo_root / "packages/python/asp_python_graphs/src"
     unit_tests = repo_root / "tests/unit"
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(

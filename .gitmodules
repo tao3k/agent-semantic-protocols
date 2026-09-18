@@ -1,15 +1,19 @@
-[submodule "languages/rust-lang-project-harness"]
-	path = languages/rust-lang-project-harness
-	url = https://github.com/tao3k/rust-lang-project-harness
-[submodule "languages/typescript-lang-project-harness"]
-	path = languages/typescript-lang-project-harness
-	url = https://github.com/tao3k/typescript-lang-project-harness
-[submodule "languages/JuliaLangProjectHarness.jl"]
-	path = languages/JuliaLangProjectHarness.jl
-	url = https://github.com/JuliaCN/JuliaLangProjectHarness.jl
-[submodule "languages/python-lang-project-harness"]
-	path = languages/python-lang-project-harness
-	url = https://github.com/tao3k/python-lang-project-harness
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[submodule "languages/asp-rust"]
+	path = languages/asp-rust
+	url = https://github.com/tao3k/asp-rust
+[submodule "languages/asp-typescript"]
+	path = languages/asp-typescript
+	url = https://github.com/tao3k/asp-typescript
+[submodule "languages/AspJulia.jl"]
+	path = languages/AspJulia.jl
+	url = https://github.com/JuliaCN/AspJulia.jl
+[submodule "languages/asp-python"]
+	path = languages/asp-python
+	url = https://github.com/tao3k/asp-python
 [submodule "analyzers/WendaoGraph.jl"]
 	path = analyzers/WendaoGraph.jl
 	url = git@github.com:tao3k/WendaoGraph.jl.git
@@ -19,11 +23,11 @@
 [submodule "languages/orgize"]
 	path = languages/orgize
 	url = https://github.com/tao3k/orgize
-[submodule "languages/gerbil-scheme-language-project-harness"]
-	path = languages/gerbil-scheme-language-project-harness
-	url = https://github.com/tao3k/gerbil-scheme-language-project-harness
-[submodule "languages/org"]
-	path = languages/org
+[submodule "languages/asp-gerbil-scheme"]
+	path = languages/asp-gerbil-scheme
+	url = https://github.com/tao3k/asp-gerbil-scheme
+[submodule "org"]
+	path = org
 	url = https://github.com/tao3k/org.git
 [submodule "analyzers/AspGraphsSearch.jl"]
 	path = analyzers/AspGraphsSearch.jl

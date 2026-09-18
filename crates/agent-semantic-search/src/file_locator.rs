@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! File path locator indexes for search planning hot paths.
 //!
 //! The locator answers filename and path questions without provider processes
@@ -5,9 +9,11 @@
 //! hot lookup stays in memory and only touches indexed hit buckets.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use globset::{Glob, GlobSetBuilder};
+use globset::Glob;
+use globset::GlobSetBuilder;
 
 const DEFAULT_LIMIT: usize = 16;
 

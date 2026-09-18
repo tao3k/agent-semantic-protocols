@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "canonical-replacement-resident-first"
+title = "Canonical replacement publishes resident authority before durability"
+package = "agent-semantic-client-db"
+phase = "canonical-generation-replacement"
+intent = "remove superseded mmap decode from the first Search critical path"
+
+[identity]
+cache_key = ["workspace-identity", "project-root", "validated-content-generation"]
+generation_proof_is_required = true
+
+[gate]
+pointer_metadata_read_count = 1
+superseded_payload_decode_count = 0
+caller_retry_count = 0
+resident_publication_count = 1
+epoch_increment = 1
+corrupt_superseded_payload_blocks_replacement = false

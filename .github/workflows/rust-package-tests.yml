@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+name: Rust package tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package-test:
+    name: Test ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 30
+      matrix:
+        package:
+          - agent-semantic-artifacts
+          - agent-semantic-client
+          - agent-semantic-client-core
+          - agent-semantic-client-db
+          - agent-semantic-client-protocol
+          - agent-semantic-client-server
+          - agent-semantic-config
+          - agent-semantic-content-identity
+          - agent-semantic-context-product
+          - agent-semantic-hook
+          - agent-semantic-hook-testkit
+          - agent-semantic-http-json
+          - agent-semantic-loop
+          - agent-semantic-mrr
+          - agent-semantic-provider-protocol
+          - agent-semantic-provider-transport
+          - agent-semantic-runtime
+          - agent-semantic-runtime-observability
+          - agent-semantic-runtime-process-observation
+          - agent-semantic-runtime-server
+          - agent-semantic-schema-manager
+          - agent-semantic-scheme-syntax
+          - agent-semantic-search
+          - agent-semantic-search-playbook
+          - agent-semantic-search-projection
+          - agent-semantic-shell-parser
+          - agent-semantic-topology
+          - agent-semantic-tree-sitter
+          - agent-semantic-workspace-scheduler
+          - asp-rust-project-harness-policy
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout provider catalog submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/asp-rust \
+            languages/asp-gerbil-scheme \
+            org \
+            languages/orgize \
+            languages/asp-typescript \
+            languages/asp-python \
+            languages/AspJulia.jl
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install reference search tools
+        if: ${{ matrix.package == 'agent-semantic-provider-transport' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fd-find ripgrep
+          sudo ln --symbolic --force /usr/bin/fdfind /usr/local/bin/fd
+
+      - name: Restore package-local Cargo state
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: rust-package-${{ matrix.package }}
+          cache-on-failure: true
+
+      - name: Build client installation fixture binaries
+        if: ${{ matrix.package == 'agent-semantic-client' }}
+        run: cargo build -p agent-semantic-hook --bin asp-hook
+
+      - name: Lint package
+        if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}
+        run: cargo clippy -p "${{ matrix.package }}" --all-targets --all-features -- -D warnings
+
+      - name: Test package
+        if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}
+        run: cargo test -p "${{ matrix.package }}" --all-features
+
+      - name: Lint package-local policy API
+        if: ${{ matrix.package == 'asp-rust-project-harness-policy' }}
+        run: cargo clippy -p asp-rust-project-harness-policy --all-targets --no-default-features -- -D warnings
+
+      - name: Test package-local policy API
+        if: ${{ matrix.package == 'asp-rust-project-harness-policy' }}
+        run: cargo test -p asp-rust-project-harness-policy --no-default-features

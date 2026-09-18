@@ -60,16 +60,14 @@
           "maxRepeatedCommands": 0,
           "requiresGraphSignals": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": true,
+          "requiresComplexCommandFlow": true,
           "requiresTokenCost": true
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe"
+            "search-playbook"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands",
             "read-loop-risk"
           ],
@@ -104,26 +102,22 @@
           "JoinSet"
         ]
       },
-      "pipeFlow": {
+      "commandFlow": {
         "maxAspCommands": 6,
         "maxSearchCommands": 4,
         "maxQueryCommands": 2,
         "maxGuideCommands": 1,
         "maxRepeatedCommands": 0,
-        "maxSearchPipeCommands": 2,
-        "maxSearchPrimeCommands": 1,
+        "maxSearchPlaybookCommands": 1,
         "maxReadLoopDuplicateSelectors": 0,
         "maxReadLoopAdjacentRangeWindows": 0,
         "maxReadLoopSameOwnerScans": 0,
         "maxReadLoopMemorySuppressibleReads": 0,
-        "requireComplexPipeFlow": false,
         "requireTokenCost": true,
         "requiredStages": [
-          "search-prime",
-          "search-pipe"
+          "search-playbook"
         ],
         "forbiddenStages": [
-          "repeated-prime",
           "repeated-commands",
           "read-loop-risk",
           "read-loop-memory-risk"

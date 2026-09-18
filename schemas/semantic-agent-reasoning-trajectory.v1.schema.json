@@ -1,0 +1,772 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-reasoning-trajectory.v1.schema.json",
+  "title": "Semantic Agent Reasoning Trajectory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "reasoningIdentity",
+    "currentRound",
+    "evidenceAtoms",
+    "mappings",
+    "delta",
+    "invalidation",
+    "impact",
+    "pipeComposition",
+    "actionSelection",
+    "projection"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-agent-reasoning-trajectory.v1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "reasoningIdentity": {
+      "$ref": "#/$defs/reasoningIdentity"
+    },
+    "previousRound": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/roundIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "currentRound": {
+      "$ref": "#/$defs/roundIdentity"
+    },
+    "evidenceAtoms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceAtom"
+      }
+    },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceMapping"
+      }
+    },
+    "delta": {
+      "$ref": "#/$defs/roundDelta"
+    },
+    "invalidation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/invalidationDecision"
+      }
+    },
+    "impact": {
+      "$ref": "#/$defs/impactProjection"
+    },
+    "formalConformance": {
+      "$ref": "#/$defs/formalConformance"
+    },
+    "pipeComposition": {
+      "$ref": "#/$defs/pipeComposition"
+    },
+    "actionSelection": {
+      "$ref": "#/$defs/actionSelection"
+    },
+    "projection": {
+      "$ref": "#/$defs/projectionReceipt"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reasoningIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "workspaceId",
+        "sourceGenerationDigest",
+        "requestDigest",
+        "obligationGraphDigest",
+        "schemaDigest",
+        "producerRegistryDigest",
+        "mappingVersion"
+      ],
+      "properties": {
+        "projectId": {
+          "$ref": "#/$defs/identity"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/identity"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "obligationGraphDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schemaDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producerRegistryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "mappingVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "roundIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roundId",
+        "inputDigest",
+        "sourceGenerationDigest",
+        "receiptSetDigest"
+      ],
+      "properties": {
+        "roundId": {
+          "$ref": "#/$defs/identity"
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "receiptSetDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "relocationProofDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerId",
+        "sourceRootDigest",
+        "sourceNodeId"
+      ],
+      "properties": {
+        "ownerId": {
+          "$ref": "#/$defs/identity"
+        },
+        "sourceRootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceNodeId": {
+          "$ref": "#/$defs/identity"
+        },
+        "parserSelectorDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "evidenceAtom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "factId",
+        "producerId",
+        "producerContractDigest",
+        "producerReceiptDigest",
+        "sourceIdentity",
+        "bodyDigest",
+        "validityDependencyIds",
+        "obligationIds",
+        "tokenCost"
+      ],
+      "properties": {
+        "evidenceId": {
+          "$ref": "#/$defs/identity"
+        },
+        "factId": {
+          "$ref": "#/$defs/identity"
+        },
+        "producerId": {
+          "$ref": "#/$defs/identity"
+        },
+        "producerContractDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producerReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceIdentity": {
+          "$ref": "#/$defs/sourceIdentity"
+        },
+        "bodyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "validityDependencyIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identity"
+          },
+          "uniqueItems": true
+        },
+        "obligationIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identity"
+          },
+          "uniqueItems": true
+        },
+        "tokenCost": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "evidenceMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mappingId",
+        "relation",
+        "fromEvidenceId",
+        "toEvidenceId",
+        "groundingDigest"
+      ],
+      "properties": {
+        "mappingId": {
+          "$ref": "#/$defs/identity"
+        },
+        "relation": {
+          "enum": [
+            "same-source",
+            "grounds",
+            "supports",
+            "contradicts",
+            "derives-from",
+            "model-action-origin",
+            "model-variable-origin",
+            "invariant-evidence",
+            "trace-event-action",
+            "counterexample-reproduction"
+          ]
+        },
+        "fromEvidenceId": {
+          "$ref": "#/$defs/identity"
+        },
+        "toEvidenceId": {
+          "$ref": "#/$defs/identity"
+        },
+        "groundingDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "identitySet": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/identity"
+      },
+      "uniqueItems": true
+    },
+    "roundDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparable",
+        "newEvidenceIds",
+        "retainedEvidenceIds",
+        "strengthenedEvidenceIds",
+        "weakenedEvidenceIds",
+        "contradictedEvidenceIds",
+        "disappearedEvidenceIds",
+        "relationAdds",
+        "relationRemoves",
+        "trajectoryDigest"
+      ],
+      "properties": {
+        "comparable": {
+          "type": "boolean"
+        },
+        "incomparabilityReasons": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "project",
+              "workspace",
+              "generation",
+              "request",
+              "schema",
+              "producer-registry",
+              "mapping-version",
+              "relocation-proof"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "newEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "retainedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "strengthenedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "weakenedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "contradictedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "disappearedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "relationAdds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "relationRemoves": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "trajectoryDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "invalidationDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "decision",
+        "reason",
+        "validationReceiptDigest"
+      ],
+      "properties": {
+        "evidenceId": {
+          "$ref": "#/$defs/identity"
+        },
+        "decision": {
+          "enum": [
+            "reusable",
+            "revalidation-required",
+            "invalid"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "exact-semantic-identity",
+            "authority-drift",
+            "relocation-required",
+            "source-identity-drift",
+            "provider-contract-drift",
+            "parser-contract-drift",
+            "invalid-parent",
+            "schema-drift",
+            "policy-drift"
+          ]
+        },
+        "validationReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "actionValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligationGain",
+        "contradictionGain",
+        "selectorProgress",
+        "futureReuse",
+        "novelty",
+        "tokenCost",
+        "latencyCost",
+        "invalidationRisk"
+      ],
+      "properties": {
+        "obligationGain": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contradictionGain": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectorProgress": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "futureReuse": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "novelty": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenCost": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latencyCost": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalidationRisk": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "impactProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changedIdentityIds",
+        "affectedEvidenceIds",
+        "affectedObligationIds",
+        "affectedSelectorIds",
+        "affectedActionIds",
+        "whyMappingIds",
+        "whyNotObligationIds",
+        "changedByIdentityIds",
+        "impactDigest"
+      ],
+      "properties": {
+        "changedIdentityIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "affectedEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "affectedObligationIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "affectedSelectorIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "affectedActionIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "whyMappingIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "whyNotObligationIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "changedByIdentityIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "impactDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "formalConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "specificationLanguage",
+        "referenceModelDigest",
+        "scenarioProjectionDigest",
+        "scenarioEvidenceIds",
+        "invariantEvidenceIds",
+        "modelCodeMappingIds",
+        "traceValidation",
+        "modelChecking",
+        "adjudication"
+      ],
+      "properties": {
+        "specificationLanguage": {
+          "const": "tla+"
+        },
+        "referenceModelDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scenarioProjectionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scenarioEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "invariantEvidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "modelCodeMappingIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "traceValidation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "traceDigest",
+            "instrumentationDigest"
+          ],
+          "properties": {
+            "outcome": {
+              "enum": [
+                "conformant",
+                "model-gap",
+                "instrumentation-gap",
+                "not-run"
+              ]
+            },
+            "traceDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "instrumentationDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "divergenceEvidenceIds": {
+              "$ref": "#/$defs/identitySet"
+            }
+          }
+        },
+        "modelChecking": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "mode",
+            "checkedInvariantIds"
+          ],
+          "properties": {
+            "outcome": {
+              "enum": [
+                "invariants-hold",
+                "counterexample",
+                "state-budget-exhausted",
+                "not-run"
+              ]
+            },
+            "mode": {
+              "enum": [
+                "breadth-first",
+                "simulation",
+                "not-run"
+              ]
+            },
+            "checkedInvariantIds": {
+              "$ref": "#/$defs/identitySet"
+            },
+            "counterexampleTraceDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        "adjudication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "evidenceIds"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "model-gap",
+                "code-bug",
+                "invariant-gap",
+                "unresolved"
+              ]
+            },
+            "evidenceIds": {
+              "$ref": "#/$defs/identitySet"
+            },
+            "reproductionReceiptDigest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        }
+      }
+    },
+    "reasoningAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actionId",
+        "obligationIds",
+        "value",
+        "feasible"
+      ],
+      "properties": {
+        "actionId": {
+          "$ref": "#/$defs/identity"
+        },
+        "obligationIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "value": {
+          "$ref": "#/$defs/actionValue"
+        },
+        "feasible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pipeBranch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branchId",
+        "expressionDigest",
+        "nativeGrammarId",
+        "producerIds",
+        "tokenBudget",
+        "evidenceIds",
+        "marginalVerifiedGain",
+        "truncated"
+      ],
+      "properties": {
+        "branchId": {
+          "$ref": "#/$defs/identity"
+        },
+        "expressionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nativeGrammarId": {
+          "$ref": "#/$defs/identity"
+        },
+        "producerIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "tokenBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidenceIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "marginalVerifiedGain": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pipeComposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator",
+        "branches",
+        "fanoutIndependent",
+        "candidateFlow",
+        "compositionDigest"
+      ],
+      "properties": {
+        "operator": {
+          "const": "|"
+        },
+        "branches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/pipeBranch"
+          }
+        },
+        "fanoutIndependent": {
+          "const": true
+        },
+        "candidateFlow": {
+          "const": false
+        },
+        "compositionDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "actionSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidates",
+        "selectedActionIds",
+        "unresolvedObligationIds",
+        "schedulingOnly",
+        "selectionDigest"
+      ],
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reasoningAction"
+          }
+        },
+        "selectedActionIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "unresolvedObligationIds": {
+          "$ref": "#/$defs/identitySet"
+        },
+        "schedulingOnly": {
+          "const": true
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "projectionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topK",
+        "tokenBudget",
+        "selectedCount",
+        "admittedCount",
+        "exactTokenCost",
+        "truncated",
+        "omittedIdentityDigest",
+        "retainedBodiesOmitted"
+      ],
+      "properties": {
+        "topK": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "admittedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exactTokenCost": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "omittedIdentityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "retainedBodiesOmitted": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

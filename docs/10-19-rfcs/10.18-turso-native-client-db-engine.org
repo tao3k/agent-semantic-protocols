@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC 10.18 - ASP DB Engine v1 and Turso Backend
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-28
@@ -6,7 +10,9 @@
 * One-sentence summary
 ASP owns a DB Engine v1 contract for durable search, state, topology,
 artifact evidence, and future writing workflows; Turso is the production
-backend and the public backend token is =turso=.
+backend and the public backend token is =turso=.  The ASP Runtime Server is the
+sole lifecycle and admission owner; the client reaches this DB only through
+typed Runtime operations.
 
 * Contract
 The DB Engine is the product boundary. Providers and command facades emit
@@ -70,8 +76,9 @@ facade:
 - route receipts.
 
 * Source-index and structural-index boundary
-Source-index stable data is written through
-=ClientDbEngine::refresh_source_index_import_from_client_dir=. The method
+Source-index stable data is written through the ASP Server DB Engine, currently
+implemented by
+=ClientDbEngine::refresh_source_index_import_from_client_dir=. The server
 bootstraps =client.turso=, writes generation/owner/selector rows, persists the
 source-index EvidenceGraph into =asp_graph_entity= / =asp_graph_edge=, and
 writes =source-index= namespace rows into =asp_search_document= for stable FTS
@@ -97,7 +104,7 @@ temporary overlay-local entity ids. Accepted overlays compact into a new stable
 generation; rejected overlays remain session-scoped audit evidence.
 
 * Command and crate ownership
-=crates/agent-semantic-protocol/src/command/*= must stay a thin public facade:
+=crates/agent-semantic-client/src/command/*= must stay a thin public facade:
 parse CLI arguments, dispatch to package-owned services, and render typed
 reports. It must not construct DB paths, open the DB, rank search candidates, or
 hard-code language-specific database behavior.
@@ -107,9 +114,11 @@ Ownership is:
 - =agent-semantic-client-core= exposes client-facing State Core services;
 - =agent-semantic-client-db= owns DB Engine schema, open/bootstrap, read/write
   sessions, and Turso adapters;
-- =agent-semantic-search= owns search routing, overlay merge, candidate
-  projection, and source-index lookup orchestration;
-- language harnesses own native parse facts and shared schema packets.
+- =agent-semantic-search= owns search routing, overlay merge, and candidate
+  projection; =agent-semantic-client-db= owns ASP Server source-index
+  materialization, Turso/Merkle persistence, and source-index lookup
+  orchestration;
+- ASP language providers own native parse facts and shared schema packets.
 
 * Validation gates
 The Turso cutover is accepted only when these gates pass:
@@ -155,6 +164,6 @@ Verified gates for this checkpoint:
 - =cargo test -p agent-semantic-client-db --locked=
 - =cargo test -p agent-semantic-client --locked cache_cli -- --nocapture=
 - =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=
-- =cargo test -p agent-semantic-protocol --locked provider_command::receipt -- --nocapture=
+- =cargo test -p agent-semantic-client --locked provider_command::receipt -- --nocapture=
 - =git diff --check && git diff --cached --check=
 - no new dead-code suppression diff.

@@ -1,10 +1,14 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.agent_observation_tokens import token_cost_from_messages
 from tools.semantic_sandtable.step_agent_sdk import resolve_agent_sdk_step
@@ -54,9 +58,7 @@ def test_deepseek_agent_sdk_builds_openai_compatible_runner_command() -> None:
 
 
 def test_sandtable_schema_accepts_deepseek_agent_sdk_step() -> None:
-    schema = json.loads(
-        Path("schemas/semantic-sandtable-scenario.v1.schema.json").read_text()
-    )
+    schema_path = Path("schemas/semantic-sandtable-scenario.v1.schema.json")
     scenario = {
         "id": "python.deepseek-live-smoke",
         "language": "python",
@@ -79,7 +81,7 @@ def test_sandtable_schema_accepts_deepseek_agent_sdk_step() -> None:
     }
 
     errors = sorted(
-        Draft202012Validator(schema).iter_errors(scenario),
+        schema_validator_for(schema_path).iter_errors(scenario),
         key=lambda error: list(error.path),
     )
     assert errors == []

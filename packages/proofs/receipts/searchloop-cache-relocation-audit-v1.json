@@ -1,0 +1,35 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopCacheRelocation.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopCacheRelocation",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (key : SearchLoopCacheIdentity.SemanticKey) (newSelector : SearchLoopCacheIdentity.Digest),\n  key.selector ≠ newSelector →\n    SearchLoopCacheIdentity.decideSemanticReuse key (SearchLoopCacheRelocation.relocateSelector key newSelector) =\n      SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "selector-relocation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY",
+    "ASP-RFC-10.05-SCI-SELECTOR-RELOCATION",
+    "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name":
+   "SearchLoopCacheRelocation.selector_drift_invalidates_without_relocation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (cached current : SearchLoopCacheIdentity.SemanticKey),\n  SearchLoopCacheRelocation.relocateSelector cached current.selector = current →\n    SearchLoopCacheIdentity.decideSemanticReuse (SearchLoopCacheRelocation.relocateSelector cached current.selector)\n        current =\n      SearchLoopCacheIdentity.CacheDecision.reuse",
+   "theoremFamily": "selector-relocation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY",
+    "ASP-RFC-10.05-SCI-SELECTOR-RELOCATION",
+    "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheRelocation.explicit_relocation_rekeys_to_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 2,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 2}

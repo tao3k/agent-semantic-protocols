@@ -1,0 +1,33 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/t
+namespace: asp-gerbil-scheme/t/package-build-contract-test
+
+(%#begin (%#import
+          :gerbil/gambit
+          (spec:
+           (:std/test)
+           (0 test-suite 0 test-suite)
+           (0 test-case 0 test-case)
+           (0 check 0 check))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/package-build)
+           (0
+            asp-gerbil-scheme-package-build-active-gerbil-path
+            0
+            asp-gerbil-scheme-package-build-active-gerbil-path))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/native-build-spec)
+           (0 configure-build-root! 0 configure-build-root!))
+          (spec:
+           (:asp-gerbil-scheme/src/build-api/package-native-plan)
+           (0
+            asp-gerbil-scheme-package-api-stage-specs
+            0
+            asp-gerbil-scheme-package-api-stage-specs)))
+         (%#export
+          (spec: 0 package-build-contract-test package-build-contract-test))
+         (%#define-runtime
+          package-build-contract-test
+          asp-gerbil-scheme/t/package-build-contract-test#package-build-contract-test))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/t/package-build-contract-test~0"))

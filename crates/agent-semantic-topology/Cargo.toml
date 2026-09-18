@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-topology"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+description = "Reusable Project Topology identity, resident index, admission, and incremental generation contracts for ASP"
+
+[dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+agent-semantic-workspace-scheduler.workspace = true
+agent-semantic-mrr.workspace = true
+blake3.workspace = true
+globset.workspace = true
+orgize.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+toml.workspace = true
+
+[build-dependencies]
+# Topology Index is a latency-sensitive Style-policy atom. This package runs
+# ASP Rust at its build boundary; Runtime and Search consume typed output.
+asp-rust.workspace = true
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

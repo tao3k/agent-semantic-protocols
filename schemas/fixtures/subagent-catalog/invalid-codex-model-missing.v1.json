@@ -1,0 +1,23 @@
+{
+  "schema_id": "asp.subagent-catalog.v1",
+  "schema_version": 1,
+  "agents": {
+    "asp_explorer": {
+      "session_name": "asp-explore",
+      "session_lifetime": "resident",
+      "model_policy": "low-cost-reasoning",
+      "reasoning_policy": "low",
+      "permission_policy": "read-only",
+      "sandbox_policy": "read-only",
+      "roles": ["subagent", "search"],
+      "capabilities": ["search"],
+      "platforms": {
+        "codex": {
+          "host_agent_name": "asp_explorer",
+          "profile": "asp-explorer_codex.toml",
+          "projection": "asp-explorer.toml"
+        }
+      }
+    }
+  }
+}

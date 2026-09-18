@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/enhanced-tree-sitter-query-operator-table.v1.schema.json",
+  "title": "Enhanced Tree-sitter Query Operator Table V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "profileId",
+    "owner",
+    "declarationDigest",
+    "operators",
+    "recoveries"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.enhanced-tree-sitter-query-operator-table"},
+    "schemaVersion": {"const": "1"},
+    "profileId": {"const": "mrr.enhanced-tree-sitter-query.v1"},
+    "owner": {"const": "mrr-gerbil-aot"},
+    "declarationDigest": {"$ref": "#/$defs/digest"},
+    "operators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/operator"}
+    },
+    "recoveries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/recovery"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "identity": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._+-]*$"},
+    "operand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "kind", "domain", "cardinality"],
+      "properties": {
+        "position": {"type": "integer", "minimum": 0},
+        "kind": {"enum": ["capture", "string"]},
+        "domain": {
+          "enum": [
+            "item-capture",
+            "scalar-fact-path",
+            "set-fact-path",
+            "range-fact-path",
+            "literal",
+            "regex",
+            "direction",
+            "relation-kind",
+            "endpoint-selector",
+            "range-mode",
+            "canonical-u64",
+            "result-field"
+          ]
+        },
+        "cardinality": {"enum": ["one", "optional", "one-or-more"]}
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spelling",
+        "kind",
+        "minimumArity",
+        "maximumArity",
+        "operands",
+        "lowering",
+        "failureCode"
+      ],
+      "properties": {
+        "spelling": {"type": "string", "pattern": "^#asp-[a-z][a-z-]*[?!]$"},
+        "kind": {"enum": ["predicate", "directive"]},
+        "minimumArity": {"type": "integer", "minimum": 1},
+        "maximumArity": {"type": ["integer", "null"], "minimum": 1},
+        "operands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/operand"}},
+        "lowering": {
+          "enum": [
+            "scalar-eq",
+            "scalar-not-eq",
+            "scalar-match",
+            "scalar-not-match",
+            "set-any-eq",
+            "set-none-eq",
+            "set-any-match",
+            "set-none-match",
+            "range",
+            "related",
+            "not-related",
+            "select"
+          ]
+        },
+        "failureCode": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["site", "code", "strategy"],
+      "properties": {
+        "site": {"$ref": "#/$defs/identity"},
+        "code": {"$ref": "#/$defs/identity"},
+        "strategy": {"const": "reject"}
+      }
+    }
+  }
+}

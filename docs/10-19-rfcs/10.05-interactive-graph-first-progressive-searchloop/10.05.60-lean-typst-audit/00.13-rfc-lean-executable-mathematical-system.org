@@ -1,0 +1,489 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC-Lean Executable Mathematical System
+#+OPTIONS: toc:3 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer lean-typst-audit
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Status and terminology
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-STATUS
+:END:
+
+This document defines the executable correspondence among the SearchLoop RFC,
+Lean, Org Babel Mermaid/Typst, Rust, and Scenario evidence.  Its canonical name
+is the *RFC-Lean mathematical system*.  =IFCLEAN= is not a feature flag, cache
+state, protocol version, or public identifier.
+
+The Lean authority for the definitions and theorems below is
+[[file:../../../../packages/proofs/ASPProof/SearchLoopRfcLeanSystem.lean][ASPProof.SearchLoopRfcLeanSystem]].
+Its axiom inventory is
+[[file:../../../../packages/proofs/ASPProof/Audit/SearchLoopRfcLeanSystem.lean][ASPProof.Audit.SearchLoopRfcLeanSystem]].
+The equations in this Org file are the human-reviewable specification.  The
+Lean model checks logical consequences.  Rust traces establish implementation
+conformance.  Scenario distributions establish measured performance.  No one
+of these four evidence classes substitutes for another.
+
+* Evidence correspondence
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-CORRESPONDENCE
+:END:
+
+#+begin_src mermaid :exports code
+flowchart LR
+  R[RFC clause and equation] --> L[Lean definition / theorem / counterexample]
+  L --> A[Axiom and proof receipt]
+  R --> I[Rust type, transition, and trace]
+  I --> S[Scenario workload distribution]
+  A --> J{Joint admission}
+  S --> J
+  J -->|all identities agree| C[Qualified architectural claim]
+  J -->|drift or missing evidence| F[Typed unresolved frontier]
+#+end_src
+
+Joint admission requires a named RFC clause, a theorem or explicit
+counterexample, an implementation trace bound to the same semantic identity,
+and a Scenario receipt containing workload and distribution.  A proof without
+a trace cannot show that Rust implements the model.  A fast trace without a
+proof cannot authorize reuse or semantic equivalence.
+
+* Clean durable restoration
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-CLEAN
+:END:
+
+Let the current generation authority be
+
+\[
+  G=(w,r,c,\pi,s,g,p,\sigma,\alpha),
+\]
+
+where (w) is workspace identity, (r) canonical root, (c) repository
+candidate, (\pi) policy, (s) source root, (g) generation, (p) provider,
+(\sigma) schema, and (\alpha) parser identity.  A durable artifact is
+(D=(G,i)), with integrity state
+(i\in\{\mathrm{verified},\mathrm{incomplete},\mathrm{corrupt}\}).
+
+Define:
+
+\[
+  \operatorname{Clean}(D,G_n)
+    \iff i=\mathrm{verified}\land G=G_n.
+\]
+
+The restoration decision is therefore:
+
+\[
+  \operatorname{restore}(D,G_n)=
+  \begin{cases}
+    \mathrm{reuse} & \operatorname{Clean}(D,G_n),\\
+    \mathrm{rebuildIdentityDrift} & i=\mathrm{verified}\land G\ne G_n,\\
+    \mathrm{rejectIncomplete} & i=\mathrm{incomplete},\\
+    \mathrm{rejectCorrupt} & i=\mathrm{corrupt}.
+  \end{cases}
+\]
+
+Lean proves =restore_reuse_iff_clean= and proves that incomplete and corrupt
+artifacts never reuse.  This is a fail-closed equivalence, not a freshness
+heuristic.
+
+* Content reuse is not generation reuse
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-CONTENT-SEPARATION
+:END:
+
+A parser artifact uses the smaller content key
+
+\[
+  P=(h_{content},h_{parser},h_{schema}).
+\]
+
+Its reuse relation is exact equality (P_c=P_n).  Generation (g), workspace
+root, provider publication, and policy do not belong to this artifact key.
+They belong to the separate generation binding.  Consequently:
+
+\[
+  g_c\ne g_n \centernot\Rightarrow P_c\ne P_n.
+\]
+
+Lean provides the constructive counterexample
+=generation_drift_does_not_destroy_content_artifact=.  It also proves parser
+drift invalidates the artifact.  This separation permits unchanged files to
+reuse parsing while requiring every new generation to publish a new exact
+binding proof.
+
+* Recursive Scheme composition with bounded execution
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-COMPOSITION
+:END:
+
+The public expression family is recursively defined over the normalized core:
+
+\[
+ C ::= \operatorname{leaf}(s)
+    \mid \operatorname{chain}(C,C)
+    \mid \operatorname{intersect}(C,C).
+\]
+
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code :file ../../../../.data/search-composition-algebra.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Typed finite Search Composition
+$ C := "leaf"(s) | "chain"(C, C) | "intersect"(C, C) $
+$ "nodes"("leaf"(s)) = 1 $
+$ "nodes"("op"(l, r)) = "nodes"(l) + "nodes"(r) + 1 $
+$ "depth"("op"(l, r)) = max("depth"(l), "depth"(r)) + 1 $
+$ "admitted"(C, B) "iff"
+  "nodes"(C) <= B_n and "depth"(C) <= B_d and
+  "staticWork"(C) <= B_w $
+#+end_src
+
+POO/MRR may add an open family of surface forms, but every admitted macro must
+produce this registered core together with
+
+\[
+ A_{expand}=(h_{source},h_{operatorRegistry},h_{macroArtifact}).
+\]
+
+Changing any component invalidates expansion reuse. Runtime never evaluates
+arbitrary Scheme and never admits a macro-expanded tree without this authority.
+
+Define structural measures recursively:
+
+\[
+\begin{aligned}
+ nodes(leaf)&=1,\\
+ nodes(op(l,r))&=nodes(l)+nodes(r)+1,\\
+ depth(leaf)&=1,\\
+ depth(op(l,r))&=\max(depth(l),depth(r))+1.
+\end{aligned}
+\]
+
+For every natural number (n), Lean constructs a finite composition tower of
+depth (n+1). Thus expressiveness has no fixed depth bound, while each value is
+finite. Executability is a separate admission predicate:
+
+\[
+admitted(C,B)\iff nodes(C)\le B_n\land depth(C)\le B_d
+                    \land staticWork(C)\le B_w.
+\]
+
+The theorem =chain_associative_projection_preserves_leaf_order= establishes
+that recursively regrouping =chain= does not change its ordered leaf
+projection. This is the proof obligation used before an associative recursive
+chain is projected to the registered V1 linear tail; it does not authorize
+flattening an =intersect= into a =chain= or moving a leaf across domains.
+
+Scope is an effect of the whole Search program, not an argument owned by a
+leaf.  Let an rg surface leaf carry either =inheritWorkspace= or an
+=explicitPath(p)= request.  Its lowering is:
+
+\[
+ lowerRg(r)=
+ \begin{cases}
+   leaf(lexicalAcquire) & r.scope=inheritWorkspace,\\
+   \varnothing & r.scope=explicitPath(p).
+ \end{cases}
+\]
+
+Lean proves =rg_scope_admitted_iff_inherited= and
+=explicit_rg_path_cannot_enter_composition=.  It also executes the domain
+checker: acquisition is recursively closed under =intersect= over rg/Tantivy
+leaves, while structural leaves cannot enter an acquisition intersection.
+Theorems =nested_acquisition_intersection_is_valid= and
+=structural_intersection_is_not_an_acquisition= pin both the positive and
+negative sides of that boundary.
+
+This distinction is the architectural value of Scheme composition: the
+language can grow through macro expansion and recursive algebra without
+turning one request into unbounded work. The Rust core now retains recursive
+Composition, admits nested acquisition =intersect= and post-acquisition
+=chain= only where they preserve the registered V1 execution edges, and rejects
+unrepresentable cross-domain topology before wire projection. POO/MRR macro
+expansion and its registry/artifact binding remain the preceding authority
+boundary rather than arbitrary evaluation inside Runtime.
+
+* Retrieval set algebra and engine choice
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-SET-ALGEBRA
+:END:
+
+For one immutable generation let =U= be its admitted document universe and
+define:
+
+\[
+ R(p)\subseteq U,\qquad T(q,k)\subseteq U,\qquad
+ S(s)\subseteq U\times Facts.
+\]
+
+=R= is regex truth over resident source bytes, =T= is the Tantivy result set
+under query/cutoff policy, and =S= is the provider-native structural fact
+relation.  Sharing =U= does not make =R= and =T= semantically equivalent.  An
+explicit Scheme =intersect= means set conjunction.  Using Tantivy merely as an
+optimizer prefilter for regex is sound exactly when a coverage witness proves
+
+\[
+ R(p)\subseteq T(q,k).
+\]
+
+Lean proves =prefilter_preserves_regex_iff_coverage=.  It also proves
+=equivalent_backends_make_intersection_redundant=: if =R=T=, calculating the
+intersection adds no semantic information.  The constructive theorem
+=missing_coverage_can_create_false_negative= prevents a top-k or approximate
+Tantivy result from silently narrowing regex truth.
+
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code :file ../../../../.data/search-retrieval-set-algebra.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Retrieval set algebra
+$ R(p) subset.eq U, quad T(q, k) subset.eq U, quad S(s) subset.eq U times "Facts" $
+$ "prefilter-safe"(R, T) "iff" R(p) subset.eq T(q, k) $
+$ R(p) = T(q, k) => "intersect"(R(p), T(q, k)) = R(p) $
+$ R(p) not subset.eq T(q, k) => "exists" x: R(x) and not T(x) $
+#+end_src
+
+Engine selection follows predicate class, not a mandatory partner matrix:
+
+| Predicate class | Primary algorithm | Excluded work |
+| regex content | resident rg-compatible matcher | no mandatory Tantivy |
+| ranked text | Tantivy | no mandatory regex verification |
+| structural | provider-native syntax/fact query | no rg or Tantivy acquisition |
+| exact selector | Query owner/selector index, then selected materialization | no Search acquisition |
+
+Lean proves =structural_search_excludes_lexical_acquisition= and
+=exact_selector_routes_to_query_index=.  A mixed expression may still combine
+engines, but only an explicit typed operator supplies its semantics.  Runtime
+MUST NOT inject =intersect(rg, tantivy)= merely because both engines are
+available.
+
+The executable V1 boundary retains this distinction as a payload-free recursive
+=composition= tree whose leaves reference normalized blocks. A flat leaf order
+is insufficient because it cannot distinguish conjunction from accidental
+co-presence. Runtime executes rg and Tantivy independently unless a future
+optimizer supplies the proven coverage premise =R(p) \subseteq T(q,k)=. For a
+nonempty explicit intersection, a child whose removal leaves the same result
+has zero marginal gain in that generation. The receipt records it; branch
+elimination additionally requires a generation-bound coverage or equivalence
+witness because one observed equality is not universal predicate equivalence.
+
+* Search and exact Query are different algorithms
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-ALGORITHM-SPLIT
+:END:
+
+For an exact parser-owned selector, Query executes:
+
+\[
+ Q_{exact}=N+G+I_{owner}+M_{selected}+E,
+\]
+
+where (N) normalizes identity, (G) reads active generation, (I_{owner})
+is the direct owner/selector index lookup, (M_{selected}) is zero or one
+selected materialization miss, and (E) encodes the terminal.  It contains no
+rg acquisition, Tantivy acquisition, owner-set intersection, or graph rank.
+
+Search executes exactly one predicate-directed acquisition family, or an
+explicit composition of families. For an explicit rg/Tantivy intersection:
+
+\[
+ S=N+G+A_{rg}(n_r)+A_t(n_t)+I(n_r+n_t)+P(n_f)+R(n_p)+E.
+\]
+
+Here (n_r,n_t) are complete independently computed rg/Tantivy candidate counts,
+(n_f) their fused owner count, and (n_p) grounded parser candidates. Regex-only,
+ranked-text-only, and structural-only routes omit every irrelevant term. Search
+owns discovery; Query owns direct exact materialization. Lean proves
+=exact_query_excludes_search_acquisition= and
+=predicate_directed_search_has_no_mandatory_partner=.
+
+* Resident, incremental, and full-build work
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-WORK
+:END:
+
+For output byte count (b_o), resident ready work is
+
+\[
+ W_{resident}(b_o)=c_N+c_G+c_M+c_Eb_o.
+\]
+
+There is no corpus-cardinality variable in this equation.  Lean models an
+explicit ignored corpus size and proves
+
+\[
+ \forall n,m.\;W_{resident}(n,b_o)=W_{resident}(m,b_o).
+\]
+
+The executable theorem is =resident_work_is_corpus_independent=.
+
+This is the architectural (O(1)) requirement with respect to repository
+cardinality; it does not claim constant serialization cost or a numerical
+latency without measurement.
+
+For a delta of (\Delta f) files and (\Delta b) bytes:
+
+\[
+ W_{incremental}=c_s\Delta f+c_p\Delta b+c_{publish}.
+\]
+
+For a full corpus of (F) files and (B) bytes:
+
+\[
+ W_{full}=c_sF+c_pB+c_{publish}.
+\]
+
+Lean proves that a zero delta pays no scan or parse term and that a full delta
+reduces to full-build work.  Real implementations may add fixed manifest and
+transaction terms, but MUST expose them as coefficients rather than hiding
+them inside parse work.
+
+* Single-flight and resource closure
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-RESOURCE
+:END:
+
+For (k) waiters and shared compute cost (C):
+
+\[
+ W_{singleflight}(k,C)=
+ \begin{cases}0&k=0\\C&k>0.\end{cases}
+\]
+
+Lean proves that adding joiners does not multiply compute.  Each waiter still
+pays its own bounded transport and terminal cost; cancellation removes one
+waiter but does not cancel the retained owner computation.
+
+Resource admission uses the product order over
+
+\[
+ d=(d_{cpu},d_{bytes},d_{memory},d_{queue}),\qquad
+ b=(b_{cpu},b_{bytes},b_{memory},b_{queue}).
+\]
+
+\[
+ \operatorname{Fits}(d,b)\iff
+ d_{cpu}\le b_{cpu}\land d_{bytes}\le b_{bytes}\land
+ d_{memory}\le b_{memory}\land d_{queue}\le b_{queue}.
+\]
+
+Admission is equivalent to all four inequalities.  CPU-bound parser/graph work
+must execute outside Tokio async workers under this admitted vector; queue or
+memory overflow is a typed rejection, not an unbounded task spawn.
+
+* Latency phase separation
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-RLMS-LATENCY
+:END:
+
+End-to-end latency is
+
+\[
+ L_{e2e}=L_{semantic}+L_{serialization}+L_{transport}+L_{client}.
+\]
+
+The resident request-plane gate constrains (L_{semantic}).  A Live Corpus
+client-visible gate constrains (L_{e2e}).  Process startup and cold generation
+are separate observations outside both terms.  Every percentile receipt MUST
+name the phase, corpus identity, result bytes, candidate counts, concurrency,
+and warm/cold state.  Comparing a server-only (p99) with a client-visible
+(p99) is a category error.
+
+* Rust projection
+
+The model projects to existing Rust owners rather than creating a second
+runtime implementation:
+
+| Mathematical responsibility | Rust owner |
+|-
+| durable generation identity and candidate | =agent-semantic-client-db::runtime_server_admission_candidate= and =runtime_server_admission_binding= |
+| active generation, publication, and durability | =agent-semantic-client-db::runtime_server_workspace= |
+| resident Search/Query materialization single-flight | =agent-semantic-runtime-server::runtime_query_generation= |
+| Search generation builder and resource receipt | =agent-semantic-runtime-server::query_generation= and =query_generation_calibration= |
+| resident search graph rank | =agent-semantic-runtime-server::runtime_search_graph= |
+| client-visible resident packet and work counters | =agent-semantic-search-projection::resident_search_result= |
+| Scenario distribution and phase evidence | =agent-semantic-client::command::live_corpus_qualification= |
+
+Rust conformance is complete only when trace fields can reconstruct the
+relevant Lean inputs and decision.  Matching type names alone is not evidence.
+
+* Executable Typst projection
+
+#+name: searchloop-rfc-lean-system-model
+#+begin_src typst
+#set page(width: 190mm, height: auto, margin: 14mm)
+#set text(size: 10pt)
+#set heading(numbering: "1.")
+
+#let clean = math.op("Clean")
+#let restore = math.op("restore")
+#let fits = math.op("Fits")
+
+= RFC-Lean SearchLoop system
+
+== Clean restoration
+
+$ G = (w, r, c, pi, s, g, p, sigma, alpha) $
+
+$ clean(D, G_n) <=> D_("integrity") = "verified" and D_G = G_n $
+
+$ restore(D, G_n) = "reuse" <=> clean(D, G_n) $
+
+Incomplete or corrupt artifacts are rejected. Verified identity drift rebuilds
+one generation and does not authorize reuse.
+
+== Independent parser artifact
+
+$ P = (h_("content"), h_("parser"), h_("schema")) $
+
+$ g_c != g_n quad "does not imply" quad P_c != P_n $
+
+Generation proof changes do not destroy a content artifact. Parser, schema, or
+content drift does.
+
+== Algorithmic work
+
+$ C ::= "leaf"(s) | "chain"(C,C) | "intersect"(C,C) $
+
+$ "admitted"(C,B) <=> "nodes"(C) <= B_n and
+  "depth"(C) <= B_d and "staticWork"(C) <= B_w $
+
+$ Q_("exact") = N + G + I_("owner") + M_("selected") + E $
+
+$ S = N + G + A_("rg")(n_r) + A_t(n_t) + I(n_r+n_t)
+     + P(n_f) + R(n_p) + E $
+
+$ W_("resident")(b_o) = c_N + c_G + c_M + c_E b_o = O(1) " in corpus size" $
+
+$ W_("incremental") = c_s Delta f + c_p Delta b + c_("publish") $
+
+== Resources and observed latency
+
+$ fits(d,b) <=>
+  d_("cpu") <= b_("cpu") and
+  d_("bytes") <= b_("bytes") and
+  d_("memory") <= b_("memory") and
+  d_("queue") <= b_("queue") $
+
+$ L_("e2e") = L_("semantic") + L_("serialization") + L_("transport") + L_("client") $
+
+The equations define categories and invariants. Scenario receipts determine
+their empirical coefficients and percentile distributions.
+#+end_src
+
+* Required Scenario evidence
+
+Every implementation milestone tied to this model MUST record at least:
+
+| Scenario | Required independent variables | Required outputs |
+|-
+| process-cold exact restore | corpus identity, manifest entries, mmap bytes | reused/rebuilt/rejected, work counters, latency distribution |
+| one-file incremental edit | changed files/bytes, reused parser artifacts | scan/parse/publish work, generation binding, latency distribution |
+| resident Search | rg/Tantivy/fused/grounded candidates, output bytes | semantic and end-to-end p50/p95/p99/max |
+| resident exact Query | selector depth, materialization miss bytes, output bytes | no-acquisition trace, semantic and end-to-end distributions |
+| concurrent same-key miss | waiter count, cancellation count | exactly one compute, terminal count, residual task count |
+| corrupt/incomplete restore | corruption class and bound identity | typed rejection, zero reused evidence |
+
+A fixed timeout, smaller corpus, suppressed output, hidden retry, or warm-up
+reclassification does not satisfy a failed equation or performance gate.

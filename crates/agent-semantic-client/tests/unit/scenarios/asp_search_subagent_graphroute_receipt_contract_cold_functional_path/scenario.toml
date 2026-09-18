@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "asp-search-subagent-graphroute-receipt-contract-cold-functional-path"
+title = "ASP search subagent returns one Org/GQL graph"
+package = "agent-semantic-hook"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBAGENT-GRAPHROUTE-RECEIPT-COLD-001"]
+route_source = "read-only-subagent-receipt"
+agent_goal = "When a managed read-only ASP search child stops, the hook accepts exactly one canonical Org/GQL Search graph and rejects every parallel flat or prose format."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-hook/src",
+  "schemas",
+]
+
+must_include = [
+  "#+begin_src gql :profile search-evidence.v1 :eval never",
+  "SearchResult",
+  "#+end_src",
+]
+
+must_reject = [
+  "owner=src/lib.rs\nread=src/lib.rs:1-80",
+  "confidence=high",
+  "not found",
+  "```",
+]
+
+inputs = "A managed read-only asp-explore subagent-stop payload with one valid Org/GQL Search graph and malformed flat, fenced, multi-block, and prose outputs."
+expected = "The hook allows exactly one canonical Org/GQL block and asks the same child to re-emit that sole format without Example/Grammar recovery text."

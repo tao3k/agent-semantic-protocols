@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Turso graph-turbo artifact event adapter.
 
 use std::path::Path;
@@ -5,17 +9,18 @@ use std::path::Path;
 use crate::types::ClientDbArtifactEvent;
 
 use super::turso::connect_turso_client_db;
-use super::turso_operation_lock::acquire_turso_operation_lock;
-use super::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
-};
+use super::turso_statement::{execute_turso_statement, run_turso_operation};
 
-async fn bootstrap_turso_artifact_events_schema(
-    connection: &turso::Connection,
+pub(super) async fn bootstrap_turso_artifact_events_schema(
+    connection: &super::turso::TursoConnectionLease,
 ) -> Result<(), String> {
-    for statement in [
-        "CREATE TABLE IF NOT EXISTS asp_artifact_event (
+    let schema_state = connection
+        .schema_bootstrap_state("asp.artifact-events.schema.v1")
+        .await;
+    schema_state
+        .get_or_try_init(|| async {
+            for statement in [
+                "CREATE TABLE IF NOT EXISTS asp_artifact_event (
             artifact_path TEXT NOT NULL,
             event_ordinal INTEGER NOT NULL,
             timestamp_ms INTEGER NOT NULL,
@@ -29,16 +34,19 @@ async fn bootstrap_turso_artifact_events_schema(
             bytes INTEGER NOT NULL,
             PRIMARY KEY (artifact_path, event_ordinal)
         )",
-        "CREATE INDEX IF NOT EXISTS asp_artifact_event_timeline_idx
+                "CREATE INDEX IF NOT EXISTS asp_artifact_event_timeline_idx
             ON asp_artifact_event(timestamp_ms, artifact_path, event_ordinal)",
-    ] {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            statement,
-            "failed to bootstrap Turso artifact-event schema",
-        )
+            ] {
+                execute_turso_statement(
+                    connection,
+                    statement,
+                    "failed to bootstrap Turso artifact-event schema",
+                )
+                .await?;
+            }
+            Ok::<(), String>(())
+        })
         .await?;
-    }
     Ok(())
 }
 
@@ -49,7 +57,6 @@ pub async fn upsert_turso_artifact_events(
     if events.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "artifact-event-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_events_schema(&connection).await?;
     upsert_turso_artifact_events_with_connection(&connection, events).await?;
@@ -60,19 +67,43 @@ async fn upsert_turso_artifact_events_with_connection(
     connection: &turso::Connection,
     events: &[ClientDbArtifactEvent],
 ) -> Result<(), String> {
-    execute_turso_statement_with_lock_retry(
-        connection,
-        "BEGIN IMMEDIATE",
-        "failed to begin Turso artifact-event transaction",
-    )
-    .await?;
-    for event in events {
-        let bytes = i64::try_from(event.bytes).unwrap_or(i64::MAX);
-        if let Err(error) = execute_turso_operation_with_lock_retry(
-            || async {
-                connection
-                    .execute(
-                        "INSERT INTO asp_artifact_event (
+    const MVCC_TRANSACTION_ATTEMPTS: usize = 16;
+    let event_bytes = events
+        .iter()
+        .map(|event| {
+            i64::try_from(event.bytes()).map_err(|_| {
+                format!(
+                    "artifact event byte count exceeds Turso INTEGER range: {}",
+                    event.bytes()
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for attempt in 0..MVCC_TRANSACTION_ATTEMPTS {
+        let transaction = match connection.unchecked_transaction().await {
+            Ok(transaction) => transaction,
+            Err(error) if is_turso_mvcc_conflict(&error) => {
+                if attempt + 1 == MVCC_TRANSACTION_ATTEMPTS {
+                    return Err(format!(
+                        "failed to begin Turso artifact-event transaction after {MVCC_TRANSACTION_ATTEMPTS} MVCC attempts: {error}"
+                    ));
+                }
+                wait_for_turso_mvcc_retry(attempt).await;
+                continue;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to begin Turso artifact-event transaction: {error}"
+                ));
+            }
+        };
+
+        let mut write_error = None;
+        for (event, bytes) in events.iter().zip(&event_bytes) {
+            if let Err(error) = transaction
+                .execute(
+                    "INSERT INTO asp_artifact_event (
                     artifact_path,
                     event_ordinal,
                     timestamp_ms,
@@ -95,51 +126,68 @@ async fn upsert_turso_artifact_events_with_connection(
                     project_root = excluded.project_root,
                     project_root_arg = excluded.project_root_arg,
                     bytes = excluded.bytes",
-                        (
-                            event.artifact_path.as_str(),
-                            i64::from(event.event_ordinal),
-                            event.timestamp_ms,
-                            event.kind.as_str(),
-                            event.language.as_str(),
-                            event.method.as_str(),
-                            event.target.as_str(),
-                            event.query.as_str(),
-                            event.project_root.as_str(),
-                            event.project_root_arg.as_str(),
-                            bytes,
-                        ),
-                    )
-                    .await
-                    .map_err(|error| error.to_string())
-            },
-            "failed to upsert Turso artifact event in transaction",
-        )
-        .await
-        {
-            rollback_turso_artifact_events_transaction(connection).await;
-            return Err(error);
+                    (
+                        event.artifact_path(),
+                        i64::from(event.event_ordinal()),
+                        event.timestamp_ms(),
+                        event.kind(),
+                        event.language(),
+                        event.method(),
+                        event.target(),
+                        event.query(),
+                        event.project_root(),
+                        event.project_root_arg(),
+                        *bytes,
+                    ),
+                )
+                .await
+            {
+                write_error = Some(error);
+                break;
+            }
+        }
+
+        if let Some(error) = write_error {
+            let conflict = is_turso_mvcc_conflict(&error);
+            transaction.rollback().await.map_err(|rollback_error| {
+                format!(
+                    "failed to upsert Turso artifact event in transaction: {error}; additionally failed to roll back transaction: {rollback_error}"
+                )
+            })?;
+            if conflict && attempt + 1 < MVCC_TRANSACTION_ATTEMPTS {
+                wait_for_turso_mvcc_retry(attempt).await;
+                continue;
+            }
+            return Err(format!(
+                "failed to upsert Turso artifact event in transaction: {error}"
+            ));
+        }
+
+        match transaction.commit().await {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if is_turso_mvcc_conflict(&error) && attempt + 1 < MVCC_TRANSACTION_ATTEMPTS =>
+            {
+                wait_for_turso_mvcc_retry(attempt).await;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to commit Turso artifact-event transaction: {error}"
+                ));
+            }
         }
     }
-    if let Err(error) = execute_turso_statement_with_lock_retry(
-        connection,
-        "COMMIT",
-        "failed to commit Turso artifact-event transaction",
-    )
-    .await
-    {
-        rollback_turso_artifact_events_transaction(connection).await;
-        return Err(error);
-    }
-    Ok(())
+
+    unreachable!("MVCC artifact-event transaction loop returns on its final attempt")
 }
 
-async fn rollback_turso_artifact_events_transaction(connection: &turso::Connection) {
-    let _ = execute_turso_statement_with_lock_retry(
-        connection,
-        "ROLLBACK",
-        "failed to rollback Turso artifact-event transaction",
-    )
-    .await;
+fn is_turso_mvcc_conflict(error: &turso::Error) -> bool {
+    matches!(error, turso::Error::Busy(_) | turso::Error::BusySnapshot(_))
+}
+
+async fn wait_for_turso_mvcc_retry(attempt: usize) {
+    let delay_ms = 1_u64 << attempt.min(5);
+    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
 }
 
 pub async fn lookup_turso_artifact_events(
@@ -152,7 +200,7 @@ pub async fn lookup_turso_artifact_events(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_events_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -193,14 +241,11 @@ pub async fn lookup_turso_artifact_events(
 fn turso_artifact_event_from_row(row: &turso::Row) -> Result<ClientDbArtifactEvent, String> {
     let event_ordinal = row
         .get::<i64>(1)
-        .map_err(|error| format!("failed to read Turso artifact event ordinal: {error}"))?
-        .max(0)
-        .min(i64::from(u32::MAX)) as u32;
+        .map_err(|error| format!("failed to read Turso artifact event ordinal: {error}"))?;
     let bytes = row
         .get::<i64>(10)
-        .map_err(|error| format!("failed to read Turso artifact event bytes: {error}"))?
-        .max(0) as u64;
-    Ok(ClientDbArtifactEvent {
+        .map_err(|error| format!("failed to read Turso artifact event bytes: {error}"))?;
+    ClientDbArtifactEvent::from_storage_columns(crate::types::ClientDbArtifactEventStorageColumns {
         artifact_path: row
             .get::<String>(0)
             .map_err(|error| format!("failed to read Turso artifact path: {error}"))?,

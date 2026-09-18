@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/runtime-server-task-lifecycle-receipt.v1.schema.json",
+  "title": "Runtime Server task lifecycle receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scope",
+    "state",
+    "started",
+    "completed",
+    "cancelled",
+    "failed",
+    "active",
+    "leaked",
+    "drainMicros"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-task-lifecycle-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "scope": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["accepting", "draining", "terminated"] },
+    "started": { "type": "integer", "minimum": 0 },
+    "completed": { "type": "integer", "minimum": 0 },
+    "cancelled": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "active": { "type": "integer", "minimum": 0 },
+    "leaked": { "type": "integer", "minimum": 0 },
+    "drainMicros": { "type": "integer", "minimum": 0 }
+  }
+}
+

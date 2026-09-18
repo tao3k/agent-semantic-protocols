@@ -1,0 +1,9 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "wait_agent",
+  "toolInput": {
+    "timeout_ms": 120000
+  }
+}

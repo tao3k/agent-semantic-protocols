@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-binary-dispatch-receipt.v1.schema.json",
+  "title": "Runtime Binary Dispatch Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "dispatchId",
+    "rootSessionId",
+    "childSessionId",
+    "binaryId",
+    "profile",
+    "providerId",
+    "languageId",
+    "providerGeneration",
+    "artifactDigest",
+    "argvDigest",
+    "invocationAuthority",
+    "capabilityDigest",
+    "toolUseId",
+    "attempt",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "singleUse",
+    "consumedAtUnixMs",
+    "status"
+  ],
+  "properties": {
+    "schemaId": { "const": "runtime-binary-dispatch-receipt.v1" },
+    "schemaVersion": { "const": "1" },
+    "dispatchId": { "type": "string", "minLength": 1 },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "childSessionId": { "type": "string", "minLength": 1 },
+    "binaryId": { "type": "string", "minLength": 1 },
+    "profile": {
+      "enum": ["provider-internal", "support-tool", "test-fixture"]
+    },
+    "providerId": { "type": ["string", "null"] },
+    "languageId": { "type": ["string", "null"] },
+    "providerGeneration": { "type": "string", "minLength": 1 },
+    "artifactDigest": { "type": "string", "minLength": 1 },
+    "argvDigest": { "type": "string", "minLength": 1 },
+    "invocationAuthority": {
+      "enum": ["asp-runtime-dispatch", "asp-wrapper", "test-runtime"]
+    },
+    "capabilityDigest": { "type": "string", "minLength": 1 },
+    "toolUseId": { "type": "string", "minLength": 1 },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "singleUse": { "const": true },
+    "consumedAtUnixMs": { "type": ["integer", "null"], "minimum": 0 },
+    "status": {
+      "enum": ["claimed", "executing", "completed", "rejected"]
+    },
+    "rejectionReason": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "profile": { "const": "provider-internal" } },
+        "required": ["profile"]
+      },
+      "then": {
+        "properties": {
+          "invocationAuthority": { "const": "asp-runtime-dispatch" },
+          "providerId": { "type": "string", "minLength": 1 },
+          "languageId": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

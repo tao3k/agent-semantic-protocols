@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Python workspace dependency and passive harness policy contracts."""
 
 from __future__ import annotations
@@ -9,10 +13,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-from python_lang_project_harness import (
+from asp_python import (
     PythonVerificationTaskKind,
     plan_python_project_verification,
-    read_python_project_harness_config,
+    read_asp_python_config,
 )
 
 
@@ -29,10 +33,10 @@ def test_python_workspace_dev_depends_on_harness_library() -> None:
     sources = project.get("tool", {}).get("uv", {}).get("sources", {})
 
     assert any(
-        _dependency_name(value) == "python-lang-project-harness"
+        _dependency_name(value) == "asp-python"
         for value in dev_dependencies
     )
-    assert "python-lang-project-harness" in sources
+    assert "asp-python" in sources
 
 
 def test_package_env_installs_harness_library_and_pytest_plugin() -> None:
@@ -43,13 +47,13 @@ def test_package_env_installs_harness_library_and_pytest_plugin() -> None:
     plugins = [
         f"{entry_point.name}={entry_point.value}"
         for entry_point in metadata.entry_points(group="pytest11")
-        if entry_point.name == "python_lang_project_harness"
-        or "python_lang_project_harness" in entry_point.value
+        if entry_point.name == "asp_python"
+        or "asp_python" in entry_point.value
     ]
 
-    assert "python-lang-project-harness" in distributions
+    assert "asp-python" in distributions
     assert plugins == [
-        "python_lang_project_harness=python_lang_project_harness.pytest_plugin"
+        "asp_python=asp_python.pytest_plugin"
     ]
 
 
@@ -72,11 +76,11 @@ def test_pytest_collects_passive_harness_item() -> None:
         text=True,
     )
 
-    assert "python-project-harness" in result.stdout
+    assert "asp-python" in result.stdout
 
 
 def test_root_harness_verification_profile_enables_perf_task() -> None:
-    config = read_python_project_harness_config(_REPO_ROOT)
+    config = read_asp_python_config(_REPO_ROOT)
 
     assert config is not None
     hints = config.verification_policy.profile_hints

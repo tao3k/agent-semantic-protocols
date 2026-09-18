@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.agent-session-delegation-intent.v1.schema.json",
+  "title": "Agent Session Delegation Intent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "eventId",
+    "projectId",
+    "rootSessionId",
+    "currentSessionId",
+    "proposedChildSessionId",
+    "proposedChildResidentName",
+    "proposedChildCapability",
+    "evidenceRefs",
+    "observedAtMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-session-delegation-intent"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currentSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposedChildSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposedChildResidentName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposedChildCapability": {
+      "enum": ["standard", "focused-leaf"]
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "observedAtMs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

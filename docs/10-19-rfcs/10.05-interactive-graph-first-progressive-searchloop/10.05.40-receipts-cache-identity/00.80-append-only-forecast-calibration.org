@@ -1,0 +1,182 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 00.80 Append-Only Forecast Calibration
+#+startup: overview
+
+#+property: rfc_layer 10.05.40-receipts-cache-identity
+
+* Status
+
+This module specifies realized regret, append-only online calibration, and
+exploration fallback.  It does not implement a Rust or Python runtime.
+
+* Problem
+
+Forecast-bound Pareto scheduling needs feedback from realized cache hits,
+latency, tokens, and work.  Online learning becomes unsound if a new forecast
+can rewrite the forecast snapshot that justified an older decision.
+
+Calibration must therefore be append-only:
+
+#+begin_example
+old forecast + immutable observation -> new versioned forecast
+#+end_example
+
+Historical decisions remain bound to their original forecast version and
+digest.  Persistent prediction error changes future routing mode, not past
+audit facts.
+
+* Contract
+
+** ASP-RFC-10.05-AOFC-SNAPSHOT
+
+Every forecast snapshot MUST bind a monotonically increasing version and the
+complete cache forecast.
+
+** ASP-RFC-10.05-AOFC-OBSERVATION
+
+A calibration observation MUST bind the forecast version and digest, plan
+digest, realization digest, predicted normalized cost vector, and realized
+normalized cost vector.
+
+** ASP-RFC-10.05-AOFC-REGRET
+
+Regret MUST be computed component-wise as absolute prediction error and then
+summed.  An exact realization MUST have zero regret.
+
+** ASP-RFC-10.05-AOFC-APPEND
+
+A valid update MUST append exactly one observation.  The previous observation
+ledger MUST remain a prefix of the new ledger.
+
+** ASP-RFC-10.05-AOFC-UPDATE
+
+A valid update MUST advance forecast version and sample count by one, add exact
+observation regret to cumulative regret, and produce a bounded valid next
+forecast.
+
+** ASP-RFC-10.05-AOFC-HISTORY
+
+A historical decision MUST remain bound to its original forecast version and
+digest.  A later version MUST NOT retroactively rebind or rerank it.
+
+** ASP-RFC-10.05-AOFC-BREACH
+
+Regret above the configured threshold MUST increment consecutive breaches.
+A non-breach MUST reset the consecutive counter to zero.
+
+** ASP-RFC-10.05-AOFC-DEGRADED
+
+A positive breach count below the exploration limit MUST place future routing
+in degraded mode.
+
+** ASP-RFC-10.05-AOFC-EXPLORE
+
+When consecutive breaches reach the configured limit, routing MUST enter
+explore mode.  Explore mode MUST block ordinary exploitation.
+
+** ASP-RFC-10.05-AOFC-AUTHORIZATION
+
+Future batch authorization MUST independently require verified chain evidence,
+valid disclosure, batch feasibility, a valid forecast, and non-explore mode.
+Calibration success alone is not authorization.
+
+** ASP-RFC-10.05-AOFC-ROUTER
+
+The router SHOULD use normal mode for ordinary Pareto selection, degraded mode
+for conservative batches, and explore mode for renewed evidence acquisition.
+Mode changes affect future plans only.
+
+* Org-Babel Typst model
+
+#+name: append-only-forecast-calibration-math
+#+begin_src typst
+#let before = (
+  version: 7,
+  forecast-digest: 900,
+  samples: 12,
+  cumulative-regret: 240,
+  consecutive-breaches: 2,
+  ledger-length: 12,
+)
+
+#let observation = (
+  forecast-version: 7,
+  forecast-digest: 900,
+  predicted-cost: 100,
+  realized-cost: 160,
+)
+
+#let regret = calc.abs(observation.realized-cost
+  - observation.predicted-cost)
+
+#let breach-threshold = 40
+#let exploration-limit = 3
+
+#let after = (
+  version: before.version + 1,
+  forecast-digest: 901,
+  samples: before.samples + 1,
+  cumulative-regret: before.cumulative-regret + regret,
+  consecutive-breaches: before.consecutive-breaches + 1,
+  ledger-length: before.ledger-length + 1,
+)
+
+(
+  regret: regret,
+  observation-bound:
+    observation.forecast-version == before.version
+    and observation.forecast-digest == before.forecast-digest,
+  append-only:
+    after.ledger-length == before.ledger-length + 1,
+  version-advanced:
+    after.version == before.version + 1,
+  breach:
+    breach-threshold < regret,
+  explore:
+    exploration-limit <= after.consecutive-breaches,
+  old-decision-version: before.version,
+  new-forecast-version: after.version,
+  historical-version-unchanged:
+    before.version != after.version,
+)
+#+end_src
+
+The expected record reports regret 60, one appended observation, forecast
+version 8, three consecutive breaches, and explore mode.  The historical
+decision remains bound to version 7.
+
+* Machine-checked evidence
+
+The Lean model contains 17 theorem families.  Twelve are axiom-free; five use
+only the audited kernel dependencies =propext= and =Quot.sound=.  No theorem
+uses =sorryAx=.  The modular Lean JSON audit covers every one of the 11
+=ASP-RFC-10.05-AOFC-*= clauses.
+
+The corresponding AXLE receipt is bound to the Lean audit by SHA-256
+=7702d3416c975d8305157fe70c75625d9e99b68335127bfee8707892f0ca9e51=.
+AXLE rejects a missing theorem family, a missing RFC clause, any =sorryAx=,
+an unexpected axiom, inconsistent declaration counts, or a disagreement
+between declaration-local and top-level axiom inventories.
+
+Lean exposed one important modeling distinction while proving append-only
+history.  Extending both sides of a sublist relation proves only reflexive
+extension; it does not prove that the old ledger is a prefix of the new ledger.
+The accepted theorem therefore uses one-sided target extension: the exact old
+ledger is an ordered sublist of =old ++ [observation]=.  This is the formal
+reason the RFC says append-only history, rather than merely equal-length
+history or a newly reconstructed ledger.
+
+The named Org-Babel Typst block
+=append-only-forecast-calibration-math= is parser-extracted by =orgize eval
+plan= and evaluated through interactive =typst eval --in - none=.  It requires
+no generated =.typ= source file and no PDF side effect.
+
+* SearchLoop consequence
+
+Realized receipts improve later routing without mutating earlier decisions.
+Repeated forecast error automatically shifts the loop from exploitation to
+degraded or exploratory inspection.  The agent still invokes the same
+progressive inspect action; calibration changes policy state, not CLI grammar.

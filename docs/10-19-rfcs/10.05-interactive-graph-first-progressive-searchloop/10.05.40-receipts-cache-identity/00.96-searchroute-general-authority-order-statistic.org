@@ -1,0 +1,292 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.40.00.96 - General Authority Order-Statistic Aggregation
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module generalizes the three-authority median in RFC 00.95 to a
+zero-indexed order statistic over an arbitrary admitted report set. It is a
+protocol and proof change only. It does not authorize Rust or Python runtime
+implementation.
+
+* Abstract
+
+For a Byzantine fault budget \(f\), a configured authority set of size
+\(n_{\mathrm{configured}}\) is not sufficient evidence for safe aggregation.
+The aggregation decision is made over the reports actually admitted for one
+authority-set snapshot and epoch. Therefore the relevant size is
+\(n_{\mathrm{collected}}\).
+
+For a zero-indexed selected rank \(k\), the admissible rank window is:
+
+#+name: searchroute-general-authority-order-statistic-model
+#+begin_src typst
+#let rank-window(report-count, fault-budget, rank) = (
+  fault-budget <= rank
+  and rank + fault-budget < report-count
+)
+#assert(rank-window(3, 1, 1))
+#assert(rank-window(5, 2, 2))
+#assert(not rank-window(3, 2, 1))
+#assert(not rank-window(2, 1, 1))
+"ok"
+#+end_src
+
+The first inequality protects the actual-fault lower bound. The second protects
+the live upper bound. Together they imply
+\(2f + 1 \le n_{\mathrm{collected}}\). The implication does not run through the
+configured authority count.
+
+* Problem discovered by proof
+
+RFC 00.95 established the fixed case of three distinct authority slots with at
+most one Byzantine report. A direct generalization that only states
+\(n_{\mathrm{configured}} \ge 2f+1\) is unsound.
+
+Consider five configured authorities, fault budget two, and only three
+collected reports. The configured set satisfies \(5 \ge 2(2)+1\), but no rank
+over the three collected reports has more than two reports on both protected
+tails. Two Byzantine reports can occupy a complete side of the apparent
+median.
+
+The proof therefore separates four quantities that MUST NOT be collapsed:
+
+- =configuredAuthorityCount=: authorities in the bound snapshot;
+- =collectedReportCount=: distinct reports admitted to this aggregation;
+- =faultBudget=: the fault bound authorized for that same snapshot and epoch;
+- =rank=: the zero-indexed selected order-statistic position.
+
+* Mathematical contract
+
+Let:
+
+- \(A\) be the actual faulty voting weight;
+- \(L\) be the live upper bound reported by every honest authority;
+- \(S\) be the selected aggregate;
+- \(B_-\) count admitted reports strictly below \(A\);
+- \(B_+\) count admitted reports strictly above \(L\);
+- \(n\) be =collectedReportCount=;
+- \(f\) be the admitted Byzantine fault budget;
+- \(k\) be the zero-indexed selected rank.
+
+Honest-report soundness and distinct admission establish:
+
+\[
+B_- \le f
+\qquad\text{and}\qquad
+B_+ \le f.
+\]
+
+The rank certificate establishes:
+
+\[
+S < A \Longrightarrow k+1 \le B_-
+\]
+
+and
+
+\[
+L < S \Longrightarrow n \le k+B_+.
+\]
+
+The admissible rank window is:
+
+\[
+f \le k
+\qquad\text{and}\qquad
+k+f < n.
+\]
+
+These assumptions produce the interval theorem:
+
+#+name: searchroute-general-authority-order-statistic-proposition
+#+begin_src typst
+#let quorum-to-rank = $
+  2 f + 1 <= n
+  arrow.r.double
+  f <= f
+  and f + f < n
+$
+#let certified-interval = $
+  B_- <= f
+  and B_+ <= f
+  and f <= k
+  and k + f < n
+  arrow.r.double
+  A <= S
+  and S <= L
+$
+#assert(type(quorum-to-rank) == content)
+#assert(type(certified-interval) == content)
+"ok"
+#+end_src
+
+For the canonical choice \(k=f\), \(2f+1 \le n\) places the selected rank
+inside the window. Other deterministic ranks are allowed only when both window
+inequalities are certified.
+
+* Normative protocol requirements
+
+** Admission set
+
+An aggregation receipt MUST bind a single admitted report set. Every member of
+that set MUST:
+
+- carry a distinct canonical authority identity;
+- bind the same =authoritySetSnapshotId=;
+- bind the same =faultBoundSnapshotId=;
+- bind the same aggregation epoch and policy version;
+- pass authorization, signature, freshness, and membership validation;
+- contribute at most one effective report after equivocation handling.
+
+The report set MUST be closed before its rank certificate is issued. Reports
+arriving after closure belong to a new aggregation attempt and MUST NOT mutate
+the existing receipt.
+
+** Collected quorum
+
+The verifier MUST evaluate \(2f+1 \le n\) using
+=collectedReportCount=. A quorum over =configuredAuthorityCount= MUST NOT admit
+an incomplete collection.
+
+If the collected quorum is absent, the SearchLoop MUST return a typed
+=insufficient-collected-quorum= continuation or terminal failure. It MUST NOT
+silently lower \(f\), reuse the configured count, or switch to minimum,
+maximum, mean, or an unranked selector.
+
+** Rank certificate
+
+The aggregation receipt MUST include:
+
+- =rankConvention = "zero-indexed"=;
+- =selectedRank=;
+- =selectedValue=;
+- =collectedReportCount=;
+- =faultBudget=;
+- =belowActualWitnessCount= or a verifier-checkable lower-rank witness;
+- =aboveLiveWitnessCount= or a verifier-checkable upper-rank witness;
+- =rankWindowLowerSatisfied=;
+- =rankWindowUpperSatisfied=;
+- =admittedReportSetDigest=.
+
+An implementation MAY use sorting, selection, a streaming order-statistic
+algorithm, or a proof-producing index. The protocol does not trust that
+implementation choice. It trusts only a verifier-reconstructible rank
+certificate over the bound admitted report set.
+
+** Tie handling
+
+Equal report values do not violate the interval theorem, but the receipt MUST
+define a deterministic tie policy. The selected value is semantic; selection
+of a representative report among equal values is an identity decision and
+MUST be deterministic if that representative is exposed.
+
+** Receipt and cache identity
+
+The aggregation receipt identity MUST bind at least:
+
+#+begin_example
+aggregationReceiptId = H(
+  aggregationPolicyVersion,
+  authoritySetSnapshotId,
+  faultBoundSnapshotId,
+  epoch,
+  admittedReportSetDigest,
+  collectedReportCount,
+  faultBudget,
+  rankConvention,
+  selectedRank,
+  selectedValue
+)
+#+end_example
+
+Changing configured membership, the admitted subset, the fault-bound snapshot,
+the epoch, the selected rank, or the policy produces a different receipt.
+
+This receipt identity is relevant to two different caches:
+
+- a search-result cache may reuse the verified aggregation only under an exact
+  receipt identity and validity interval;
+- a model prefix cache may benefit from deterministic compact rendering of the
+  same receipt, but a prefix-cache hit is not evidence that the search result
+  remains valid.
+
+The protocol MUST NOT use model-cache behavior as a substitute for search
+cache validity.
+
+* SearchLoop consequences
+
+The interactive-first SearchLoop does not need a complex CLI command for every
+aggregation variant. It needs a typed progressive transition:
+
+#+begin_example
+collect reports
+  -> close admitted set
+  -> verify collected quorum
+  -> verify rank certificate
+  -> emit compact aggregation receipt
+  -> route using the certified interval
+#+end_example
+
+This shortens the evidence-graph path because later router decisions consume
+one compact receipt instead of reopening all authority reports. It also lowers
+token cost and interaction rounds. The optimization remains proof-carrying:
+if the compact receipt cannot reconstruct the rank obligations, the router
+must inspect the underlying report set or fail closed.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.lean
+#+end_example
+
+The module proves:
+
+- a \(2f+1\) collected quorum admits the canonical rank \(k=f\);
+- a rank-certified selection lies in \([A,L]\);
+- any valid internal rank window implies a collected \(2f+1\) quorum;
+- a configured quorum does not cover a partial collection;
+- quorum counts without rank laws do not constrain either interval boundary.
+
+The modular audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinGeneralAuthorityOrderStatistic.lean
+#+end_example
+
+The executable audit entry writes:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-general-authority-order-statistic-audit-v1.json
+#+end_example
+
+The audit is valid only when every target declaration is axiom-free and the
+inventory contains neither =sorryAx= nor hidden non-protocol assumptions.
+
+* Non-goals
+
+This module does not yet prove:
+
+- construction of the rank counts from a concrete sorted list;
+- weighted authority votes where report count and voting weight differ;
+- authority-set rotation while reports are being collected;
+- equivocation evidence publication across epochs;
+- an implementation-specific sorting or selection algorithm.
+
+* Next proof boundary
+
+The next module should construct the rank certificate from a concrete admitted
+list of distinct authority reports. That proof must expose whether count-based
+\(2f+1\) remains sound once authorities carry unequal voting weights. If it
+does not, the RFC must replace report-count ranks with cumulative-weight
+quantiles and prove both tails against a Byzantine voting-weight budget.

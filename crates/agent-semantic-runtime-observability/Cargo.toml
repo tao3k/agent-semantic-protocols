@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-runtime-observability"
+version.workspace = true
+edition.workspace = true
+description = "Neutral V1 Runtime observation model shared by ASP producers and the Runtime Server telemetry owner."
+license.workspace = true
+
+[dependencies]
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-content-identity.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[lints]
+workspace = true

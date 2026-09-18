@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Human-readable scenario report rendering."""
 
 from __future__ import annotations
@@ -96,30 +100,30 @@ def _print_step_observations(step: StepResult) -> None:
             f"total={optional_int(token_cost.get('totalTokens')) or 0} "
             f"costUsd={quote_value(str(token_cost.get('costUsd', 'unknown')))}"
         )
-    pipe_flow = dict_value(step.observations.get("pipeFlow"))
-    if not pipe_flow:
+    command_flow = dict_value(step.observations.get("commandFlow"))
+    if not command_flow:
         return
-    missing = list_value(pipe_flow.get("missingComplexPipeStages"))
+    missing = list_value(command_flow.get("missingComplexPipeStages"))
     emit(
-        f"|pipeFlow step={step.step_id} "
-        f"asp={optional_int(pipe_flow.get('aspCommands')) or 0} "
-        f"search={optional_int(pipe_flow.get('searchCommands')) or 0} "
-        f"query={optional_int(pipe_flow.get('queryCommands')) or 0} "
-        f"directRead={optional_int(pipe_flow.get('directReadCommands')) or 0} "
-        f"directReadBounded={optional_int(pipe_flow.get('directReadBoundedCommands')) or 0} "
-        f"directReadRisk={optional_int(pipe_flow.get('directReadRiskCommands')) or 0} "
-        f"repeated={optional_int(pipe_flow.get('repeatedCommands')) or 0} "
-        f"complex={str(bool(pipe_flow.get('complexPipeFlow'))).lower()} "
+        f"|commandFlow step={step.step_id} "
+        f"asp={optional_int(command_flow.get('aspCommands')) or 0} "
+        f"search={optional_int(command_flow.get('searchCommands')) or 0} "
+        f"query={optional_int(command_flow.get('queryCommands')) or 0} "
+        f"directRead={optional_int(command_flow.get('directReadCommands')) or 0} "
+        f"directReadBounded={optional_int(command_flow.get('directReadBoundedCommands')) or 0} "
+        f"directReadRisk={optional_int(command_flow.get('directReadRiskCommands')) or 0} "
+        f"repeated={optional_int(command_flow.get('repeatedCommands')) or 0} "
+        f"complex={str(bool(command_flow.get('complexCommandFlow'))).lower()} "
         f"missing={quote_value(','.join(str(item) for item in missing) or '-')}"
     )
-    _print_pipe_flow_commands(step.step_id, pipe_flow)
-    _print_pipe_flow_outputs(step.step_id, pipe_flow)
+    _print_command_flow_commands(step.step_id, command_flow)
+    _print_command_flow_outputs(step.step_id, command_flow)
 
 
-def _print_pipe_flow_commands(step_id: str, pipe_flow: dict[str, object]) -> None:
+def _print_command_flow_commands(step_id: str, command_flow: dict[str, object]) -> None:
     commands = [
         str(command)
-        for command in list_value(pipe_flow.get("commands"))
+        for command in list_value(command_flow.get("commands"))
         if isinstance(command, str)
     ]
     if not commands:
@@ -131,10 +135,10 @@ def _print_pipe_flow_commands(step_id: str, pipe_flow: dict[str, object]) -> Non
     emit(f"|pipeCommands step={step_id} {' '.join(parts)}")
 
 
-def _print_pipe_flow_outputs(step_id: str, pipe_flow: dict[str, object]) -> None:
+def _print_command_flow_outputs(step_id: str, command_flow: dict[str, object]) -> None:
     records = [
         record
-        for record in list_value(pipe_flow.get("aspCommandOutputRecords"))
+        for record in list_value(command_flow.get("aspCommandOutputRecords"))
         if isinstance(record, dict)
     ]
     if not records:

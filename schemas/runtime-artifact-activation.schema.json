@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-artifact-activation.schema.json",
+  "title": "Runtime Artifact Activation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "bundleDigest",
+    "artifactDigest",
+    "activationGeneration",
+    "artifactPath",
+    "candidateSlotPath",
+    "previousArtifactDigest",
+    "artifactMode",
+    "publishedAtUnixMillis",
+    "publicationNonce",
+    "candidateIdentity"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-artifact-activation"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "bundleDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "activationGeneration": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "artifactPath": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "candidateSlotPath": {
+      "$ref": "#/$defs/absolutePath"
+    },
+    "previousArtifactDigest": {
+      "oneOf": [
+        { "$ref": "#/$defs/digest" },
+        { "type": "null" }
+      ]
+    },
+    "artifactMode": {
+      "enum": ["dev", "release"]
+    },
+    "publishedAtUnixMillis": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "publicationNonce": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidateIdentity": {
+      "$ref": "#/$defs/candidateIdentity"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+    },
+    "candidateIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactDigest",
+        "artifactPath",
+        "stablePath",
+        "artifactMode",
+        "publicationNonce"
+      ],
+      "properties": {
+        "artifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifactPath": {
+          "$ref": "#/$defs/absolutePath"
+        },
+        "stablePath": {
+          "$ref": "#/$defs/absolutePath"
+        },
+        "artifactMode": {
+          "enum": ["dev", "release"]
+        },
+        "publicationNonce": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

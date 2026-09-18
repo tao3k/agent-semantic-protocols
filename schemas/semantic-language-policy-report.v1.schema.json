@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-language-policy-report.v1.schema.json",
+  "title": "Semantic Language Policy Report V1",
+  "description": "Language-provider policy facts consumed and rendered by unified ASP clients. Providers emit this packet and do not own a human-readable presentation format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "status",
+    "scope",
+    "requestedFiles",
+    "files",
+    "definitions",
+    "agentRepair",
+    "findings"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-language-policy-report"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "definitions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "agentRepair": {
+      "$ref": "#/$defs/agentRepairReport"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "severity": {
+      "enum": ["warning", "error"]
+    },
+    "diagnosticSchemaId": {
+      "const": "agent.semantic-protocols.semantic-language-policy-diagnostic"
+    },
+    "diagnosticSchemaVersion": {
+      "const": "1"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "selector", "definitionName"],
+      "properties": {
+        "path": {"type": "string"},
+        "selector": {"type": "string"},
+        "definitionName": {"type": ["string", "null"]}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "severity", "message", "details"],
+      "properties": {
+        "ruleId": {"type": "string", "minLength": 1},
+        "severity": {"$ref": "#/$defs/severity"},
+        "message": {"type": "string"},
+        "details": {"type": ["object", "null"]}
+      }
+    },
+    "repairPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rules", "action", "instruction"],
+      "properties": {
+        "name": {"type": "string"},
+        "rules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "action": {"type": "string"},
+        "instruction": {"type": "string"}
+      }
+    },
+    "repairPhases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/repairPhase"}
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "kind",
+        "unit",
+        "ruleId",
+        "severity",
+        "location",
+        "problem",
+        "evidence",
+        "fixIntent",
+        "constraints",
+        "guideCommand",
+        "guideRole",
+        "repairPhases"
+      ],
+      "properties": {
+        "schemaId": {"$ref": "#/$defs/diagnosticSchemaId"},
+        "schemaVersion": {"$ref": "#/$defs/diagnosticSchemaVersion"},
+        "kind": {"const": "policy"},
+        "unit": {"enum": ["finding", "findingGroup"]},
+        "ruleId": {"type": "string", "minLength": 1},
+        "severity": {"$ref": "#/$defs/severity"},
+        "location": {"$ref": "#/$defs/location"},
+        "problem": {"type": "string"},
+        "evidence": {
+          "oneOf": [
+            {"$ref": "#/$defs/evidence"},
+            {
+              "type": "array",
+              "items": {"$ref": "#/$defs/evidence"}
+            }
+          ]
+        },
+        "fixIntent": {"type": "string"},
+        "constraints": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "guideCommand": {"type": "string"},
+        "guideRole": {"type": "string"},
+        "repairPhases": {"$ref": "#/$defs/repairPhases"}
+      }
+    },
+    "repairIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "fixIntent",
+        "constraints",
+        "repairPhases",
+        "guideCommand",
+        "guideRole",
+        "commentRepairOrder"
+      ],
+      "properties": {
+        "strategy": {"type": "string"},
+        "fixIntent": {"type": "string"},
+        "constraints": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "repairPhases": {"$ref": "#/$defs/repairPhases"},
+        "guideCommand": {"type": "string"},
+        "guideRole": {"type": "string"},
+        "commentRepairOrder": {"type": "string"}
+      }
+    },
+    "findingGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "selector",
+        "definitionName",
+        "rules",
+        "severityMax",
+        "primaryRule",
+        "multiPolicy",
+        "repairStrategy",
+        "primaryRepairClass",
+        "suppressedRules",
+        "requiredWitnesses",
+        "repairOrder",
+        "repairPlan",
+        "diagnostic",
+        "repairHints",
+        "verification",
+        "repairIntent",
+        "agentInstruction"
+      ],
+      "properties": {
+        "ownerPath": {"type": "string"},
+        "selector": {"type": "string"},
+        "definitionName": {"type": "string"},
+        "rules": {"type": "array", "items": {"type": "string"}},
+        "severityMax": {"$ref": "#/$defs/severity"},
+        "primaryRule": {"type": "string"},
+        "multiPolicy": {"type": "boolean"},
+        "repairStrategy": {"type": "string"},
+        "primaryRepairClass": {"type": "string"},
+        "suppressedRules": {"type": "array", "items": {"type": "string"}},
+        "requiredWitnesses": {"type": "array", "items": {"type": "string"}},
+        "repairOrder": {"type": "array", "items": {"type": "string"}},
+        "repairPlan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nextCommand", "repairPhases"],
+          "properties": {
+            "nextCommand": {"type": "string"},
+            "repairPhases": {"$ref": "#/$defs/repairPhases"}
+          }
+        },
+        "diagnostic": {"$ref": "#/$defs/diagnostic"},
+        "repairHints": {"type": "array", "items": {"type": "string"}},
+        "verification": {"type": "array", "items": {"type": "string"}},
+        "repairIntent": {"$ref": "#/$defs/repairIntent"},
+        "agentInstruction": {"type": "string"}
+      }
+    },
+    "findingGroups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/findingGroup"}
+    },
+    "repairPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "audience",
+        "feedbackKind",
+        "diagnosticSchemaId",
+        "diagnosticSchemaVersion",
+        "groupCount",
+        "primaryGroups",
+        "verification",
+        "antiPatterns",
+        "strategy",
+        "requires"
+      ],
+      "properties": {
+        "status": {"enum": ["none", "active"]},
+        "audience": {"type": "string"},
+        "feedbackKind": {"type": "string"},
+        "diagnosticSchemaId": {"$ref": "#/$defs/diagnosticSchemaId"},
+        "diagnosticSchemaVersion": {"$ref": "#/$defs/diagnosticSchemaVersion"},
+        "groupCount": {"type": "integer", "minimum": 0},
+        "primaryGroups": {"$ref": "#/$defs/findingGroups"},
+        "verification": {"type": "array", "items": {"type": "string"}},
+        "antiPatterns": {"type": "array", "items": {"type": "string"}},
+        "strategy": {"type": "string"},
+        "requires": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "agentRepairReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "audience",
+        "feedbackKind",
+        "diagnosticSchemaId",
+        "diagnosticSchemaVersion",
+        "diagnosticUnit",
+        "repairableFindings",
+        "repairableWarnings",
+        "repairableErrors",
+        "trigger",
+        "findingGroups",
+        "repairPlan",
+        "instruction"
+      ],
+      "properties": {
+        "status": {"enum": ["none", "active"]},
+        "audience": {"type": "string"},
+        "feedbackKind": {"type": "string"},
+        "diagnosticSchemaId": {"$ref": "#/$defs/diagnosticSchemaId"},
+        "diagnosticSchemaVersion": {"$ref": "#/$defs/diagnosticSchemaVersion"},
+        "diagnosticUnit": {"const": "findingGroup"},
+        "repairableFindings": {"type": "integer", "minimum": 0},
+        "repairableWarnings": {"type": "integer", "minimum": 0},
+        "repairableErrors": {"type": "integer", "minimum": 0},
+        "trigger": {"enum": ["none", "warning", "error", "warning-or-error"]},
+        "findingGroups": {"$ref": "#/$defs/findingGroups"},
+        "repairPlan": {"$ref": "#/$defs/repairPlan"},
+        "instruction": {"type": "string"}
+      }
+    },
+    "findingRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "active",
+        "repairable",
+        "trigger",
+        "reason",
+        "diagnosticSchemaId",
+        "diagnosticSchemaVersion",
+        "ruleId",
+        "severity",
+        "diagnostic",
+        "guideTopic",
+        "guideIntent",
+        "guideCommand",
+        "guideRole",
+        "instruction"
+      ],
+      "properties": {
+        "active": {"type": "boolean"},
+        "repairable": {"type": "boolean"},
+        "trigger": {"$ref": "#/$defs/severity"},
+        "reason": {"type": "string"},
+        "diagnosticSchemaId": {"$ref": "#/$defs/diagnosticSchemaId"},
+        "diagnosticSchemaVersion": {"$ref": "#/$defs/diagnosticSchemaVersion"},
+        "ruleId": {"type": "string"},
+        "severity": {"$ref": "#/$defs/severity"},
+        "diagnostic": {"$ref": "#/$defs/diagnostic"},
+        "guideTopic": {"type": "string"},
+        "guideIntent": {"type": "string"},
+        "guideCommand": {"type": "string"},
+        "guideRole": {"type": "string"},
+        "instruction": {"type": "string"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "severity", "path", "selector", "message", "details"],
+      "properties": {
+        "ruleId": {"type": "string", "minLength": 1},
+        "severity": {"$ref": "#/$defs/severity"},
+        "path": {"type": "string"},
+        "selector": {"type": ["string", "null"]},
+        "message": {"type": "string"},
+        "details": {"type": "object"},
+        "agentRepair": {"$ref": "#/$defs/findingRepair"}
+      }
+    }
+  }
+}

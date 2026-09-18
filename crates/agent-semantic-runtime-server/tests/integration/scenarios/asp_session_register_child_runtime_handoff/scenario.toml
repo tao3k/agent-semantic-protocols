@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "asp-session-register-child-runtime-handoff"
+title = "ASP register-child uses one typed Runtime request and one registry writer"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SESSION-REGISTER-CHILD-001",
+]
+agent_goal = "Bind a Host-created child to its explicit root and parent through the Runtime-owned registry without restoring the removed asp agent lifecycle CLI."
+reference_repositories = [
+  "agent-semantic-protocols",
+]
+reference_patterns = [
+  "agent/session/register",
+  "AgentSessionRegisterReceipt",
+  "GrpcClientFrame",
+]
+inputs = "typed ClientFrame request over the Runtime gRPC transport"
+expected = "one validated Runtime receipt and one queryable registry row"

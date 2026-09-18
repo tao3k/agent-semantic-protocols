@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Receipt token-cost validation tests."""
 
 from __future__ import annotations
@@ -32,9 +36,9 @@ class ReceiptTokenCostValidationTests(unittest.TestCase):
                         "editBoundary": "before-edit",
                         "commands": [
                             {
-                                "id": "prime",
+                                "id": "search-playbook",
                                 "kind": "search",
-                                "argv": ["rs-harness", "search", "prime", "."],
+                                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                                 "metrics": {
                                     "elapsedMs": 2,
                                     "stdoutBytes": 20,
@@ -51,7 +55,7 @@ class ReceiptTokenCostValidationTests(unittest.TestCase):
                                 "id": "owner",
                                 "kind": "search",
                                 "argv": [
-                                    "rs-harness",
+                                    "asp-rust",
                                     "search",
                                     "owner",
                                     "src/lib.rs",

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-thread-management-tool-call.v1.schema.json",
+  "title": "Codex Thread Management Tool Call",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "namespace", "toolName", "toolInput"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.codex-thread-management-tool-call" },
+    "schemaVersion": { "const": "1" },
+    "namespace": { "const": "codex_app" },
+    "toolName": {
+      "enum": [
+        "navigate_to_codex_page",
+        "read_thread",
+        "send_message_to_thread",
+        "wait_threads"
+      ]
+    },
+    "toolInput": { "type": "object" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "toolName": { "const": "navigate_to_codex_page" },
+        "toolInput": { "$ref": "#/$defs/threadTarget" }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "read_thread" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threadId"],
+          "properties": {
+            "threadId": { "$ref": "#/$defs/threadId" },
+            "hostId": { "$ref": "#/$defs/nonBlank" },
+            "cursor": { "$ref": "#/$defs/nonBlank" },
+            "includeOutputs": { "type": "boolean" },
+            "maxOutputCharsPerItem": { "type": "integer", "minimum": 1 },
+            "turnLimit": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "send_message_to_thread" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threadId", "prompt"],
+          "properties": {
+            "threadId": { "$ref": "#/$defs/threadId" },
+            "prompt": { "$ref": "#/$defs/nonBlank" },
+            "hostId": { "$ref": "#/$defs/nonBlank" },
+            "model": { "$ref": "#/$defs/nonBlank" },
+            "thinking": { "$ref": "#/$defs/nonBlank" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "wait_threads" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["targets"],
+          "properties": {
+            "targets": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["threadId"],
+                "properties": {
+                  "threadId": { "$ref": "#/$defs/threadId" },
+                  "hostId": { "$ref": "#/$defs/nonBlank" },
+                  "afterCursor": { "$ref": "#/$defs/nonBlank" }
+                }
+              }
+            },
+            "timeoutMs": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "threadId": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+    },
+    "nonBlank": { "type": "string", "pattern": ".*\\S.*" },
+    "threadTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["threadId"],
+      "properties": { "threadId": { "$ref": "#/$defs/threadId" } }
+    }
+  }
+}

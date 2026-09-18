@@ -1,0 +1,319 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute end-to-end replay state machine
+#+startup: overview
+
+* Status
+
+This module composes shortcut-envelope admission, canonical payload identity,
+and safe replay-mode negotiation into one proof-carrying state machine.  It is
+an RFC, Lean model, modular Lean JSON audit, and Org-Babel Typst specification.
+It does not implement a Rust or Python runtime.
+
+The module follows:
+
+- 01.20, shortcut-envelope admission;
+- 01.21, canonical payload and digest replay; and
+- 01.22, safe replay-mode negotiation.
+
+* Problem
+
+The preceding modules prove their local contracts, but local contracts do not
+alone prove that an end-to-end implementation cannot jump from raw shortcut
+bytes directly to accepted replay.  A state machine must make admission and
+identity negotiation unavoidable construction boundaries.
+
+The same end-to-end model must distinguish five quantities that are often
+collapsed into one ambiguous efficiency claim:
+
+- internal evidence-graph transitions;
+- external provider or tool turns;
+- serialized receipt tokens;
+- search work avoided by a search cache; and
+- model input tokens reused by a provider prefix cache.
+
+The last two are cost credits.  They are not admission or identity evidence.
+
+* Protocol clauses
+
+** ERS-CANONICAL: raw envelopes have one canonical payload projection
+
+=canonicalPayloadOfRaw= projects the schema version, hash algorithm identity,
+shortcut commitment, and direct-dominance claim from the admitted raw envelope.
+The envelope's claimed canonical digest is not copied into the canonical
+payload.  It must be checked through digest evidence rather than becoming a
+self-authenticating field.
+
+** ERS-ADMISSION: accepted replay contains the admission witness
+
+The admitted state contains =VerifiedCachedShortcut=.  That value structurally
+binds the raw envelope to =AdmissionWitness=.  An accepted replay retains the
+same verified value; it cannot reconstruct or replace the admission witness
+after identity negotiation.
+
+** ERS-NEGOTIATION: accepted replay contains the negotiated outcome
+
+=NegotiatedReplay= binds all of the following:
+
+- the verified shortcut;
+- admission of the cached canonical payload to the identity domain;
+- optional collision, digest-equality, and canonical-equality evidence;
+- the resulting =ReplayIdentityOutcome=; and
+- an equality showing that the outcome is exactly the result of
+  =negotiateReplayIdentity= for those inputs.
+
+=AcceptedReplay= can be constructed only from a negotiated result whose mode is
+not explicit fallback.
+
+** ERS-NO-BYPASS: acceptance closes both gates
+
+The acceptance closure contains two differently sorted artifacts:
+
+- an =AdmissionWitness= in =Type=; and
+- canonical payload equality in =Prop=.
+
+They are combined by the dedicated =AcceptedReplayGateClosure= structure.
+Every accepted replay can construct this closure.  There is no transition from
+raw directly to accepted and no transition from admitted directly to accepted.
+
+** ERS-PATH: stage rank accounts for every internal transition
+
+Each state has a stage rank:
+
+- raw: 0;
+- admitted: 1;
+- negotiated: 2; and
+- accepted or explicit fallback: 3.
+
+Every transition increases the rank by exactly one.  Therefore the rank
+difference equals path length.  Every raw-to-accepted path and every
+raw-to-fallback path has exactly three internal transitions.
+
+This is stronger than exhibiting one three-step path: it proves that the state
+machine admits neither a shorter bypass nor a longer hidden detour.
+
+** ERS-FALLBACK: fallback is a terminal non-acceptance state
+
+When negotiation selects =explicitFieldFallback=, the transition reaches a
+terminal fallback state.  The same equality that identifies fallback makes an
+acceptance proof contradictory.  A caller must acquire explicit fields or
+start a narrower progressive inspection; it may not relabel fallback as
+accepted.
+
+** ERS-COST: core replay cost is a three-dimensional vector
+
+The core cost vector is:
+
+- =graphTransitions=;
+- =providerToolTurns=; and
+- =receiptTokens=.
+
+A shortcut strictly improves core cost only when it is strictly smaller in all
+three dimensions.  This definition intentionally does not hide a worse tool
+turn count behind a smaller serialized receipt.
+
+The Lean module contains an illustrative digest-shortcut vector =(3, 2, 3)= and
+an illustrative explicit-replay vector =(6, 4, 12)=.  The resulting strict
+improvement theorem checks the cost algebra and the 01.22 receipt constants; it
+is not an empirical runtime benchmark.
+
+** ERS-CACHE: cache credits remain orthogonal
+
+=CacheCostCredits= contains:
+
+- search work units avoided; and
+- model prefix tokens reused.
+
+These fields are attached to =ReplayPerformanceReceipt= beside the core vector.
+Changing cache credits cannot change the core vector, and providing cache
+credits cannot change the payload equality derived from =AcceptedReplay=.
+Neither search-cache hits nor model prefix-cache hits occur in an acceptance
+constructor.
+
+* State-machine mathematics
+
+The only terminal routes are:
+
+#+name: end-to-end-replay-state-machine
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+[
+  $ "raw"
+      arrow.r "admitted"
+      arrow.r "negotiated"
+      arrow.r "accepted" $
+
+  $ "raw"
+      arrow.r "admitted"
+      arrow.r "negotiated"
+      arrow.r "explicit-field fallback" $
+]
+#+end_src
+
+Let =rho= be stage rank and =n= be the number of internal transitions.
+
+#+name: replay-stage-rank-accounting
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+[
+  $ rho("raw") = 0 comma
+      rho("admitted") = 1 comma
+      rho("negotiated") = 2 comma
+      rho("terminal") = 3 $
+
+  $ s arrow.r t
+      quad "implies" quad
+      rho(t) = rho(s) + 1 $
+
+  $ "Path"("raw", "terminal", n)
+      quad "implies" quad
+      n = 3 $
+]
+#+end_src
+
+The core cost and orthogonal cache-credit vectors are:
+
+#+name: replay-core-cost-and-cache-credits
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+[
+  $ C = (g, u, r) $
+
+  $ C_s prec C_b
+      quad "iff" quad
+      g_s < g_b and u_s < u_b and r_s < r_b $
+
+  $ K = (q, p) comma
+      K in.not "AcceptanceEvidence" $
+]
+#+end_src
+
+Here =g= is graph transitions, =u= is provider/tool turns, =r= is receipt
+tokens, =q= is search work avoided, and =p= is model prefix tokens reused.
+
+* Lean model
+
+The proof owner is:
+
+- =packages/proofs/ASPProof/SearchRouteEndToEndReplayStateMachine.lean=.
+
+The main types are:
+
+- =ReplayContext=;
+- =NegotiatedReplay=;
+- =AcceptedReplay=;
+- =ReplayPipelineState=;
+- =ReplayTransition=;
+- =ReplayPath=;
+- =AcceptedReplayGateClosure=;
+- =ReplayCoreCost=;
+- =CacheCostCredits=; and
+- =ReplayPerformanceReceipt=.
+
+The transition relation permits only:
+
+1. raw to admitted with an admission witness;
+2. admitted to negotiated with the same verified shortcut;
+3. negotiated to accepted with a non-fallback proof; or
+4. negotiated to explicit fallback with a fallback equality.
+
+There are no outgoing transitions from terminal states.
+
+* Logical defects discovered by Lean
+
+** Admission data and equality propositions need a dedicated carrier
+
+=AdmissionWitness= inhabits =Type= because it is protocol data.  Payload equality
+inhabits =Prop=.  An initial theorem attempted to return admission data as if its
+type were a proposition, and an initial product attempted to combine a =Type=
+value with a =Prop= using an unsuitable homogeneous product.  Lean rejected both.
+
+The repair is =AcceptedReplayGateClosure : Type=, with one admission-data field
+and one proof field.  This makes the audit boundary explicit and prevents
+documentation from erasing the distinction between a receipt object and a
+logical claim.
+
+** Dependent proof identity makes node-by-node path elimination brittle
+
+An initial exact-length proof destructured every path constructor.  At the
+admitted-to-negotiated boundary, Lean correctly required equality between the
+verified shortcut constructed by the first transition and the dependent
+verified shortcut carried by the next replay object.  Those proof-carrying
+values are semantically related by the path indices, but arbitrary dependent
+elimination made their object identity the center of the proof.
+
+The repair uses stage rank.  Transition-local rank equations erase irrelevant
+proof-object identity while retaining graph progress.  Path length then follows
+from an additive invariant rather than from comparing witness records.
+
+** Generic rewriting reintroduced =propext=
+
+The first stage-rank induction compiled but its =rw/simp= proof caused
+=propext= to enter the audit inventory.  The final induction uses explicit
+=Eq.trans=, =congrArg=, and a constructive natural-number addition lemma.  All
+path and exact-length theorems are now axiom-free.
+
+This repeats the lesson from 01.22: proof automation that is harmless for an
+ordinary build can still weaken a machine-audited proof receipt.
+
+* Proven closures
+
+The Lean module establishes:
+
+- canonical projection from raw envelope to payload;
+- payload equality for every accepted replay;
+- every transition increases stage rank by one;
+- rank difference equals path length;
+- every raw-to-accepted path has length three;
+- every raw-to-fallback path has length three;
+- a canonical accepted path exists with length three;
+- raw cannot transition directly to accepted;
+- admitted cannot transition directly to accepted;
+- accepted replay exposes its original admission witness;
+- accepted replay exposes the exact negotiation equation;
+- the combined gate closure is constructible for every accepted replay;
+- fallback contradicts acceptance;
+- componentwise core-cost reduction implies strict improvement;
+- the illustrative digest shortcut strictly improves the illustrative explicit
+  replay vector;
+- accepted identity is independent of cache credits; and
+- cache credits cannot mutate the core replay vector.
+
+* Modular audit
+
+The audit artifacts are:
+
+- =packages/proofs/ASPProof/Audit/SearchRouteEndToEndReplayStateMachine.lean=;
+- =packages/proofs/audit/SearchRouteEndToEndReplayStateMachineAudit.lean=; and
+- =packages/proofs/receipts/searchroute-end-to-end-replay-state-machine-audit-v1.json=.
+
+The receipt uses =asp.lean-proof-audit.v1=.  The current receipt contains 18
+declarations, 18 axiom-free declarations, zero axiom-dependent declarations,
+an empty axiom inventory, and no =sorryAx=.  It maps all declarations to eight
+=ERS-*= clauses.  An independent consumer validates both theorem-family and
+clause coverage.
+
+* Runtime and measurement boundary
+
+The state machine proves logical transition count, not actual command count.
+One provider/tool call may realize several internal transitions, or an
+interactive client may require multiple calls to produce one transition's
+evidence.  A runtime receipt must therefore report both values.
+
+The illustrative =(3, 2, 3)= and =(6, 4, 12)= vectors are model witnesses.  A
+real SearchLoop evaluation must obtain the values from trace evidence rather
+than selecting constants that make the inequality true.
+
+Search-cache and model prefix-cache credits must also name their accounting
+units and identity scope.  They may reduce observed cost but cannot be inserted
+into =AcceptedReplayGateClosure=.
+
+* Next proof boundary
+
+Bind the logical replay path to an observable interactive SearchLoop trace.
+The next module should define a trace projection that maps provider/tool events
+to zero or more internal transitions, proves that the projection preserves
+stage-rank order and acceptance closure, and derives tool-turn and token costs
+from receipts instead of illustrative constants.  It should then prove when
+batching or router jumps reduce external interaction rounds without hiding
+required internal evidence transitions, and keep search-cache credit distinct
+from model prefix-cache credit throughout the trace.

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Compatibility locator: Agent Search Projection
+
+* Canonical RFC
+
+The canonical projection RFC is
+[[file:../10.06-agent-search-projection.org][Agent Search Projection]].

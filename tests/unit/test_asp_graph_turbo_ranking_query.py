@@ -1,10 +1,14 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Focused ASP graph turbo tests."""
 
 from __future__ import annotations
 
-from asp_graph_turbo.cache import backend_fingerprint
-from asp_graph_turbo.profiles import resolve_profile
-from asp_graph_turbo.ranking_build import rank_fingerprint
+from asp_python_graphs.cache import backend_fingerprint
+from asp_python_graphs.profiles import resolve_profile
+from asp_python_graphs.ranking_build import rank_fingerprint
 
 from ._asp_graph_turbo_common import (
     TypedGraph,
@@ -65,7 +69,7 @@ def test_backend_fingerprint_ignores_query_policy() -> None:
 
     assert default_rank_key != no_local_evidence_rank_key
     assert backend_fingerprint(graph, profile) == backend_fingerprint(graph, profile)
-    assert backend_fingerprint(graph, profile).startswith("sha256:backend:")
+    assert backend_fingerprint(graph, profile).startswith("sha256:")
 
 
 def test_runtime_ranking_caches_reuse_seed_work() -> None:

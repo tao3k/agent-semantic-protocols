@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/rust-project-harness-definitions.v1.schema.json",
+  "title": "Rust Project Harness Shared Definitions v1",
+  "type": "object",
+  "$defs": {
+    "dependencyBaselinePackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "source_contains"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "source_contains": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

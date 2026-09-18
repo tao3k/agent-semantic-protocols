@@ -1,0 +1,69 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Debug)]
+pub struct RuntimeServerWorkspaceStore {
+    root: PathBuf,
+    prepared: std::sync::Arc<tokio::sync::OnceCell<()>>,
+}
+
+impl RuntimeServerWorkspaceStore {
+    pub fn for_runtime_base(runtime_base: &Path) -> Self {
+        Self::for_root(
+            agent_semantic_artifacts::RuntimeServingStateLayout::from_root(
+                runtime_base.to_path_buf(),
+            )
+            .workspaces(),
+        )
+    }
+
+    pub fn for_root(root: PathBuf) -> Self {
+        Self {
+            root,
+            prepared: std::sync::Arc::new(tokio::sync::OnceCell::new()),
+        }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub async fn prepare(&self) -> Result<(), String> {
+        self.prepared
+            .get_or_try_init(|| async {
+                tokio::fs::create_dir_all(&self.root)
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "failed to prepare the Runtime Server workspace store {}: {error}",
+                            self.root.display()
+                        )
+                    })
+            })
+            .await
+            .map(|_| ())
+    }
+}
+
+pub async fn prepare_runtime_server_workspace_store_at_root(
+    root: PathBuf,
+) -> Result<RuntimeServerWorkspaceStore, String> {
+    let store = RuntimeServerWorkspaceStore::for_root(root);
+    store.prepare().await?;
+    Ok(store)
+}
+
+pub async fn prepare_runtime_server_workspace_store(
+    runtime_base: &Path,
+) -> Result<RuntimeServerWorkspaceStore, String> {
+    let store = RuntimeServerWorkspaceStore::for_runtime_base(runtime_base);
+    store.prepare().await?;
+    Ok(store)
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_workspace_store.rs"]
+mod runtime_server_workspace_store_tests;

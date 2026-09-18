@@ -1,0 +1,356 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.20/01.24 — SearchRoute Adaptive Batch Failure Isolation
+#+status: draft
+#+language: en
+
+* Status and authority
+
+This document extends [[file:01.20-searchroute-batch-claim-dag-equivalence.org][RFC 10.05.20/01.20]]. RFC 01.20 proves that a valid batch transport can project the same typed claim outcomes as individual transports while retaining a distinct invocation history.
+
+This RFC addresses the next failure boundary: an agent performing fine-grained engineering work can overuse individual fallback until a nominal batch plan degenerates into more graph nodes, more tool rounds, and more input tokens than direct individual execution.
+
+The formal owners are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteAdaptiveBatchFailureIsolation.lean][SearchRouteAdaptiveBatchFailureIsolation.lean]];
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteAdaptiveBatchFailureIsolation.lean][modular Lean audit]];
+- [[file:../../../../packages/proofs/receipts/searchroute-adaptive-batch-failure-isolation-audit-v1.json][Lean JSON receipt]];
+- [[file:../../../../packages/proofs/axle/SearchRouteAdaptiveBatchFailureIsolationCost.lean][AXLE independent cost model]];
+- [[file:../../../../packages/proofs/axle/SearchRouteAdaptiveBatchFullFallback.formal.lean][AXLE full-fallback formal statement]];
+- [[file:../../../../packages/proofs/receipts/searchroute-adaptive-batch-failure-isolation-axle-v1.json][AXLE normalized receipt]]; and
+- the inline Org-Babel Typst model in this document.
+
+This session changes no Rust provider or product Python implementation. The proof package owns the Lean and AXLE verification surface.
+
+* Problem statement
+
+Batching is not an optimization merely because a plan contains batches. Three independent failure modes invalidate that conclusion.
+
+First, a partition may contain one singleton batch per claim. Such a plan is an exact partition, but shares no execution. Its no-fallback round cost equals individual execution.
+
+Second, a failed batch may contain semantic rejection, policy mismatch, or replay mismatch. Retrying those claims individually can hide a real verification failure. The protocol must not translate every unresolved claim into fallback eligibility.
+
+Third, even a technically eligible fallback repeats executable work. If =n= claims were attempted in =g= batches and =u= claims fall back to individual invocation and replay, total executable rounds are =2g + 2u=. The original individual route costs =2n=. Therefore =g <= n= is insufficient; non-regression requires =g + u <= n=.
+
+* Lean-discovered logical gaps
+
+** Partition validity is weaker than optimization admission
+
+A valid partition proves:
+
+- the source claim list is nonempty and duplicate-free;
+- every batch is nonempty;
+- every claim in a batch has the batch execution key;
+- flattening the ordered batches exactly reconstructs the ordered source list; and
+- no source claim is omitted or fabricated.
+
+These facts do not prove that any work is shared. The additional predicate =SharesExecution= requires:
+
+#+begin_example
+batchCount < claimCount
+#+end_example
+
+A singleton partition with =batchCount = claimCount= is structurally valid but MUST NOT be advertised as a round-saving optimization.
+
+** Unresolved does not imply fallback eligible
+
+The model separates failure reasons into two classes.
+
+Fallback-eligible technical failures:
+
+- =batchTransportUnavailable=;
+- =batchResourceLimit=.
+
+Fail-closed failures:
+
+- =semanticRejection=;
+- =policyMismatch=;
+- =replayMismatch=;
+- =agentPreference=.
+
+=agentPreference= is explicitly fail-closed. An agent cannot request individual fallback merely because a smaller command is easier to construct or because it prefers fine-grained code operations.
+
+** Full fallback invalidates non-regression
+
+For any nonempty batch plan, falling back every source claim yields:
+
+#+begin_example
+g + n > n
+#+end_example
+
+and therefore:
+
+#+begin_example
+2g + 2n > 2n
+#+end_example
+
+Lean proves that an admitted adaptive execution cannot have =fallbackClaimCount = sourceClaimCount=. This remains true even when every fallback reason is technically eligible.
+
+* Canonical compatible partition
+
+Each routed claim binds a claim identifier and the complete RFC 01.20 batch execution key:
+
+- policy digest;
+- serializer digest;
+- statement-schema digest;
+- verifier identifier digest;
+- verifier-binary digest; and
+- decoder-schema digest.
+
+A batch is compatible only when every member has exactly the batch key. A claim with another policy, verifier binary, serializer, or decoder belongs in another batch.
+
+The ordered flattening of all batches MUST equal the ordered source list. Set equality is insufficient because it cannot detect duplicate, omitted, or reordered claim execution.
+
+* Attempt classification and isolation
+
+Each planned batch produces an observable attempt status. Successful batch claims remain in =successfulClaims=. Claims from unsuccessful batch attempts enter =unresolvedClaims=, but remain unclassified until a failure annotation is attached.
+
+The ordered failure annotations MUST project exactly to =unresolvedClaims=. The annotation supplies the failure reason used by fallback admission.
+
+The final claim state is a three-way partition:
+
+1. successful batch evidence;
+2. eligible, budgeted individual fallback; or
+3. fail-closed unresolved evidence.
+
+The third state is not an implementation error. It is the required result for semantic rejection, policy mismatch, replay mismatch, or unsupported agent preference.
+
+* Fallback admission is a capability, not a default branch
+
+A fallback receipt binds:
+
+- source digest;
+- complete attempt-set digest;
+- checkpoint digest;
+- the exact ordered eligible-claim list;
+- maximum fallback claim count;
+- maximum additional executable rounds; and
+- maximum additional input tokens.
+
+The receipt claim list MUST equal the projection of annotations whose reason is fallback eligible. It cannot include a semantically rejected or policy-mismatched claim.
+
+The attempt-set digest is required because two executions of the same source plan can fail in different batches. A source-only cache hit cannot authorize reuse of a previous fallback decision.
+
+* Cost model
+
+Let:
+
+- =n= be the source claim count;
+- =g= be the compatible batch count;
+- =u= be the admitted fallback claim count;
+- =S= be shared input tokens per invocation/replay context; and
+- =P= be per-claim input tokens.
+
+Individual execution costs:
+
+#+begin_example
+R_individual = 2n
+T_individual = n(S + P)
+#+end_example
+
+Adaptive execution costs:
+
+#+begin_example
+R_adaptive = 2g + 2u
+T_adaptive = gS + nP + u(S + P)
+#+end_example
+
+Round non-regression is equivalent to:
+
+#+begin_example
+g + u <= n
+#+end_example
+
+Strict round savings are equivalent to:
+
+#+begin_example
+g + u < n
+#+end_example
+
+Token non-regression is equivalent to:
+
+#+begin_example
+(g + u)S + uP <= nS
+#+end_example
+
+This condition is stronger than the round condition whenever fallback repeats nonzero per-claim context.
+
+* Org-Babel Typst mathematical model
+
+This block is the executable mathematical source. It is evaluated through =typst eval --in -= and does not require a temporary =.typ= source file.
+
+#+begin_src typst
+#let individual-rounds(n) = 2 * n
+#let adaptive-rounds(g, u) = 2 * g + 2 * u
+
+#let individual-tokens(n, shared, per_claim) = n * (shared + per_claim)
+#let adaptive-tokens(n, g, u, shared, per_claim) = (
+  g * shared + n * per_claim + u * (shared + per_claim)
+)
+
+#let fallback-eligible(reason) = (
+  reason == "batch-transport-unavailable" or
+  reason == "batch-resource-limit"
+)
+
+#let round-nonregression(n, g, u) = adaptive-rounds(g, u) <= individual-rounds(n)
+#let token-nonregression(n, g, u, shared, per_claim) = (
+  adaptive-tokens(n, g, u, shared, per_claim) <=
+  individual-tokens(n, shared, per_claim)
+)
+
+#assert(individual-rounds(8) == 16)
+#assert(adaptive-rounds(3, 2) == 10)
+#assert(round-nonregression(8, 3, 2))
+#assert(not round-nonregression(8, 1, 8))
+#assert(adaptive-rounds(8, 0) == individual-rounds(8))
+#assert(adaptive-rounds(8, 1) > individual-rounds(8))
+
+#assert(fallback-eligible("batch-transport-unavailable"))
+#assert(fallback-eligible("batch-resource-limit"))
+#assert(not fallback-eligible("semantic-rejection"))
+#assert(not fallback-eligible("policy-mismatch"))
+#assert(not fallback-eligible("replay-mismatch"))
+#assert(not fallback-eligible("agent-preference"))
+
+#assert(token-nonregression(8, 2, 1, 100, 10))
+#assert(not token-nonregression(8, 2, 6, 100, 10))
+
+#let result = 1
+#result
+#+end_src
+
+* Agent-facing engineering policy
+
+The adaptive route is intended to reduce agent-visible search and verification interaction, not to convert every internal code detail into another tool call.
+
+An agent MUST NOT:
+
+- split a compatible claim group into singleton batches merely to simplify command construction;
+- classify semantic rejection or replay mismatch as a transport failure;
+- request fallback without an observable failure annotation;
+- fallback all source claims after already paying batch invocation cost;
+- retry the same batch and then fallback without charging both attempts to the cost receipt; or
+- claim optimization when the measured/admitted cost predicates fail.
+
+An agent MAY use fallback only for the exact eligible subset and only while the claim, round, token, checkpoint, and attempt-set constraints remain satisfied.
+
+* Normative clauses
+
+** ASP-RFC-10.05-ABFI-EXACT-PARTITION
+
+Ordered compatible batches MUST flatten to the complete ordered source claim list, with no duplicate, omitted, fabricated, or reordered claim.
+
+** ASP-RFC-10.05-ABFI-COMPATIBLE-KEY
+
+Every claim in one batch MUST bind the same complete execution key.
+
+** ASP-RFC-10.05-ABFI-SHARED-EXECUTION
+
+An optimization-admitted partition MUST satisfy =batchCount < claimCount=. Structural partition validity alone is insufficient.
+
+** ASP-RFC-10.05-ABFI-ANNOTATED-UNRESOLVED
+
+Ordered failure annotations MUST project exactly to the ordered unresolved claim list.
+
+** ASP-RFC-10.05-ABFI-FALLBACK-ELIGIBILITY
+
+Only batch transport unavailability and batch resource-limit failures are eligible for individual fallback.
+
+** ASP-RFC-10.05-ABFI-FAIL-CLOSED
+
+Semantic rejection, policy mismatch, replay mismatch, and agent preference MUST remain fail-closed and MUST NOT appear in the fallback receipt.
+
+** ASP-RFC-10.05-ABFI-BUDGET
+
+Fallback MUST bind maximum claim count, additional executable rounds, and additional input tokens.
+
+** ASP-RFC-10.05-ABFI-ROUND-NONREGRESSION
+
+An optimization-admitted execution MUST prove =batchCount + fallbackClaimCount <= sourceClaimCount=.
+
+** ASP-RFC-10.05-ABFI-TOKEN-NONREGRESSION
+
+An optimization-admitted execution MUST prove its complete batch-attempt plus fallback input-token cost does not exceed direct individual execution.
+
+** ASP-RFC-10.05-ABFI-NO-SINGLETON-CLAIM
+
+A singleton partition without fallback MUST report equal, not lower, executable round cost. A singleton partition with any fallback MUST report regression.
+
+** ASP-RFC-10.05-ABFI-NO-FULL-FALLBACK
+
+An admitted adaptive execution with at least one attempted batch MUST NOT fallback every source claim.
+
+** ASP-RFC-10.05-ABFI-CACHE-IDENTITY
+
+Fallback cache reuse MUST bind source, attempt set, unresolved-claim set, and checkpoint identity. Source-only equality is insufficient.
+
+** ASP-RFC-10.05-ABFI-OBSERVABLE-TRIAGE
+
+Every source claim MUST be observable as successful batch evidence, eligible fallback evidence, or fail-closed unresolved evidence.
+
+** ASP-RFC-10.05-ABFI-AXLE-CONFORMANCE
+
+The proof package MUST retain an AXLE-checked independent model for the fallback-abuse cost boundary. AXLE success does not replace project-toolchain compilation or Lean axiom audit.
+
+* Lean theorem map
+
+The Lean owner proves:
+
+- =source_claim_is_successful_or_unresolved=;
+- =successful_claim_is_not_unresolved=;
+- =annotation_claim_is_eligible_or_fail_closed=;
+- =unresolved_claim_is_eligible_or_fail_closed=;
+- =semantic_rejection_is_not_fallback_eligible=;
+- =policy_mismatch_is_not_fallback_eligible=;
+- =replay_mismatch_is_not_fallback_eligible=;
+- =agent_preference_is_not_fallback_eligible=;
+- =valid_fallback_contains_only_eligible_annotations=;
+- =valid_fallback_covers_every_eligible_claim=;
+- =every_source_claim_is_success_fallback_or_fail_closed=;
+- =adaptive_tool_rounds_le_individual_iff=;
+- =adaptive_tool_rounds_save_one_claim_iff=;
+- =singleton_partition_without_fallback_has_no_round_savings=;
+- =singleton_partition_with_any_fallback_regresses=;
+- =full_fallback_cannot_satisfy_round_nonregression=;
+- =batch_count_bound_alone_does_not_prove_round_savings=;
+- =adaptive_input_tokens_le_individual_iff=;
+- =admitted_execution_cannot_fallback_every_source_claim=;
+- =plan_only_cache_hit_does_not_prove_fallback_reuse=;
+- =example_partition_is_valid=;
+- =example_partition_shares_execution=;
+- =cross_key_batch_is_rejected=;
+- =example_attempts_match_partition=;
+- =example_success_isolated_from_failed_batch=;
+- =example_fallback_is_exact=; and
+- =semantic_rejection_fallback_is_rejected=.
+
+* Lean JSON audit boundary
+
+The modular audit declares 30 public proof obligations. Nine are axiom-free and 21 depend only on the standard =propext= and =Quot.sound= principles. The project Lean owner contains no =Classical.choice=, native-decide private axiom, or =sorryAx= dependency.
+
+The root =axiomInventory= and every declaration's =axioms= and =rfcClauseIds= arrays are lexicographically sorted and duplicate-free. Receipt generation is owned by the Lean runner and can write the exact compact manifest without a shell reconstruction step.
+
+* AXLE boundary
+
+The AXLE input independently restates the cost and fallback-eligibility kernel under its pinned =lean-4.32.0= environment. It checks:
+
+- round non-regression equivalence;
+- strict-savings equivalence;
+- singleton non-savings;
+- singleton fallback regression;
+- full-fallback rejection;
+- the concrete batch-count-only counterexample; and
+- semantic, policy, replay, and agent-preference ineligibility.
+
+In addition to whole-input =check --strict=, AXLE =verify-proof --strict= validates =full_fallback_cannot_satisfy_round_nonregression= against a separate sorried formal-statement file. This prevents the independent lane from treating compilation alone as proof completion.
+
+The repository Lean package compiles the complete evidence and receipt model under =leanprover/lean4:v4.32.2=. Both validations are required because AXLE's standalone Mathlib environment does not own the repository import graph.
+
+* Implementation boundary
+
+Future provider work requires shared schemas for compatible partitions, failure annotations, fallback budgets, three-way claim state, and complete adaptive cost receipts. No provider may implement fallback as a hidden exception path before those contracts exist.
+
+The next proof boundary is expected-value admission under uncertain batch failure probability. That future model must remain subordinate to the hard fail-closed and non-regression invariants defined here.

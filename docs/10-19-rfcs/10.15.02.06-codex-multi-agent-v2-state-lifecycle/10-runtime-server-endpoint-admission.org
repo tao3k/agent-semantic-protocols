@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Runtime Server Endpoint Admission
+#+OPTIONS: toc:2
+
+* Status
+
+This module closes a refinement defect between the layered Agent Session model
+and the Rust implementation.  The Runtime Server endpoint is a transport-owned
+filesystem node.  Its publication must be detected by existence and successful
+metadata inspection, not by the regular-file predicate.
+
+* Defect found by the model
+
+The Runtime Server owns the Agent Session registry and its Turso connection.
+The CLI must route registry operations through the server whenever the endpoint
+is published.  A Unix-domain socket is present but is not a regular file.
+Therefore a guard based on =Path::is_file()= selects direct Turso access while
+the server owns the database lock.  Resident bootstrap then fails after bounded
+lock retries instead of returning a server receipt.
+
+#+begin_src typst
+#let EndpointObservation = (present: bool, regular_file: bool)
+#let unix_socket = (present: true, regular_file: false)
+#let legacy_published(endpoint) = endpoint.regular_file
+#let published(endpoint) = endpoint.present
+
+assert(published(unix_socket))
+assert(not legacy_published(unix_socket))
+#+end_src
+
+* Admission contract
+
+Let $E$ be the observed endpoint, $P(E)$ mean that the endpoint is published,
+and $F(E)$ mean that it is a regular file.  Registry routing must satisfy the
+following implication; $F(E)$ is intentionally absent from the premise.
+
+#+begin_src typst
+#let routes_proxy(published) = published
+#let direct_turso(published) = not published
+
+assert(routes_proxy(true))
+assert(not direct_turso(true))
+#+end_src
+
+The corresponding Lean owner is
+=packages/proofs/ASPProof/ASPAgentSessionEndpointAdmission.lean=.  It proves a
+Unix-socket counterexample to regular-file detection, that every published
+endpoint selects the Runtime Server proxy, and that endpoint node type cannot
+authorize direct Turso access.
+
+* Stateful architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> EndpointAbsent
+    EndpointAbsent --> DirectTurso: server not published
+    EndpointAbsent --> EndpointPublished: server publishes endpoint
+    EndpointPublished --> RuntimeServerProxy: regular file, socket, or supported node
+    RuntimeServerProxy --> RegistryIPC: bootstrap / recover / archive
+    RegistryIPC --> ReceiptReturned: server-owned Turso transaction
+    ReceiptReturned --> RuntimeServerProxy
+    EndpointPublished --> RepairRequired: metadata inspection fails
+    RepairRequired --> EndpointPublished: internal reconcile republishes endpoint
+    RuntimeServerProxy --> EndpointAbsent: server performs orderly shutdown
+#+end_src
+
+* Rust refinement requirements
+
+1. Endpoint inspection accepts a Unix-domain socket and follows the canonical
+   endpoint symlink when one is used.
+2. =NotFound= means absent.  Other metadata errors fail closed and trigger
+   repair; they do not authorize direct access.
+3. Mutable, read-only, and generic registry operations share one endpoint
+   predicate.
+4. A published endpoint always yields a Runtime Server proxy before any Turso
+   open is attempted in the CLI process.
+5. Tests must bind a real Unix-domain socket and demonstrate that publication is
+   true while =is_file()= is false.
+
+* Relation to foreground latency
+
+Correct proxy admission removes the bounded Turso lock retry from resident
+bootstrap.  It does not weaken the 100 ms first-progress deadline: foreground
+search returns a progress or unavailable receipt while server-owned repair and
+durable publication continue independently.

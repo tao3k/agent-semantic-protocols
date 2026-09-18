@@ -1,0 +1,34 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.RuntimeClientServingPublication
+
+namespace ASPProof.Audit.RuntimeClientServingPublication
+
+open ASPProof.RuntimeClientServingPublication
+
+#check dead_applied_owner_and_newer_pending_form_legacy_bootstrap_deadlock
+#check dual_authority_publication_is_atomic
+#check dual_authority_publication_is_monotone
+#check candidate_failure_preserves_previous_authorities
+#check alias_failure_preserves_previous_authorities
+#check publication_exposes_no_torn_authority
+#check pending_client_breaks_the_legacy_cycle
+#check runtime_launcher_must_not_reverse_link_through_user_path
+#check temporary_or_foreign_state_home_cannot_own_runtime_launcher
+#check actor_commit_converges_current_pending
+#check recovery_then_current_actor_commit_converges_without_cycle
+#check stale_actor_commit_preserves_newer_publication
+#check concurrent_publication_and_commit_do_not_roll_back
+
+#print axioms dead_applied_owner_and_newer_pending_form_legacy_bootstrap_deadlock
+#print axioms dual_authority_publication_is_atomic
+#print axioms publication_exposes_no_torn_authority
+#print axioms actor_commit_converges_current_pending
+#print axioms recovery_then_current_actor_commit_converges_without_cycle
+#print axioms runtime_launcher_must_not_reverse_link_through_user_path
+#print axioms temporary_or_foreign_state_home_cannot_own_runtime_launcher
+#print axioms concurrent_publication_and_commit_do_not_roll_back
+
+end ASPProof.Audit.RuntimeClientServingPublication

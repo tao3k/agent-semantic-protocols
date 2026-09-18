@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the semantic review packet schema contract."""
 
 from __future__ import annotations
@@ -7,10 +11,15 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from unit.schema_validation import schema_validator_for
+
+
+def _schema_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "schemas" / "semantic-review-packet.v1.schema.json"
+
 
 def _load_schema() -> dict:
-    path = Path(__file__).resolve().parents[2] / "schemas" / "semantic-review-packet.v1.schema.json"
-    return json.loads(path.read_text())
+    return json.loads(_schema_path().read_text())
 
 
 def test_semantic_review_packet_schema_is_valid() -> None:
@@ -18,7 +27,6 @@ def test_semantic_review_packet_schema_is_valid() -> None:
 
 
 def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
-    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-review-packet",
         "schemaVersion": "1",
@@ -27,8 +35,8 @@ def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
         "packetId": "rust.review.packet",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -107,11 +115,10 @@ def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
         ],
     }
 
-    Draft202012Validator(schema).validate(value)
+    schema_validator_for(_schema_path()).validate(value)
 
 
 def test_semantic_review_packet_rejects_absolute_invariant_paths() -> None:
-    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-review-packet",
         "schemaVersion": "1",
@@ -120,8 +127,8 @@ def test_semantic_review_packet_rejects_absolute_invariant_paths() -> None:
         "packetId": "rust.review.packet",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -150,5 +157,5 @@ def test_semantic_review_packet_rejects_absolute_invariant_paths() -> None:
         "reviewActions": [],
     }
 
-    errors = list(Draft202012Validator(schema).iter_errors(value))
+    errors = list(schema_validator_for(_schema_path()).iter_errors(value))
     assert errors

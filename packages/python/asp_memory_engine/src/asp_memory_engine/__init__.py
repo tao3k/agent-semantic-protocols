@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Python adaptation of the Xiuxian memory engine public surface."""
 
 from __future__ import annotations
@@ -7,7 +11,7 @@ from .encoder import IntentEncoder
 from .episode import Episode, EpisodeDraft, GLOBAL_EPISODE_SCOPE
 from .plan_context import (
     DEFAULT_BRANCH_SCOPE,
-    GLOBAL_PROJECT_SCOPE,
+    GLOBAL_PROJECT_RESOLUTION,
     PLAN_SHARING_MODES,
     PlanMemoryContext,
     PlanRecallComputation,
@@ -39,7 +43,7 @@ __all__ = [
     "EpisodeStore",
     "DEFAULT_BRANCH_SCOPE",
     "GLOBAL_EPISODE_SCOPE",
-    "GLOBAL_PROJECT_SCOPE",
+    "GLOBAL_PROJECT_RESOLUTION",
     "InferredMemoryObject",
     "InferredMemoryObjectKind",
     "IntentEncoder",

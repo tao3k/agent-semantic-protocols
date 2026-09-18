@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate semantic-tree-sitter grammar profile schema fixtures."""
 
 from __future__ import annotations
@@ -14,19 +18,19 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCHEMA_PATH = _REPO_ROOT / "schemas/semantic-tree-sitter-grammar-profile.v1.schema.json"
 _RUST_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/grammar-profile.json"
+    / "languages/asp-rust/tree-sitter/tree-sitter-rust/grammar-profile.json"
 )
 _PYTHON_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/python-lang-project-harness/tree-sitter/tree-sitter-python/grammar-profile.json"
+    / "languages/asp-python/tree-sitter/tree-sitter-python/grammar-profile.json"
 )
 _TYPESCRIPT_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/grammar-profile.json"
+    / "languages/asp-typescript/tree-sitter/tree-sitter-typescript/grammar-profile.json"
 )
 _JULIA_PROFILE_PATH = (
     _REPO_ROOT
-    / "languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/grammar-profile.json"
+    / "languages/AspJulia.jl/tree-sitter/tree-sitter-julia/grammar-profile.json"
 )
 
 

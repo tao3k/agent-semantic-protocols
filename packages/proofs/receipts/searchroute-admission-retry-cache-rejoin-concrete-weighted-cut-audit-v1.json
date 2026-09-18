@@ -1,0 +1,85 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {AuthorityId : Type}\n  (left right :\n    List (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight (left ++ right) =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight left +\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight right",
+   "theoremFamily": "list-weight-append-conservation",
+   "rfcClauseIds": ["CWC-CONSERVATION", "CWC-LIST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight_append",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type}\n  {reports :\n    List (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId)}\n  {cutWeight : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight}\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ConcreteWeightedCut reports cutWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight reports =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight certificate.lowerReports +\n        certificate.selectedReport.votingWeight +\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight certificate.upperReports",
+   "theoremFamily": "cut-partition-weight-conservation",
+   "rfcClauseIds": ["CWC-CONSERVATION", "CWC-CUT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.concrete_cut_conserves_total_weight",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type}\n  {reports :\n    List (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId)}\n  {cutWeight : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight}\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ConcreteWeightedCut reports cutWeight),\n  cutWeight ≤\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight certificate.lowerReports +\n        certificate.selectedReport.votingWeight ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight reports <\n      cutWeight +\n        (certificate.selectedReport.votingWeight +\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight certificate.upperReports)",
+   "theoremFamily": "concrete-cut-arithmetic-witnesses",
+   "rfcClauseIds": ["CWC-CUT", "CWC-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.concrete_cut_arithmetic_witnesses",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type}\n  {reports :\n    List (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId)}\n  {cutWeight threshold : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight}\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ConcreteWeightedCut reports cutWeight),\n  certificate.selectedReport.boundValue < threshold →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ValuesStrictlyBelow threshold\n        certificate.lowerReports ∧\n      certificate.selectedReport.boundValue < threshold",
+   "theoremFamily": "ordered-lower-partition",
+   "rfcClauseIds": ["CWC-LOWER", "CWC-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.selected_below_threshold_covers_lower_partition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type}\n  {reports :\n    List (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId)}\n  {cutWeight threshold : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight}\n  (certificate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ConcreteWeightedCut reports cutWeight),\n  threshold < certificate.selectedReport.boundValue →\n    threshold < certificate.selectedReport.boundValue ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.ValuesStrictlyAbove threshold\n        certificate.upperReports",
+   "theoremFamily": "ordered-upper-partition",
+   "rfcClauseIds": ["CWC-ORDER", "CWC-UPPER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.selected_above_threshold_covers_upper_partition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {AuthorityId : Type}\n  (report : ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.WeightedAuthorityReport AuthorityId),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.DistinctAuthorities [report, report]",
+   "theoremFamily": "duplicate-authority-rejection",
+   "rfcClauseIds": ["CWC-DISTINCT", "CWC-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.duplicate_authority_cannot_form_distinct_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ report,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight [report, report] >\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight [report]",
+   "theoremFamily": "duplicate-weight-inflation-counterexample",
+   "rfcClauseIds": ["CWC-CONSERVATION", "CWC-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.duplicate_report_can_inflate_total_weight",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ lowerReports selectedReport upperReport cutWeight,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight lowerReports < cutWeight ∧\n    cutWeight ≤\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.totalVotingWeight lowerReports +\n          selectedReport.votingWeight ∧\n      selectedReport.boundValue > upperReport.boundValue",
+   "theoremFamily": "unordered-cut-counterexample",
+   "rfcClauseIds": ["CWC-COUNTEREXAMPLE", "CWC-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.cumulative_cut_without_value_order_is_insufficient",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 8,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 8,
+ "axiomDependentDeclarationCount": 0}

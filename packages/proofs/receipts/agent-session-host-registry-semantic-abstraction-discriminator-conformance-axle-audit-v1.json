@@ -1,0 +1,22 @@
+{
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "auditSha256": "af4b2f39f3789d1913ca8bb943a0ce57a9f318321954379ea6ae4f4cd860f673",
+  "declarationCount": 21,
+  "axiomFreeDeclarationCount": 21,
+  "axiomDependentDeclarationCount": 0,
+  "theoremFamilies": [
+    "abstraction-adequacy",
+    "conformance-counterexamples",
+    "discriminator-conformance",
+    "encoding-injectivity",
+    "replay-binding"
+  ],
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-ASAD-ABSTRACTION",
+    "ASP-RFC-10.05-ASAD-DISCRIMINATOR",
+    "ASP-RFC-10.05-ASAD-ENCODING",
+    "ASP-RFC-10.05-ASAD-REPLAY"
+  ],
+  "axiomInventory": []
+}

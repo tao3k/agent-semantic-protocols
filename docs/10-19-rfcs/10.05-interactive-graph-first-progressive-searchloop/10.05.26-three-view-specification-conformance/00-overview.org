@@ -1,0 +1,391 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.26 — Three-View Specification Conformance
+#+startup: overview
+
+* Status
+
+Draft.
+
+This RFC makes the Mermaid–Typst–Lean relationship introduced by RFC 10.05.23
+an explicit versioned projection contract.
+
+It complements rather than replaces:
+
+- RFC 10.25, which defines the general ProofObligation, AXLE/Lean lane,
+  ProofReceipt, FormalFact, and BranchLegality graph; and
+- RFC 10.26, which defines schemaProjection and packetProjection for concrete
+  search-packet fixtures.
+
+The missing bridge is a receipt binding one RFC clause projection, its Mermaid
+architecture/transition projection, its Typst mathematical projection, its Lean
+declaration projection, and a separately verified implementation receipt.
+
+* Problem
+
+Three readable views can drift while each remains locally valid:
+
+- a Mermaid state diagram can contain a transition that Lean rejects;
+- a Typst cost witness can change without the corresponding Lean theorem;
+- a Lean declaration can be renamed while the RFC table keeps a stale name;
+- an RFC clause can change while old diagram and proof receipts remain cached;
+  and
+- all three specification views can agree while the Rust implementation still
+  violates them.
+
+Org parsing, Typst stdin evaluation, and Lean compilation close different
+failure classes.  None of them alone establishes cross-view or implementation
+conformance.
+
+* Artifact model
+
+=ASP-RFC-10.05-TVSC-BUNDLE=: Each safety-critical projection entry contains:
+
+#+begin_example
+ThreeViewProjection {
+  clauseId,
+  clauseDigest,
+  mermaidBlockId,
+  mermaidDigest,
+  stateProjectionDigest,
+  typstBlockId,
+  typstDigest,
+  leanDeclarationId,
+  leanDigest,
+  revision
+}
+#+end_example
+
+The IDs provide exact navigation.  The digests provide invalidation.  The
+revision fences concurrent or reordered publication.
+
+* State-bearing Mermaid projection
+
+=ASP-RFC-10.05-TVSC-STATE=: A Mermaid flow, architecture, or sequence
+projection is state-bearing only when:
+
+- every component node exposes a finite lifecycle state domain;
+- every edge exposes source state and target state;
+- every edge carries one semantic kind: transition, guard, capability, or
+  prohibited effect; and
+- the extracted state projection has its own digest.
+
+The state projection digest is derived from parser-owned node/edge identities
+and normalized state semantics.  It is bound separately from the Mermaid source
+digest so a renderer-only formatting change can be distinguished from a
+semantic lifecycle change.
+
+#+name: state-bearing-flow-predicate
+#+begin_src typst
+#let stateful-node(node) = node.state-domain != none
+#let stateful-edge(edge) = (
+  edge.source-state != none
+  and edge.target-state != none
+  and edge.semantic != none
+)
+
+#let node = (state-domain: ("Absent", "Live", "Revoked"))
+#let edge = (
+  source-state: "Absent",
+  target-state: "Live",
+  semantic: "transition",
+)
+
+#assert(stateful-node(node))
+#assert(stateful-edge(edge))
+
+$ "StatefulFlow"(g) <==>
+  "AllNodesHaveStateDomains"(g)
+  and "AllEdgesHaveEndpointStates"(g)
+  and "AllEdgesHaveSemantics"(g) $
+
+"ok"
+#+end_src
+
+A component-only topology diagram is not a valid lifecycle projection.  It may
+remain explanatory documentation, but it cannot satisfy a safety-critical
+ThreeViewProjection entry.
+
+#+name: three-view-conformance-architecture
+#+begin_src mermaid
+flowchart LR
+  Clause["RFC clause<br/>state: Current | Changed"]
+  Mermaid["Mermaid projection<br/>state: Missing | Present | Stale"]
+  StateProjection["Normalized state projection<br/>state: Missing | Valid | Invalid | Stale"]
+  Typst["Typst projection<br/>state: Missing | EvalPassed | EvalFailed | Stale"]
+  Lean["Lean projection<br/>state: Missing | AxiomFree | Failed | Stale"]
+
+  Bundle["ThreeViewBundle<br/>state: Incomplete | Complete | Stale"]
+  TriadAudit["Cross-view audit<br/>state: Pending | Valid | Invalid"]
+  TriadReceipt["ThreeViewReceipt<br/>state: Current | Stale"]
+
+  Implementation["Implementation artifact<br/>state: Unverified | Changed"]
+  ExecutableCheck["Executable conformance check<br/>state: Pending | Passed | Failed"]
+  ImplementationReceipt["ImplementationReceipt<br/>state: Conformant | Counterexample | Stale"]
+  EvidenceGraph["EvidenceGraph and GraphRoute<br/>state: Specified | Conformant | Counterexample | Stale"]
+
+  Clause -->|"bind current digest"| Bundle
+  Mermaid -->|"extract node and edge states"| StateProjection
+  Mermaid -->|"bind current source digest"| Bundle
+  StateProjection -->|"Valid and current state digest"| Bundle
+  Typst -->|"EvalPassed and current"| Bundle
+  Lean -->|"AxiomFree and current"| Bundle
+  Bundle -->|"Complete to Pending"| TriadAudit
+  TriadAudit -->|"Valid to Current"| TriadReceipt
+
+  Implementation -->|"Unverified to Pending"| ExecutableCheck
+  Bundle -->|"bind Complete revision"| ExecutableCheck
+  ExecutableCheck -->|"Passed or Failed"| ImplementationReceipt
+
+  TriadReceipt --> EvidenceGraph
+  ImplementationReceipt --> EvidenceGraph
+#+end_src
+
+The two receipts are intentionally separate.  A valid ThreeViewReceipt proves
+projection consistency.  An ImplementationReceipt proves executable
+conformance for the bound implementation artifact.
+
+* Completeness
+
+=ASP-RFC-10.05-TVSC-COMPLETE=: A safety-critical entry is complete only when all
+three projection IDs exist.
+
+#+name: three-view-completeness-predicate
+#+begin_src typst
+#let complete(entry) = (
+  entry.mermaid != none
+  and entry.typst != none
+  and entry.lean != none
+)
+
+#let witness = (
+  mermaid: "native-router-authority-architecture",
+  typst: "exact-dispatch-admissibility",
+  lean: "DispatchAdmissible",
+)
+
+#assert(complete(witness))
+
+$ "Complete"(e) <==>
+  "HasMermaid"(e)
+  and "HasTypst"(e)
+  and "HasLean"(e) $
+
+"ok"
+#+end_src
+
+A diagram-only, mathematics-only, or theorem-only entry is incomplete.  This
+does not mean every explanatory paragraph requires three artifacts.  The rule
+applies to clauses that define authority, state transitions, safety fences,
+cache/generation identity, liveness assumptions, or cost claims used for route
+selection.
+
+* Digest and revision validity
+
+=ASP-RFC-10.05-TVSC-DIGEST=: A ThreeViewReceipt is valid only when every bound
+digest and the revision equal the current bundle.
+
+#+name: three-view-receipt-validity
+#+begin_src typst
+#let valid(receipt, bundle) = (
+  receipt.clause-digest == bundle.clause-digest
+  and receipt.mermaid-digest == bundle.mermaid-digest
+  and receipt.state-digest == bundle.state-digest
+  and receipt.typst-digest == bundle.typst-digest
+  and receipt.lean-digest == bundle.lean-digest
+  and receipt.revision == bundle.revision
+)
+
+$ "ReceiptValid"(r,b) <==>
+  "ClauseDigestEqual"(r,b)
+  and "MermaidDigestEqual"(r,b)
+  and "StateDigestEqual"(r,b)
+  and "TypstDigestEqual"(r,b)
+  and "LeanDigestEqual"(r,b)
+  and "RevisionEqual"(r,b) $
+
+"ok"
+#+end_src
+
+Any single-view change invalidates the whole receipt.  The system must not
+silently update one digest inside an old receipt.
+
+#+name: three-view-receipt-lifecycle
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Incomplete: one or more projection IDs missing
+  Incomplete --> Complete: Mermaid, state, Typst, and Lean projections present
+  Complete --> TriadValid: source, state, proof digests and revision match
+  TriadValid --> ImplementationConformant: executable receipt passed
+
+  Complete --> Stale: any source or state digest changed
+  TriadValid --> Stale: clause, state, view, or revision changed
+  ImplementationConformant --> Stale: implementation or bound digest changed
+
+  Stale --> Complete: rebuild projection bundle
+  Stale --> Incomplete: required projection removed
+#+end_src
+
+* Executable conformance separation
+
+=ASP-RFC-10.05-TVSC-EXECUTABLE=: Complete and internally consistent views do not
+prove implementation conformance.
+
+#+name: specification-is-not-implementation
+#+begin_src typst
+$ "CompleteProjection"(e)
+  and "ReceiptValid"(r,e)
+  not arrow.r.double
+  "ImplementationConforms"(i,e) $
+
+$ "ImplementationConforms"(i,e)
+  arrow.r.double
+  "ExecutableReceiptPassed"(i,e) $
+
+"ok"
+#+end_src
+
+The executable receipt binds at least:
+
+- clause digest;
+- state projection digest;
+- Lean/model digest;
+- implementation artifact digest;
+- implementation revision;
+- test/replay command identity;
+- observed result digest; and
+- pass/fail state.
+
+A failed implementation receipt remains useful counterexample evidence, but it
+cannot produce =ImplementationConforms=.
+
+* Cross-view publication
+
+=ASP-RFC-10.05-TVSC-PUBLISH=: Publication is a two-stage join:
+
+1. publish a current ThreeViewReceipt after completeness and digest validation;
+2. publish a separate current ImplementationReceipt after executable
+   conformance.
+
+EvidenceGraph may expose:
+
+- =specified-and-proved= when only stage 1 is current;
+- =implementation-conformant= when both stages are current;
+- =implementation-counterexample= when stage 1 is current and executable
+  conformance fails; or
+- =stale/incomplete= when required bindings are absent or invalid.
+
+#+name: three-view-publication-join
+#+begin_src mermaid
+flowchart TD
+  Entry["Safety-critical clause entry<br/>state: Current | Changed"]
+  Complete{"All three IDs and state semantics?"}
+  Digests{"All digests and revision current?"}
+  Triad["ThreeViewReceipt<br/>state: Current"]
+  Executable{"Executable conformance passed?"}
+  Conformant["Publication state<br/>implementation-conformant"]
+  Counterexample["Publication state<br/>implementation-counterexample"]
+  Incomplete["Publication state<br/>stale | incomplete"]
+
+  Entry --> Complete
+  Complete -->|no| Incomplete
+  Complete -->|yes| Digests
+  Digests -->|no| Incomplete
+  Digests -->|yes| Triad
+  Triad --> Executable
+  Executable -->|yes| Conformant
+  Executable -->|no| Counterexample
+#+end_src
+
+* Progressive disclosure and token cost
+
+The agent-facing SearchLoop receives compact identities and states first:
+
+#+begin_example
+clauseId
+mermaidBlockId
+typstBlockId
+leanDeclarationId
+triadState
+implementationState
+recommendedNext
+#+end_example
+
+Full Mermaid, Typst, Lean source, audit output, and implementation logs remain
+inspectable artifacts.  They are not dumped into every search packet.
+
+#+name: three-view-progressive-disclosure-cost
+#+begin_src typst
+#let summary = (identities: 4, bodies: 0)
+#let full = (identities: 4, bodies: 4)
+
+#assert(summary.identities == full.identities)
+#assert(summary.bodies < full.bodies)
+
+$ "NavigationIdentity"(summary) = "NavigationIdentity"(full) $
+$ "BodyCount"(summary) < "BodyCount"(full) $
+
+"ok"
+#+end_src
+
+This preserves exact navigation while reducing model-visible tokens.  It does
+not eliminate the need to inspect full artifacts when a proof or implementation
+counterexample is under review.
+
+* Lean verification
+
+The proof family is:
+
+- =packages/proofs/ASPProof/ThreeViewSpecificationConformance.lean=
+- =packages/proofs/ASPProof/Audit/ThreeViewSpecificationConformance.lean=
+- =packages/proofs/audit/ThreeViewSpecificationConformance.lean=
+- =packages/proofs/receipts/three-view-specification-conformance-v1.json=
+
+It proves:
+
+- complete projection construction;
+- construction of state-bearing nodes and edges;
+- rejection of missing node state, endpoint state, or edge semantics;
+- rejection when Mermaid, Typst, or Lean identity is missing;
+- exact receipt validity;
+- invalidation on clause, Mermaid, state projection, Typst, Lean, or revision
+  changes;
+- successful executable receipt conformance;
+- failed executable receipt rejection;
+- implementation digest mismatch rejection; and
+- nonimplication from complete views to failed implementation conformance.
+
+* Three-view traceability
+
+| Concern | Mermaid identity | Typst identity | Lean identity |
+|---------+------------------+----------------+---------------|
+| Stateful flow semantics | state-bearing nodes and labeled edges | =state-bearing-flow-predicate= | =StatefulNode=, =StatefulEdge=, missing-state rejection theorems |
+| Projection completeness | =three-view-conformance-architecture= | =three-view-completeness-predicate= | =CompleteProjection= |
+| Digest invalidation | =three-view-receipt-lifecycle= | =three-view-receipt-validity= | =ReceiptValid= and digest invalidation theorems |
+| Executable separation | architecture receipt split | =specification-is-not-implementation= | =ImplementationConforms=, =complete_views_do_not_conform_failed_implementation= |
+| Publication state | =three-view-publication-join= | receipt validity predicate | =verified_implementation_conforms=, =failed_implementation_not_conformant= |
+| Token-efficient inspection | progressive EvidenceGraph output | =three-view-progressive-disclosure-cost= | identity-bearing projection structures |
+
+* Implementation consequences
+
+No Rust or Orgize implementation is changed in this proof session.
+
+A later implementation phase requires:
+
+- a versioned ThreeViewProjection schema;
+- parser-owned extraction of named Mermaid and Typst block identities;
+- parser-owned extraction and normalization of node/edge state semantics;
+- state projection digest generation;
+- Lean declaration identity/digest extraction through AXLE or the proof lane;
+- cross-view receipt generation;
+- invalidation on any bound digest/revision change;
+- a separate executable ImplementationReceipt;
+- EvidenceGraph publication states; and
+- a compact SearchLoop projection with exact next actions.
+
+Mermaid rendering is owned by the TypeScript document runtime.  A local
+=mmdc= binary is not a prerequisite for authoring the Org source.  Org
+structural recognition proves that the named block exists; the TypeScript
+runtime owns rendering diagnostics and rendered-artifact receipts.

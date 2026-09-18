@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-collaboration-tool-call.v1.schema.json",
+  "title": "Codex Collaboration Tool Call",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "namespace", "toolName", "toolInput"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.codex-collaboration-tool-call" },
+    "schemaVersion": { "const": "1" },
+    "namespace": { "const": "collaboration" },
+    "toolName": {
+      "enum": [
+        "spawn_agent",
+        "list_agents",
+        "followup_task",
+        "send_message",
+        "interrupt_agent",
+        "wait_agent"
+      ]
+    },
+    "toolInput": { "type": "object" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "toolName": { "const": "spawn_agent" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_name", "message"],
+          "properties": {
+            "task_name": { "$ref": "#/$defs/taskName" },
+            "message": { "$ref": "#/$defs/message" },
+            "agent_type": { "$ref": "#/$defs/nonBlankString" },
+            "fork_turns": { "type": "string", "pattern": "^(none|all|[1-9][0-9]*)$" },
+            "model": { "$ref": "#/$defs/nonBlankString" },
+            "reasoning_effort": { "$ref": "#/$defs/nonBlankString" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "list_agents" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path_prefix": { "$ref": "#/$defs/canonicalAgentPath" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "followup_task" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "message"],
+          "properties": {
+            "target": { "$ref": "#/$defs/nonRootAgentTarget" },
+            "message": { "$ref": "#/$defs/message" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "send_message" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "message"],
+          "properties": {
+            "target": { "$ref": "#/$defs/agentTarget" },
+            "message": { "$ref": "#/$defs/message" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "interrupt_agent" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target"],
+          "properties": {
+            "target": { "$ref": "#/$defs/nonRootAgentTarget" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "toolName": { "const": "wait_agent" },
+        "toolInput": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeout_ms": { "type": "integer", "minimum": 10000, "maximum": 3600000 }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "canonicalAgentPath": {
+      "type": "string",
+      "pattern": "^/root(?:/[a-z0-9_]+)*$"
+    },
+    "nonBlankString": { "type": "string", "pattern": ".*\\S.*" },
+    "agentTarget": { "$ref": "#/$defs/nonBlankString" },
+    "nonRootAgentTarget": {
+      "allOf": [
+        { "$ref": "#/$defs/agentTarget" },
+        { "not": { "const": "/root" } }
+      ]
+    },
+    "taskName": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "message": { "$ref": "#/$defs/nonBlankString" }
+  }
+}

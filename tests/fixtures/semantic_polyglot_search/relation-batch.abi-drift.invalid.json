@@ -1,0 +1,20 @@
+{
+  "schemaId": "agent.semantic-protocols.search-relation-batch.v1",
+  "schemaVersion": "1",
+  "abiVersion": 2,
+  "sourceSnapshotDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "producer": {
+    "providerId": "asp-rust",
+    "languageId": "rust",
+    "artifactDigest": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "relations": [
+    {
+      "relationId": "asp.gql_candidate",
+      "authority": "observed",
+      "columns": [{ "name": "candidate", "valueType": "node-ref" }],
+      "rows": [{ "candidate": "node:owner:1" }],
+      "provenanceDigest": "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

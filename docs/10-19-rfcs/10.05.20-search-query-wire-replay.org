@@ -1,0 +1,244 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Search Query Wire and Replay Contract
+#+OPTIONS: toc:3 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05.20-search-query-wire-replay
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Search/query wire and replay contract
+** V1 Search Playbook Top-K outcome
+
+The Search Playbook broad-search result is a formal rank-ordered Top-K candidate
+set, not a post-hoc output-compression mechanism. In V1, =K = 30= and the
+agent-facing handoff has exactly three mutually exclusive outcomes:
+
+The admitted Search Layout may yield thousands of raw candidates before its
+bounded fusion and parser stages. In the default V1 layout, native =rg=
+arguments own path/glob and exact-text scope while Tantivy independently
+searches and ranks the same immutable generation owner universe. Runtime
+intersects both complete retrieval owner sets,
+then retains rg's owner-local match position and maps the fused result to the
+smallest overlapping parser-owned item selector. Tantivy's matched query keys
+remain ranking evidence on that grounded candidate. Neither mapping serializes
+source, line numbers, or excerpts; parser grounding prevents an owner-only hit
+from becoming an unactionable Search result.
+After retrieval fixes the candidate owners, Runtime validates or creates only
+their content-addressed parser artifacts and atomically attaches them to the
+resident semantic overlay.  This does not mint a generation, advance its epoch,
+or rewrite its durable Search artifact.  The request then builds a bounded graph
+from that exact semantic owner cut; Rust owns graph-aware ranking and emits the
+first thirty candidates.  The compiled Search Layout, rather than CLI option
+spelling or a flat union, determines which stages share an input scope and which
+consume a predecessor's scope.
+
+=(graph ...)= is this fan-in reasoning stage; it is not a fifth keyword-acquisition
+axis and it does not query an unrelated graph.  The Agent uses
+the candidate evidence returned by an earlier broad round, or relationships it
+already knows in the first round, to express a GQL/PGQL relation query.  The
+request maps the admitted candidate owners to node identities in their validated
+resident semantic overlay and runs the bounded resident Rust evaluator.  The
+Graph evaluator itself MUST NOT call Python Graphs, invoke a provider or parser,
+or open a second Runtime service.  Candidate parser materialization is the
+preceding typed refinement and may cross the existing provider actor only on a
+validated artifact miss.  Request Graph construction is in-process Rust work;
+it is neither a generation-global attachment nor a durable publication.
+
+The graph language and graph storage lifetime are orthogonal.  GQL/PGQL can be
+evaluated over the generation-scoped resident candidate graph for coding search.  A persistent
+PGQ/PGQL backend is reserved for low-volatility Workspace facts such as package
+and dependency topology.  Selecting GQL or PGQL MUST NOT implicitly persist
+source-search candidates.
+
+** Agent-authored inputs and layout-owned composition
+
+The public CLI does not add a synthetic =--priority= option. Repeated native
+input blocks remain distinct and preserve request occurrence order, but that
+order does not invent execution edges. The admitted Search Layout binds each
+input block to a stage and owns shared-scope, serial, fusion, and ranking
+semantics.
+
+A native pipe inside one clause, such as =runtime|client|host=, combines
+same-priority alternatives using that producer's native grammar.  ASP MUST NOT
+reinterpret or rewrite native rg, Tantivy, or Graph expressions merely to
+recover branch weights. When the Agent needs different priority, it writes
+separate repeated leaves in the required order. Producer symbol lists express
+a registry-bound producer set, not a hidden global weight.
+
+The request projection records each parsed acquisition clause as a typed
+=(axis, block-index)= reference in occurrence order.  This derived ordering is
+wire data, not another Agent-facing argument.  Grouped per-axis native blocks
+remain available for native execution, while the ordered references prevent
+the parser from erasing Agent-authored priority.
+
+Each result row records the executed layout-stage path in =matchedBy=. The
+default V1 path contains rg and Tantivy support before structural-scope selection;
+any Graph references form the final suffix. A receipt whose stage order is not
+a path through the admitted compiled layout is rejected as false execution
+history.
+
+=(graph ...)= is an ordered barrier after structural-scope selection. V1 rejects new
+retrieval input after the first Graph input: graph reasoning is the final
+progressive filtering phase, not an independent vote or an early keyword
+source. Multiple Graph blocks are evaluated in written order as progressively
+narrower relation constraints when the admitted layout permits repetition.
+
+- =candidates=: one to thirty selector-complete candidates, ordered by the
+  combined playbook rank;
+- =empty=: every requested search axis completed successfully and the ranked
+  candidate set is empty;
+- =unavailable=: registration, Runtime, search execution, or result projection
+  failed; this outcome carries only =stage= and =reasonKind=.
+
+=no-output= is not an outcome.  It cannot distinguish successful zero-match
+retrieval from an unavailable execution boundary and therefore cannot support
+evidence-chain reasoning.  Likewise, historical states such as stale index,
+invalid selector, or quarantine are typed =reasonKind= values under
+=unavailable= rather than competing top-level search outcomes.
+
+The Top-K handoff contains exact item/selector identity, ordered supporting
+clause references, and semantic relation mappings, but never
+source text, display excerpts, digests, or a prescribed next command.  Exact
+Query consumes a selected candidate; the agent remains responsible for deciding
+which selector to inspect or which independent search axes to recombine.
+
+
+Search and exact query are two root operations on one public =ClientFrame=
+data plane.  =asp search playbook= declares provider scope inside the
+=(producers ...)= form of its sole Scheme expression; =asp query playbook=
+consumes producer-bound exact selectors through its normalized flag request.
+Language-first Search/Query adapters are not a second public route.
+
+Every successful or terminal frame carries the same workspace identity,
+provider identity, generation identity, source-snapshot identity, request
+identity, and schema references. Search machine receipts carry the typed
+evidence graph, correlation, and residual uncertainty but no recommended
+command; query carries the canonical structural selector and the declared
+source or projection kind. A query may
+consume a selector produced by search only after the Runtime Server validates
+that selector against the active immutable generation and source snapshot.
+
+Admission is server-owned and precedes provider work. A cache-ready read performs
+one lookup of the published immutable generation under its strict 1ms budget.
+On a missing generation, Search/Query may submit or coalesce one detached
+single-flight intent and await daemon publication under the separate absolute
+first-computation deadline. Failed generation publication is terminal and MUST
+NOT trigger a hidden resubmission. A request owns its wait, not the shared build;
+cancelling a waiter cannot revoke another request's result. This distinction
+also covers syntax-plan context needed by the first Search call.
+=Queued= and =Building= are lifecycle states, never query results
+and never successful no-match evidence. A failed, cancelled, stale, torn, or
+cross-generation admission is a typed terminal error; it cannot fall back to a
+local provider or cached source.
+
+The detached admission terminal is not a resident-publication authority.  It
+may publish the canonical source-generation commit to the daemon lifecycle
+stream, but only the daemon-owned publication observer may join that commit
+with the current Runtime activation, active provider execution binding, and
+workspace execution publication before constructing and atomically exposing a
+=RuntimeQueryGeneration=.  A Search/Query callback and the explicit
+=workspace-generation.ensure-ready= route MUST NOT install a resident handle
+directly.  This prevents a source-only generation from racing the complete
+execution-bound publication or attempting Project Topology construction
+without its execution publication.
+
+Both the first resident lookup after request-handler activation (cold request)
+and subsequent resident lookups (warm requests) have a hard elapsed-time gate
+of strictly less than 1,000 microseconds.  The gate covers generation lookup,
+lease acquisition, identity comparison, resident fd/rg/Tantivy/parser-fact/
+graph evaluation, projection, and typed terminal construction.  It requires
+zero filesystem reads, database reads, provider process operations, parser
+invocations, Python or secondary Runtime RPCs, generation builds, and terminal
+waits.  Detached generation latency is measured on its own lifecycle
+receipt and can never be added to, hidden behind, or excluded from a successful
+Search/Query request after the fact.
+
+A complete Search result is a generation-owned immutable materialization, not
+foreground request work.  Its stable V1 key is
+=BLAKE3("agent.semantic-protocols.workspace-search-materialization.v1\\0" ||
+generationDigest || "\\0" || RFC8785-JCS(normalizedSearchRequest))=, rendered
+as =blake3-256:<lowercase-hex>=.  The normalized request includes the stable V1
+schema identity and ordered clause plan but excludes the =ClientFrame=
+=requestId=.  On a missing key, one caller atomically publishes =Building= and
+submits one detached materialization; all concurrent callers observe the same
+=Building= state and return =query-not-ready=.  A terminal materialization is
+either one bounded =Ready= value or one typed =Failed= value stored inside the
+exact =RuntimeQueryGeneration=.  A later generation owns a distinct map and
+cannot reuse either terminal.  Warm request handling computes the key, reads
+that map, and clones the bounded resident value; it MUST NOT rebuild the Search
+plan or execute any Search clause.
+
+Query Playbook uses the same lifecycle shape with domain
+=agent.semantic-protocols.workspace-query-materialization.v1= and the RFC 8785
+canonical normalized Query request.  The key binds the exact generation,
+ordered selector set, and projection while excluding envelope =requestId=.
+Detached materialization performs all selector reads, content hashing, Runtime
+binding validation, and receipt admission.  The admitted resident template
+uses the materialization key as its internal decision identity.  A warm frame
+may clone that bounded template and replace its top-level =requestId= plus the
+request-local =requestProfile= and =requestPlaneElapsedMicros= witness.  The
+latter fields are excluded from the materialization key; selectors, projection,
+bytes, content digests, binding, and terminal are immutable.  A miss or
+coalesced =Building= state returns typed
+=query-not-ready= under the same request-plane gate.
+
+A Query materialization whose admitted receipt has =terminal.state=failed= is
+published as the generation's typed =Failed= state, never as a =Ready= value
+containing an inner failure.  Dispatch maps that state to a non-ready
+=ClientFrame= outcome with the admitted failed receipt retained as structured
+error evidence.  Consequently a failed selector read cannot become a resident
+ready cache hit, and callers never need to inspect a successful envelope to
+discover that Query failed.
+
+A cold Query with more than one producer crosses one complete-generation
+barrier.  Runtime MUST NOT serialize one complete-generation successor per
+producer: candidate discovery and FD inventory are workspace-wide fixed work,
+so the serialized form multiplies that work by the producer count.  A
+single-producer Query may retain its language-scoped build.  This batching is
+an internal V1 execution rule and changes no Scheme or receipt field.
+
+Before requesting a cold generation, Query probes the immutable exact segment
+named by the durable pointer.  It may return directly only when every requested
+canonical owner still hashes to the segment owner digest and every selector is
+an exact, non-relocated projection hit.  This request-local replay publishes no
+workspace Ready authority.  Any mismatch or relocation requirement falls
+through to complete-generation admission and its global identity proof.
+
+The V1 Query Playbook receipt also carries =sourceGenerationDigest= and
+=sourceRootDigest= from the immutable exact segment that supplied every
+materialization.  These are content-identity witnesses, not timing fields.  A
+ready multi-selector receipt is valid only when every selector read reports the
+same pair; disagreement fails the whole materialization.  The request-local
+profile distinguishes =materialized= from =resident-hit=, so qualification
+applies the strict sub-millisecond gate only to the latter Runtime request-plane
+witness.  Client round-trip latency and Runtime phase telemetry remain separate
+observations.  Qualification MUST NOT issue a second provider =ExactQuery= merely
+to recover identity, timing, or zero-work evidence, and it MUST NOT synthesize
+legacy ExactQuery counters for a Query Playbook request.
+
+This is the semantic request-plane gate, ending when the dispatcher returns the
+fully constructed typed result or terminal.  ClientFrame envelope encoding,
+transport queue residence, kernel delivery, and peer consumption are separate
+transport observations: peer backpressure makes a hard sub-millisecond network
+delivery guarantee impossible, and transport delay MUST NOT retroactively
+relabel an already terminal semantic result.  Runtime records response
+serialization and terminal egress independently.  Those observations may fail
+a transport SLO, but they are not permitted to hide inside
+=runtime-resident-request-plane-receipt= or weaken its strict dispatch gate.
+The lifecycle cancellation probe likewise measures a two-frame client
+round-trip (=Request= followed by =Cancel= and the correlated terminal).  Live
+Corpus records that latency and requires zero residual pending calls, but MUST
+NOT compare it with the sub-millisecond Search/Query request-plane gate.
+
+Replay is identity-bound: replaying the same semantic request against the same
+workspace, provider, generation, source snapshot, selector, and schema
+references is deterministic.  A changed semantic identity cannot reuse the
+prior result.  A changed request nonce creates a new frame and attributable
+request-plane receipt, but does not invalidate an otherwise identical
+generation-bound Search materialization; the server never replays the prior
+frame envelope as the new terminal. Search and query terminals therefore
+preserve the current request identity and expose the server-owned error reason
+and next action without silent retry.

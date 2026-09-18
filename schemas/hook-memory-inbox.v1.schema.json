@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/hook-memory-inbox.v1.schema.json",
+  "title": "Hook Memory Inbox Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "inboxSequence", "entryKind", "event"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook.memory-inbox" },
+    "schemaVersion": { "const": "1" },
+    "inboxSequence": { "type": "integer", "minimum": 1 },
+    "entryKind": {
+      "enum": [
+        "host-lifecycle",
+        "host-execution-observation",
+        "workspace-mutation"
+      ]
+    },
+    "event": { "type": "object" }
+  }
+}
