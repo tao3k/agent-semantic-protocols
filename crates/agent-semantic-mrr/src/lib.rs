@@ -39,7 +39,9 @@ pub use scheme_aot_program::{
 #[cfg(feature = "mrr-data-search-composition")]
 mod data_search_composition;
 #[cfg(feature = "mrr-data-search-composition")]
-pub use data_search_composition::{DataSearchCompositionInput, DataSearchCompositionOutput,
-    DataSearchLeaf, compose_resident_data_search};
+pub use data_search_composition::{
+    DataSearchCompositionInput, DataSearchCompositionOutput, DataSearchLeaf,
+    compose_resident_data_search,
+};
 #[cfg(feature = "mrr-data-search-composition")]
 pub use mrr_data_core::DataSearchCandidateComposition;

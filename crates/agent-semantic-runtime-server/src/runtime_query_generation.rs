@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient;
+use agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication;
 
 use super::query_generation_calibration::RuntimeSearchGenerationBuildResourceReceipt;
 pub use super::runtime_query_generation_model::RuntimeQueryGeneration;
@@ -699,10 +700,7 @@ impl RuntimeQueryGeneration {
     }
 
     /// Borrows the immutable source/Runtime product installed with this generation.
-    pub fn execution_publication(
-        &self,
-    ) -> Option<&agent_semantic_content_identity::runtime_workspace_execution_publication::RuntimeWorkspaceExecutionPublication>
-    {
+    pub fn execution_publication(&self) -> Option<&RuntimeWorkspaceExecutionPublication> {
         self.execution_publication.as_deref()
     }
 
