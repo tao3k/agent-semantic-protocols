@@ -61,3 +61,5 @@ jobs:
           python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-SEARCH-BUILD -- cargo test -vv --locked -p agent-semantic-mrr --features mrr-data-search-composition --no-run
           python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-SEARCH-TEST -- cargo test --locked -p agent-semantic-mrr --features mrr-data-search-composition data_search_composition -- --nocapture
           python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-RUNTIME-BUILD -- cargo check -vv --locked -p agent-semantic-runtime-server --features mrr-data-search-composition
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-FFI-LINK -- cargo build -vv --locked -p agent-semantic-client --bin asp --features agent-semantic-runtime-server/mrr-data-search-composition
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-FFI-SMOKE -- target/debug/asp --help
