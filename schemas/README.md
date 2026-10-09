@@ -994,3 +994,17 @@ The feature-qualified Data Search boundary retains separate Version 1 diagnostic
 `search-execution-witness.v1.schema.json`, `search-order-witness.v1.schema.json`,
 and `search-candidate-witness.v1.schema.json`. They bind actual composition,
 execution and candidate evidence without changing the existing public Search packet.
+
+Org and Markdown use the embedded orgize implementation. Their V1 language
+profiles declare `publicationOwner: builtin`; Schema Manager verifies their
+canonical ASP schema closures without reading or updating package-local provider
+receipts. Other profiles default to `provider-package` and retain bootstrap
+receipt verification. The orgize submodule follows the exact revision of its
+active implementation PR independently of provider receipt publication.
+
+Embedded Orgize implementation builds consume producer-qualified FFI bundles.
+The Orgize submodule pins the exact source revision; `.github/actions/orgize-ffi`
+fetches that revision's successful CI artifact, and Orgize build-support admits
+its target, runtime, headers and static library hashes. ASP does not implicitly
+compile the Scheme parser. The external-program C lifecycle bridge still uses
+the paired FFI runtime toolchain.

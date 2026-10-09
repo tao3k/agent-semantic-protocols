@@ -8,13 +8,17 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use super::contract::{
+use crate::engine::contract::{
     ClientDbBackend, ClientDbEngineBackend, ClientDbEngineDurability, ClientDbEngineFeatures,
 };
-use super::turso_statement::{execute_turso_statement, run_turso_operation};
+use crate::engine::turso_statement::{execute_turso_statement, run_turso_operation};
 
-const TURSO_CLIENT_DB_FILE: &str = "facts.turso";
-const TURSO_SEARCH_PROJECTION_DB_FILE: &str = "search-projection.turso";
+use super::pool::{
+    build_turso_database, shared_turso_read_only_connection, shared_turso_write_connection,
+};
+
+pub(super) const TURSO_CLIENT_DB_FILE: &str = "facts.turso";
+pub(super) const TURSO_SEARCH_PROJECTION_DB_FILE: &str = "search-projection.turso";
 const TURSO_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 const TURSO_CLIENT_DB_PHYSICAL_FORMAT_ID: &str = "turso-0.7-native";
 const TURSO_CLIENT_DB_FORMAT_RECEIPT_FILE: &str = "facts.turso.format.v1.json";
@@ -22,8 +26,8 @@ const TURSO_SEARCH_PROJECTION_DB_FORMAT_RECEIPT_FILE: &str =
     "search-projection.turso.format.v1.json";
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING: &str = "pending-cutover";
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY: &str = "ready";
-const TURSO_CLIENT_DB_INDEX_METHOD: bool = true;
-const TURSO_CLIENT_DB_MVCC_ENABLED: bool = true;
+pub(super) const TURSO_CLIENT_DB_INDEX_METHOD: bool = true;
+pub(super) const TURSO_CLIENT_DB_MVCC_ENABLED: bool = true;
 const TURSO_CLIENT_DB_BEGIN_CONCURRENT_ENABLED: bool = false;
 
 /// Bootstrap metadata table used to record the Turso DB Engine schema version.
@@ -45,7 +49,7 @@ pub struct TursoClientDbEngineReport {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) struct TursoClientDbEngineBackend;
+pub(in crate::engine) struct TursoClientDbEngineBackend;
 
 impl ClientDbEngineBackend for TursoClientDbEngineBackend {
     type Connection = ();
@@ -128,7 +132,7 @@ async fn turso_physical_format_is_current(
         .map_err(|error| format!("failed to read Turso physical-format authority: {error}"))
 }
 
-pub(super) fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, String> {
+pub(in crate::engine) fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, String> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create Turso client DB dir: {error}"))?;
@@ -139,7 +143,7 @@ pub(super) fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, St
     Ok(turso_path)
 }
 
-pub(super) fn turso_0_7_format_receipt_path(turso_path: &Path) -> PathBuf {
+pub(in crate::engine) fn turso_0_7_format_receipt_path(turso_path: &Path) -> PathBuf {
     let receipt_file = if turso_path.file_name().and_then(|name| name.to_str())
         == Some(TURSO_SEARCH_PROJECTION_DB_FILE)
     {
@@ -170,7 +174,7 @@ fn ensure_no_active_turso_migration(turso_path: &Path) -> Result<(), String> {
         return Ok(());
     };
     let marker_path =
-        client_dir.join(super::turso_migration::TURSO_0_7_ACTIVE_MIGRATION_MARKER_FILE);
+        client_dir.join(crate::engine::turso_migration::TURSO_0_7_ACTIVE_MIGRATION_MARKER_FILE);
     if marker_path.is_file() {
         return Err(format!(
             "active Turso 0.7 cutover is in progress for `{}`; retry after migration completes",
@@ -180,7 +184,7 @@ fn ensure_no_active_turso_migration(turso_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn write_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), String> {
+pub(in crate::engine) fn write_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), String> {
     let receipt_path = turso_0_7_format_receipt_path(turso_path);
     let temporary_path = receipt_path.with_extension(format!(
         "json.tmp-{}-{}",
@@ -213,7 +217,7 @@ pub(super) fn write_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), St
     })
 }
 
-pub(super) async fn bootstrap_turso_schema_version(
+pub(in crate::engine) async fn bootstrap_turso_schema_version(
     connection: &mut mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     execute_turso_statement(
@@ -367,7 +371,7 @@ pub(super) async fn bootstrap_turso_schema_version(
     }
 }
 
-pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineReport {
+pub(in crate::engine) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineReport {
     let backend = TursoClientDbEngineBackend;
     let mut report = backend.inspect(db_path);
     report.status = "bootstrap-smoke";
@@ -376,7 +380,7 @@ pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineRepor
     report
 }
 
-pub(super) async fn open_turso_client_db_read_only(
+pub(in crate::engine) async fn open_turso_client_db_read_only(
     turso_path: PathBuf,
 ) -> Result<mrr_data_backend::turso_driver::Connection, String> {
     ensure_no_active_turso_migration(&turso_path)?;
@@ -384,257 +388,17 @@ pub(super) async fn open_turso_client_db_read_only(
     shared_turso_read_only_connection(&turso_path).await
 }
 
-pub(super) async fn validate_turso_0_7_migration_target(turso_path: PathBuf) -> Result<(), String> {
+pub(in crate::engine) async fn validate_turso_0_7_migration_target(
+    turso_path: PathBuf,
+) -> Result<(), String> {
     ensure_turso_0_7_format_receipt(&turso_path)?;
     let connection = shared_turso_read_only_connection(&turso_path).await?;
     drop(connection);
     Ok(())
 }
 
-fn turso_builder(turso_path: &Path) -> mrr_data_backend::turso_driver::Builder {
-    mrr_data_backend::turso_driver::Builder::new_local(turso_path.to_string_lossy().as_ref())
-        .experimental_index_method(TURSO_CLIENT_DB_INDEX_METHOD)
-}
-
-type TursoSchemaState = std::sync::Arc<
-    tokio::sync::Mutex<
-        std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
-    >,
->;
-
-/// A connection paired with the shared database authority that created it.
-pub(super) struct TursoConnectionLease {
-    _database: std::sync::Arc<mrr_data_backend::turso_driver::Database>,
-    connection: tokio::sync::OwnedMutexGuard<mrr_data_backend::turso_driver::Connection>,
-    schema_state: TursoSchemaState,
-}
-
-impl TursoConnectionLease {
-    pub(super) async fn schema_bootstrap_state(
-        &self,
-        schema_id: &'static str,
-    ) -> std::sync::Arc<tokio::sync::OnceCell<()>> {
-        let mut states = self.schema_state.lock().await;
-        std::sync::Arc::clone(
-            states
-                .entry(schema_id)
-                .or_insert_with(|| std::sync::Arc::new(tokio::sync::OnceCell::new())),
-        )
-    }
-}
-
-impl std::ops::Deref for TursoConnectionLease {
-    type Target = mrr_data_backend::turso_driver::Connection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for TursoConnectionLease {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
-
-struct TursoDatabasePoolEntry {
-    database: tokio::sync::OnceCell<std::sync::Arc<mrr_data_backend::turso_driver::Database>>,
-    write_lanes: tokio::sync::RwLock<
-        Vec<std::sync::Arc<tokio::sync::Mutex<mrr_data_backend::turso_driver::Connection>>>,
-    >,
-    next_write_lane: std::sync::atomic::AtomicUsize,
-    schema_state: TursoSchemaState,
-}
-
-type TursoDatabasePool =
-    std::collections::BTreeMap<std::path::PathBuf, std::sync::Arc<TursoDatabasePoolEntry>>;
-
-fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
-    static POOL: std::sync::OnceLock<tokio::sync::Mutex<TursoDatabasePool>> =
-        std::sync::OnceLock::new();
-    POOL.get_or_init(|| tokio::sync::Mutex::new(TursoDatabasePool::new()))
-}
-
-pub(crate) async fn shared_turso_database(
-    turso_path: &Path,
-) -> Result<std::sync::Arc<mrr_data_backend::turso_driver::Database>, String> {
-    let entry = shared_turso_pool_entry(turso_path).await;
-    let database = entry
-        .database
-        .get_or_try_init(|| async {
-            build_turso_database(turso_path)
-                .await
-                .map(std::sync::Arc::new)
-        })
-        .await?;
-    Ok(std::sync::Arc::clone(database))
-}
-
-async fn shared_turso_pool_entry(turso_path: &Path) -> std::sync::Arc<TursoDatabasePoolEntry> {
-    let mut pool = turso_database_pool().lock().await;
-    std::sync::Arc::clone(pool.entry(turso_path.to_path_buf()).or_insert_with(|| {
-        std::sync::Arc::new(TursoDatabasePoolEntry {
-            database: tokio::sync::OnceCell::new(),
-            write_lanes: tokio::sync::RwLock::new(Vec::new()),
-            next_write_lane: std::sync::atomic::AtomicUsize::new(0),
-            schema_state: std::sync::Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-        })
-    }))
-}
-
-pub(super) async fn evict_turso_client_dir(client_dir: &Path) {
-    let mut pool = turso_database_pool().lock().await;
-    pool.remove(&client_dir.join(TURSO_CLIENT_DB_FILE));
-    pool.remove(&client_dir.join(TURSO_SEARCH_PROJECTION_DB_FILE));
-}
-
-async fn configure_turso_write_connection(
-    connection: &mrr_data_backend::turso_driver::Connection,
-    mvcc_enabled: bool,
-) -> Result<(), String> {
-    if !mvcc_enabled {
-        return Ok(());
-    }
-
-    let mut rows = connection
-        .query("PRAGMA journal_mode = 'mvcc'", ())
-        .await
-        .map_err(|error| format!("failed to enable Turso client DB MVCC: {error}"))?;
-    let row = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso client DB journal mode: {error}"))?
-        .ok_or_else(|| "Turso client DB journal mode returned no row".to_string())?;
-    let journal_mode = row
-        .get::<String>(0)
-        .map_err(|error| format!("failed to decode Turso client DB journal mode: {error}"))?;
-    if journal_mode != "mvcc" {
-        return Err(format!(
-            "Turso client DB requires journal_mode=mvcc, observed {journal_mode}"
-        ));
-    }
-    Ok(())
-}
-
-fn adaptive_turso_write_lane_ceiling() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1)
-}
-
-async fn new_turso_write_lane(
-    database: &mrr_data_backend::turso_driver::Database,
-    turso_path: &Path,
-) -> Result<std::sync::Arc<tokio::sync::Mutex<mrr_data_backend::turso_driver::Connection>>, String>
-{
-    let connection = database
-        .connect()
-        .map_err(|error| format!("failed to connect Turso client DB write lane: {error}"))?;
-    configure_turso_write_connection(
-        &connection,
-        TURSO_CLIENT_DB_MVCC_ENABLED
-            && turso_path.file_name().and_then(|name| name.to_str())
-                != Some(TURSO_SEARCH_PROJECTION_DB_FILE),
-    )
-    .await?;
-    Ok(std::sync::Arc::new(tokio::sync::Mutex::new(connection)))
-}
-
-async fn shared_turso_write_connection(turso_path: &Path) -> Result<TursoConnectionLease, String> {
-    let entry = shared_turso_pool_entry(turso_path).await;
-    let database = shared_turso_database(turso_path).await?;
-    let mut lanes = {
-        let lanes = entry.write_lanes.read().await;
-        lanes.iter().cloned().collect::<Vec<_>>()
-    };
-    if lanes.is_empty() {
-        let mut published = entry.write_lanes.write().await;
-        if published.is_empty() {
-            published.push(new_turso_write_lane(&database, turso_path).await?);
-        }
-        lanes = published.iter().cloned().collect();
-    }
-
-    let first_lane = entry
-        .next_write_lane
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        % lanes.len();
-    for offset in 0..lanes.len() {
-        let lane = std::sync::Arc::clone(&lanes[(first_lane + offset) % lanes.len()]);
-        if let Ok(connection) = lane.try_lock_owned() {
-            return Ok(TursoConnectionLease {
-                _database: database,
-                connection,
-                schema_state: std::sync::Arc::clone(&entry.schema_state),
-            });
-        }
-    }
-
-    let lane = if lanes.len() < adaptive_turso_write_lane_ceiling() {
-        let mut published = entry.write_lanes.write().await;
-        if published.len() < adaptive_turso_write_lane_ceiling() {
-            let lane = new_turso_write_lane(&database, turso_path).await?;
-            published.push(std::sync::Arc::clone(&lane));
-            lane
-        } else {
-            std::sync::Arc::clone(&published[first_lane % published.len()])
-        }
-    } else {
-        std::sync::Arc::clone(&lanes[first_lane])
-    };
-    let connection = lane.lock_owned().await;
-    Ok(TursoConnectionLease {
-        _database: database,
-        connection,
-        schema_state: std::sync::Arc::clone(&entry.schema_state),
-    })
-}
-
-async fn shared_turso_read_only_connection(
-    turso_path: &Path,
-) -> Result<mrr_data_backend::turso_driver::Connection, String> {
-    let database = shared_turso_database(turso_path).await?;
-    let connection = database
-        .connect()
-        .map_err(|error| format!("failed to connect Turso client DB read-only: {error}"))?;
-    connection
-        .execute("PRAGMA query_only = 1", ())
-        .await
-        .map_err(|error| format!("failed to enforce Turso client DB read-only mode: {error}"))?;
-    Ok(connection)
-}
-
-async fn build_turso_database(
-    turso_path: &Path,
-) -> Result<mrr_data_backend::turso_driver::Database, String> {
-    let max_attempts = 8;
-    let mut last_lock_error = None;
-    for attempt in 0..max_attempts {
-        match turso_builder(turso_path).build().await {
-            Ok(database) => return Ok(database),
-            Err(error) => {
-                let message = error.to_string();
-                if !super::turso_lock_policy::is_turso_lock_error(&message) {
-                    return Err(format!("failed to open Turso client DB: {message}"));
-                }
-                last_lock_error = Some(message);
-                if attempt + 1 == max_attempts {
-                    break;
-                }
-                tokio::time::sleep(super::turso_lock_policy::turso_lock_retry_delay(attempt)).await;
-            }
-        }
-    }
-    Err(format!(
-        "failed to open Turso client DB after bounded lock retries: {}",
-        last_lock_error.unwrap_or_else(|| "unknown Turso lock error".to_string())
-    ))
-}
-
 /// Open an unreceipted legacy file only for bounded, read-only Turso 0.7 migration.
-pub(super) async fn open_turso_0_7_migration_source(
+pub(in crate::engine) async fn open_turso_0_7_migration_source(
     turso_path: &Path,
 ) -> Result<
     (
@@ -656,41 +420,41 @@ pub(super) async fn open_turso_0_7_migration_source(
     Ok((database, connection))
 }
 
-pub(super) fn turso_client_db_exists(db_path: &Path) -> bool {
+pub(in crate::engine) fn turso_client_db_exists(db_path: &Path) -> bool {
     db_path.with_file_name(TURSO_CLIENT_DB_FILE).exists()
 }
 
-pub(super) async fn connect_turso_client_db(
+pub(in crate::engine) async fn connect_turso_client_db(
     db_path: &Path,
 ) -> Result<TursoConnectionLease, String> {
     let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
     shared_turso_write_connection(&turso_path).await
 }
 
-pub(super) fn turso_search_projection_db_path(db_path: &Path) -> PathBuf {
+pub(in crate::engine) fn turso_search_projection_db_path(db_path: &Path) -> PathBuf {
     db_path.with_file_name(TURSO_SEARCH_PROJECTION_DB_FILE)
 }
 
-pub(super) async fn connect_turso_search_projection_db_for_write(
+pub(in crate::engine) async fn connect_turso_search_projection_db_for_write(
     db_path: &Path,
 ) -> Result<TursoConnectionLease, String> {
     shared_turso_write_connection(&turso_search_projection_db_path(db_path)).await
 }
 
-pub(super) async fn connect_turso_search_projection_db_read_only(
+pub(in crate::engine) async fn connect_turso_search_projection_db_read_only(
     db_path: &Path,
 ) -> Result<mrr_data_backend::turso_driver::Connection, String> {
     shared_turso_read_only_connection(&turso_search_projection_db_path(db_path)).await
 }
 
-pub(super) async fn connect_turso_client_db_read_only(
+pub(in crate::engine) async fn connect_turso_client_db_read_only(
     db_path: &Path,
 ) -> Result<mrr_data_backend::turso_driver::Connection, String> {
     let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
     open_turso_client_db_read_only(turso_path).await
 }
 
-pub(super) async fn turso_table_exists(
+pub(in crate::engine) async fn turso_table_exists(
     connection: &mrr_data_backend::turso_driver::Connection,
     table_name: &str,
 ) -> Result<bool, String> {
@@ -718,7 +482,3 @@ pub(super) async fn turso_table_exists(
     }
     Ok(false)
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/db/engine/turso_pool.rs"]
-mod tests;

@@ -45,7 +45,8 @@ pub use registry::{
     BUNDLE_RECEIPT_FILE, BUNDLE_RECEIPT_SCHEMA_ID, DEFAULT_PROFILE_REGISTRY,
     LanguageSchemaBundleReceipt, LanguageSchemaProfile, LanguageSchemaProfileRegistry,
     PROFILE_REGISTRY_SCHEMA_ID, ResolvedLanguageSchemaBundle, ResolvedSchemaDocument,
-    SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReport, SearchProducerAxis,
+    SCHEMA_VERSION, SchemaBundleEntry, SchemaBundleReport, SchemaPublicationOwner,
+    SearchProducerAxis,
 };
 #[cfg(feature = "runtime")]
 pub use responsibility_model::{

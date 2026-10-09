@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: large-library-runtime-benchmark-${{ github.ref }}
@@ -54,6 +55,8 @@ jobs:
         uses: cachix/install-nix-action@v31
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Consume the committed Orgize FFI bundle
+        uses: ./.github/actions/orgize-ffi
       - name: Build Server and test-owned runner
         shell: bash
         run: ./.devenv/devenv-profile-exec just build-live-corpus-test-runtime

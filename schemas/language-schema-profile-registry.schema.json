@@ -42,6 +42,7 @@
             "uniqueItems": true,
             "items": { "enum": ["language", "document"] }
           },
+          "publicationOwner": { "type": "string", "enum": ["provider-package", "builtin"], "default": "provider-package" },
           "packageRoot": { "type": "string", "minLength": 1 },
           "bundleRoot": { "type": "string", "minLength": 1 },
           "rootSets": { "type": "array", "items": { "type": "string", "minLength": 1 } },

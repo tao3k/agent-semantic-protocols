@@ -33,6 +33,15 @@ Schema distribution has three disjoint classes:
 | client bootstrap | shared V1 client protocol | one bootstrap contract or generated binding | client build |
 | shared closure | canonical root =schemas/= | forbidden as a Language copy | Runtime Server |
 
+Org and Markdown are embedded orgize implementations, not separately published
+providers. Their V1 profiles explicitly declare =publicationOwner: builtin=.
+Schema Manager resolves and validates the canonical closure for these profiles,
+without consuming or materializing package-local provider receipts. Missing or
+invalid canonical documents still fail admission. Separate language packages
+retain =provider-package= publication and bootstrap receipt verification.
+The orgize dependency follows its active implementation PR revision; provider
+receipt synchronization must not replace that revision.
+
 Runtime Server dynamically *projects and distributes* shared schemas.  It does
 not dynamically invent schema semantics.  Every returned document is an exact
 canonical build input, and every response is bound to the registered

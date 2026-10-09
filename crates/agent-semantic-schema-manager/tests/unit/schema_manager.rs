@@ -680,3 +680,40 @@ fn repository_schema_family_registry_never_names_a_missing_schema() {
         .expect("the canonical schema family registry must be complete");
     assert!(!profiles.is_empty());
 }
+
+#[tokio::test]
+async fn builtin_profile_uses_canonical_closure_without_provider_publication() {
+    let (root, manager) = fixture();
+    let registry_path = root.path().join("profiles.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_slice(&fs::read(&registry_path).expect("read registry"))
+            .expect("decode registry");
+    registry["profiles"][0]["publicationOwner"] = serde_json::json!("builtin");
+    fs::write(
+        &registry_path,
+        serde_json::to_vec(&registry).expect("encode registry"),
+    )
+    .expect("write builtin profile");
+    fs::remove_dir_all(root.path().join("languages/fixture")).expect("remove provider fixture");
+    let before = manager
+        .resolve_bundles(&[])
+        .await
+        .expect("resolve builtin closure");
+    let materialized = manager
+        .materialize(&[])
+        .await
+        .expect("admit builtin closure");
+    let verified = manager.verify(&[]).await.expect("verify builtin closure");
+    assert_eq!(materialized.len(), 1);
+    assert_eq!(verified.len(), 1);
+    assert!(materialized[0].receipt_path.is_none());
+    assert!(verified[0].receipt_path.is_none());
+    assert_eq!(materialized[0].changed_count, 0);
+    assert_eq!(verified[0].bundle_digest, before[0].bundle_digest);
+    assert!(!root.path().join("languages/fixture").exists());
+    fs::remove_file(root.path().join("schemas/root.schema.json")).expect("remove canonical schema");
+    assert!(
+        manager.verify(&[]).await.is_err(),
+        "missing builtin canonical schema must fail"
+    );
+}

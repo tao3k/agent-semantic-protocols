@@ -232,13 +232,8 @@ pub(super) fn validate_projection(
         {
             return invalid("schema-invalid", "projection hit evidence is invalid");
         }
-        for boolean in ["native"] {
-            if hit.get(boolean).is_some_and(|value| !value.is_boolean()) {
-                return invalid(
-                    "schema-invalid",
-                    format!("projection.hit.{boolean} must be boolean"),
-                );
-            }
+        if hit.get("native").is_some_and(|value| !value.is_boolean()) {
+            return invalid("schema-invalid", "projection.hit.native must be boolean");
         }
         if let Some(ranges) = hit.get("rg") {
             let ranges = ranges

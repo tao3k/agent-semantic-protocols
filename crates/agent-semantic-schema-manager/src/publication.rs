@@ -198,7 +198,7 @@ pub(super) fn report(
         schema_count: receipt.schemas.len(),
         changed_count,
         removed_count,
-        receipt_path,
+        receipt_path: Some(receipt_path),
         bundle_digest: receipt.bundle_digest.clone(),
     }
 }

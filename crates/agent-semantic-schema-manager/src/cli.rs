@@ -85,7 +85,11 @@ pub async fn run_cli(arguments: impl IntoIterator<Item = String>) -> Result<(), 
             report.changed_count,
             report.removed_count,
             report.bundle_digest,
-            report.receipt_path.display()
+            report
+                .receipt_path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "builtin-canonical-closure".to_owned())
         );
     }
     Ok(())

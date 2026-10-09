@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -92,6 +93,10 @@ jobs:
           workspaces: . -> target
           shared-key: rust-package-${{ matrix.package }}
           cache-on-failure: true
+
+      - name: Consume the committed Orgize FFI bundle
+        if: contains(fromJSON('["agent-semantic-client","agent-semantic-client-db","agent-semantic-hook","agent-semantic-hook-testkit","agent-semantic-runtime-server","agent-semantic-search","agent-semantic-search-projection","agent-semantic-topology"]'), matrix.package)
+        uses: ./.github/actions/orgize-ffi
 
       - name: Build client installation fixture binaries
         if: ${{ matrix.package == 'agent-semantic-client' }}

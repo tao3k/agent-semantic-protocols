@@ -41,6 +41,7 @@ use crate::registry::ResolvedSchemaDocument;
 use crate::registry::SCHEMA_VERSION;
 use crate::registry::SchemaBundleEntry;
 use crate::registry::SchemaBundleReport;
+use crate::registry::SchemaPublicationOwner;
 use crate::task_owner::run_blocking;
 
 #[derive(Clone, Debug)]
@@ -455,6 +456,16 @@ impl SchemaManager {
         profile: &LanguageSchemaProfile,
     ) -> Result<SchemaBundleReport, String> {
         let (receipt, documents) = self.expected_receipt(registry, profile)?;
+        if profile.publication_owner == SchemaPublicationOwner::Builtin {
+            return Ok(SchemaBundleReport {
+                language_id: profile.language_id.clone(),
+                schema_count: receipt.schemas.len(),
+                changed_count: 0,
+                removed_count: 0,
+                receipt_path: None,
+                bundle_digest: receipt.bundle_digest,
+            });
+        }
         let schema_root = self.workspace_root.join(&profile.bundle_root);
         fs::create_dir_all(&schema_root).map_err(|error| {
             format!(
@@ -481,6 +492,16 @@ impl SchemaManager {
         profile: &LanguageSchemaProfile,
     ) -> Result<SchemaBundleReport, String> {
         let (expected, documents) = self.expected_receipt(registry, profile)?;
+        if profile.publication_owner == SchemaPublicationOwner::Builtin {
+            return Ok(SchemaBundleReport {
+                language_id: profile.language_id.clone(),
+                schema_count: expected.schemas.len(),
+                changed_count: 0,
+                removed_count: 0,
+                receipt_path: None,
+                bundle_digest: expected.bundle_digest,
+            });
+        }
         let schema_root = self.workspace_root.join(&profile.bundle_root);
         for name in &profile.provider_owned {
             if !schema_root.join(name).is_file() {

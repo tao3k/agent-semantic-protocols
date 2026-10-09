@@ -230,6 +230,7 @@
     },
     {
       "languageId": "org",
+      "publicationOwner": "builtin",
       "searchProducerAxes": ["document"],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/org/schemas",
@@ -245,6 +246,7 @@
     },
     {
       "languageId": "md",
+      "publicationOwner": "builtin",
       "searchProducerAxes": ["document"],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/md/schemas",

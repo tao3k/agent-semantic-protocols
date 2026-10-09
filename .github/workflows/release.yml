@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -84,6 +85,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: git config --global core.longpaths true
+
+      - name: Consume the committed Orgize FFI bundle
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/orgize-ffi
 
       - name: Build atomic ASP and asp-python-graphs service bundle
         shell: bash

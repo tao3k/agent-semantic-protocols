@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -114,6 +115,10 @@ jobs:
           -p agent-semantic-provider-protocol
           -p agent-semantic-tree-sitter
 
+      - name: Consume the committed Orgize FFI bundle
+        if: ${{ matrix.os == 'macos-latest' }}
+        uses: ./.github/actions/orgize-ffi
+
       - name: Build asp binary on macOS
         if: ${{ matrix.os == 'macos-latest' }}
         run: cargo build --bin asp
@@ -164,6 +169,9 @@ jobs:
 
       - name: Fetch Rust dependencies
         run: cargo fetch
+
+      - name: Consume the committed Orgize FFI bundle
+        uses: ./.github/actions/orgize-ffi
 
       - name: Build asp binary once
         run: cargo build --bin asp
@@ -303,6 +311,9 @@ jobs:
           workspaces: . -> target
           shared-key: asp-catalog-contracts-${{ runner.os }}
           cache-on-failure: true
+
+      - name: Consume the committed Orgize FFI bundle
+        uses: ./.github/actions/orgize-ffi
 
       - name: Gerbil central schema profile gates
         run: |

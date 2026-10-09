@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   search-composition:
     runs-on: ubuntu-latest
@@ -24,6 +25,10 @@ jobs:
       - name: Initialize committed provider descriptors
         run: |
           git submodule update --init --depth 1 languages/asp-rust languages/orgize languages/asp-gerbil-scheme languages/asp-typescript languages/asp-python languages/AspJulia.jl org
+      - name: Fetch the committed built-in Orgize FFI bundle
+        uses: ./.github/actions/orgize-ffi
+        with:
+          install-toolchain: 'false'
       - name: Resolve the declared immutable MRR owner
         run: |
           python3 - <<'PYTHON'

@@ -41,11 +41,33 @@ pub struct LanguageSchemaProfileRegistry {
     pub profiles: Vec<LanguageSchemaProfile>,
 }
 
+/// Owner of a language profile's package-local bundle publication.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SchemaPublicationOwner {
+    /// A separate language package publishes its bootstrap receipt.
+    #[default]
+    ProviderPackage,
+    /// ASP resolves the canonical closure for an embedded implementation.
+    Builtin,
+}
+
+impl SchemaPublicationOwner {
+    fn is_provider_package(&self) -> bool {
+        *self == Self::ProviderPackage
+    }
+}
+
 /// One language's canonical Schema closure and thin bootstrap projection.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LanguageSchemaProfile {
     pub language_id: String,
+    #[serde(
+        default,
+        skip_serializing_if = "SchemaPublicationOwner::is_provider_package"
+    )]
+    pub publication_owner: SchemaPublicationOwner,
     pub search_producer_axes: Vec<SearchProducerAxis>,
     pub package_root: String,
     pub bundle_root: String,
@@ -96,7 +118,8 @@ pub struct SchemaBundleReport {
     pub schema_count: usize,
     pub changed_count: usize,
     pub removed_count: usize,
-    pub receipt_path: PathBuf,
+    /// Package publication receipt; absent for an ASP-owned builtin closure.
+    pub receipt_path: Option<PathBuf>,
     pub bundle_digest: String,
 }
 
