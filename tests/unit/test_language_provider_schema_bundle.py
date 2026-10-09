@@ -8,20 +8,6 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-REQUIRED_CLIENT_SCHEMAS = {
-    "asp-client-protocol-catalog.schema.json",
-    "asp-client-frame.schema.json",
-    "asp-client-conformance.schema.json",
-}
-REQUIRED_PROVIDER_SCHEMAS = {
-    "provider-registration.schema.json",
-    "provider-route.schema.json",
-    "provider-query-pack-descriptor.schema.json",
-    "provider-runtime-contract-descriptor.schema.json",
-    "asp-client-server-descriptor.schema.json",
-    "provider-workspace-install.schema.json",
-    "language-schema-bundle-receipt.schema.json",
-}
 
 
 @dataclass(frozen=True)
@@ -33,10 +19,18 @@ class ProviderPackage:
 
 PROVIDERS = (
     ProviderPackage("rust", REPOSITORY_ROOT / "languages/asp-rust", Path("provider")),
-    ProviderPackage("typescript", REPOSITORY_ROOT / "languages/asp-typescript", Path("provider")),
-    ProviderPackage("python", REPOSITORY_ROOT / "languages/asp-python", Path("provider")),
+    ProviderPackage(
+        "typescript", REPOSITORY_ROOT / "languages/asp-typescript", Path("provider")
+    ),
+    ProviderPackage(
+        "python", REPOSITORY_ROOT / "languages/asp-python", Path("provider")
+    ),
     ProviderPackage("julia", REPOSITORY_ROOT / "languages/AspJulia.jl", Path("juliac")),
-    ProviderPackage("gerbil-scheme", REPOSITORY_ROOT / "languages/asp-gerbil-scheme", Path("provider")),
+    ProviderPackage(
+        "gerbil-scheme",
+        REPOSITORY_ROOT / "languages/asp-gerbil-scheme",
+        Path("provider"),
+    ),
 )
 
 
@@ -44,24 +38,40 @@ def load_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_language_schema_bundles_publish_client_and_provider_protocols() -> None:
+def test_language_packages_publish_only_bootstrap_and_provider_owned_schemas() -> None:
+    registry = load_json(REPOSITORY_ROOT / "schemas/language-schema-profiles.json")
+    profiles = {profile["languageId"]: profile for profile in registry["profiles"]}
     for provider in PROVIDERS:
-        receipt_path = provider.package_root / "schemas/.asp-schema-manager-receipt.json"
+        profile = profiles[provider.language_id]
+        assert profile.get("publicationOwner", "provider-package") == "provider-package"
+        receipt_path = (
+            provider.package_root / "schemas/.asp-schema-manager-receipt.json"
+        )
         receipt = load_json(receipt_path)
         assert isinstance(receipt, dict)
-        assert receipt["schemaId"] == "agent.semantic-protocols.language-schema-bundle-receipt"
+        assert (
+            receipt["schemaId"]
+            == "agent.semantic-protocols.language-schema-bundle-receipt"
+        )
         assert receipt["schemaVersion"] == "1"
         assert set(receipt) == {"schemaId", "schemaVersion", "schemaDigest"}
         assert receipt["schemaDigest"].startswith("blake3-256:")
-        membership = load_json(
-            provider.package_root / "schemas/.asp-schema-manager-membership.json"
-        )
-        assert isinstance(membership, dict)
-        assert membership["languageId"] == provider.language_id
-        assert membership["bundleDigest"] == receipt["schemaDigest"]
-        names = {entry["name"] for entry in membership["schemas"]}
-        assert REQUIRED_CLIENT_SCHEMAS <= names
-        assert REQUIRED_PROVIDER_SCHEMAS <= names
+        schema_root = provider.package_root / "schemas"
+        assert not (schema_root / ".asp-schema-manager-membership.json").exists()
+        expected = set(profile["providerOwned"]) | set(profile.get("bootstrap", []))
+        actual = {path.name for path in schema_root.glob("*.schema.json")}
+        assert actual == expected
+        for name in profile.get("bootstrap", []):
+            assert (schema_root / name).read_bytes() == (
+                REPOSITORY_ROOT / "schemas" / name
+            ).read_bytes()
+
+
+def test_embedded_orgize_profiles_do_not_require_provider_publication() -> None:
+    registry = load_json(REPOSITORY_ROOT / "schemas/language-schema-profiles.json")
+    profiles = {profile["languageId"]: profile for profile in registry["profiles"]}
+    for language in ("org", "md"):
+        assert profiles[language]["publicationOwner"] == "builtin"
 
 
 def test_provider_registration_is_the_only_package_local_wire_authority() -> None:
@@ -73,9 +83,12 @@ def test_provider_registration_is_the_only_package_local_wire_authority() -> Non
         schema_receipt_path = (
             workspace_path.parent / workspace["schemaBundleReceipt"]
         ).resolve()
-        assert schema_receipt_path == (
-            provider.package_root / "schemas/.asp-schema-manager-receipt.json"
-        ).resolve()
+        assert (
+            schema_receipt_path
+            == (
+                provider.package_root / "schemas/.asp-schema-manager-receipt.json"
+            ).resolve()
+        )
         assert schema_receipt_path.is_file()
         artifact_root = (
             REPOSITORY_ROOT / workspace["workspaceArtifact"]["root"]
@@ -85,8 +98,7 @@ def test_provider_registration_is_the_only_package_local_wire_authority() -> Non
             for path in workspace["workspaceBuild"]["derivedPaths"]
         ]
         assert any(
-            artifact_root == derived_root
-            or artifact_root.is_relative_to(derived_root)
+            artifact_root == derived_root or artifact_root.is_relative_to(derived_root)
             for derived_root in derived_roots
         )
         if provider.language_id == "gerbil-scheme":
