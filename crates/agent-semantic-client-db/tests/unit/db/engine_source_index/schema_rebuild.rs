@@ -33,7 +33,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
     ClientDbEngine::open_write_session_client_dir(&client_dir).expect("stage canonical Turso DB");
     {
         let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
+        let database = mrr_data_backend::turso_driver::Builder::new_local(&db_path_string)
             .experimental_index_method(true)
             .build()
             .await
@@ -68,7 +68,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
     );
     {
         let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
+        let database = mrr_data_backend::turso_driver::Builder::new_local(&db_path_string)
             .experimental_index_method(true)
             .build()
             .await
@@ -142,7 +142,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
     assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
     {
         let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
+        let database = mrr_data_backend::turso_driver::Builder::new_local(&db_path_string)
             .experimental_index_method(true)
             .build()
             .await

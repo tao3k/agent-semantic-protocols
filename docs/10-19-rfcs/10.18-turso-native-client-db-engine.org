@@ -31,6 +31,14 @@ The stable public contract is:
 =futureBackend=turso= remains only as a v1 report field during the cutover
 window. It is not a second backend and not a version suffix.
 
+* Dependency ownership
+ASP imports Turso through =mrr_data_backend::turso_driver=. MRR Data fixes the
+driver version and exposes =turso-fts= and =turso-sync= capabilities. ASP owns
+workspace schemas, pooled connection lifetimes and generation admission. The
+Data driver import starts no Backend lifecycle and creates no runtime. Existing
+physical format receipts must still pass reopen and rejection controls for the
+new driver; a dependency update alone is not a storage migration receipt.
+
 * Turso rationale
 Turso is useful because it matches the agent loop better than a synchronous
 single-writer storage shape:

@@ -18,9 +18,14 @@ fn temp_db(name: &str) -> PathBuf {
     ))
 }
 
-async fn open(path: &std::path::Path) -> (turso::Database, turso::Connection) {
+async fn open(
+    path: &std::path::Path,
+) -> (
+    mrr_data_backend::turso_driver::Database,
+    mrr_data_backend::turso_driver::Connection,
+) {
     let path = path.to_string_lossy();
-    let database = turso::Builder::new_local(path.as_ref())
+    let database = mrr_data_backend::turso_driver::Builder::new_local(path.as_ref())
         .experimental_multiprocess_wal(true)
         .build()
         .await
@@ -31,7 +36,7 @@ async fn open(path: &std::path::Path) -> (turso::Database, turso::Connection) {
     (database, connection)
 }
 
-async fn schema_version(connection: &turso::Connection) -> i64 {
+async fn schema_version(connection: &mrr_data_backend::turso_driver::Connection) -> i64 {
     connection
         .query(
             "SELECT schema_version FROM asp_db_engine_bootstrap LIMIT 1",
@@ -77,7 +82,7 @@ async fn schema_v1_bootstrap_is_idempotent_and_preserves_authority_data() {
                 repo_id, workspace_id, scope_id, pointer_kind, pointer_name,\
                 current_root_hash, revision, updated_at_ms\
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            turso::params![
+            mrr_data_backend::turso_driver::params![
                 "repo:schema-test",
                 "workspace:schema-test",
                 "scope:schema-test",

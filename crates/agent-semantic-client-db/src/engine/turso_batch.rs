@@ -4,12 +4,12 @@
 
 pub(super) const TURSO_BATCH_ROW_COUNT: usize = 64;
 
-pub(super) fn text_value(value: &str) -> turso::Value {
-    turso::Value::Text(value.to_owned())
+pub(super) fn text_value(value: &str) -> mrr_data_backend::turso_driver::Value {
+    mrr_data_backend::turso_driver::Value::Text(value.to_owned())
 }
 
-pub(super) fn optional_text_value(value: Option<&str>) -> turso::Value {
-    value.map_or(turso::Value::Null, text_value)
+pub(super) fn optional_text_value(value: Option<&str>) -> mrr_data_backend::turso_driver::Value {
+    value.map_or(mrr_data_backend::turso_driver::Value::Null, text_value)
 }
 
 pub(super) fn append_parameter_rows(sql: &mut String, row_count: usize, column_count: usize) {

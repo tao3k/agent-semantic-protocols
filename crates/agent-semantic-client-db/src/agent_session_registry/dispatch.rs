@@ -160,7 +160,7 @@ fn hash_dispatch_identity(seed: &DispatchIdentitySeed<'_>) -> String {
 }
 
 pub(super) async fn bootstrap_turso_agent_dispatch_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     execute_turso_statement(
         connection,
@@ -209,7 +209,7 @@ const AGENT_DISPATCH_LEASE_SELECT: &str = "SELECT
  FROM asp_agent_dispatch_leases";
 
 fn agent_dispatch_lease_from_turso_row(
-    row: &turso::Row,
+    row: &mrr_data_backend::turso_driver::Row,
 ) -> Result<AgentSessionDispatchLeaseRecord, String> {
     Ok(AgentSessionDispatchLeaseRecord {
         project_id: row
@@ -266,7 +266,7 @@ fn agent_dispatch_lease_from_turso_row(
 }
 
 pub(super) async fn turso_dispatch_lease_by_identity(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_id: &str,
     root_session_id: &str,
     name: &str,
@@ -300,7 +300,7 @@ pub(super) async fn turso_dispatch_lease_by_identity(
 }
 
 async fn rollback_agent_dispatch_transaction(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     error: String,
 ) -> Result<AgentSessionDispatchClaimResult, String> {
     let _ = execute_turso_statement(

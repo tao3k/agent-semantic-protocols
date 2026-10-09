@@ -10,9 +10,9 @@
 use std::path::Path;
 use std::time::Duration;
 
+use mrr_data_backend::turso_driver::transaction::TransactionBehavior;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use turso::transaction::TransactionBehavior;
 
 use crate::storage_contract::{StorageError, StorageErrorCode};
 
@@ -208,8 +208,8 @@ pub struct ClientDbFailedArtifact {
 }
 
 pub struct TursoArtifactPointerStore {
-    _database: turso::Database,
-    connection: Mutex<turso::Connection>,
+    _database: mrr_data_backend::turso_driver::Database,
+    connection: Mutex<mrr_data_backend::turso_driver::Connection>,
 }
 
 impl TursoArtifactPointerStore {
@@ -221,7 +221,7 @@ impl TursoArtifactPointerStore {
                 "artifact pointer database path must be valid UTF-8",
             )
         })?;
-        let database = turso::Builder::new_local(path)
+        let database = mrr_data_backend::turso_driver::Builder::new_local(path)
             .experimental_multiprocess_wal(true)
             .build()
             .await
@@ -409,7 +409,7 @@ impl TursoArtifactPointerStore {
 }
 
 async fn select_pointer(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     key: &ClientDbArtifactPointerKey,
 ) -> Result<Option<ClientDbArtifactPointer>, StorageError> {
     let mut statement = connection
@@ -456,12 +456,14 @@ fn cas_receipt(
     }
 }
 
-fn classify_turso_error(error: turso::Error) -> StorageError {
+fn classify_turso_error(error: mrr_data_backend::turso_driver::Error) -> StorageError {
     let code = match &error {
-        turso::Error::Busy(_) => StorageErrorCode::Busy,
-        turso::Error::BusySnapshot(_) => StorageErrorCode::SnapshotConflict,
-        turso::Error::Constraint(_) => StorageErrorCode::DuplicateIdentity,
-        turso::Error::IoError(_, _) => StorageErrorCode::Io,
+        mrr_data_backend::turso_driver::Error::Busy(_) => StorageErrorCode::Busy,
+        mrr_data_backend::turso_driver::Error::BusySnapshot(_) => {
+            StorageErrorCode::SnapshotConflict
+        }
+        mrr_data_backend::turso_driver::Error::Constraint(_) => StorageErrorCode::DuplicateIdentity,
+        mrr_data_backend::turso_driver::Error::IoError(_, _) => StorageErrorCode::Io,
         _ => StorageErrorCode::Backend,
     };
     storage_error(

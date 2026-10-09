@@ -7,7 +7,7 @@ use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::run_turso_operation;
 
 pub(super) async fn turso_source_index_projection_ready(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

@@ -482,7 +482,11 @@ impl ProviderTreeSitterWriteFixture {
     }
 }
 
-async fn scalar<P: turso::IntoParams>(connection: &turso::Connection, sql: &str, params: P) -> i64 {
+async fn scalar<P: mrr_data_backend::turso_driver::IntoParams>(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    sql: &str,
+    params: P,
+) -> i64 {
     let mut rows = connection.query(sql, params).await.expect("query scalar");
     rows.next()
         .await
@@ -492,8 +496,8 @@ async fn scalar<P: turso::IntoParams>(connection: &turso::Connection, sql: &str,
         .expect("decode scalar")
 }
 
-async fn scalar_text<P: turso::IntoParams>(
-    connection: &turso::Connection,
+async fn scalar_text<P: mrr_data_backend::turso_driver::IntoParams>(
+    connection: &mrr_data_backend::turso_driver::Connection,
     sql: &str,
     params: P,
 ) -> String {

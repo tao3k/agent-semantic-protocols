@@ -34,7 +34,7 @@ pub(super) struct TursoSourceIndexSelectorRow {
 }
 
 async fn active_turso_source_index_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -75,7 +75,7 @@ async fn active_turso_source_index_generation(
 }
 
 pub(super) async fn active_turso_source_index_owner_rows(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

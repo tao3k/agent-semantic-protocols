@@ -26,7 +26,7 @@ pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T
 
 pub(in crate::agent_session_registry) async fn connect_turso_agent_session_registry(
     db_path: &Path,
-) -> Result<turso::Connection, String> {
+) -> Result<mrr_data_backend::turso_driver::Connection, String> {
     let mut last_lock_error = None;
     for attempt in 0..TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS {
         match connect_turso_agent_session_registry_once(db_path).await {
@@ -49,7 +49,7 @@ pub(in crate::agent_session_registry) async fn connect_turso_agent_session_regis
 
 async fn connect_turso_agent_session_registry_once(
     db_path: &Path,
-) -> Result<turso::Connection, String> {
+) -> Result<mrr_data_backend::turso_driver::Connection, String> {
     let db_path = prepare_turso_agent_session_registry_path(db_path)?;
     let database = crate::engine::shared_turso_database(&db_path)
         .await
@@ -127,7 +127,7 @@ pub(in crate::agent_session_registry) async fn bootstrap_turso_agent_session_sch
 }
 
 async fn bootstrap_turso_agent_session_retirement_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     connection
         .execute_batch(
@@ -208,7 +208,7 @@ const AGENT_SESSION_COLUMNS: [&str; 25] = [
 ];
 
 async fn create_turso_agent_sessions_table(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     table_name: &str,
 ) -> Result<(), String> {
     let statement = format!(
@@ -250,7 +250,7 @@ async fn create_turso_agent_sessions_table(
 }
 
 async fn validate_turso_agent_sessions_instance_identity(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA table_info(asp_agent_sessions)", ())

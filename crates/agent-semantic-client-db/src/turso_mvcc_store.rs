@@ -301,8 +301,8 @@ pub struct TursoMvccBatchWriteReceipt {
 pub(crate) struct TursoMvccStoreInner {
     pub(crate) path: PathBuf,
     pub(crate) passive_checkpoint: bool,
-    _database: Arc<turso::Database>,
-    pub(crate) lanes: Vec<Arc<tokio::sync::Mutex<turso::Connection>>>,
+    _database: Arc<mrr_data_backend::turso_driver::Database>,
+    pub(crate) lanes: Vec<Arc<tokio::sync::Mutex<mrr_data_backend::turso_driver::Connection>>>,
     pub(crate) retry_attempts: usize,
     pub(crate) max_batch_rows: usize,
 }
@@ -324,13 +324,15 @@ impl TursoMvccStore {
         ensure_parent_directory(&config.path)?;
 
         let database = Arc::new(
-            turso::Builder::new_local(config.path.to_string_lossy().as_ref())
-                .experimental_index_method(false)
-                .experimental_multiprocess_wal(false)
-                .experimental_mvcc_passive_checkpoint(config.passive_checkpoint)
-                .build()
-                .await
-                .map_err(|error| format!("failed to open Turso MVCC store: {error}"))?,
+            mrr_data_backend::turso_driver::Builder::new_local(
+                config.path.to_string_lossy().as_ref(),
+            )
+            .experimental_index_method(false)
+            .experimental_multiprocess_wal(false)
+            .experimental_mvcc_passive_checkpoint(config.passive_checkpoint)
+            .build()
+            .await
+            .map_err(|error| format!("failed to open Turso MVCC store: {error}"))?,
         );
         let mut lanes = Vec::with_capacity(config.connection_lanes);
         for lane_index in 0..config.connection_lanes {
@@ -489,7 +491,9 @@ impl TursoMvccStore {
     }
 }
 
-async fn enable_and_verify_mvcc(connection: &turso::Connection) -> Result<(), String> {
+async fn enable_and_verify_mvcc(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA journal_mode = 'mvcc'", ())
         .await
@@ -526,7 +530,7 @@ fn insert_event_batch_sql(shard: usize, rows: usize) -> String {
 }
 
 async fn append_batch_once(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     shard: usize,
     events: &[TursoMvccEvent],
 ) -> Result<(), String> {
@@ -546,10 +550,18 @@ async fn append_batch_once(
                 .map_err(|error| format!("failed to prepare Turso MVCC event insert: {error}"))?;
             let mut parameters = Vec::with_capacity(event_chunk.len() * 4);
             for event in event_chunk {
-                parameters.push(turso::Value::Text(event.partition_key.clone()));
-                parameters.push(turso::Value::Text(event.event_id.clone()));
-                parameters.push(turso::Value::Blob(event.payload.clone()));
-                parameters.push(turso::Value::Integer(event.created_at_ms));
+                parameters.push(mrr_data_backend::turso_driver::Value::Text(
+                    event.partition_key.clone(),
+                ));
+                parameters.push(mrr_data_backend::turso_driver::Value::Text(
+                    event.event_id.clone(),
+                ));
+                parameters.push(mrr_data_backend::turso_driver::Value::Blob(
+                    event.payload.clone(),
+                ));
+                parameters.push(mrr_data_backend::turso_driver::Value::Integer(
+                    event.created_at_ms,
+                ));
             }
             statement
                 .execute(parameters)

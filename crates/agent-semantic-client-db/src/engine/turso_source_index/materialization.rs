@@ -5,7 +5,7 @@
 use crate::runtime_server_workspace::WorkspaceCanonicalMaterialization;
 
 pub(super) async fn persist_workspace_generation_materialization(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     source_index_schema_id: &str,
     source_index_schema_version: &str,
@@ -71,7 +71,7 @@ pub(super) async fn persist_workspace_generation_materialization(
 }
 
 pub(super) async fn load_workspace_generation_materialization(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     workspace_identity: &str,
     project_root: &str,
     source_index_schema_id: &str,
@@ -116,7 +116,7 @@ pub(super) async fn load_workspace_generation_materialization(
 }
 
 pub(super) async fn load_active_workspace_generation_materialization(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     workspace_identity: &str,
     project_root: &str,
 ) -> Result<crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad, String> {

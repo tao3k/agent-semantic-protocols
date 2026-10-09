@@ -190,7 +190,7 @@ impl ClientDbEngineReport {
 /// DB Engine read session over the active Turso adapter.
 pub struct ClientDbEngineReadSession {
     pub(super) turso_db_path: PathBuf,
-    pub(super) turso_connection: std::sync::Arc<turso::Connection>,
+    pub(super) turso_connection: std::sync::Arc<mrr_data_backend::turso_driver::Connection>,
     #[expect(
         clippy::type_complexity,
         reason = "the cache key and admitted scope evidence remain colocated and explicit"

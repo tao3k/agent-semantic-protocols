@@ -216,7 +216,7 @@ pub fn workspace_db_writer_channel(
 /// Run the lifecycle-owned single writer until every client sender is closed.
 pub async fn run_workspace_db_writer_actor(
     mut actor: WorkspaceDbWriterActor,
-    mut connection: turso::Connection,
+    mut connection: mrr_data_backend::turso_driver::Connection,
     maximum_batch_size: usize,
 ) {
     while let Some(batch) = actor.receive_batch(maximum_batch_size).await {
@@ -242,7 +242,7 @@ pub async fn run_workspace_db_writer_actor(
 }
 
 async fn execute_operation(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     request: WorkspaceDbWriteRequest,
 ) -> Result<WorkspaceDbWriteResult, String> {
     match request.operation {
@@ -295,7 +295,7 @@ async fn execute_operation(
 }
 
 async fn finish_writes(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     mode: WorkspaceDbWriteFinishMode,
 ) -> Result<WorkspaceDbWriteFinishReceipt, String> {
     connection

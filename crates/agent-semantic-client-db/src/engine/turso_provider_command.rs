@@ -14,7 +14,7 @@ use super::turso_statement::{
 };
 
 pub(super) async fn bootstrap_turso_provider_command_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_provider_command_selection (
@@ -64,7 +64,7 @@ pub async fn replace_turso_provider_command_selections(
 }
 
 async fn replace_turso_provider_command_selections_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     context_fingerprint: &str,
     selections: &[ClientDbProviderCommandSelection],
@@ -155,7 +155,9 @@ async fn replace_turso_provider_command_selections_with_connection(
     Ok(())
 }
 
-async fn rollback_turso_provider_command_selection_transaction(connection: &turso::Connection) {
+async fn rollback_turso_provider_command_selection_transaction(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) {
     let _ = execute_turso_statement(
         connection,
         "ROLLBACK",
@@ -212,7 +214,7 @@ pub async fn lookup_turso_provider_command_selections(
 }
 
 fn turso_provider_command_selection_from_row(
-    row: &turso::Row,
+    row: &mrr_data_backend::turso_driver::Row,
 ) -> Result<ClientDbProviderCommandSelection, String> {
     let command_prefix_json = row
         .get::<String>(6)

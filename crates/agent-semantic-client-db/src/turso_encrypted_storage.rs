@@ -171,8 +171,8 @@ impl TursoEncryptionFileReceipt {
 
 /// Open encrypted Turso database and its file-verification owner.
 pub struct TursoEncryptedStorage {
-    _database: turso::Database,
-    connection: turso::Connection,
+    _database: mrr_data_backend::turso_driver::Database,
+    connection: mrr_data_backend::turso_driver::Connection,
     path: PathBuf,
     cipher: TursoEncryptionCipher,
 }
@@ -181,9 +181,9 @@ impl TursoEncryptedStorage {
     /// Open an encrypted local database from a validated profile.
     pub async fn open(config: TursoEncryptedProfileConfig) -> Result<Self, String> {
         let path = config.path.to_string_lossy();
-        let database = turso::Builder::new_local(path.as_ref())
+        let database = mrr_data_backend::turso_driver::Builder::new_local(path.as_ref())
             .experimental_encryption(true)
-            .with_encryption(turso::EncryptionOpts {
+            .with_encryption(mrr_data_backend::turso_driver::EncryptionOpts {
                 cipher: config.cipher.as_turso_cipher().to_owned(),
                 hexkey: config.key.expose_for_builder(),
             })
@@ -202,7 +202,7 @@ impl TursoEncryptedStorage {
     }
 
     /// Open a connection to the encrypted database.
-    pub fn connection(&self) -> turso::Connection {
+    pub fn connection(&self) -> mrr_data_backend::turso_driver::Connection {
         self.connection.clone()
     }
 

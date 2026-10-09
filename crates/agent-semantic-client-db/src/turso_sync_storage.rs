@@ -187,8 +187,8 @@ pub struct TursoSyncStorage {
 }
 
 enum TursoSyncBackend {
-    Local(turso::Database),
-    Remote(turso::sync::Database),
+    Local(mrr_data_backend::turso_driver::Database),
+    Remote(mrr_data_backend::turso_driver::sync::Database),
 }
 
 enum TursoSyncWaitError<E> {
@@ -241,7 +241,7 @@ impl TursoSyncStorage {
             TursoSyncProfileMode::Local => {
                 let database = await_turso_operation(
                     operation_timeout,
-                    turso::Builder::new_local(path.as_ref()).build(),
+                    mrr_data_backend::turso_driver::Builder::new_local(path.as_ref()).build(),
                 )
                 .await
                 .map_err(|error| match error {
@@ -268,7 +268,7 @@ impl TursoSyncStorage {
                 }
                 let database = await_turso_operation(
                     operation_timeout,
-                    turso::sync::Builder::new_remote(path.as_ref())
+                    mrr_data_backend::turso_driver::sync::Builder::new_remote(path.as_ref())
                         .with_remote_url(remote_url.as_str())
                         .with_auth_token(auth_token.expose_secret())
                         .bootstrap_if_empty(bootstrap_if_empty)
@@ -292,7 +292,9 @@ impl TursoSyncStorage {
     }
 
     /// Open a database connection through the selected backend.
-    pub async fn connect(&self) -> Result<turso::Connection, TursoSyncStorageError> {
+    pub async fn connect(
+        &self,
+    ) -> Result<mrr_data_backend::turso_driver::Connection, TursoSyncStorageError> {
         match &self.backend {
             TursoSyncBackend::Local(database) => {
                 database.connect().map_err(|error| TursoSyncStorageError {
@@ -372,7 +374,7 @@ impl TursoSyncStorage {
                 await_turso_operation(self.operation_timeout, async {
                     let connection = database.connect()?;
                     connection.cacheflush()?;
-                    Ok::<(), turso::Error>(())
+                    Ok::<(), mrr_data_backend::turso_driver::Error>(())
                 })
                 .await
             }

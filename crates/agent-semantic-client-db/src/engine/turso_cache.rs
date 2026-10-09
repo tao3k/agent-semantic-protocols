@@ -23,7 +23,7 @@ use super::turso_statement::{
 
 /// Bootstrap Turso cache-generation tables used by DB Engine replay lookup.
 pub async fn bootstrap_turso_client_cache_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_cache_generation (
@@ -92,7 +92,7 @@ pub async fn upsert_turso_cache_generations(
 }
 
 pub(super) async fn upsert_turso_cache_generations_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     manifest: &ClientCacheManifest,
 ) -> Result<usize, String> {
     use super::turso_batch::{
@@ -100,9 +100,9 @@ pub(super) async fn upsert_turso_cache_generations_with_connection(
     };
 
     async fn execute_value_batch(
-        connection: &turso::Connection,
+        connection: &mrr_data_backend::turso_driver::Connection,
         sql: String,
-        values: Vec<turso::Value>,
+        values: Vec<mrr_data_backend::turso_driver::Value>,
         context: &'static str,
     ) -> Result<(), String> {
         let mut statement = connection
@@ -111,7 +111,7 @@ pub(super) async fn upsert_turso_cache_generations_with_connection(
             .map_err(|error| format!("failed to prepare Turso value batch: {error}"))?;
         execute_turso_prepared_statement_with_lock_retry!(
             statement,
-            turso::params_from_iter(values.clone()),
+            mrr_data_backend::turso_driver::params_from_iter(values.clone()),
             context,
         )
         .map(|_| ())
@@ -158,11 +158,11 @@ pub(super) async fn upsert_turso_cache_generations_with_connection(
             optional_text_value(generation.package_root.as_deref()),
             text_value(schema_ids_json.as_str()),
             text_value(generation.cache_status.as_str()),
-            turso::Value::Integer(0),
+            mrr_data_backend::turso_driver::Value::Integer(0),
             optional_text_value(generation.request_fingerprint.as_deref()),
             text_value(artifact_ids_json.as_str()),
             text_value(file_hashes_json.as_str()),
-            turso::Value::Integer(updated_at_ms),
+            mrr_data_backend::turso_driver::Value::Integer(updated_at_ms),
         ]);
         let generation_key = active_cache_generation_key(
             project_root.as_str(),
@@ -191,7 +191,7 @@ pub(super) async fn upsert_turso_cache_generations_with_connection(
                 text_value(schema_ids_json.as_str()),
                 text_value(artifact_ids_json.as_str()),
                 text_value(file_hashes_json.as_str()),
-                turso::Value::Integer(updated_at_ms),
+                mrr_data_backend::turso_driver::Value::Integer(updated_at_ms),
             ]);
         } else {
             pointer_delete_rows.push(vec![text_value(generation_key.as_str())]);
@@ -429,7 +429,7 @@ fn manifest_cache_generation_keys(
 }
 
 async fn cache_generation_delete_keys(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     keep_keys: &std::collections::HashSet<CacheGenerationPruneKey>,
 ) -> Result<Vec<CacheGenerationPruneKey>, String> {
     let mut rows = run_turso_operation(
@@ -481,7 +481,7 @@ async fn cache_generation_delete_keys(
 }
 
 async fn delete_cache_generation_keys(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     delete_keys: Vec<CacheGenerationPruneKey>,
 ) -> Result<(), String> {
     execute_turso_statement(
@@ -622,7 +622,7 @@ pub async fn invalidate_turso_cache_generations_for_project(
 }
 
 pub(super) async fn invalidate_turso_cache_generations_for_project_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &Path,
 ) -> Result<u32, String> {
     let project_root = normalized_project_root(project_root)?;
@@ -734,7 +734,7 @@ pub async fn lookup_recent_turso_cache_generations(
 }
 
 pub(super) async fn lookup_recent_turso_cache_generations_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     language_id: &LanguageId,
     provider_id: &ProviderId,
     project_root: &Path,
@@ -864,7 +864,7 @@ pub(super) async fn lookup_recent_turso_cache_generations_with_connection(
 }
 
 async fn maybe_report_turso_cache_generation_query_plan(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     language_id: &LanguageId,
     provider_id: &ProviderId,
     project_root: &str,

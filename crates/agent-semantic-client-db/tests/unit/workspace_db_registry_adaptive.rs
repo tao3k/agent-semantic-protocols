@@ -18,7 +18,7 @@ use super::{
 async fn reader_pool_is_bounded_and_reuses_connections() {
     let temp = TempDir::new().expect("create adaptive reader tempfile");
     let client_db_path = temp.path().join("facts.turso");
-    let database = turso::Builder::new_local(
+    let database = mrr_data_backend::turso_driver::Builder::new_local(
         client_db_path
             .to_str()
             .expect("adaptive reader database path is UTF-8"),

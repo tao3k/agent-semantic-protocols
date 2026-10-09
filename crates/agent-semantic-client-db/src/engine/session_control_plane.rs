@@ -15,8 +15,8 @@ use agent_semantic_context_product::agent_session_delegation_admission::{
     AgentSessionDelegationAdmissionInput, AgentSessionDelegationAdmissionReceipt,
     AgentSessionDelegationCapability, AgentSessionDelegationDecision,
 };
+use mrr_data_backend::turso_driver::transaction::TransactionBehavior;
 use serde::{Deserialize, Serialize};
-use turso::transaction::TransactionBehavior;
 
 use super::connect_turso_client_db;
 
@@ -156,7 +156,7 @@ async fn resident_replay(
 }
 
 async fn count_rows(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     table: &str,
     project_id: &str,
     root_session_id: &str,
@@ -180,7 +180,7 @@ async fn count_rows(
 }
 
 async fn register_agent_transaction(
-    transaction: &turso::transaction::Transaction<'_>,
+    transaction: &mrr_data_backend::turso_driver::transaction::Transaction<'_>,
     registration: &SessionControlPlaneAgentRegistration,
 ) -> Result<(), String> {
     let connection = &**transaction;
@@ -290,7 +290,7 @@ async fn register_agent_transaction(
 }
 
 async fn admit_delegation_transaction(
-    transaction: &turso::transaction::Transaction<'_>,
+    transaction: &mrr_data_backend::turso_driver::transaction::Transaction<'_>,
     proposal: &SessionControlPlaneDelegationProposal,
 ) -> Result<SessionControlPlaneTransactionReceipt, String> {
     let connection = &**transaction;
@@ -431,7 +431,7 @@ async fn admit_delegation_transaction(
 }
 
 async fn committed_receipt(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     proposal: &SessionControlPlaneDelegationProposal,
 ) -> Result<Option<AgentSessionDelegationAdmissionReceipt>, String> {
     let mut rows = connection
@@ -465,7 +465,7 @@ async fn committed_receipt(
 }
 
 async fn control_plane_state(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     proposal: &SessionControlPlaneDelegationProposal,
 ) -> Result<(u64, String), String> {
     let mut rows = connection
@@ -498,7 +498,7 @@ async fn control_plane_state(
 }
 
 async fn current_agent_capability(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     proposal: &SessionControlPlaneDelegationProposal,
 ) -> Result<AgentSessionDelegationCapability, String> {
     let mut rows = connection
@@ -527,7 +527,7 @@ async fn current_agent_capability(
 }
 
 async fn finish_transaction<T>(
-    transaction: turso::transaction::Transaction<'_>,
+    transaction: mrr_data_backend::turso_driver::transaction::Transaction<'_>,
     result: Result<T, String>,
 ) -> Result<T, String> {
     match result {

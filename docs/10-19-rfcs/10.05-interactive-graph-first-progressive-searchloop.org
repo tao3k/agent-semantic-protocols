@@ -110,3 +110,8 @@ named RFC clause -> Lean definition/theorem or counterexample
 
 The correspondence is called the *RFC-Lean mathematical system*.  It is not an
 =IFCLEAN= feature flag, cache state, schema version, or compatibility mode.
+
+* Data Search composition boundary
+
+The feature-qualified runtime uses the reusable Data candidate composition gate.
+See [[file:10.05.22-data-search-composition.org][Data Search Composition]] for source and generation admission, complete truth, ranking and Version 1 witness contracts.

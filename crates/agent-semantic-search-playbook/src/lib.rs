@@ -10,11 +10,13 @@ mod topology_owner;
 
 pub use model::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
-    ProgressiveSearchPlaybookRequest, SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH,
-    SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
-    SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
-    SearchPlaybookCompositionMetrics, SearchPlaybookLeaf, SearchPlaybookNormalizedComposition,
-    SearchPlaybookProducerDeclaration, TopologyOwnerMembershipBlock,
+    ProgressiveSearchPlaybookRequest, SEARCH_PLAYBOOK_COMPOSITION_ABI_ID,
+    SEARCH_PLAYBOOK_COMPOSITION_ABI_VERSION, SEARCH_PLAYBOOK_COMPOSITION_OPERATORS,
+    SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH, SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES,
+    SEARCH_PLAYBOOK_MAX_STATIC_WORK, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
+    SearchPlaybookComposition, SearchPlaybookCompositionMetrics, SearchPlaybookLeaf,
+    SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
+    TopologyOwnerMembershipBlock, search_playbook_composition_abi_digest,
 };
 pub use playbook::{
     parse_progressive_search_playbook_args, parse_query_playbook_producer_declaration,

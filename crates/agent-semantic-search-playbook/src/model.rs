@@ -6,6 +6,52 @@
 
 use serde::{Deserialize, Serialize};
 
+/// ASP-owned V1 Search Composition identity. MRR owns the backend-neutral POO
+/// Search framework, not this concrete Playbook operator ABI.
+pub const SEARCH_PLAYBOOK_COMPOSITION_ABI_ID: &str =
+    "agent.semantic-protocols.search-composition.v1";
+pub const SEARCH_PLAYBOOK_COMPOSITION_ABI_VERSION: &str = "1";
+pub const SEARCH_PLAYBOOK_COMPOSITION_OPERATORS: &[&str] = &[
+    "search",
+    "workspace",
+    "producers",
+    "language",
+    "documents",
+    "chain",
+    "intersect",
+    "rg",
+    "tantivy",
+    "topology",
+    "syntax",
+    "native-syntax",
+    "graph",
+];
+const SEARCH_PLAYBOOK_COMPOSITION_SEMANTIC_RULES: &[&str] = &[
+    "primary-leaf-selected-by-predicate",
+    "no-inferred-engine-pair",
+    "rg-complete-resident-byte-universe",
+    "intersect-explicit-complete-set-conjunction",
+    "chain-typed-frontier",
+    "graph-final",
+];
+
+#[must_use]
+pub fn search_playbook_composition_abi_digest() -> String {
+    let mut identity = blake3::Hasher::new();
+    identity.update(SEARCH_PLAYBOOK_COMPOSITION_ABI_ID.as_bytes());
+    identity.update(&[0]);
+    identity.update(SEARCH_PLAYBOOK_COMPOSITION_ABI_VERSION.as_bytes());
+    for operator in SEARCH_PLAYBOOK_COMPOSITION_OPERATORS {
+        identity.update(&[0]);
+        identity.update(operator.as_bytes());
+    }
+    for rule in SEARCH_PLAYBOOK_COMPOSITION_SEMANTIC_RULES {
+        identity.update(&[0]);
+        identity.update(rule.as_bytes());
+    }
+    format!("blake3-256:{}", identity.finalize().to_hex())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProgressiveSearchPlaybookRequest {
     pub language: Option<String>,

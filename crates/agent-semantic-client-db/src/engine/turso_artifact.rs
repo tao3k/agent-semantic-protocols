@@ -64,7 +64,7 @@ pub async fn upsert_turso_artifact_events(
 }
 
 async fn upsert_turso_artifact_events_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     events: &[ClientDbArtifactEvent],
 ) -> Result<(), String> {
     const MVCC_TRANSACTION_ATTEMPTS: usize = 16;
@@ -181,8 +181,12 @@ async fn upsert_turso_artifact_events_with_connection(
     unreachable!("MVCC artifact-event transaction loop returns on its final attempt")
 }
 
-fn is_turso_mvcc_conflict(error: &turso::Error) -> bool {
-    matches!(error, turso::Error::Busy(_) | turso::Error::BusySnapshot(_))
+fn is_turso_mvcc_conflict(error: &mrr_data_backend::turso_driver::Error) -> bool {
+    matches!(
+        error,
+        mrr_data_backend::turso_driver::Error::Busy(_)
+            | mrr_data_backend::turso_driver::Error::BusySnapshot(_)
+    )
 }
 
 async fn wait_for_turso_mvcc_retry(attempt: usize) {
@@ -238,7 +242,9 @@ pub async fn lookup_turso_artifact_events(
     Ok(events)
 }
 
-fn turso_artifact_event_from_row(row: &turso::Row) -> Result<ClientDbArtifactEvent, String> {
+fn turso_artifact_event_from_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<ClientDbArtifactEvent, String> {
     let event_ordinal = row
         .get::<i64>(1)
         .map_err(|error| format!("failed to read Turso artifact event ordinal: {error}"))?;

@@ -36,7 +36,7 @@ fn workspace_db_schema_contract_marker() -> String {
 }
 
 async fn reset_derived_generations_on_schema_contract_change(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -91,7 +91,9 @@ async fn reset_derived_generations_on_schema_contract_change(
     Ok(())
 }
 
-async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> Result<(), String> {
+async fn publish_workspace_db_schema_receipt(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     connection
         .execute(
             "DROP TABLE IF EXISTS asp_workspace_db_schema_receipt_v1",
@@ -114,7 +116,7 @@ async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> 
 }
 
 pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     reset_derived_generations_on_schema_contract_change(connection).await?;
     for statement in [

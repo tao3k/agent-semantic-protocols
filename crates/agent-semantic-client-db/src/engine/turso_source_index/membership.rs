@@ -35,7 +35,7 @@ pub(super) fn turso_source_index_import_membership(
 }
 
 pub(super) async fn stage_turso_source_index_import_membership(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     file_hashes_json: &str,
 ) -> Result<(), String> {
     execute_turso_statement(
@@ -75,7 +75,7 @@ pub(super) async fn stage_turso_source_index_import_membership(
 }
 
 pub(super) async fn turso_source_index_membership_changes(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -216,7 +216,7 @@ pub(super) fn validate_source_index_membership_change_set(
 }
 
 pub(super) async fn validate_turso_source_index_overlay_base(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

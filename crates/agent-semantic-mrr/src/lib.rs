@@ -35,3 +35,11 @@ pub use project_topology_reasoning::{
 pub use scheme_aot_program::{
     SchemeAotProgramBinding, SchemeAotProgramBindingError, admit_scheme_aot_program_binding,
 };
+
+#[cfg(feature = "mrr-data-search-composition")]
+mod data_search_composition;
+#[cfg(feature = "mrr-data-search-composition")]
+pub use data_search_composition::{DataSearchCompositionInput, DataSearchCompositionOutput,
+    DataSearchLeaf, compose_resident_data_search};
+#[cfg(feature = "mrr-data-search-composition")]
+pub use mrr_data_core::DataSearchCandidateComposition;

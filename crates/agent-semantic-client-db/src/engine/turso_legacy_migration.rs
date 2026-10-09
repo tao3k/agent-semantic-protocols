@@ -54,7 +54,7 @@ impl MigrationSummary {
         &mut self,
         family: MigrationFamily,
         table: &str,
-        row: &turso::Row,
+        row: &mrr_data_backend::turso_driver::Row,
     ) -> Result<(), String> {
         let index = family as usize;
         self.record_counts[index] = self.record_counts[index].saturating_add(1);
@@ -211,7 +211,7 @@ pub(super) async fn replay_legacy_client_db(
 }
 
 async fn configure_staging_replay(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     plane: &str,
 ) -> Result<(), String> {
     let mut journal_rows = connection
@@ -247,7 +247,9 @@ async fn configure_staging_replay(
     Ok(())
 }
 
-async fn restore_staging_runtime_mode(connection: &turso::Connection) -> Result<(), String> {
+async fn restore_staging_runtime_mode(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA journal_mode = 'mvcc'", ())
         .await
@@ -316,7 +318,7 @@ fn retired_derived_receipt(
 }
 
 async fn list_migration_tables(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<Vec<MigrationTable>, String> {
     let mut rows = connection
         .query(
@@ -364,7 +366,7 @@ async fn list_migration_tables(
 }
 
 async fn rebuild_active_cache_generation_pointers(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     connection
         .execute("DELETE FROM asp_cache_active_generation_v1", ())
@@ -573,9 +575,9 @@ fn ensure_target_covers_source_tables(
 }
 
 async fn copy_tables(
-    source: &turso::Connection,
-    target_facts: &turso::Connection,
-    target_search: &turso::Connection,
+    source: &mrr_data_backend::turso_driver::Connection,
+    target_facts: &mrr_data_backend::turso_driver::Connection,
+    target_search: &mrr_data_backend::turso_driver::Connection,
     tables: &[MigrationTable],
     retired_summary: &mut MigrationSummary,
     allow_identical_duplicates: bool,
@@ -662,10 +664,10 @@ async fn copy_tables(
 }
 
 async fn flush_insert_batch(
-    target: &turso::Connection,
+    target: &mrr_data_backend::turso_driver::Connection,
     table: &MigrationTable,
     quoted_columns: &[String],
-    batch: &[Vec<turso::Value>],
+    batch: &[Vec<mrr_data_backend::turso_driver::Value>],
     allow_identical_duplicates: bool,
 ) -> Result<(), String> {
     let quoted_table = quote_identifier(&table.name)?;
@@ -706,7 +708,7 @@ async fn flush_insert_batch(
         )
     })?;
     let inserted = statement
-        .execute(turso::params_from_iter(values))
+        .execute(mrr_data_backend::turso_driver::params_from_iter(values))
         .await
         .map_err(|error| {
             format!(
@@ -724,10 +726,10 @@ async fn flush_insert_batch(
 }
 
 async fn verify_migrated_row(
-    target: &turso::Connection,
+    target: &mrr_data_backend::turso_driver::Connection,
     table: &MigrationTable,
     quoted_columns: &[String],
-    values: &[turso::Value],
+    values: &[mrr_data_backend::turso_driver::Value],
 ) -> Result<(), String> {
     let quoted_table = quote_identifier(&table.name)?;
     let equality = quoted_columns
@@ -738,7 +740,10 @@ async fn verify_migrated_row(
         .join(" AND ");
     let verify_sql = format!("SELECT 1 FROM {quoted_table} WHERE {equality} LIMIT 1");
     let mut existing = target
-        .query(&verify_sql, turso::params_from_iter(values.iter().cloned()))
+        .query(
+            &verify_sql,
+            mrr_data_backend::turso_driver::params_from_iter(values.iter().cloned()),
+        )
         .await
         .map_err(|error| {
             format!(
@@ -766,7 +771,7 @@ async fn verify_migrated_row(
 }
 
 async fn summarize_tables(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     tables: &[MigrationTable],
 ) -> Result<MigrationSummary, String> {
     let mut summary = MigrationSummary::default();
@@ -797,7 +802,10 @@ async fn summarize_tables(
     Ok(summary)
 }
 
-async fn table_columns(connection: &turso::Connection, table: &str) -> Result<Vec<String>, String> {
+async fn table_columns(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    table: &str,
+) -> Result<Vec<String>, String> {
     let quoted_table = quote_identifier(table)?;
     let rows = connection
         .query(&format!("SELECT * FROM {quoted_table} LIMIT 0"), ())
@@ -838,23 +846,23 @@ fn update_fnv64(state: &mut u64, bytes: &[u8]) {
     }
 }
 
-fn update_value_digest(state: &mut u64, value: &turso::Value) {
+fn update_value_digest(state: &mut u64, value: &mrr_data_backend::turso_driver::Value) {
     match value {
-        turso::Value::Null => update_fnv64(state, &[0]),
-        turso::Value::Integer(value) => {
+        mrr_data_backend::turso_driver::Value::Null => update_fnv64(state, &[0]),
+        mrr_data_backend::turso_driver::Value::Integer(value) => {
             update_fnv64(state, &[1]);
             update_fnv64(state, &value.to_le_bytes());
         }
-        turso::Value::Real(value) => {
+        mrr_data_backend::turso_driver::Value::Real(value) => {
             update_fnv64(state, &[2]);
             update_fnv64(state, &value.to_bits().to_le_bytes());
         }
-        turso::Value::Text(value) => {
+        mrr_data_backend::turso_driver::Value::Text(value) => {
             update_fnv64(state, &[3]);
             update_fnv64(state, &(value.len() as u64).to_le_bytes());
             update_fnv64(state, value.as_bytes());
         }
-        turso::Value::Blob(value) => {
+        mrr_data_backend::turso_driver::Value::Blob(value) => {
             update_fnv64(state, &[4]);
             update_fnv64(state, &(value.len() as u64).to_le_bytes());
             update_fnv64(state, value);

@@ -17,7 +17,7 @@ use super::turso_statement::{
 
 /// Bootstrap Turso syntax replay table used by DB Engine syntax replay lookup.
 pub async fn bootstrap_turso_syntax_query_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_syntax_query_replay (

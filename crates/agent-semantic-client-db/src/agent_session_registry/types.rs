@@ -83,13 +83,13 @@ macro_rules! agent_session_registry_id {
             }
         }
 
-        impl From<$name> for turso::Value {
+        impl From<$name> for mrr_data_backend::turso_driver::Value {
             fn from(value: $name) -> Self {
                 value.into_string().into()
             }
         }
 
-        impl From<&$name> for turso::Value {
+        impl From<&$name> for mrr_data_backend::turso_driver::Value {
             fn from(value: &$name) -> Self {
                 value.as_str().into()
             }

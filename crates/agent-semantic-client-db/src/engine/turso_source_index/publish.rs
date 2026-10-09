@@ -15,7 +15,8 @@ fn unix_time_ms() -> i64 {
 }
 
 pub(super) struct PublishTursoSourceIndexScopeRequest<'transaction, 'connection, 'value> {
-    pub transaction: &'transaction turso::transaction::Transaction<'connection>,
+    pub transaction:
+        &'transaction mrr_data_backend::turso_driver::transaction::Transaction<'connection>,
     pub project_root: &'value str,
     pub schema_id: &'value str,
     pub schema_version: &'value str,

@@ -1,0 +1,345 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "complete",
+    "compositionReceipt",
+    "witness"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-execution-witness"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "compositionReceipt": {
+      "title": "Internal POO to MRR Data Search composition receipt v1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "pooDagDigest",
+        "pooFactorIds",
+        "pooEdges",
+        "scope",
+        "generationIdentity",
+        "sourceDigest",
+        "residentViewDigest",
+        "compositionAbiDigest",
+        "mode",
+        "branchCount",
+        "mergedOwnerCount",
+        "observationCount",
+        "nativeReasoningDigest",
+        "compositionIdentity",
+        "branchCompleteness",
+        "mergedOwnerIds",
+        "mergedOwnerIdsTruncated"
+      ],
+      "properties": {
+        "pooDagDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "pooFactorIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "pooEdges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "uniqueItems": true
+        },
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-data-composition-receipt"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generationIdentity": {
+          "type": "string",
+          "pattern": "^mrr:generation:v1:[0-9a-f]{64}$"
+        },
+        "sourceDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "residentViewDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compositionAbiDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "single",
+            "rankJoin",
+            "intersect"
+          ]
+        },
+        "branchCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mergedOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeReasoningDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compositionIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branchCompleteness": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "mergedOwnerIds": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mergedOwnerIdsTruncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "witness": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "branches",
+        "paths",
+        "observations",
+        "influences"
+      ],
+      "properties": {
+        "branches": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "factor",
+              "owners",
+              "generation",
+              "scope",
+              "source",
+              "resident",
+              "abi",
+              "complete",
+              "truncated"
+            ],
+            "properties": {
+              "factor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owners": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "generation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "resident": {
+                "type": "string",
+                "minLength": 1
+              },
+              "abi": {
+                "type": "string",
+                "minLength": 1
+              },
+              "complete": {
+                "type": "boolean"
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "paths": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "prefixItems": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ],
+            "items": false
+          },
+          "uniqueItems": true
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "candidate",
+              "factor",
+              "generation",
+              "position",
+              "parents"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "candidate": {
+                "type": "string",
+                "minLength": 1
+              },
+              "factor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "position": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "parents": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        "influences": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate",
+              "factor",
+              "support",
+              "path"
+            ],
+            "properties": {
+              "candidate": {
+                "type": "string",
+                "minLength": 1
+              },
+              "factor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "support": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-execution-witness.v1.schema.json",
+  "title": "Internal MRR search execution mathematical witness v1"
+}

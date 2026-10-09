@@ -184,8 +184,8 @@ impl TursoCdcPageReceipt {
 
 /// Non-MVCC CDC owner with one long-lived Turso connection.
 pub struct TursoCdcStorage {
-    _database: turso::Database,
-    connection: turso::Connection,
+    _database: mrr_data_backend::turso_driver::Database,
+    connection: mrr_data_backend::turso_driver::Connection,
     mode: TursoCdcCaptureMode,
     table_name: String,
 }
@@ -195,7 +195,7 @@ impl TursoCdcStorage {
     pub async fn open(config: TursoCdcProfileConfig) -> Result<Self, String> {
         validate_table_name(&config.table_name)?;
         let path = config.path.to_string_lossy();
-        let database = turso::Builder::new_local(path.as_ref())
+        let database = mrr_data_backend::turso_driver::Builder::new_local(path.as_ref())
             .experimental_multiprocess_wal(true)
             .build()
             .await
@@ -221,7 +221,7 @@ impl TursoCdcStorage {
     }
 
     /// Clone the CDC database connection handle.
-    pub fn connection(&self) -> turso::Connection {
+    pub fn connection(&self) -> mrr_data_backend::turso_driver::Connection {
         self.connection.clone()
     }
 

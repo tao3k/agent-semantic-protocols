@@ -73,7 +73,7 @@ where
 /// `total_changes()` only as a mutation signal; callers that need a logical row count
 /// must query the owning table explicitly.
 pub(crate) async fn execute_turso_operation_with_statement_change_signal<F, Fut>(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     mut operation: F,
     context: &str,
 ) -> Result<bool, String>
@@ -104,7 +104,9 @@ where
     .map(|changed| changed > 0)
 }
 
-async fn read_turso_total_changes(connection: &turso::Connection) -> Result<u64, String> {
+async fn read_turso_total_changes(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<u64, String> {
     let mut rows = connection
         .query("SELECT total_changes()", ())
         .await
@@ -121,7 +123,7 @@ async fn read_turso_total_changes(connection: &turso::Connection) -> Result<u64,
 
 /// Execute a schema/control statement once and surface Turso's native error.
 pub(crate) async fn execute_turso_statement(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     statement: &str,
     context: &str,
 ) -> Result<(), String> {

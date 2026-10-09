@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+name: Data Search composition
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  search-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MRR_NATIVE_PROGRESS: "1"
+      GERBIL_BUILD_VERBOSE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: tao3k/gerbil-scheme-rust/.github/actions/setup-gerbil@f61643b3a787d005612dc5021b4941612f3e1f68
+        with:
+          release-root: ${{ github.workspace }}/.ci/gerbil-release
+      - name: Initialize committed provider descriptors
+        run: |
+          git submodule update --init --depth 1 languages/asp-rust languages/orgize languages/asp-gerbil-scheme languages/asp-typescript languages/asp-python languages/AspJulia.jl org
+      - name: Resolve the declared immutable MRR owner
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re, subprocess, tomllib
+          config = tomllib.loads(Path('crates/agent-semantic-mrr/Cargo.toml').read_text())
+          dependency = config['dependencies']['mrr-search-kernel']
+          revision = dependency['rev']
+          if not re.fullmatch(r'[0-9a-f]{40}', revision):
+              raise SystemExit('MRR source must use a full immutable SHA')
+          root = Path('.data/ci-search-mrr')
+          root.mkdir(parents=True, exist_ok=True)
+          subprocess.run(['git', 'init', '--quiet', str(root)], check=True)
+          subprocess.run(['git', '-C', str(root), 'remote', 'add', 'origin', dependency['git']], check=True)
+          subprocess.run(['git', '-C', str(root), 'fetch', '--depth=1', 'origin', revision], check=True)
+          subprocess.run(['git', '-C', str(root), 'checkout', '--detach', revision], check=True)
+          if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip() != revision:
+              raise SystemExit('foreign MRR revision')
+          PYTHON
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/proofs/MRRProof/src" >> "$GITHUB_ENV"
+          echo "GERBIL_PATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/.gerbil" >> "$GITHUB_ENV"
+          echo "GERBIL_LOADPATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/.gerbil/lib" >> "$GITHUB_ENV"
+      - name: Prepare the owner-declared Scheme dependencies
+        working-directory: .data/ci-search-mrr
+        run: |
+          python3 -m mrr_proof_validation.prepare_gerbil_dependencies
+          gerbil deps --install
+      - name: Qualify the consumer bridge and Runtime Server
+        run: |
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-SEARCH-BUILD -- cargo test -vv --locked -p agent-semantic-mrr --features mrr-data-search-composition --no-run
+          python3 -m mrr_proof_validation.process_runner --label ASP-SEARCH-TEST -- cargo test --locked -p agent-semantic-mrr --features mrr-data-search-composition data_search_composition -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-RUNTIME-BUILD -- cargo check -vv --locked -p agent-semantic-runtime-server --features mrr-data-search-composition

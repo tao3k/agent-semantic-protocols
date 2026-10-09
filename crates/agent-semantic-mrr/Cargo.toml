@@ -9,6 +9,10 @@ edition.workspace = true
 description = "ASP maintenance facade for MRR, Ascent closure, GQL, and Scheme AOT program admission."
 license.workspace = true
 
+[features]
+# POO search integration uses the matching immutable MRR and Data sources.
+mrr-data-search-composition = ["dep:mrr-data-core", "dep:mrr-search-kernel"]
+
 [dependencies]
 ascent.workspace = true
 blake3.workspace = true
@@ -16,6 +20,9 @@ gql-catalog.workspace = true
 gql-compiler.workspace = true
 gql-ir.workspace = true
 meta-relational-reasoning.workspace = true
+mrr-data-core = { git = "https://github.com/tao3k/mrr-data.git", rev = "cdff53eaad645535ec5877a6e3c22863ddd6538e", version = "0.1.0", optional = true, default-features = false }
+# POO plan bindings and Data factor types use the same MRR source.
+mrr-search-kernel = { package = "meta-relational-reasoning", git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "1fdcb06068afa258a7cc87e97c5edcb565697e68", version = "0.1.0", optional = true, default-features = false, features = ["native-inference"] }
 serde.workspace = true
 serde_json.workspace = true
 

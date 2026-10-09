@@ -32,7 +32,7 @@ pub(super) async fn read_provider_treesitter_query_in_session(
 }
 
 async fn read_provider_treesitter_query_on_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     incremental_budget: u32,
     continuation: Option<&ProviderTreeSitterContinuation>,
@@ -173,7 +173,7 @@ fn validate_continuation(
 }
 
 async fn read_inventory(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
 ) -> Result<Option<ProviderOwnerInventory>, String> {
     let scope = &query.scope;
@@ -253,7 +253,7 @@ async fn read_inventory(
 }
 
 async fn read_current_cached_results(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     inventory: &ProviderOwnerInventory,
 ) -> Result<BTreeMap<String, ProviderTreeSitterOwnerResult>, String> {
@@ -362,12 +362,20 @@ fn decode_entry_state(value: String) -> Result<ProviderOwnerInventoryEntryState,
     }
 }
 
-fn row_text(row: &turso::Row, index: usize, field: &str) -> Result<String, String> {
+fn row_text(
+    row: &mrr_data_backend::turso_driver::Row,
+    index: usize,
+    field: &str,
+) -> Result<String, String> {
     row.get::<String>(index)
         .map_err(|error| format!("failed to decode {field}: {error}"))
 }
 
-fn row_u64(row: &turso::Row, index: usize, field: &str) -> Result<u64, String> {
+fn row_u64(
+    row: &mrr_data_backend::turso_driver::Row,
+    index: usize,
+    field: &str,
+) -> Result<u64, String> {
     let value = row
         .get::<i64>(index)
         .map_err(|error| format!("failed to decode {field}: {error}"))?;

@@ -25,7 +25,7 @@ use super::contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 use super::selector_identity::turso_source_index_selector_fingerprint;
 
 pub(super) async fn ensure_turso_source_index_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<bool, String> {
     match validate_turso_source_index_schema(connection).await {
         Ok(()) => Ok(false),
@@ -39,7 +39,9 @@ pub(super) async fn ensure_turso_source_index_schema(
     }
 }
 
-async fn validate_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+async fn validate_turso_source_index_schema(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     run_turso_operation(
         || async {
             connection
@@ -137,7 +139,9 @@ async fn validate_turso_source_index_schema(connection: &turso::Connection) -> R
     Ok(())
 }
 
-async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+async fn reset_turso_source_index_schema(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     for table in [
         "asp_workspace_generation_materialization_v1",
         "asp_source_index_relation_v1",
@@ -182,7 +186,7 @@ struct PreparedTursoSourceIndexRefresh {
 }
 
 pub async fn refresh_turso_source_index_import_on_connection(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     request: ClientDbSourceIndexRefreshRequest,
     materialization: &mut crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
@@ -204,7 +208,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
 }
 
 async fn prepare_turso_source_index_refresh(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     request: ClientDbSourceIndexRefreshRequest,
     materialization: &mut crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
 ) -> Result<PreparedTursoSourceIndexRefresh, String> {
@@ -260,7 +264,7 @@ async fn prepare_turso_source_index_refresh(
 }
 
 async fn prepare_turso_source_index_membership(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     import: &ClientDbSourceIndexImport,
     workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
@@ -339,7 +343,7 @@ async fn prepare_turso_source_index_membership(
     reason = "the generation transaction keeps each verified identity input explicit"
 )]
 async fn prepare_turso_source_index_overlay(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     import: &ClientDbSourceIndexImport,
     workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
@@ -408,7 +412,7 @@ async fn prepare_turso_source_index_overlay(
 }
 
 async fn reusable_prepared_source_index_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     prepared: &PreparedTursoSourceIndexRefresh,
     materialization: &crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     trace_started: std::time::Instant,
@@ -447,7 +451,7 @@ async fn reusable_prepared_source_index_generation(
 }
 
 async fn persist_prepared_source_index_refresh(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     prepared: PreparedTursoSourceIndexRefresh,
     materialization: &mut crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     trace_started: std::time::Instant,
@@ -705,7 +709,7 @@ async fn latest_turso_source_index_generation(
 }
 
 async fn reusable_turso_source_index_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
@@ -836,7 +840,7 @@ async fn reusable_turso_source_index_generation(
 }
 
 pub(super) async fn turso_source_index_scope_row_counts(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

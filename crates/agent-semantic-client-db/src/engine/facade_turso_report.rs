@@ -90,7 +90,7 @@ struct TursoSyntaxReplayRowCounts {
 }
 
 async fn count_turso_syntax_replay_rows_or_zero(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> TursoSyntaxReplayRowCounts {
     count_turso_syntax_replay_rows(connection)
         .await
@@ -98,7 +98,7 @@ async fn count_turso_syntax_replay_rows_or_zero(
 }
 
 async fn count_turso_syntax_replay_rows(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<TursoSyntaxReplayRowCounts, String> {
     let mut rows = connection
         .query("SELECT replay_json FROM asp_syntax_query_replay", ())
@@ -131,11 +131,17 @@ async fn count_turso_syntax_replay_rows(
     Ok(counts)
 }
 
-async fn count_turso_rows_or_zero(connection: &turso::Connection, table: &str) -> u32 {
+async fn count_turso_rows_or_zero(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    table: &str,
+) -> u32 {
     count_turso_rows(connection, table).await.unwrap_or(0)
 }
 
-async fn count_turso_rows(connection: &turso::Connection, table: &str) -> Result<u32, String> {
+async fn count_turso_rows(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    table: &str,
+) -> Result<u32, String> {
     let sql = format!("SELECT COUNT(*) FROM {table}");
     count_turso_query(connection, &sql, ())
         .await
@@ -148,7 +154,9 @@ async fn count_turso_rows(connection: &turso::Connection, table: &str) -> Result
         })
 }
 
-async fn count_turso_source_index_selector_rows_or_zero(connection: &turso::Connection) -> u32 {
+async fn count_turso_source_index_selector_rows_or_zero(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> u32 {
     let mut rows = match connection
         .query(
             "SELECT COALESCE(SUM(selector_count), 0) FROM asp_source_index_owner_v1",
@@ -170,12 +178,12 @@ async fn count_turso_source_index_selector_rows_or_zero(connection: &turso::Conn
 }
 
 async fn count_turso_query<P>(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     sql: &str,
     params: P,
 ) -> Result<u32, String>
 where
-    P: turso::params::IntoParams,
+    P: mrr_data_backend::turso_driver::params::IntoParams,
 {
     let mut rows = connection
         .query(sql, params)

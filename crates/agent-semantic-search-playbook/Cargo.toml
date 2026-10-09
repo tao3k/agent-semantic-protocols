@@ -10,6 +10,7 @@ license.workspace = true
 description = "Lightweight V1 Scheme Search Playbook syntax and lowering contract."
 
 [dependencies]
+blake3.workspace = true
 agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
 agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 serde = { workspace = true, features = ["derive"] }

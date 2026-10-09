@@ -41,7 +41,7 @@ tokio-stream.workspace = true
 futures-util.workspace = true
 tracing = "0.1.44"
 parking_lot.workspace = true
-turso.workspace = true
+mrr-data-backend.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 blake3.workspace = true
 which = { workspace = true }

@@ -1,0 +1,158 @@
+#+TITLE: Resident Search Composition through MRR Data
+#+OPTIONS: toc:2 num:nil
+
+Parent: [[file:10.05-interactive-graph-first-progressive-searchloop.org][SearchLoop]].
+
+* Execution authority
+
+The existing public =asp search playbook= operation remains the execution
+entry point. Resident provider leaves own regex, ranked text, and topology
+acquisition. The optional =mrr-data-search-composition= Runtime build feature
+hands their actual owner sets to MRR Data for consumer aggregation and invokes
+MRR native Search factor inference over those same leaf and merged observations.
+The merged MRR Data owner set is the scope consumed by the existing structural
+and graph stages. No synthetic property table or duplicate topology rule is
+introduced to manufacture a successful receipt.
+
+The private bridge binds project/workspace scope, Runtime generation,
+content generation, resident view, and the ASP composition ABI. MRR GenerationId
+is derived from the canonical complete source tuple, never parsed from a
+Blake3 digest as if that digest were already an MRR typed identity. A stale
+plan content generation fails before aggregation. Each leaf has its own
+source-ordered factor identity, including repeated leaves with the same axis.
+
+* Aggregation and evidence
+
+The host declares typed stages and composition through MRR's POO plan API.
+The existing Scheme host bridge constructs actual POO Flow stage, chain,
+parallel and explicit merge objects and invokes =mrr-search-project=.
+Data resolves physical leaf stage names from that projection and requires its
+generation, full factor inventory and edge inventory to agree with the admitted
+aggregation graph. ASP must not recreate factors or add edges independently.
+The internal Version 1 receipt binds the original POO DAG receipt and projected graph.
+This reuses the current host bridge; it does not add a second runtime or C ABI.
+
+=Single= preserves its selected candidate set. =RankJoin= preserves the
+leading regex truth set; ranked text contributes order and cannot remove its
+members. =Intersect= computes the conjunction of all explicit complete sets.
+Incomplete or truncated intersection branches cannot prove an empty result.
+The bridge retains the native inference digest, observation counts, and
+source binding alongside the returned owner set. Candidate and influence
+budgets are bounded before publication. Existing topology Ascent rules and
+Scheme AOT program receipt admission retain their own ownership boundaries.
+
+The internal receipt shape is defined in
+[[file:../../schemas/search-data-composition-receipt.v1.schema.json][POO Search Data Composition Receipt v1]].
+The receipt uses =schemaVersion: "1"= throughout. POO graph evidence is
+defined in this same V1 contract; no parallel V2 contract is introduced.
+It is internal execution evidence, not a new public operation or a claim that
+the existing ASP composition ABI hash compiles or executes Scheme source.
+
+* Qualification boundary
+
+Cargo dependencies pin the published MRR and MRR Data PR commits with full
+immutable Git revisions. The consumer CI qualifies the feature-enabled bridge
+and Runtime Server against those declared sources. A feature-enabled public
+Runtime route and real provider fixture demonstrate execution; default builds,
+local receipts, and completed exact-head remote CI remain distinct evidence.
+Lean C3/C4 and set soundness, plus Quint publication-transition replay, establish scoped algebraic
+properties; they do not alone certify a running ASP route.
+
+* Executable mathematical witness
+
+The existing composition receipt remains unchanged. A separate Version 1
+=search-execution-witness= diagnostic embeds that receipt and retains actual
+provider owner sets and bindings, original POO path distances, Data observations,
+and MRR influences. The embedded composition identity joins execution evidence
+without changing the existing receipt contract. These are execution facts, not
+reconstructed test outputs.
+
+Each witness collection and the total branch candidate inventory are bounded
+at 256 rows. Larger executions emit =complete: false= with a null witness;
+mathematical qualification rejects omitted evidence. Search results retain
+their existing resource and completeness contracts. The current Lean execution
+qualification covers one- and two-leaf plans and remains executable differential
+evidence, rather than a whole-provider source refinement theorem.
+
+
+* Architecture and reflection boundary
+
+MRR's =docs/architecture/0036-search-reflection-boundaries.org= records the
+source review for this locally qualified chain. The current MRR projection
+retains the POO DAG receipt and projects edges from the typed
+composition tree. Admission now independently expands the compiled branch-arm
+and nested Flow nodes, contracts administrative joins, and checks exact stage
+and edge correspondence plus receipt equality. Standalone Scheme corruption
+controls remain unqualified under the five-second watchdog. Actual role-order C3/C4 binding is now qualified by a separate Version 1
+witness. Candidate-ID-to-source authentication remains open. Passing execution witnesses do not close them.
+
+Reflection remains owned by RFC 10.06.14 and its operation/topology/output child
+contracts. The internal witness log is local mathematical evidence; turning it
+into an admitted durable reflection packet requires the existing ASP projection
+boundary. Proposed next searches preserve their premise/query bindings and pass
+normal operation admission before producing facts. Partial results and omitted
+witnesses cannot be promoted into absence certificates.
+
+
+* Actual role inheritance order qualification
+
+The independent =search-order-witness.v1= diagnostic retains the parent graph
+and runtime precedence lists of the actual POO stage objects. Current Gerbil
+POO uses C4 for these lists. Lean certifies that same graph with C3 and C4,
+matches the entire composition receipt to the actual execution witness, and
+requires both results to equal each retained runtime order. The role aliases
+are packet-local and bound to the composition/source/generation/DAG context.
+
+Three public modes pass and eight corrupted order witnesses are rejected.
+Existing composition and execution witness schemas remain unchanged. The new
+order schema is independent and Version 1. These are inheritance certificates,
+not provider scheduling, source authenticity or whole compiler refinement.
+
+
+* Candidate owner identity admission
+
+Data retains the union of exact owner strings from the admitted physical
+branches and derives their existing Version 1 candidate identities from the
+scope, source digest, resident view digest, composition ABI and generation.
+Canonical lengths count UTF-8 bytes. Owners are opaque provider-owned strings;
+Data performs no path normalization or file-content authentication.
+
+The independent =search-candidate-witness.v1= diagnostic binds that complete
+owner/candidate inventory to the entire composition receipt. ASP verifies every
+pair through Data before passing observations to MRR. The diagnostic explicitly
+omits evidence outside the existing execution-witness limits. Lean checks its
+structural correspondence with the actual branches, observations and merged
+owners; Rust remains the canonical identity authority. Existing Version 1
+composition, execution and order schemas stay unchanged.
+
+A matched diagnostic is local evidence, not an authenticated replay channel.
+A forged coherent log can substitute both packets; physical source and resident
+admission continue to belong to ASP. Source refinement and durable reflection
+packet admission remain separate gates.
+
+
+* Configurable execution ownership
+
+MRR's =docs/architecture/0037-configurable-search-execution.org= defines the
+execution boundary: Scheme/POO Flow owns algorithmic composition and logical
+continuation; Rust MRR supplies admitted FFI transport and bounded physical
+execution dispatch; Data supplies backend capabilities and execution receipts;
+ASP configures scenarios and owns public projection and source/resident admission.
+
+Generic POO producer Lean/Quint qualification belongs in POO Flow and consumes
+LeanPoo certificates. MRR keeps consumer correspondence and identity/resource
+checks. Generic certificate/typed-composition mathematics now live in POO Flow and
+MRR imports the library; consumer binding and publication models remain in MRR. The reviewed Search
+path already calls Scheme inference; Rust is not a replacement Ascent engine.
+
+The current public retrieval path still executes resident regex/Tantivy in ASP
+before Data aggregation. A generic physical dispatcher is not yet implemented.
+Move reusable physical operations through Data capabilities while preserving
+ASP language providers and resident/source authority. Reuse the existing Query
+execution port; do not create a second operator registry or Runtime lifecycle.
+
+Future multimodal profiles must declare their candidate comparison space,
+representation/model/index identity, exact-versus-ranked evidence and fusion
+policy. Region/segment results require an explicit source-bound lift before
+entity-level composition. Existing opaque owner strings and passing code-search
+witnesses do not qualify actual multimodal retrieval or score calibration.

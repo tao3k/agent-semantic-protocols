@@ -325,7 +325,7 @@ pub async fn active_turso_source_index_generation_blobs(
 }
 
 pub(super) async fn load_turso_source_index_generation_blobs_on_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -391,7 +391,7 @@ pub(super) async fn load_turso_source_index_generation_blobs_on_connection(
 }
 
 pub(super) async fn latest_turso_source_index_generation_on_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -437,7 +437,7 @@ LIMIT 1",
 }
 
 pub(super) async fn load_turso_source_index_generation_snapshot(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -459,7 +459,7 @@ pub(super) async fn load_turso_source_index_generation_snapshot(
 }
 
 pub(super) async fn load_turso_source_index_generation_candidate(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

@@ -26,7 +26,7 @@ use agent_semantic_client_db::turso_mvcc_store::TursoMvccEvent;
 use agent_semantic_client_db::turso_mvcc_store::TursoMvccStore;
 use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 use agent_semantic_content_identity::hash_blob;
-use turso::transaction::TransactionBehavior;
+use mrr_data_backend::turso_driver::transaction::TransactionBehavior;
 
 const LONG_INGESTION_ROWS: usize = 65_536;
 const LONG_INGESTION_BATCH_ROWS: usize = 256;

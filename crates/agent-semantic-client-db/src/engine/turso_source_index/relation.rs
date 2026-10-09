@@ -11,7 +11,7 @@ use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::execute_turso_operation;
 
 pub(super) async fn refresh_turso_source_index_relation_projection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     schema_id: &str,
@@ -113,7 +113,7 @@ pub(super) async fn refresh_turso_source_index_relation_projection(
 }
 
 pub(super) async fn load_turso_source_index_relations(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

@@ -349,7 +349,7 @@ struct PartitionAppendRetry {
 }
 
 async fn compare_and_append_once(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     commit: &TursoMvccPartitionCommit,
     aliases: &[TursoMvccPartitionAlias],
 ) -> Result<AttemptOutcome, AttemptError> {
@@ -365,7 +365,7 @@ async fn compare_and_append_once(
 }
 
 async fn compare_and_append_body(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     commit: &TursoMvccPartitionCommit,
     aliases: &[TursoMvccPartitionAlias],
 ) -> Result<AttemptOutcome, AttemptError> {
@@ -451,7 +451,7 @@ async fn compare_and_append_body(
 }
 
 async fn write_head(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     commit: &TursoMvccPartitionCommit,
     next_head: &TursoMvccPartitionHead,
 ) -> Result<(), AttemptError> {
@@ -502,7 +502,7 @@ async fn write_head(
 }
 
 async fn select_partition_alias(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     alias_namespace: &str,
     alias_key: &str,
 ) -> Result<Option<String>, String> {
@@ -527,7 +527,7 @@ async fn select_partition_alias(
 }
 
 async fn select_head_by_alias(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     alias_namespace: &str,
     alias_key: &str,
 ) -> Result<Option<TursoMvccPartitionHead>, String> {
@@ -572,7 +572,7 @@ async fn select_head_by_alias(
 }
 
 async fn select_head(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     partition_key: &str,
 ) -> Result<Option<TursoMvccPartitionHead>, String> {
     let mut statement = connection
@@ -613,7 +613,7 @@ async fn select_head(
 }
 
 async fn read_records(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     partition_key: &str,
 ) -> Result<Vec<TursoMvccStoredPartitionRecord>, String> {
     let mut statement = connection
@@ -654,7 +654,7 @@ async fn read_records(
 }
 
 async fn record_exists(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     partition_key: &str,
     record_id: &str,
 ) -> Result<bool, AttemptError> {
@@ -755,7 +755,7 @@ fn validate_partition_key(partition_key: &str) -> Result<(), String> {
 fn partition_lane(
     store: &TursoMvccStore,
     partition_key: &str,
-) -> Arc<tokio::sync::Mutex<turso::Connection>> {
+) -> Arc<tokio::sync::Mutex<mrr_data_backend::turso_driver::Connection>> {
     let digest = blake3::hash(partition_key.as_bytes());
     let lane = u64::from_le_bytes(
         digest.as_bytes()[..8]
@@ -766,9 +766,12 @@ fn partition_lane(
     Arc::clone(&store.inner.lanes[lane])
 }
 
-fn classify_error(context: &str, error: turso::Error) -> AttemptError {
-    let snapshot = matches!(error, turso::Error::BusySnapshot(_));
-    if snapshot || matches!(error, turso::Error::Busy(_)) {
+fn classify_error(context: &str, error: mrr_data_backend::turso_driver::Error) -> AttemptError {
+    let snapshot = matches!(
+        error,
+        mrr_data_backend::turso_driver::Error::BusySnapshot(_)
+    );
+    if snapshot || matches!(error, mrr_data_backend::turso_driver::Error::Busy(_)) {
         AttemptError::Retryable {
             message: format!("failed to {context}: {error}"),
             snapshot,

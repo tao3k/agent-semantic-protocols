@@ -17,7 +17,7 @@ use super::turso_statement::{
 };
 
 pub(super) async fn bootstrap_turso_artifact_graph_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_artifact_root (
@@ -412,7 +412,7 @@ pub async fn lookup_turso_proof_receipts(
 }
 
 async fn upsert_turso_artifact_root_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     root: &ClientDbArtifactRoot,
 ) -> Result<(), String> {
     execute_turso_operation(
@@ -479,7 +479,9 @@ async fn upsert_turso_artifact_root_with_connection(
     Ok(())
 }
 
-fn turso_artifact_edge_from_row(row: &turso::Row) -> Result<ClientDbArtifactEdge, String> {
+fn turso_artifact_edge_from_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<ClientDbArtifactEdge, String> {
     let ordinal = row
         .get::<i64>(3)
         .map_err(|error| format!("failed to read Turso artifact edge ordinal: {error}"))?
@@ -513,7 +515,7 @@ fn turso_artifact_edge_from_row(row: &turso::Row) -> Result<ClientDbArtifactEdge
 }
 
 fn turso_repair_chain_frame_from_row(
-    row: &turso::Row,
+    row: &mrr_data_backend::turso_driver::Row,
 ) -> Result<ClientDbArtifactRepairChainFrame, String> {
     let root_json = row
         .get::<String>(1)
@@ -540,7 +542,9 @@ fn turso_repair_chain_frame_from_row(
     })
 }
 
-fn turso_proof_receipt_from_row(row: &turso::Row) -> Result<ClientDbProofReceipt, String> {
+fn turso_proof_receipt_from_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<ClientDbProofReceipt, String> {
     let root_json = row
         .get::<String>(8)
         .map_err(|error| format!("failed to read Turso proof receipt root JSON: {error}"))?;

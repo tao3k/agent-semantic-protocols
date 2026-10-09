@@ -17,16 +17,21 @@ fn turso_source_index_values_clause(row_count: usize, column_count: usize) -> St
         .join(",")
 }
 
-fn turso_source_index_text_value(value: &str) -> turso::Value {
-    turso::Value::Text(value.to_string())
+fn turso_source_index_text_value(value: &str) -> mrr_data_backend::turso_driver::Value {
+    mrr_data_backend::turso_driver::Value::Text(value.to_string())
 }
 
-fn turso_source_index_nullable_text_value(value: Option<&str>) -> turso::Value {
-    value.map_or(turso::Value::Null, turso_source_index_text_value)
+fn turso_source_index_nullable_text_value(
+    value: Option<&str>,
+) -> mrr_data_backend::turso_driver::Value {
+    value.map_or(
+        mrr_data_backend::turso_driver::Value::Null,
+        turso_source_index_text_value,
+    )
 }
 
 pub(super) async fn write_turso_source_index_owner_rows(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     owner_rows: &[TursoSourceIndexOwnerRow],
     project_root: &str,
     schema_id: &str,
@@ -65,12 +70,14 @@ pub(super) async fn write_turso_source_index_owner_rows(
                 turso_source_index_nullable_text_value(row.language_id.as_deref()),
                 turso_source_index_nullable_text_value(row.provider_id.as_deref()),
                 turso_source_index_text_value(&row.source_kind),
-                row.line_count
-                    .map_or(turso::Value::Null, turso::Value::Integer),
+                row.line_count.map_or(
+                    mrr_data_backend::turso_driver::Value::Null,
+                    mrr_data_backend::turso_driver::Value::Integer,
+                ),
                 turso_source_index_text_value(&row.query_keys_json),
                 turso_source_index_text_value(&row.selector_facts_json),
                 turso_source_index_text_value(&row.term_tokens_json),
-                turso::Value::Integer(row.selector_count),
+                mrr_data_backend::turso_driver::Value::Integer(row.selector_count),
             ]);
         }
         execute_turso_operation(
@@ -88,7 +95,7 @@ pub(super) async fn write_turso_source_index_owner_rows(
 }
 
 pub(super) async fn refresh_turso_source_index_selector_projection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
@@ -169,7 +176,7 @@ pub(super) async fn refresh_turso_source_index_selector_projection(
 }
 
 pub(super) async fn refresh_turso_source_index_posting_projection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,

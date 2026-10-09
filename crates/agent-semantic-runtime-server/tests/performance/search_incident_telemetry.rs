@@ -262,7 +262,7 @@ async fn fresh_store_creates_materialized_active_incident_relation_before_indexe
 async fn legacy_active_incident_view_is_replaced_by_materialized_table() {
     let fixture = tempfile::tempdir().expect("fixture directory");
     let database_path = fixture.path().join("legacy-view-performance.turso");
-    let database = turso::Builder::new_local(
+    let database = mrr_data_backend::turso_driver::Builder::new_local(
         database_path
             .to_str()
             .expect("legacy telemetry database path must be UTF-8"),

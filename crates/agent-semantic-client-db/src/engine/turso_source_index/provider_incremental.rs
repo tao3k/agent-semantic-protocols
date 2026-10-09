@@ -107,7 +107,7 @@ pub struct ProviderIncrementalWriteReceipt {
 }
 
 pub(super) async fn read_provider_owner_projections(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     owner_path: &str,
 ) -> Result<Vec<ProviderSelectorProjection>, String> {
@@ -178,7 +178,7 @@ pub(super) async fn read_provider_owner_projections(
 }
 
 pub(super) async fn read_provider_owner_snapshot(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     owner_path: &str,
 ) -> Result<Option<ProviderIncrementalOwnerSnapshot>, String> {
@@ -250,7 +250,7 @@ pub(super) async fn read_provider_owner_snapshot(
 }
 
 pub(super) async fn write_provider_incremental_owner_on_connection(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     request: &ProviderIncrementalOwnerWrite,
 ) -> Result<ProviderIncrementalWriteReceipt, String> {
     if request.projection_completeness != "complete-owner" {
@@ -260,7 +260,9 @@ pub(super) async fn write_provider_incremental_owner_on_connection(
         ));
     }
     let transaction = connection
-        .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+        .transaction_with_behavior(
+            mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+        )
         .await
         .map_err(|error| format!("failed to begin provider incremental transaction: {error}"))?;
     let result = write_provider_incremental_owner_transaction(&transaction, request).await;
@@ -282,7 +284,7 @@ pub(super) async fn write_provider_incremental_owner_on_connection(
 }
 
 async fn write_provider_incremental_owner_transaction(
-    transaction: &turso::transaction::Transaction<'_>,
+    transaction: &mrr_data_backend::turso_driver::transaction::Transaction<'_>,
     request: &ProviderIncrementalOwnerWrite,
 ) -> Result<ProviderIncrementalWriteReceipt, String> {
     let connection = &**transaction;
@@ -486,7 +488,7 @@ async fn write_provider_incremental_owner_transaction(
 }
 
 async fn active_provider_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<Option<String>, String> {
     let mut rows = run_turso_operation(
@@ -526,7 +528,7 @@ async fn active_provider_generation(
 }
 
 async fn provider_owner_count(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<u32, String> {
     let mut rows = run_turso_operation(
@@ -564,7 +566,7 @@ async fn provider_owner_count(
 }
 
 async fn upsert_merkle_node(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     node_key: &str,
     parent_node_key: &str,
@@ -608,7 +610,7 @@ async fn upsert_merkle_node(
 }
 
 async fn digest_merkle_children(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     parent_node_key: &str,
 ) -> Result<String, String> {
@@ -659,7 +661,7 @@ async fn digest_merkle_children(
 }
 
 async fn merkle_node_digest(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     node_key: &str,
 ) -> Result<Option<String>, String> {

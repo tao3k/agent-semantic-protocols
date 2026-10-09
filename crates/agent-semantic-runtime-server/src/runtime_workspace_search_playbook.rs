@@ -76,9 +76,10 @@ struct RetrievalLayoutExecution {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RetrievalCompositionKind {
+pub(super) enum RetrievalCompositionKind {
     None,
     Single,
+    RankJoin,
     Intersect,
 }
 
@@ -96,9 +97,39 @@ fn retrieval_composition_kind(
         }
         Composition::Leaf { .. } => RetrievalCompositionKind::None,
         Composition::Intersect { .. } => RetrievalCompositionKind::Intersect,
-        Composition::Chain { children } => children
-            .first()
-            .map_or(RetrievalCompositionKind::None, retrieval_composition_kind),
+        Composition::Chain { children } => {
+            let mut leaves = Vec::new();
+            flatten_chain_retrieval_axes(children, &mut leaves);
+            match leaves.as_slice() {
+                [Axis::Rg, Axis::Tantivy, ..] => RetrievalCompositionKind::RankJoin,
+                _ => children
+                    .first()
+                    .map_or(RetrievalCompositionKind::None, retrieval_composition_kind),
+            }
+        }
+    }
+}
+
+fn flatten_chain_retrieval_axes(
+    children: &[agent_semantic_client_protocol::AspClientSearchPlaybookComposition],
+    axes: &mut Vec<agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis>,
+) {
+    use agent_semantic_client_protocol::AspClientSearchPlaybookComposition as Composition;
+    for child in children {
+        match child {
+            Composition::Chain { children } => flatten_chain_retrieval_axes(children, axes),
+            Composition::Leaf { clause }
+                if matches!(
+                    clause.axis,
+                    agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Rg
+                        | agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Tantivy
+                        | agent_semantic_client_protocol::AspClientSearchPlaybookClauseAxis::Topology
+                ) =>
+            {
+                axes.push(clause.axis)
+            }
+            _ => break,
+        }
     }
 }
 
@@ -177,9 +208,9 @@ pub(super) async fn execute_progressive_search_clauses(
     }
 
     // The admitted typed route, rather than engine availability, owns
-    // execution. Regex and ranked-text leaves run independently unless an
-    // explicit intersection includes both; structural-only routes begin from
-    // the immutable Workspace universe and do no lexical acquisition.
+    // execution. A regex route is an explicit rg-to-Tantivy rank join, while
+    // an explicit intersection remains set conjunction. Structural-only
+    // routes begin from the immutable Workspace universe.
     let retrieval_started = std::time::Instant::now();
     let retrieval_permit = generation
         .acquire_search_resources(
@@ -538,6 +569,10 @@ pub(super) async fn execute_progressive_search_clauses(
     })
 }
 
+#[cfg(feature = "mrr-data-search-composition")]
+#[path = "runtime_workspace_search_data_composition.rs"]
+mod data_composition;
+
 fn execute_default_retrieval_layout(
     plan: &WorkspaceSearchPlaybookPlan,
     generation: &RuntimeQueryGeneration,
@@ -583,9 +618,9 @@ fn execute_default_retrieval_layout(
             "Search retrieval blocks are absent from the normalized composition".to_owned(),
         ));
     }
-    // Each backend is an independent set producer.  When both are present the
-    // admitted Scheme intersection authorizes fusion; neither backend is
-    // invented as a mandatory partner for the other.
+    // Each backend computes its own evidence. Scheme composition determines
+    // whether Tantivy only scores the complete regex set or participates in a
+    // complete-set intersection.
     let mut tantivy_results = Vec::with_capacity(tantivy_clauses.len());
     for (_, block_index, priority_rank) in tantivy_clauses {
         let clause_started = std::time::Instant::now();
@@ -728,15 +763,53 @@ fn execute_default_retrieval_layout(
         }))
         .collect::<Vec<(_, _, BTreeSet<String>)>>();
     let branch_marginal_reductions = branch_marginal_reductions(&retrieval_branch_scopes);
-    let fused_scope = match retrieval_composition {
-        RetrievalCompositionKind::Single => retrieval_branch_scopes
-            .first()
-            .map(|(_, _, scope)| scope.clone())
-            .ok_or_else(|| {
-                AspClientOperationError::Message(
-                    "Search single retrieval composition has no branch".to_owned(),
+    #[cfg(feature = "mrr-data-search-composition")]
+    let fused_scope = {
+        let flags = rg_results
+            .iter()
+            .map(|(index, priority, result, _)| {
+                (
+                    (WorkspaceSearchAxisKind::Rg, *index),
+                    (*priority, !result.truncated, result.truncated),
                 )
-            })?,
+            })
+            .chain(
+                tantivy_results
+                    .iter()
+                    .map(|(index, priority, _, result, _)| {
+                        (
+                            (WorkspaceSearchAxisKind::Tantivy, *index),
+                            (*priority, !result.truncated, result.truncated),
+                        )
+                    }),
+            )
+            .chain(topology_results.iter().map(|(index, priority, result, _)| {
+                (
+                    (WorkspaceSearchAxisKind::Topology, *index),
+                    (*priority, !result.truncated, result.truncated),
+                )
+            }))
+            .collect();
+        data_composition::compose_retrieval_scope(
+            plan,
+            generation,
+            retrieval_composition,
+            &retrieval_branch_scopes,
+            &flags,
+        )?
+    };
+    #[cfg(not(feature = "mrr-data-search-composition"))]
+    let fused_scope = match retrieval_composition {
+        RetrievalCompositionKind::Single | RetrievalCompositionKind::RankJoin => {
+            retrieval_branch_scopes
+                .first()
+                .map(|(_, _, scope)| scope.clone())
+                .ok_or_else(|| {
+                    AspClientOperationError::Message(
+                        "Search single retrieval composition has no branch".to_owned(),
+                    )
+                })?
+        }
         RetrievalCompositionKind::Intersect => intersect_clause_owner_scopes(
             &retrieval_branch_scopes
                 .iter()

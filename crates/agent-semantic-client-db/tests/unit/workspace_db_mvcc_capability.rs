@@ -5,8 +5,8 @@
 //! Pinned Turso 0.7 MVCC capability gate over the production source-index schema.
 
 use blake3::Hasher;
+use mrr_data_backend::turso_driver::{Error, Value};
 use tempfile::TempDir;
-use turso::{Error, Value};
 
 #[tokio::test(flavor = "current_thread")]
 async fn pinned_turso_0_7_mvcc_supports_production_source_index_contract() {
@@ -130,15 +130,19 @@ async fn pinned_turso_0_7_1_characterizes_generic_same_row_conflict() {
     );
 }
 
-async fn open_existing_mvcc_database(path: &std::path::Path) -> turso::Database {
-    turso::Builder::new_local(path.to_str().expect("UTF-8 MVCC tempfile path"))
-        .experimental_mvcc_passive_checkpoint(true)
-        .build()
-        .await
-        .expect("open pinned Turso 0.7 MVCC tempfile")
+async fn open_existing_mvcc_database(
+    path: &std::path::Path,
+) -> mrr_data_backend::turso_driver::Database {
+    mrr_data_backend::turso_driver::Builder::new_local(
+        path.to_str().expect("UTF-8 MVCC tempfile path"),
+    )
+    .experimental_mvcc_passive_checkpoint(true)
+    .build()
+    .await
+    .expect("open pinned Turso 0.7 MVCC tempfile")
 }
 
-async fn assert_journal_mode_mvcc(connection: &turso::Connection) {
+async fn assert_journal_mode_mvcc(connection: &mrr_data_backend::turso_driver::Connection) {
     let mut rows = connection
         .query("PRAGMA journal_mode", ())
         .await
@@ -153,7 +157,7 @@ async fn assert_journal_mode_mvcc(connection: &turso::Connection) {
     assert_eq!(mode, "mvcc");
 }
 
-async fn insert_typed_fixtures(connection: &turso::Connection) {
+async fn insert_typed_fixtures(connection: &mrr_data_backend::turso_driver::Connection) {
     connection
         .execute(
             "INSERT INTO asp_source_index_owner_v1 (
@@ -215,7 +219,7 @@ async fn insert_typed_fixtures(connection: &turso::Connection) {
         .expect("insert indexed production inventory row");
 }
 
-async fn assert_production_index_hit(connection: &turso::Connection) {
+async fn assert_production_index_hit(connection: &mrr_data_backend::turso_driver::Connection) {
     let mut rows = connection
         .query(
             "EXPLAIN QUERY PLAN
@@ -246,7 +250,7 @@ async fn assert_production_index_hit(connection: &turso::Connection) {
     );
 }
 
-async fn assert_typed_roundtrip(connection: &turso::Connection) {
+async fn assert_typed_roundtrip(connection: &mrr_data_backend::turso_driver::Connection) {
     let mut rows = connection
         .query(
             "SELECT owner_path, language_id, line_count, selector_count
@@ -287,7 +291,11 @@ async fn assert_typed_roundtrip(connection: &turso::Connection) {
     );
 }
 
-async fn insert_generation(connection: &turso::Connection, provider_id: &str, generation_id: &str) {
+async fn insert_generation(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    provider_id: &str,
+    generation_id: &str,
+) {
     connection
         .execute(
             "INSERT INTO provider_active_generation_v1 (
@@ -312,9 +320,9 @@ async fn insert_generation(connection: &turso::Connection, provider_id: &str, ge
 }
 
 async fn update_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     provider_id: &str,
-) -> Result<(), turso::Error> {
+) -> Result<(), mrr_data_backend::turso_driver::Error> {
     connection
         .execute(
             "UPDATE provider_active_generation_v1
@@ -334,7 +342,7 @@ async fn update_generation(
         .map(|_| ())
 }
 
-async fn production_digest(connection: &turso::Connection) -> String {
+async fn production_digest(connection: &mrr_data_backend::turso_driver::Connection) -> String {
     let mut hasher = Hasher::new();
     hash_rows(
         connection,
@@ -364,7 +372,12 @@ async fn production_digest(connection: &turso::Connection) -> String {
     hasher.finalize().to_hex().to_string()
 }
 
-async fn hash_rows(connection: &turso::Connection, hasher: &mut Hasher, sql: &str, columns: usize) {
+async fn hash_rows(
+    connection: &mrr_data_backend::turso_driver::Connection,
+    hasher: &mut Hasher,
+    sql: &str,
+    columns: usize,
+) {
     let mut rows = connection.query(sql, ()).await.expect("query digest rows");
     while let Some(row) = rows.next().await.expect("read digest row") {
         for index in 0..columns {

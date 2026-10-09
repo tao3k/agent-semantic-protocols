@@ -55,7 +55,7 @@ pub async fn bootstrap_turso_client_db(
 
 /// Bootstrap the discardable, root-bound depth-zero search projection.
 pub(super) async fn bootstrap_turso_client_search_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_search_projection_generation (

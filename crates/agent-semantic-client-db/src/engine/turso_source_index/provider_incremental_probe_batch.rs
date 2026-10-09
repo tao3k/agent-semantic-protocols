@@ -111,7 +111,7 @@ fn classify_owner(
 }
 
 async fn read_active_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<Option<String>, String> {
     let mut rows = connection
@@ -143,7 +143,7 @@ async fn read_active_generation(
 }
 
 async fn read_stored_owners(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<BTreeMap<String, StoredOwner>, String> {
     let mut rows = connection

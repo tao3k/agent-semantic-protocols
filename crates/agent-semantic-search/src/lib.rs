@@ -121,6 +121,7 @@ pub use agent_semantic_search_playbook::{
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
     SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
     parse_progressive_search_playbook_args, parse_search_playbook_producer_declaration,
+    search_playbook_composition_abi_digest,
 };
 pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
 pub use content_generation::CONTENT_SEARCH_GENERATION_RECEIPT_SCHEMA_ID;

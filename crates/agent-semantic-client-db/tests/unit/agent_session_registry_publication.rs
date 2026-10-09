@@ -47,10 +47,11 @@ async fn route_slot_shape_is_typed_fail_closed_without_mutation() {
     let state = root.path().join("state");
     std::fs::create_dir_all(&state).expect("state root");
     let current = state.join(AGENT_SESSION_REGISTRY_DB_NAME);
-    let database = turso::Builder::new_local(current.to_string_lossy().as_ref())
-        .build()
-        .await
-        .expect("route-slot database");
+    let database =
+        mrr_data_backend::turso_driver::Builder::new_local(current.to_string_lossy().as_ref())
+            .build()
+            .await
+            .expect("route-slot database");
     let connection = database.connect().expect("route-slot connection");
     connection
         .execute_batch(

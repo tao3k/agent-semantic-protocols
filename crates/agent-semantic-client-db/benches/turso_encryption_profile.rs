@@ -15,7 +15,7 @@ use criterion::Criterion;
 use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use turso::transaction::TransactionBehavior;
+use mrr_data_backend::turso_driver::transaction::TransactionBehavior;
 
 const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -30,7 +30,7 @@ fn temp_db(name: &str) -> PathBuf {
     ))
 }
 
-async fn seed(connection: &mut turso::Connection, table: &str, rows: i64) {
+async fn seed(connection: &mut mrr_data_backend::turso_driver::Connection, table: &str, rows: i64) {
     connection
         .execute(
             &format!("CREATE TABLE {table}(id INTEGER PRIMARY KEY, payload BLOB NOT NULL)"),
@@ -80,9 +80,11 @@ fn turso_encryption_profile(c: &mut Criterion) {
     let plain_path = temp_db("plain");
     let plain_database = runtime
         .block_on(
-            turso::Builder::new_local(plain_path.to_string_lossy().as_ref())
-                .experimental_multiprocess_wal(true)
-                .build(),
+            mrr_data_backend::turso_driver::Builder::new_local(
+                plain_path.to_string_lossy().as_ref(),
+            )
+            .experimental_multiprocess_wal(true)
+            .build(),
         )
         .expect("open plain comparison database");
     let mut plain_connection = plain_database

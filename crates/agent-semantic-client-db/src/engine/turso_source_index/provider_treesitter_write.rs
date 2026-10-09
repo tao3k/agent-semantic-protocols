@@ -17,7 +17,7 @@ use super::provider_treesitter::{
     ProviderTreeSitterQueryIdentity,
 };
 pub(super) async fn upsert_provider_owner_inventory_on_connection(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     request: &ProviderOwnerInventoryWrite,
 ) -> Result<ProviderOwnerInventoryWriteReceipt, String> {
     let inventory_digest = inventory_digest(request);
@@ -28,7 +28,9 @@ pub(super) async fn upsert_provider_owner_inventory_on_connection(
         .map(|entry| entry.owner_path.clone())
         .collect::<BTreeSet<_>>();
     let transaction = connection
-        .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+        .transaction_with_behavior(
+            mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+        )
         .await
         .map_err(|error| format!("failed to begin provider inventory transaction: {error}"))?;
     let previous_paths = read_inventory_paths(&transaction, &request.scope).await?;
@@ -68,7 +70,7 @@ pub(super) async fn upsert_provider_owner_inventory_on_connection(
 }
 
 pub(super) async fn write_provider_treesitter_owner_result_on_connection(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
 ) -> Result<ProviderTreeSitterOwnerWriteReceipt, String> {
@@ -76,7 +78,9 @@ pub(super) async fn write_provider_treesitter_owner_result_on_connection(
     let capture_names_json = serde_json::to_string(&capture_names)
         .map_err(|error| format!("failed to encode Tree-sitter capture names: {error}"))?;
     let transaction = connection
-        .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+        .transaction_with_behavior(
+            mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+        )
         .await
         .map_err(|error| format!("failed to begin Tree-sitter owner transaction: {error}"))?;
     let write =
@@ -106,7 +110,7 @@ pub(super) async fn write_provider_treesitter_owner_result_on_connection(
 }
 
 async fn replace_inventory_transaction(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     request: &ProviderOwnerInventoryWrite,
     inventory_digest: &str,
     inventory_generation: &str,
@@ -157,7 +161,7 @@ async fn replace_inventory_transaction(
 }
 
 async fn delete_inventory_entries(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<(), String> {
     connection
@@ -175,7 +179,7 @@ async fn delete_inventory_entries(
 }
 
 async fn insert_inventory_entry(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
     inventory_generation: &str,
     entry: &ProviderOwnerInventoryEntry,
@@ -205,7 +209,7 @@ async fn insert_inventory_entry(
 }
 
 async fn replace_query_owner_transaction(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
     capture_names_json: &str,
@@ -220,7 +224,7 @@ async fn replace_query_owner_transaction(
 }
 
 async fn ensure_query_metadata(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     capture_names_json: &str,
 ) -> Result<(), String> {
@@ -260,7 +264,7 @@ async fn ensure_query_metadata(
 }
 
 async fn delete_owner_captures(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
@@ -290,7 +294,7 @@ async fn delete_owner_captures(
 }
 
 async fn upsert_owner_result(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
@@ -332,7 +336,7 @@ async fn upsert_owner_result(
 }
 
 async fn insert_capture_projection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
     projection: &ProviderTreeSitterCaptureProjection,
@@ -591,7 +595,7 @@ fn canonical_capture_names(capture_names: &[String]) -> Vec<String> {
 }
 
 async fn read_inventory_paths(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &ProviderIncrementalScoped,
 ) -> Result<BTreeSet<String>, String> {
     let mut rows = connection
@@ -621,7 +625,7 @@ async fn read_inventory_paths(
 }
 
 async fn read_query_capture_names(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
 ) -> Result<Option<String>, String> {
     let mut rows = connection
@@ -657,7 +661,7 @@ async fn read_query_capture_names(
 }
 
 async fn verify_inventory_visibility(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     request: &ProviderOwnerInventoryWrite,
     receipt: &ProviderOwnerInventoryWriteReceipt,
 ) -> Result<(), String> {
@@ -698,7 +702,7 @@ async fn verify_inventory_visibility(
 }
 
 async fn verify_query_owner_visibility(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     query: &ProviderTreeSitterQueryIdentity,
     result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {

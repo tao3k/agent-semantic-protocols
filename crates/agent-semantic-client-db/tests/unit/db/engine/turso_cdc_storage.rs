@@ -11,7 +11,7 @@ mod turso_cdc_storage_tests {
     use agent_semantic_client_db::turso_cdc_storage::TursoCdcChangeKind;
     use agent_semantic_client_db::turso_cdc_storage::TursoCdcProfileConfig;
     use agent_semantic_client_db::turso_cdc_storage::TursoCdcStorage;
-    use turso::transaction::TransactionBehavior;
+    use mrr_data_backend::turso_driver::transaction::TransactionBehavior;
 
     fn temp_db(name: &str) -> PathBuf {
         let nonce = SystemTime::now()

@@ -5,7 +5,7 @@
 use crate::source_index::ClientDbSourceIndexImport;
 
 pub(super) async fn write_source_index_blobs(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     import: &ClientDbSourceIndexImport,
 ) -> Result<(), String> {
     let file_hashes = import.file_hashes.iter().try_fold(

@@ -30,7 +30,7 @@ pub(super) struct TursoSourceIndexWriteInput<'a> {
 }
 
 pub(super) async fn write_turso_source_index_rows(
-    connection: &mut turso::Connection,
+    connection: &mut mrr_data_backend::turso_driver::Connection,
     materialization: &crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     input: TursoSourceIndexWriteInput<'_>,
 ) -> Result<
@@ -52,7 +52,9 @@ pub(super) async fn write_turso_source_index_rows(
     super::readiness::validate_turso_source_index_selector_projection_records(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
     let transaction = connection
-        .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+        .transaction_with_behavior(
+            mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+        )
         .await
         .map_err(|error| format!("failed to begin Turso source-index transaction: {error}"))?;
     let write_result = async {

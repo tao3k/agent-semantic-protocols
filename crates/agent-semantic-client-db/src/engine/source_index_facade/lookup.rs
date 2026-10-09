@@ -389,7 +389,7 @@ async fn lookup_source_index_read_model_at_path(
     limit: u32,
     expected_snapshot_root: &str,
     expected_index_artifact_digest: &str,
-    resident_connection: Option<Arc<turso::Connection>>,
+    resident_connection: Option<Arc<mrr_data_backend::turso_driver::Connection>>,
     resident_scope_cache: Option<
         &tokio::sync::RwLock<
             Option<(
@@ -590,7 +590,7 @@ async fn lookup_source_index_read_model_at_path(
 
 pub(crate) async fn lookup_source_index_read_model_in_resident_connection(
     db_path: PathBuf,
-    connection: Arc<turso::Connection>,
+    connection: Arc<mrr_data_backend::turso_driver::Connection>,
     indexed_project_root: &Path,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
@@ -632,7 +632,7 @@ pub(crate) async fn lookup_source_index_read_model_in_resident_connection(
 }
 
 async fn turso_source_index_lookup_schema_current(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     requested_scope: Option<&TursoSourceIndexLookupRequestScope>,
 ) -> Result<bool, String> {
     let mut rows = match requested_scope {
@@ -674,7 +674,7 @@ async fn turso_source_index_lookup_schema_current(
 }
 
 async fn turso_source_index_owner_rows_exist(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &TursoSourceIndexLookupScope,
 ) -> Result<bool, String> {
     run_turso_operation(
@@ -710,7 +710,7 @@ async fn turso_source_index_owner_rows_exist(
     .await
 }
 async fn turso_source_index_namespace_exists(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<bool, String> {
     for table in [
         "asp_source_index_scope_v1",

@@ -988,3 +988,9 @@ asp query playbook --language python --selector <exact-selector> --projection so
 publication against one admitted workspace generation. Exact repair binds the
 owner digest and byte range without advancing or rewriting the canonical source
 generation.
+
+The feature-qualified Data Search boundary retains separate Version 1 diagnostics:
+`search-data-composition-receipt.v1.schema.json`,
+`search-execution-witness.v1.schema.json`, `search-order-witness.v1.schema.json`,
+and `search-candidate-witness.v1.schema.json`. They bind actual composition,
+execution and candidate evidence without changing the existing public Search packet.

@@ -33,7 +33,11 @@ fn schema_migration_lane(path: &Path) -> Arc<Mutex<()>> {
         .clone()
 }
 
-fn optional_u64(row: &turso::Row, index: usize, label: &str) -> Result<Option<u64>, String> {
+fn optional_u64(
+    row: &mrr_data_backend::turso_driver::Row,
+    index: usize,
+    label: &str,
+) -> Result<Option<u64>, String> {
     let value = row
         .get::<Option<i64>>(index)
         .map_err(|error| format!("failed to decode {label}: {error}"))?;
@@ -44,9 +48,9 @@ fn optional_u64(row: &turso::Row, index: usize, label: &str) -> Result<Option<u6
 
 #[derive(Clone)]
 pub struct TursoOpenTelemetrySpanExporter {
-    _database: Arc<turso::Database>,
-    writer: Arc<Mutex<turso::Connection>>,
-    reader: Arc<Mutex<turso::Connection>>,
+    _database: Arc<mrr_data_backend::turso_driver::Database>,
+    writer: Arc<Mutex<mrr_data_backend::turso_driver::Connection>>,
+    reader: Arc<Mutex<mrr_data_backend::turso_driver::Connection>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -382,7 +386,7 @@ impl TursoOpenTelemetrySpanExporter {
                         ?18, ?19, ?20, ?21, ?22, ?23
                     )
                     ON CONFLICT DO NOTHING",
-                    turso::params![
+                    mrr_data_backend::turso_driver::params![
                         span.span_context.trace_id().to_string(),
                         span.span_context.span_id().to_string(),
                         span.parent_span_id.to_string(),
@@ -455,7 +459,7 @@ impl TursoOpenTelemetrySpanExporter {
                                  budget_micros = excluded.budget_micros,
                                  attributes_json = excluded.attributes_json
                              WHERE excluded.transition_sequence >= asp_otel_active_search_incident.transition_sequence",
-                            turso::params![
+                            mrr_data_backend::turso_driver::params![
                                 workspace_identity,
                                 incident_id,
                                 optional_string_attribute(&attributes, semconv::LANGUAGE_ID),
@@ -492,7 +496,11 @@ impl TursoOpenTelemetrySpanExporter {
                              WHERE workspace_identity = ?1
                                AND incident_id = ?2
                                AND transition_sequence <= ?3",
-                            turso::params![workspace_identity, incident_id, transition_sequence],
+                            mrr_data_backend::turso_driver::params![
+                                workspace_identity,
+                                incident_id,
+                                transition_sequence
+                            ],
                         )
                         .await
                         .map_err(|error| {
@@ -532,7 +540,7 @@ impl TursoOpenTelemetrySpanExporter {
                             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                             ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
                         ) ON CONFLICT(trace_id, span_id) DO NOTHING",
-                        turso::params![
+                        mrr_data_backend::turso_driver::params![
                             span.span_context.trace_id().to_string(),
                             span.span_context.span_id().to_string(),
                             unix_nanos(span.start_time)?,
@@ -576,7 +584,9 @@ impl SpanExporter for TursoOpenTelemetrySpanExporter {
     }
 }
 
-async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> {
+async fn bootstrap_schema(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     connection
         .execute(
             "CREATE TABLE IF NOT EXISTS asp_otel_performance_span (
@@ -702,7 +712,7 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
 }
 
 async fn remove_legacy_active_search_incident_view(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     let mut rows = connection
         .query(
@@ -734,7 +744,9 @@ async fn remove_legacy_active_search_incident_view(
     Ok(())
 }
 
-async fn ensure_runtime_pressure_columns(connection: &turso::Connection) -> Result<(), String> {
+async fn ensure_runtime_pressure_columns(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA table_info(asp_otel_runtime_pressure)", ())
         .await
@@ -763,7 +775,9 @@ async fn ensure_runtime_pressure_columns(connection: &turso::Connection) -> Resu
     Ok(())
 }
 
-async fn ensure_performance_span_columns(connection: &turso::Connection) -> Result<(), String> {
+async fn ensure_performance_span_columns(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA table_info(asp_otel_performance_span)", ())
         .await

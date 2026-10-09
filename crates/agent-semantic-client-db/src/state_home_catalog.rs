@@ -51,8 +51,8 @@ ON asp_retention_lease(object_id);
 ";
 
 pub struct StateHomeCatalog {
-    _database: turso::Database,
-    connection: tokio::sync::Mutex<turso::Connection>,
+    _database: mrr_data_backend::turso_driver::Database,
+    connection: tokio::sync::Mutex<mrr_data_backend::turso_driver::Connection>,
 }
 
 impl StateHomeCatalog {
@@ -69,7 +69,7 @@ impl StateHomeCatalog {
         let path = path
             .to_str()
             .ok_or_else(|| "State Home catalog path must be valid UTF-8".to_string())?;
-        let database = turso::Builder::new_local(path)
+        let database = mrr_data_backend::turso_driver::Builder::new_local(path)
             .experimental_multiprocess_wal(true)
             .build()
             .await
@@ -127,7 +127,9 @@ impl StateHomeCatalog {
         validate_state_home_catalog_observations(observations)?;
         let mut connection = self.connection.lock().await;
         let transaction = connection
-            .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+            .transaction_with_behavior(
+                mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+            )
             .await
             .map_err(|error| format!("begin State Home catalog transaction: {error}"))?;
         for observation in observations {
@@ -147,7 +149,7 @@ impl StateHomeCatalog {
                     binding_digest = excluded.binding_digest,
                     binding_json = excluded.binding_json,
                     observed_at_ms = excluded.observed_at_ms",
-                    turso::params![
+                    mrr_data_backend::turso_driver::params![
                         observation.binding.workspace.digest.as_str(),
                         observation.binding.repo.digest.as_str(),
                         observation.binding.binding_digest.as_str(),
@@ -167,7 +169,7 @@ impl StateHomeCatalog {
                     kind = excluded.kind,
                     last_observed_at_ms = excluded.last_observed_at_ms,
                     byte_count = excluded.byte_count",
-                    turso::params![
+                    mrr_data_backend::turso_driver::params![
                         observation.object.object_id.as_str(),
                         observation.binding.workspace.digest.as_str(),
                         object_kind(&observation.object),
@@ -194,7 +196,7 @@ impl StateHomeCatalog {
                         "INSERT INTO asp_retention_lease(
                         lease_id, object_id, owner, expires_at_ms
                      ) VALUES (?1, ?2, ?3, ?4)",
-                        turso::params![
+                        mrr_data_backend::turso_driver::params![
                             lease.lease_id.as_str(),
                             lease.object_id.as_str(),
                             lease.owner.as_str(),
@@ -247,7 +249,9 @@ impl StateHomeCatalog {
         }
         let mut connection = self.connection.lock().await;
         let transaction = connection
-            .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+            .transaction_with_behavior(
+                mrr_data_backend::turso_driver::transaction::TransactionBehavior::Immediate,
+            )
             .await
             .map_err(|error| format!("begin State Home deletion transaction: {error}"))?;
         let observed = read_generation(&transaction).await?;
@@ -385,7 +389,9 @@ impl StateHomeCatalog {
     }
 }
 
-async fn validate_catalog_identity(connection: &turso::Connection) -> Result<(), String> {
+async fn validate_catalog_identity(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query(
             "SELECT schema_id, schema_version FROM asp_state_home_catalog WHERE singleton = 1",
@@ -409,7 +415,7 @@ async fn validate_catalog_identity(connection: &turso::Connection) -> Result<(),
 }
 
 async fn read_generation(
-    connection: &turso::transaction::Transaction<'_>,
+    connection: &mrr_data_backend::turso_driver::transaction::Transaction<'_>,
 ) -> Result<CatalogGeneration, String> {
     let mut rows = connection
         .query(
@@ -430,7 +436,7 @@ async fn read_generation(
 }
 
 async fn read_connection_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<CatalogGeneration, String> {
     let mut rows = connection
         .query(
@@ -483,7 +489,7 @@ fn from_i64(label: &str, value: i64) -> Result<u64, String> {
     u64::try_from(value).map_err(|_| format!("{label} must not be negative"))
 }
 
-fn row_error(error: turso::Error) -> String {
+fn row_error(error: mrr_data_backend::turso_driver::Error) -> String {
     format!("decode State Home catalog row: {error}")
 }
 

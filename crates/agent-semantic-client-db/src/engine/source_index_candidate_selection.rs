@@ -67,7 +67,7 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
 }
 
 pub(super) async fn resolve_turso_source_index_lookup_scope(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     requested_scope: Option<TursoSourceIndexLookupRequestScope>,
 ) -> Result<Option<TursoSourceIndexLookupScope>, String> {
     let mut rows = match requested_scope {
@@ -166,7 +166,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
 }
 
 pub(super) async fn query_turso_source_index_snapshot_candidates_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &TursoSourceIndexLookupScope,
     query: &str,
     language_id: Option<&LanguageId>,
@@ -185,7 +185,7 @@ pub(super) async fn query_turso_source_index_snapshot_candidates_with_connection
 }
 
 pub(super) async fn query_turso_source_index_snapshot_candidates_for_scope_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: TursoSourceIndexCandidateScope<'_>,
     query: &str,
     language_id: Option<&LanguageId>,
@@ -405,7 +405,7 @@ JOIN asp_source_index_owner_v1 AS owner
 }
 
 async fn trace_turso_source_index_posting_projection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &TursoSourceIndexLookupScope,
     term_tokens_json: &str,
     requested_term_count: usize,
@@ -457,7 +457,7 @@ async fn trace_turso_source_index_posting_projection(
 }
 
 pub(super) async fn query_turso_source_index_candidates_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     scope: &TursoSourceIndexLookupScope,
     query: &str,
     language_id: Option<&LanguageId>,

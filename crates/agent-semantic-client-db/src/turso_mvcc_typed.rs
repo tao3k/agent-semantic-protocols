@@ -201,12 +201,16 @@ fn validate_events(
     Ok(())
 }
 
-fn classify_turso_write_error(error: turso::Error) -> TursoMvccWriteError {
+fn classify_turso_write_error(error: mrr_data_backend::turso_driver::Error) -> TursoMvccWriteError {
     let code = match &error {
-        turso::Error::Busy(_) => TursoMvccWriteErrorCode::Busy,
-        turso::Error::BusySnapshot(_) => TursoMvccWriteErrorCode::BusySnapshot,
-        turso::Error::Constraint(_) => TursoMvccWriteErrorCode::DuplicateIdentity,
-        turso::Error::IoError(_, _) => TursoMvccWriteErrorCode::Io,
+        mrr_data_backend::turso_driver::Error::Busy(_) => TursoMvccWriteErrorCode::Busy,
+        mrr_data_backend::turso_driver::Error::BusySnapshot(_) => {
+            TursoMvccWriteErrorCode::BusySnapshot
+        }
+        mrr_data_backend::turso_driver::Error::Constraint(_) => {
+            TursoMvccWriteErrorCode::DuplicateIdentity
+        }
+        mrr_data_backend::turso_driver::Error::IoError(_, _) => TursoMvccWriteErrorCode::Io,
         _ => TursoMvccWriteErrorCode::Backend,
     };
     TursoMvccWriteError {

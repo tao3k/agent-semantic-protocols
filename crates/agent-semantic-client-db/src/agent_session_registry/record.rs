@@ -4,7 +4,9 @@
 
 use super::types::AgentSessionRecord;
 
-pub(super) fn from_turso_row(row: &turso::Row) -> Result<AgentSessionRecord, String> {
+pub(super) fn from_turso_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<AgentSessionRecord, String> {
     macro_rules! read {
         ($index:expr, $field:literal) => {
             row.get($index)

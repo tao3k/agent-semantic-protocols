@@ -5,7 +5,7 @@
 //! Turso 0.7 schema owned by provider-scoped incremental reasoning search.
 
 pub(super) async fn bootstrap_provider_incremental_schema(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS provider_active_generation_v1 (
@@ -240,7 +240,9 @@ pub(super) async fn bootstrap_provider_incremental_schema(
     Ok(())
 }
 
-async fn ensure_provider_owner_source_bytes(connection: &turso::Connection) -> Result<(), String> {
+async fn ensure_provider_owner_source_bytes(
+    connection: &mrr_data_backend::turso_driver::Connection,
+) -> Result<(), String> {
     let mut rows = connection
         .query("PRAGMA table_info(provider_owner_fingerprint_v1)", ())
         .await

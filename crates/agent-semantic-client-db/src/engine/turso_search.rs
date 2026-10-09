@@ -69,7 +69,7 @@ pub async fn replace_turso_search_document_generation(
 
 /// Atomically replace one namespace's active generation on an existing connection.
 pub(super) async fn replace_turso_search_document_generation_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     namespace: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     documents: &[TursoClientDbSearchDocument],
@@ -245,7 +245,7 @@ pub async fn search_turso_documents(
 }
 
 async fn validate_turso_search_generation(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     namespace: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<(), String> {
@@ -288,7 +288,7 @@ async fn validate_turso_search_generation(
 }
 
 async fn search_admitted_turso_documents(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     namespace: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
@@ -354,7 +354,7 @@ fn turso_fts_query(query: &str) -> Option<String> {
 }
 
 struct CollectTursoSearchHitsRequest<'a> {
-    connection: &'a turso::Connection,
+    connection: &'a mrr_data_backend::turso_driver::Connection,
     source: &'static str,
     sql: &'a str,
     namespace: &'a str,

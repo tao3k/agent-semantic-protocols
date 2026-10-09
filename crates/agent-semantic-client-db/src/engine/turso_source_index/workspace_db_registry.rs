@@ -112,8 +112,8 @@ struct WorkspaceDbSlot {
 struct WorkspaceDbEntry {
     workspace_identity: String,
     client_db_path: PathBuf,
-    _database: turso::Database,
-    read_connections: Vec<Arc<turso::connection::Connection>>,
+    _database: mrr_data_backend::turso_driver::Database,
+    read_connections: Vec<Arc<mrr_data_backend::turso_driver::connection::Connection>>,
     active_reader_count: AtomicU64,
     next_read_connection: AtomicU64,
     source_index_read_cache: Vec<
@@ -156,11 +156,11 @@ struct WorkspaceDbSourceIndexReadKey {
 
 pub(super) struct WorkspaceDbReadLease<'a> {
     entry: &'a WorkspaceDbEntry,
-    connection: Arc<turso::connection::Connection>,
+    connection: Arc<mrr_data_backend::turso_driver::connection::Connection>,
 }
 
 impl std::ops::Deref for WorkspaceDbReadLease<'_> {
-    type Target = turso::connection::Connection;
+    type Target = mrr_data_backend::turso_driver::connection::Connection;
 
     fn deref(&self) -> &Self::Target {
         &self.connection
@@ -168,7 +168,7 @@ impl std::ops::Deref for WorkspaceDbReadLease<'_> {
 }
 
 impl WorkspaceDbReadLease<'_> {
-    fn shared_connection(&self) -> Arc<turso::Connection> {
+    fn shared_connection(&self) -> Arc<mrr_data_backend::turso_driver::Connection> {
         Arc::clone(&self.connection)
     }
 }
@@ -481,7 +481,7 @@ impl WorkspaceDbRegistry {
                         prepared_db_path.display()
                     )
                 })?;
-                let database = turso::Builder::new_local(path)
+                let database = mrr_data_backend::turso_driver::Builder::new_local(path)
                     .build()
                     .await
                     .map_err(|error| {

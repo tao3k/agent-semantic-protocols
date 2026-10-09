@@ -36,6 +36,9 @@ path = "tests/performance/runtime_server_opentelemetry_harness.rs"
 name = "runtime_schema_bundle_catalog"
 harness = false
 
+[features]
+mrr-data-search-composition = ["agent-semantic-mrr/mrr-data-search-composition"]
+
 [dependencies]
 agent-semantic-artifacts.workspace = true
 agent-semantic-runtime.workspace = true
@@ -76,7 +79,7 @@ hyper-util.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 parking_lot.workspace = true
-turso.workspace = true
+mrr-data-backend.workspace = true
 dashmap = "6.2.1"
 orgize.workspace = true
 
