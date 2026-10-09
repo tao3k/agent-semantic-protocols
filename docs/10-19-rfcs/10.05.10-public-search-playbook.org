@@ -721,3 +721,18 @@ The feature-gated MRR Data search composition remains unqualified while the
 combined program fails startup; disabling the feature is a diagnostic control,
 not acceptance of the requested end-to-end path. Performance budgets and
 producer artifact admission remain independent required gates.
+
+** Published Scheme search owner
+
+The ASP =mrr-data-search-composition= build selects the MRR =worker-inference=
+profile with default features disabled. MRR owns and builds the existing
+=mrr-native-worker= executable. ASP packages that executable as the =mrr-search=
+member of its content-bound Runtime artifact bundle, alongside the embedded
+Orgize host. The install candidate must carry the owner in its artifact
+directory; missing members fail publication. Runtime startup admits the bound
+bundle and the running ASP identity before explicitly configuring this owner.
+No provider registration, PATH discovery or in-host Scheme search fallback is
+part of this lifecycle. POO projection and finite inference retain their V1
+transport contracts. Consumer qualification must execute composition and parse
+Org in the same feature-enabled host process; producer compilation and a
+feature-disabled parser test cannot establish that property.

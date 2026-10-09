@@ -41,7 +41,7 @@ mod data_search_composition;
 #[cfg(feature = "mrr-data-search-composition")]
 pub use data_search_composition::{
     DataSearchCompositionInput, DataSearchCompositionOutput, DataSearchLeaf,
-    compose_resident_data_search,
+    compose_resident_data_search, configure_data_search_execution,
 };
 #[cfg(feature = "mrr-data-search-composition")]
 pub use mrr_data_core::DataSearchCandidateComposition;

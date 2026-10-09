@@ -48,6 +48,18 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
             source: &hook_candidate.source,
         },
     ];
+    #[cfg(feature = "mrr-data-search-composition")]
+    let search_owner = install_binary_config_admission::admit_embedded_mrr_runtime_candidate(
+        plan.candidate_source(),
+    )
+    .await?;
+    #[cfg(feature = "mrr-data-search-composition")]
+    members.push(
+        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
+            name: "mrr-search",
+            source: &search_owner,
+        },
+    );
     members.extend(provider_reconciliation.member_sources());
     let installed =
         protocol_binary::ensure_protocol_binary_bound_bundle_members_installed_transaction(

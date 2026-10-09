@@ -156,7 +156,8 @@ fn unique_property(
 ) -> Result<Option<String>, ProjectTopologyManifestError> {
     let values = properties
         .iter()
-        .filter_map(|property| (property.key == key).then(|| property.value.clone()))
+        .filter(|property| property.key == key)
+        .map(|property| property.value.clone())
         .collect::<Vec<_>>();
     match values.as_slice() {
         [] => Ok(None),

@@ -13,6 +13,7 @@ license.workspace = true
 [features]
 default = ["asp-bin"]
 asp-bin = []
+mrr-data-search-composition = ["agent-semantic-runtime-server/mrr-data-search-composition", "agent-semantic-mrr/mrr-data-search-composition"]
 live-corpus-test = ["dep:tempfile"]
 
 [lib]
@@ -76,6 +77,7 @@ test = false
 required-features = ["live-corpus-test"]
 
 [dev-dependencies]
+agent-semantic-mrr = { path = "../agent-semantic-mrr" }
 jsonschema = { workspace = true }
 criterion = { workspace = true }
 gix.workspace = true

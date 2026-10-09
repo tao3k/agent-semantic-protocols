@@ -8,6 +8,51 @@ fn explicit_startup_precedes_parallel_lossless_org_parsing() {
     // SAFETY: this binary contains one test; no application workers or children
     // are created before the explicit startup window finishes.
     unsafe { orgize::initialize_native_runtime() }.expect("embedded parser startup");
+    #[cfg(feature = "mrr-data-search-composition")]
+    {
+        let executable = std::env::current_exe().unwrap();
+        let owner = executable
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("mrr-native-worker");
+        agent_semantic_runtime_server::configure_data_search_execution(&owner)
+            .expect("isolated MRR owner with embedded Orgize");
+        use agent_semantic_mrr::{
+            DataSearchCandidateComposition, DataSearchCompositionInput, DataSearchLeaf,
+            compose_resident_data_search,
+        };
+        let result = compose_resident_data_search(DataSearchCompositionInput {
+            project_id: "project",
+            workspace_id: "worktree",
+            runtime_generation: "runtime-a",
+            content_generation: "content-a",
+            expected_content_generation: "content-a",
+            resident_view_digest: "view-a",
+            composition_abi: "abi-a",
+            query_digest: "query-a",
+            mode: DataSearchCandidateComposition::Intersect,
+            leaves: vec![
+                DataSearchLeaf {
+                    identity: "rg:0".into(),
+                    owners: ["a.rs".into(), "b.rs".into()].into(),
+                    complete: true,
+                    truncated: false,
+                },
+                DataSearchLeaf {
+                    identity: "fts:0".into(),
+                    owners: ["b.rs".into(), "c.rs".into()].into(),
+                    complete: true,
+                    truncated: false,
+                },
+            ],
+            max_observations: std::num::NonZeroUsize::new(64).unwrap(),
+        })
+        .expect("real POO projection, Data composition and Scheme reasoning beside Orgize");
+        assert_eq!(result.owners, ["b.rs".into()].into());
+        assert_eq!(result.receipt["schemaVersion"], "1");
+    }
     qualify_topology_projection();
     let source = "* TODO Search closure\nUnicode: 搜索 λ\n";
     std::thread::scope(|scope| {

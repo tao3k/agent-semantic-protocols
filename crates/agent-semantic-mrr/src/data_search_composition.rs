@@ -10,6 +10,14 @@ use mrr_search_kernel::{
     compile_poo_search_plan, evaluate_poo_search_factors,
 };
 use std::{collections::BTreeSet, num::NonZeroUsize};
+/// Configure the explicitly published MRR Scheme owner for this process.
+/// The executable is admitted by the Runtime bundle owner before this call.
+pub fn configure_data_search_execution(executable: &std::path::Path) -> Result<(), String> {
+    mrr_search_kernel::configure_native_worker(executable).map_err(|error| {
+        format!("owner=data_search_execution reasonKind=mrr-worker-configuration-failed {error}")
+    })
+}
+
 pub struct DataSearchLeaf {
     pub identity: String,
     pub owners: BTreeSet<String>,

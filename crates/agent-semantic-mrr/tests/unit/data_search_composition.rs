@@ -15,6 +15,17 @@ fn input(
     mode: DataSearchCandidateComposition,
     leaves: Vec<DataSearchLeaf>,
 ) -> DataSearchCompositionInput<'static> {
+    static OWNER: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    OWNER.get_or_init(|| {
+        let executable = std::env::current_exe().unwrap();
+        let owner = executable
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("mrr-native-worker");
+        super::configure_data_search_execution(&owner).expect("explicit producer fixture");
+    });
     DataSearchCompositionInput {
         project_id: "project",
         workspace_id: "worktree",

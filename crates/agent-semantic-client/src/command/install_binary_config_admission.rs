@@ -66,6 +66,34 @@ pub(super) async fn admit_embedded_hook_runtime_candidate(
     })
 }
 
+#[cfg(feature = "mrr-data-search-composition")]
+pub(super) async fn admit_embedded_mrr_runtime_candidate(
+    installing_asp_binary: &Path,
+) -> Result<PathBuf, String> {
+    let parent = installing_asp_binary
+        .parent()
+        .ok_or_else(|| "Runtime candidate omits artifact directory".to_owned())?;
+    if parent
+        .join("bundle.json")
+        .try_exists()
+        .map_err(|error| format!("inspect Runtime bundle: {error}"))?
+    {
+        let bundle =
+            agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(
+                parent,
+            )
+            .await?;
+        return bundle.member_path("mrr-search").ok_or_else(|| {
+            "reasonKind=mrr-search-owner-missing Runtime bundle omits MRR search owner".to_owned()
+        });
+    }
+    resolve_executable_sibling(
+        installing_asp_binary,
+        &format!("mrr-native-worker{}", std::env::consts::EXE_SUFFIX),
+        "MRR search owner",
+    )
+}
+
 fn resolve_hook_binary_candidate(
     installing_asp_binary: &Path,
 ) -> Result<std::path::PathBuf, String> {
@@ -86,7 +114,7 @@ fn resolve_executable_sibling(
     let candidate = parent.join(file_name);
     let metadata = std::fs::symlink_metadata(&candidate).map_err(|error| {
         format!(
-            "{label} candidate is unavailable at {}: {error}; build the Hook package binary in the same target directory before installation",
+            "{label} candidate is unavailable at {}: {error}; provide the matching {label} executable in the same artifact directory before installation",
             candidate.display()
         )
     })?;

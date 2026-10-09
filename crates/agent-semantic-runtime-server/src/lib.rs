@@ -43,3 +43,6 @@ pub use schema_bundle::RuntimeSchemaBundleCatalog;
 pub mod artifact_activation;
 pub mod asp_python_graphs_artifact;
 pub mod asp_python_graphs_transport;
+
+#[cfg(feature = "mrr-data-search-composition")]
+pub use agent_semantic_mrr::configure_data_search_execution;

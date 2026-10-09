@@ -56,12 +56,20 @@ jobs:
         run: |
           python3 -m mrr_proof_validation.prepare_gerbil_dependencies
           gerbil deps --install
+      - name: Build the declared MRR execution owner
+        working-directory: .data/ci-search-mrr
+        run: |
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label MRR-OWNER -- cargo build --locked -p mrr-gerbil --bin mrr-native-worker
+      - name: Stage the explicit owner fixture
+        run: |
+          mkdir -p target/debug
+          cp .data/ci-search-mrr/target/debug/mrr-native-worker target/debug/mrr-native-worker
       - name: Qualify the consumer bridge and Runtime Server
         run: |
           python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-SEARCH-BUILD -- cargo test -vv --locked -p agent-semantic-mrr --features mrr-data-search-composition --no-run
-          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-SEARCH-TEST -- cargo test --locked -p agent-semantic-mrr --features mrr-data-search-composition data_search_composition -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-SEARCH-TEST -- cargo test --locked -p agent-semantic-mrr --features mrr-data-search-composition data_search_composition -- --nocapture --test-threads=1
           python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-RUNTIME-BUILD -- cargo check -vv --locked -p agent-semantic-runtime-server --features mrr-data-search-composition
-          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-FFI-LINK -- cargo build -vv --locked -p agent-semantic-client --bin asp --features agent-semantic-runtime-server/mrr-data-search-composition
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-FFI-LINK -- cargo build -vv --locked -p agent-semantic-client --bin asp --features mrr-data-search-composition
           python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-FFI-SMOKE -- target/debug/asp --help
-          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-ORG-STARTUP-BUILD -- cargo test -vv --locked -p agent-semantic-client --test embedded_org_ffi_startup --no-run
-          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-ORG-STARTUP-TEST -- cargo test --locked -p agent-semantic-client --test embedded_org_ffi_startup -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-ORG-STARTUP-BUILD -- cargo test -vv --locked -p agent-semantic-client --test embedded_org_ffi_startup --features mrr-data-search-composition --no-run
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-ORG-STARTUP-TEST -- cargo test --locked -p agent-semantic-client --test embedded_org_ffi_startup --features mrr-data-search-composition -- --nocapture
