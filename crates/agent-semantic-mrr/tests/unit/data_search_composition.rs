@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 tao3k team and Contributors
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
-use super::*;
+use super::{DataSearchCompositionInput, DataSearchLeaf, compose_resident_data_search};
+use mrr_data_core::DataSearchCandidateComposition;
+use std::{collections::BTreeSet, num::NonZeroUsize};
 fn leaf(id: &str, owners: &[&str], truncated: bool) -> DataSearchLeaf {
     DataSearchLeaf {
         identity: id.to_owned(),
