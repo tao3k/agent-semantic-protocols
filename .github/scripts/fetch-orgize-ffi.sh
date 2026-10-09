@@ -7,15 +7,20 @@ case "$revision" in
 esac
 [[ ${#revision} -eq 40 ]] || exit 1
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64) platform=Linux-X64 ;;
-  Darwin-arm64) platform=macOS-ARM64 ;;
+  Linux-x86_64) platform=Linux-X64; producer_job="test / ubuntu-latest / runtime-scheme" ;;
+  Darwin-arm64) platform=macOS-ARM64; producer_job="test / macos-26 / runtime-scheme" ;;
   *) echo 'No qualified Orgize FFI artifact for this platform' >&2; exit 1 ;;
 esac
 artifact="orgize-ffi-$revision-$platform"
-run=$(gh api "repos/tao3k/orgize/actions/runs?head_sha=$revision&status=success&per_page=100" \
-  --jq '.workflow_runs | map(select(.name == "CI" and .conclusion == "success")) | sort_by(.id) | reverse | .[0].id // empty')
+run=''
+while IFS= read -r candidate; do
+  qualified=$(gh api "repos/tao3k/orgize/actions/runs/$candidate/jobs?per_page=100" \
+    --jq ".jobs | any(.name == \"$producer_job\" and .status == \"completed\" and .conclusion == \"success\")")
+  if [[ "$qualified" == true ]]; then run="$candidate"; break; fi
+done < <(gh api "repos/tao3k/orgize/actions/runs?head_sha=$revision&per_page=100" \
+  --jq '.workflow_runs | map(select(.name == "CI")) | sort_by(.id) | reverse | .[].id')
 if [[ -z "$run" ]]; then
-  echo "Orgize $revision has no successful producer CI run; ASP will not rebuild its Scheme parser" >&2
+  echo "Orgize $revision has no successful producer qualification for $platform; ASP will not rebuild its Scheme parser" >&2
   exit 1
 fi
 output="$PWD/.data/orgize-ffi/$revision/$platform"

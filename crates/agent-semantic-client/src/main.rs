@@ -8,6 +8,11 @@
 //! Host Hook events belong exclusively to the sibling `asp-hook` executable.
 
 fn main() -> std::process::ExitCode {
+    // SAFETY: process entry precedes application workers, runtime creation and children.
+    if let Err(error) = unsafe { orgize::initialize_native_runtime() } {
+        eprintln!("failed to initialize embedded Org parser: {error}");
+        return std::process::ExitCode::from(2);
+    }
     let daemon = std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("server"))
         && std::env::args_os().nth(2).as_deref() == Some(std::ffi::OsStr::new("daemon"));
     let mut runtime_builder = if daemon {

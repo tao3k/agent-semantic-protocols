@@ -108,3 +108,7 @@ harness = false
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
+
+[[test]]
+name = "embedded_org_ffi_startup"
+path = "tests/integration/embedded_org_ffi_startup.rs"
