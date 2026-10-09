@@ -11,8 +11,7 @@ use std::path::Path;
 
 use agent_semantic_content_identity::{ProjectWorkspaceBinding, ProjectWorkspaceBindingError};
 use orgize::Org;
-use orgize::rowan::ast::AstNode;
-use orgize::syntax_ast::{Headline, PropertyDrawer};
+use orgize::ast::{ParsedAnnotation, Property};
 
 pub const PROJECT_TOPOLOGY_MANIFEST_PATH: &str = ".agents/asp/topology/manifest.org";
 
@@ -57,13 +56,9 @@ impl ProjectTopologyManifest {
 
     pub fn parse_org(source: &str) -> Result<Self, ProjectTopologyManifestError> {
         let org = Org::parse(source);
-        let contract_properties = org.syntax_document().properties().ok_or_else(|| {
-            error(
-                "topology-manifest-contract-mismatch",
-                "manifest has no CONTRACT_ORG property",
-            )
-        })?;
-        let contract = unique_property(&contract_properties, "CONTRACT_ORG")?.ok_or_else(|| {
+        let document = org.document();
+        let contract_properties = &document.properties;
+        let contract = unique_property(contract_properties, "CONTRACT_ORG")?.ok_or_else(|| {
             error(
                 "topology-manifest-contract-mismatch",
                 "manifest has no CONTRACT_ORG property",
@@ -76,17 +71,12 @@ impl ProjectTopologyManifest {
             );
         }
 
-        let declarations = org
-            .syntax_document()
-            .syntax()
-            .descendants()
-            .filter_map(Headline::cast)
-            .filter(|headline| headline.level() == 1)
-            .filter_map(|headline| {
-                headline
-                    .properties()
-                    .and_then(|properties| manifest_declaration(&properties).then_some(properties))
-            })
+        let declarations = document
+            .sections
+            .iter()
+            .filter(|section| section.level == 1)
+            .map(|section| section.properties.as_slice())
+            .filter(|properties| manifest_declaration(properties))
             .collect::<Vec<_>>();
         let [properties] = declarations.as_slice() else {
             let reason = if declarations.is_empty() {
@@ -138,17 +128,19 @@ impl ProjectTopologyManifest {
     }
 }
 
-fn manifest_declaration(properties: &PropertyDrawer) -> bool {
-    properties.get(PROJECT_WORKSPACE_ID).is_some()
+fn manifest_declaration(properties: &[Property<ParsedAnnotation>]) -> bool {
+    properties
+        .iter()
+        .any(|property| property.key == PROJECT_WORKSPACE_ID)
 }
 
 fn unique_properties(
-    properties: &PropertyDrawer,
+    properties: &[Property<ParsedAnnotation>],
 ) -> Result<BTreeMap<String, String>, ProjectTopologyManifestError> {
     let mut result = BTreeMap::new();
-    for (key, value) in properties.iter() {
-        let key = key.to_string();
-        if result.insert(key.clone(), value.to_string()).is_some() {
+    for property in properties {
+        let key = property.key.clone();
+        if result.insert(key.clone(), property.value.clone()).is_some() {
             return invalid(
                 "topology-manifest-property-duplicate",
                 format!("manifest property {key} is declared more than once"),
@@ -159,12 +151,12 @@ fn unique_properties(
 }
 
 fn unique_property(
-    properties: &PropertyDrawer,
+    properties: &[Property<ParsedAnnotation>],
     key: &str,
 ) -> Result<Option<String>, ProjectTopologyManifestError> {
     let values = properties
         .iter()
-        .filter_map(|(observed, value)| (observed == key).then(|| value.to_string()))
+        .filter_map(|property| (property.key == key).then(|| property.value.clone()))
         .collect::<Vec<_>>();
     match values.as_slice() {
         [] => Ok(None),

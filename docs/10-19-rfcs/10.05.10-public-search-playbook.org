@@ -689,3 +689,35 @@ $ M_(membership) = O(K) $
 Until this leaf passes parser, protocol, Runtime, projection, and Live Corpus
 qualification, ASP MUST report owner-membership capability as incomplete and
 MUST NOT claim that =find=/=fd= fallback has been eliminated.
+
+
+* Embedded Scheme program ownership and qualification
+
+POO Flow owns generic search composition and its Lean/Quint models. MRR owns
+configuration, admission and scheduling around Scheme execution; MRR Data owns
+physical query execution and storage. ASP binds those contracts to scenario
+search and evidence. Orgize remains a built-in semantic parser, with no external
+provider receipt or provider synchronization step.
+
+A prebuilt FFI archive is an executable Scheme program closure, not an isolated
+runtime. MRR and Orgize currently embed overlapping Gambit/Gerbil modules. A
+successful Rust link does not qualify their combination: identical module
+linker names can select different generated bodies and global bindings, and
+Gambit setup is process-global. Matching the Rust FFI runtime revision alone
+does not prove compatible module closures or a shared runtime owner.
+
+In-process composition requires one admitted program closure, compatible shared
+module identities and one lifecycle owner. Producers must own that compilation
+and qualification; ASP consumes their bound artifacts. Independently compiled
+programs must have explicit process isolation and a typed transport before
+claiming executable composition. This requirement does not introduce another
+public search operation, operator registry, provider synchronization or contract
+version. The existing resident server remains the scenario execution authority.
+
+Qualification must cover the actual combined executable, its startup before
+host workers, concurrent parser callers and the physical Data search result.
+Single-producer tests, artifact hashes and link success are separate evidence.
+The feature-gated MRR Data search composition remains unqualified while the
+combined program fails startup; disabling the feature is a diagnostic control,
+not acceptance of the requested end-to-end path. Performance budgets and
+producer artifact admission remain independent required gates.

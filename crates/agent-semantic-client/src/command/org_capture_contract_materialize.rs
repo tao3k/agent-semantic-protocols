@@ -7,9 +7,6 @@ use super::org_capture_interactive::AgentInteractiveChoice;
 use super::org_capture_interactive::choice_arg_value;
 use super::org_capture_interactive::strip_choice_args;
 use orgize::Org;
-use orgize::rowan::ast::AstNode;
-use orgize::syntax_ast::Headline;
-use orgize::syntax_ast::PropertyDrawer;
 use std::fs;
 use std::path::Path;
 
@@ -261,16 +258,21 @@ impl CaptureTemplate {
             )
         })?;
         let org = Org::parse(&source);
-        let headline = org.first_node::<Headline>().ok_or_else(|| {
+        let headline = org.headlines().next().ok_or_else(|| {
             format!(
                 "Org capture template {} does not contain a headline",
                 path.display()
             )
         })?;
-        let drawer = headline
-            .syntax()
-            .descendants()
-            .find_map(PropertyDrawer::cast)
+        let headline_range = headline.range();
+        let drawer = org
+            .records()
+            .iter()
+            .find(|record| {
+                record.kind == "property-drawer"
+                    && record.range.start() >= headline_range.start()
+                    && record.range.end() <= headline_range.end()
+            })
             .ok_or_else(|| {
                 format!(
                     "Org capture template {} does not contain a property drawer",
@@ -278,20 +280,21 @@ impl CaptureTemplate {
                 )
             })?;
         let dynamic = TemplateDynamicValues::from_args(args);
-        let tags = headline.tags().map(|tag| tag.to_string()).collect();
+        let tags = headline.local_tags().map(|tag| tag.to_string()).collect();
         let progress_cookies = progress_cookies_from_org(&org);
-        let properties = drawer
+        let properties = org
+            .records()
             .iter()
-            .filter_map(|(key, value)| {
-                let key = key.to_string();
-                (!key.starts_with("TEMPLATE_") && key != "CONTRACT_ORG").then(|| {
-                    let value = dynamic.apply(value.as_ref());
-                    (key, value)
-                })
+            .filter(|record| record.parent_id == Some(drawer.id) && record.kind == "node-property")
+            .filter_map(|record| {
+                let key = record.field("key")?;
+                let value = record.field("value")?;
+                (!key.starts_with("TEMPLATE_") && key != "CONTRACT_ORG")
+                    .then(|| (key.to_owned(), dynamic.apply(value)))
             })
             .collect();
-        let body_start = text_size_to_usize(drawer.syntax().text_range().end());
-        let body_end = text_size_to_usize(headline.syntax().text_range().end());
+        let body_start = text_size_to_usize(drawer.range.end());
+        let body_end = text_size_to_usize(headline_range.end());
         let body = source
             .get(body_start..body_end)
             .unwrap_or_default()

@@ -14,7 +14,8 @@ use crate::engine::contract::{
 use crate::engine::turso_statement::{execute_turso_statement, run_turso_operation};
 
 use super::pool::{
-    build_turso_database, shared_turso_read_only_connection, shared_turso_write_connection,
+    TursoConnectionLease, build_turso_database, shared_turso_read_only_connection,
+    shared_turso_write_connection,
 };
 
 pub(super) const TURSO_CLIENT_DB_FILE: &str = "facts.turso";

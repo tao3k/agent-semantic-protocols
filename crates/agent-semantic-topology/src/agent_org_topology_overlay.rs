@@ -5,8 +5,6 @@
 //! Content-bound semantic topology contributed by an external reasoning Agent.
 
 use orgize::Org;
-use orgize::rowan::ast::AstNode;
-use orgize::syntax_ast::Headline;
 use serde::{Deserialize, Serialize};
 
 pub const AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_ID: &str =
@@ -104,12 +102,12 @@ impl AgentOrgTopologyOverlay {
             return Err(invalid("agent-org-topology-overlay-relationship-duplicate"));
         }
         let org = Org::parse(&org_source);
-        if org.first_node::<Headline>().is_none() {
+        if org.headlines().next().is_none() {
             return Err(invalid("agent-org-topology-overlay-org-ast-empty"));
         }
         let summary_digest = digest(summary.as_bytes());
         let org_source_digest = digest(org_source.as_bytes());
-        let org_ast_digest = digest(format!("{:#?}", org.syntax_document().syntax()).as_bytes());
+        let org_ast_digest = digest(format!("{:#?}", org.syntax()).as_bytes());
         let identity = serde_json::to_vec(&(
             &source_generation_digest,
             &base_topology_generation_digest,
