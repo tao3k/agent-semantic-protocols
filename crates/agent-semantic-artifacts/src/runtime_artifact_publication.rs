@@ -812,17 +812,14 @@ where
     let runtime_launcher_directory = state_home.join("runtime/bin");
     let runtime_primary_alias = runtime_launcher_directory.join(binary_name);
     let runtime_owned_launchers = if runtime_primary_alias != target {
-        std::iter::once((
-            runtime_primary_alias,
-            layout.active_slot().join(binary_name),
-        ))
-        .chain(stable_member_launchers.iter().map(|member| {
-            (
-                runtime_launcher_directory.join(member),
-                layout.active_slot().join(member),
-            )
-        }))
-        .collect::<Vec<_>>()
+        std::iter::once((runtime_primary_alias, target.to_path_buf()))
+            .chain(stable_member_launchers.iter().map(|member| {
+                (
+                    runtime_launcher_directory.join(member),
+                    launcher_directory.join(member),
+                )
+            }))
+            .collect::<Vec<_>>()
     } else {
         Vec::new()
     };

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 //! Private bridge from resident provider sets to Data aggregation and MRR inference.
 use mrr_data_core::{
-    DataPooSearchCandidateBranch, DataSearchCandidateComposition, DataSearchSourceBinding,
-    compose_poo_data_search_candidates,
+    DataPooSearchCandidateBranch, DataSearchCandidateComposition, DataSearchExecutionError,
+    DataSearchSourceBinding, execute_poo_data_search_candidates,
 };
 use mrr_search_kernel::{
-    GenerationId, PooSearchPlan, PooSearchRole, SearchFrameworkLimits, SearchFrameworkStatus,
-    compile_poo_search_plan, evaluate_poo_search_factors,
+    GenerationId, PooSearchPlan, PooSearchRole, compile_poo_search_plan,
+    evaluate_poo_search_factors,
 };
 use std::{collections::BTreeSet, num::NonZeroUsize};
 /// Configure the explicitly published MRR Scheme owner for this process.
@@ -156,40 +156,31 @@ pub fn compose_resident_data_search(
             truncated: leaf.truncated,
         })
         .collect::<Vec<_>>();
-    let data = compose_poo_data_search_candidates(
+    let execution = execute_poo_data_search_candidates(
         &binding,
         input.mode,
         &projection,
         "merge",
         &branches,
         input.max_observations,
+        evaluate_poo_search_factors,
     )
-    .map_err(|error| format!("reasonKind=search-data-candidate-composition-invalid {error}"))?;
-    for (owner, candidate) in data.candidate_owners() {
-        data.verify_candidate(&binding, owner, *candidate)
-            .map_err(|error| {
-                format!("reasonKind=search-data-candidate-identity-invalid {error}")
-            })?;
-    }
-    let nonzero = |count: usize| NonZeroUsize::new(count.max(1)).expect("positive resource bound");
-    let influence_bound = data
-        .observations()
-        .len()
-        .checked_mul(data.factors().len())
-        .ok_or_else(|| "reasonKind=search-data-influence-budget-overflow".to_owned())?;
-    let limits = SearchFrameworkLimits::new(
-        nonzero(data.factors().len()),
-        nonzero(data.edges().len()),
-        input.max_observations,
-        nonzero(influence_bound),
-        nonzero(influence_bound),
-    );
-    let reasoning = evaluate_poo_search_factors(&projection, data.observations(), limits)
-        .map_err(|error| format!("reasonKind=search-data-native-inference-failed {error}"))?;
-    if reasoning.generation() != generation || reasoning.status() != SearchFrameworkStatus::Complete
-    {
-        return Err("reasonKind=search-data-native-inference-incomplete".to_owned());
-    }
+    .map_err(|error| match error {
+        DataSearchExecutionError::Candidates(error) => {
+            format!("reasonKind=search-data-candidate-composition-invalid {error}")
+        }
+        DataSearchExecutionError::InfluenceBudgetOverflow => {
+            "reasonKind=search-data-influence-budget-overflow".to_owned()
+        }
+        DataSearchExecutionError::Inference(error) => {
+            format!("reasonKind=search-data-native-inference-failed {error}")
+        }
+        DataSearchExecutionError::IncompleteInference => {
+            "reasonKind=search-data-native-inference-incomplete".to_owned()
+        }
+    })?;
+    let data = execution.candidates;
+    let reasoning = execution.reasoning;
     let mode = match input.mode {
         DataSearchCandidateComposition::Single => "single",
         DataSearchCandidateComposition::RankJoin => "rankJoin",

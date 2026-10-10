@@ -2476,7 +2476,7 @@ dependencies = [
 [[package]]
 name = "gerbil-parser-artifact"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-parser?rev=dd0719585d6d5e54f44beaa6877c95152e89c914#dd0719585d6d5e54f44beaa6877c95152e89c914"
+source = "git+https://github.com/tao3k/gerbil-parser?rev=3ba88c7398407a7048b1d9e09ab5587054b8e239#3ba88c7398407a7048b1d9e09ab5587054b8e239"
 dependencies = [
  "serde_json",
  "sha2 0.10.9",
@@ -2485,7 +2485,7 @@ dependencies = [
 [[package]]
 name = "gerbil-parser-runtime"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-parser?rev=dd0719585d6d5e54f44beaa6877c95152e89c914#dd0719585d6d5e54f44beaa6877c95152e89c914"
+source = "git+https://github.com/tao3k/gerbil-parser?rev=3ba88c7398407a7048b1d9e09ab5587054b8e239#3ba88c7398407a7048b1d9e09ab5587054b8e239"
 dependencies = [
  "gerbil-parser-artifact",
  "sha2 0.10.9",
@@ -2494,20 +2494,20 @@ dependencies = [
 [[package]]
 name = "gerbil-scheme"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2#b34d15c6a2f6c68ee5ce3a64975570f684e90bc2"
+source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0#2b154e616a131518936da89d3f176c63d3ce6ed0"
 dependencies = [
- "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
- "gerbil-scheme-sys 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
+ "gerbil-scheme-sys 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
 ]
 
 [[package]]
 name = "gerbil-scheme-native-build"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2#b34d15c6a2f6c68ee5ce3a64975570f684e90bc2"
+source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0#2b154e616a131518936da89d3f176c63d3ce6ed0"
 dependencies = [
  "cbindgen",
  "cc",
- "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
  "pkg-config",
  "serde",
  "serde_json",
@@ -2530,7 +2530,7 @@ dependencies = [
 [[package]]
 name = "gerbil-scheme-rust-project-harness"
 version = "0.1.2"
-source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2#b34d15c6a2f6c68ee5ce3a64975570f684e90bc2"
+source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0#2b154e616a131518936da89d3f176c63d3ce6ed0"
 dependencies = [
  "cargo-lock",
  "cargo_toml",
@@ -2566,9 +2566,9 @@ dependencies = [
 [[package]]
 name = "gerbil-scheme-rust-project-harness-policy"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2#b34d15c6a2f6c68ee5ce3a64975570f684e90bc2"
+source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0#2b154e616a131518936da89d3f176c63d3ce6ed0"
 dependencies = [
- "gerbil-scheme-rust-project-harness 0.1.2 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-rust-project-harness 0.1.2 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
 ]
 
 [[package]]
@@ -2582,10 +2582,10 @@ dependencies = [
 [[package]]
 name = "gerbil-scheme-sys"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2#b34d15c6a2f6c68ee5ce3a64975570f684e90bc2"
+source = "git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0#2b154e616a131518936da89d3f176c63d3ce6ed0"
 dependencies = [
- "gerbil-scheme-native-build 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
- "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-native-build 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
+ "gerbil-scheme-rust-project-harness-policy 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
 ]
 
 [[package]]
@@ -4765,7 +4765,7 @@ dependencies = [
 [[package]]
 name = "mrr-data-backend"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/mrr-data.git?rev=0ca825202d4343ca83db8da5d64f48bae21e3013#0ca825202d4343ca83db8da5d64f48bae21e3013"
+source = "git+https://github.com/tao3k/mrr-data.git?rev=e688402813fd655df6d48742432a8ce716c0d166#e688402813fd655df6d48742432a8ce716c0d166"
 dependencies = [
  "cid",
  "mrr-data-content",
@@ -4777,7 +4777,7 @@ dependencies = [
 [[package]]
 name = "mrr-data-content"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/mrr-data.git?rev=0ca825202d4343ca83db8da5d64f48bae21e3013#0ca825202d4343ca83db8da5d64f48bae21e3013"
+source = "git+https://github.com/tao3k/mrr-data.git?rev=e688402813fd655df6d48742432a8ce716c0d166#e688402813fd655df6d48742432a8ce716c0d166"
 dependencies = [
  "cid",
  "mrr-data-core",
@@ -4786,7 +4786,7 @@ dependencies = [
 [[package]]
 name = "mrr-data-core"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/mrr-data.git?rev=0ca825202d4343ca83db8da5d64f48bae21e3013#0ca825202d4343ca83db8da5d64f48bae21e3013"
+source = "git+https://github.com/tao3k/mrr-data.git?rev=e688402813fd655df6d48742432a8ce716c0d166#e688402813fd655df6d48742432a8ce716c0d166"
 dependencies = [
  "cid",
  "meta-relational-reasoning 0.1.0 (git+https://github.com/tao3k/meta-relational-reasoning.git?rev=c202aa2753678c02dc7daafdec853f66f3368a70)",
@@ -4801,7 +4801,7 @@ dependencies = [
 [[package]]
 name = "mrr-data-profile"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/mrr-data.git?rev=0ca825202d4343ca83db8da5d64f48bae21e3013#0ca825202d4343ca83db8da5d64f48bae21e3013"
+source = "git+https://github.com/tao3k/mrr-data.git?rev=e688402813fd655df6d48742432a8ce716c0d166#e688402813fd655df6d48742432a8ce716c0d166"
 
 [[package]]
 name = "mrr-deduction"
@@ -5285,7 +5285,7 @@ dependencies = [
  "gerbil-parser-artifact",
  "gerbil-parser-runtime",
  "gerbil-scheme",
- "gerbil-scheme-sys 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-sys 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
  "ignore",
  "jetscii",
  "libc",
@@ -5299,7 +5299,7 @@ dependencies = [
 name = "orgize-build-support"
 version = "0.1.0"
 dependencies = [
- "gerbil-scheme-native-build 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=b34d15c6a2f6c68ee5ce3a64975570f684e90bc2)",
+ "gerbil-scheme-native-build 0.1.0 (git+https://github.com/tao3k/gerbil-scheme-rust?rev=2b154e616a131518936da89d3f176c63d3ce6ed0)",
  "serde",
  "serde_json",
  "sha2 0.10.9",

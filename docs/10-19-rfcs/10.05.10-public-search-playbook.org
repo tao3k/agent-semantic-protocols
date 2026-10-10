@@ -717,10 +717,11 @@ version. The existing resident server remains the scenario execution authority.
 Qualification must cover the actual combined executable, its startup before
 host workers, concurrent parser callers and the physical Data search result.
 Single-producer tests, artifact hashes and link success are separate evidence.
-The feature-gated MRR Data search composition remains unqualified while the
-combined program fails startup; disabling the feature is a diagnostic control,
-not acceptance of the requested end-to-end path. Performance budgets and
-producer artifact admission remain independent required gates.
+Feature-complete MRR Data search composition must qualify the actual producer
+and consumer revisions. Local combined-host execution and remote producer
+artifact qualification remain separate evidence. A feature-disabled parser test
+cannot admit the end-to-end path. Performance budgets and producer artifact
+admission remain independent required gates.
 
 ** Published Scheme search owner
 
@@ -736,3 +737,25 @@ part of this lifecycle. POO projection and finite inference retain their V1
 transport contracts. Consumer qualification must execute composition and parse
 Org in the same feature-enabled host process; producer compilation and a
 feature-disabled parser test cannot establish that property.
+
+
+Consumer CI prepares the declared MRR asset through the same producer-checkout
+action for composition qualification and feature-complete package tests. Tests
+requiring Scheme execution receive an explicit sibling asset before they run;
+they do not discover one on PATH or silently disable composition. The MRR
+package controls serialize complete logical compositions against the single
+Scheme owner while the combined Org parser control retains concurrent callers.
+The paired Gambit toolchain is needed by the existing FFI ABI bridge even in
+the transport-only MRR consumer profile. This does not compile the MRR Scheme
+program into ASP.
+
+** Shared candidate execution
+
+ASP forwards the admitted POO projection and scenario-bound physical leaves to
+=mrr-data-core::execute_poo_data_search_candidates=. Data owns the reusable
+composition, candidate admission, inference budget and generation/completion
+admission sequence. The existing MRR inference port executes the Scheme-owned
+reasoning. ASP retains query interpretation, resident source authority, ranking
+policy and public receipt projection. No new search language or packet version
+is introduced. This is candidate execution consolidation; dependent Temporal
+continuation and reusable physical backend acquisition remain separate gates.

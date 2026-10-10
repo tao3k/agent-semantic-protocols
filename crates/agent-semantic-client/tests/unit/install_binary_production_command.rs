@@ -55,6 +55,14 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
     let asp = build_fixture.path().join("asp");
     let hook = build_fixture.path().join("asp-hook");
     std::fs::copy(built_asp, &asp).expect("copy ASP binary fixture");
+    #[cfg(feature = "mrr-data-search-composition")]
+    let mrr_owner = {
+        let owner_name = format!("mrr-native-worker{}", std::env::consts::EXE_SUFFIX);
+        let source = built_asp.parent().unwrap().join(&owner_name);
+        let candidate = build_fixture.path().join(owner_name);
+        std::fs::copy(source, &candidate).expect("copy declared MRR search execution asset");
+        candidate
+    };
     let embedded = agent_semantic_hook::aot_compiler::compile_embedded_hook_policy_bundle()
         .expect("compile embedded policy identity");
     let embedded: serde_json::Value =
@@ -126,6 +134,17 @@ async fn built_asp_install_binary_publishes_runtime_hook_independent_of_runtime_
         "canonical Hook evaluator publication"
     );
     assert!(!state_home.path().join("hooks/current").exists());
+    #[cfg(feature = "mrr-data-search-composition")]
+    {
+        let installed_owner = state_home
+            .path()
+            .join("runtime/artifacts/active/mrr-search");
+        assert_eq!(
+            std::fs::read(installed_owner).expect("published built-in search execution asset"),
+            std::fs::read(mrr_owner).expect("original declared MRR asset"),
+            "binary publication preserves the exact search owner bytes"
+        );
+    }
 
     let pending_path = agent_semantic_artifacts::runtime_artifact_activation::
         runtime_artifact_activation_event_path(state_home.path());

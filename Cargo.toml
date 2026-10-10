@@ -127,7 +127,7 @@ tree-sitter = "0.26"
 tree-sitter-tsquery = "0.8.0"
 tree-sitter-scheme = "=0.24.7"
 # Data owns the shared physical driver dependency.
-mrr-data-backend = { git = "https://github.com/tao3k/mrr-data.git", rev = "0ca825202d4343ca83db8da5d64f48bae21e3013", version = "0.1.0", default-features = false, features = ["turso-fts", "turso-sync"] }
+mrr-data-backend = { git = "https://github.com/tao3k/mrr-data.git", rev = "e688402813fd655df6d48742432a8ce716c0d166", version = "0.1.0", default-features = false, features = ["turso-fts", "turso-sync"] }
 which = "8"
 
 [profile.release]

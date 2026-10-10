@@ -3,6 +3,12 @@
 use super::{DataSearchCompositionInput, DataSearchLeaf, compose_resident_data_search};
 use mrr_data_core::DataSearchCandidateComposition;
 use std::{collections::BTreeSet, num::NonZeroUsize};
+// The Scheme owner accepts one execution at a time. Each test owns a full
+// logical composition; serializing only individual calls would interleave plans.
+fn execution_guard() -> std::sync::MutexGuard<'static, ()> {
+    static EXECUTION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    EXECUTION.lock().unwrap()
+}
 fn leaf(id: &str, owners: &[&str], truncated: bool) -> DataSearchLeaf {
     DataSearchLeaf {
         identity: id.to_owned(),
@@ -42,6 +48,7 @@ fn input(
 }
 #[test]
 fn actual_intersection_is_data_owned_and_native_receipt_is_bound() {
+    let _execution = execution_guard();
     let result = compose_resident_data_search(input(
         DataSearchCandidateComposition::Intersect,
         vec![
@@ -72,6 +79,7 @@ fn actual_intersection_is_data_owned_and_native_receipt_is_bound() {
 }
 #[test]
 fn rank_join_preserves_regex_truth_despite_partial_ranking() {
+    let _execution = execution_guard();
     let result = compose_resident_data_search(input(
         DataSearchCandidateComposition::RankJoin,
         vec![
@@ -84,6 +92,7 @@ fn rank_join_preserves_regex_truth_despite_partial_ranking() {
 }
 #[test]
 fn incomplete_intersection_cannot_prove_absence() {
+    let _execution = execution_guard();
     assert!(
         compose_resident_data_search(input(
             DataSearchCandidateComposition::Intersect,
@@ -94,6 +103,7 @@ fn incomplete_intersection_cannot_prove_absence() {
 }
 #[test]
 fn stale_content_is_rejected_and_worktree_binding_changes_generation() {
+    let _execution = execution_guard();
     let mut stale = input(
         DataSearchCandidateComposition::Single,
         vec![leaf("t:0", &["a.rs"], false)],

@@ -108,7 +108,7 @@ async fn production_publication_atomically_switches_active_and_retains_previous_
 }
 
 #[tokio::test]
-async fn runtime_owned_launcher_points_directly_to_its_own_active_bundle() {
+async fn runtime_compatibility_launcher_follows_public_entry_into_owned_bundle() {
     let temporary = tempfile::tempdir().expect("launcher direction fixture");
     let state_home = temporary.path().join("state");
     let source = temporary.path().join("asp");
@@ -123,13 +123,13 @@ async fn runtime_owned_launcher_points_directly_to_its_own_active_bundle() {
     let active_member = state_home.join("runtime/artifacts/active/asp");
     assert_eq!(
         std::fs::read_link(&runtime_target).expect("Runtime-owned launcher target"),
-        active_member,
-        "Runtime launcher must not reverse-link through the user PATH entry"
-    );
-    assert_ne!(
-        std::fs::read_link(&runtime_target).unwrap(),
         public_target,
-        "Runtime ownership cannot depend on an external launcher"
+        "Runtime compatibility launcher follows the canonical public entry"
+    );
+    assert_eq!(
+        std::fs::read_link(&public_target).unwrap(),
+        active_member,
+        "the public entry selects the owned active bundle without a reverse Runtime edge"
     );
     assert_eq!(
         std::fs::canonicalize(&runtime_target).unwrap(),

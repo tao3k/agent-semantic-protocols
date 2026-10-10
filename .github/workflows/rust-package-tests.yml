@@ -98,6 +98,12 @@ jobs:
         if: contains(fromJSON('["agent-semantic-client","agent-semantic-client-db","agent-semantic-hook","agent-semantic-hook-testkit","agent-semantic-runtime-server","agent-semantic-search","agent-semantic-search-projection","agent-semantic-topology"]'), matrix.package)
         uses: ./.github/actions/orgize-ffi
 
+      - name: Prepare the declared MRR search owner
+        if: contains(fromJSON('["agent-semantic-mrr","agent-semantic-client"]'), matrix.package)
+        uses: ./.github/actions/mrr-search-owner
+        with:
+          install-toolchain: ${{ matrix.package == 'agent-semantic-mrr' && 'true' || 'false' }}
+
       - name: Build client installation fixture binaries
         if: ${{ matrix.package == 'agent-semantic-client' }}
         run: cargo build -p agent-semantic-hook --bin asp-hook
