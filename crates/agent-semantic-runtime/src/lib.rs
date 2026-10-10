@@ -78,6 +78,7 @@ pub use live_corpus::live_corpus_artifact_paths;
 pub use live_corpus::live_corpus_git_checkout_is_clean;
 pub use live_corpus::live_corpus_git_repository_paths;
 pub use live_corpus::live_corpus_lock_digest;
+pub use live_corpus::qualify_live_corpus_embedded_document_extensions;
 pub use live_corpus::qualify_live_corpus_git_checkout;
 pub use live_corpus::qualify_live_corpus_language_extensions;
 pub use live_corpus::sync_live_corpus_git_checkout;

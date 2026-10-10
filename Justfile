@@ -291,12 +291,12 @@ check-provider-knowledge-axes:
 
 # Build the test-owned Runtime and Live Corpus runner once. Scenario execution
 # below is intentionally Cargo-free and cannot trigger compilation or install.
-build-live-corpus-test-runtime:
+build-live-corpus-test-runtime features="live-corpus-test":
     #!/usr/bin/env bash
     set -euo pipefail
     artifact_dir="$PWD/.cache/live-corpus-test/bin"
     mkdir -p "${artifact_dir}"
-    cargo build --release -p agent-semantic-client --features live-corpus-test --bin asp --bin asp-live-corpus-test
+    cargo build --release -p agent-semantic-client --features "{{features}}" --bin asp --bin asp-live-corpus-test
     cp "$PWD/target/release/asp-live-corpus-test" "${artifact_dir}/live-corpus"
     chmod 755 "${artifact_dir}/live-corpus"
     echo "[live-corpus-build] server=$PWD/target/release/asp runner=${artifact_dir}/live-corpus state=ready"
@@ -322,6 +322,9 @@ check-live-corpus-search-query-resource resource:
       *) echo "unsupported Live Corpus language: ${language}" >&2; exit 2 ;;
     esac
     export ASP_LIVE_CORPUS_SERVER_ARTIFACT="${server}"
+    if [[ -x "$PWD/target/release/mrr-native-worker" ]]; then
+      export ASP_LIVE_CORPUS_MRR_SEARCH_ARTIFACT="$PWD/target/release/mrr-native-worker"
+    fi
     if [[ -n "${descriptor}" ]]; then export ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR="${descriptor}"; else unset ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR || true; fi
     "${runner}" sync --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json
     "${runner}" materialize --resource "{{resource}}" --lock benchmarks/large-library-runtime-corpora.json

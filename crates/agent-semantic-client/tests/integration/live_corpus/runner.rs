@@ -12,6 +12,9 @@ use agent_semantic_provider_protocol::ProviderWorkspaceInstallDescriptor;
 const SERVER_ARTIFACT_ENV: &str = "ASP_LIVE_CORPUS_SERVER_ARTIFACT";
 const PROVIDER_DESCRIPTOR_ENV: &str = "ASP_LIVE_CORPUS_PROVIDER_WORKSPACE_DESCRIPTOR";
 
+#[cfg(feature = "mrr-data-search-composition")]
+const SEARCH_ARTIFACT_ENV: &str = "ASP_LIVE_CORPUS_MRR_SEARCH_ARTIFACT";
+
 /// Runs the isolated Live Corpus fixture process.
 pub(super) fn main() -> std::process::ExitCode {
     let runtime =
@@ -58,7 +61,14 @@ async fn run_isolated_runtime_operation(args: Vec<String>) -> Result<(), String>
     eprintln!("[live-corpus-fixture] phase=runtime-bundle state=starting");
     let server_artifact = required_artifact(SERVER_ARTIFACT_ENV)?;
     let resource = qualification_resource(&args, &resource_state_home)?;
-    publish_test_runtime_bundle(&server_artifact, &resource, fixture.path()).await?;
+    let search_owner = search_owner_artifact()?;
+    publish_test_runtime_bundle(
+        &server_artifact,
+        search_owner.as_deref(),
+        &resource,
+        fixture.path(),
+    )
+    .await?;
     eprintln!(
         "[live-corpus-fixture] phase=runtime-bundle state=ready elapsedMicros={}",
         publish_started.elapsed().as_micros()
@@ -103,6 +113,7 @@ async fn run_isolated_runtime_operation(args: Vec<String>) -> Result<(), String>
 
 async fn publish_test_runtime_bundle(
     server_artifact: &Path,
+    search_owner: Option<&Path>,
     resource: &LiveCorpusResource,
     fixture_state_home: &Path,
 ) -> Result<(), String> {
@@ -131,6 +142,14 @@ async fn publish_test_runtime_bundle(
             .await?;
         executable_members.insert(resource.provider_id.clone(), digest);
     }
+    if let Some(search_owner) = search_owner {
+        let digest =
+            agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+                search_owner,
+            )
+            .await?;
+        executable_members.insert("mrr-search".to_owned(), digest);
+    }
     let closure = RuntimeArtifactExecutionClosure::from_runtime_bundle_members(
         &executable_members,
         vec![NamedRuntimeDigestClosureEntry {
@@ -158,6 +177,9 @@ async fn publish_test_runtime_bundle(
     let mut owned_sources = provider_launcher
         .map(|path| vec![(resource.provider_id.clone(), path)])
         .unwrap_or_default();
+    if let Some(search_owner) = search_owner {
+        owned_sources.push(("mrr-search".to_owned(), search_owner.to_path_buf()));
+    }
     for (name, bytes) in closure.materialized_members()? {
         let path = staging.join(name);
         std::fs::write(&path, bytes)
@@ -245,6 +267,17 @@ fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].as_str())
+}
+
+fn search_owner_artifact() -> Result<Option<PathBuf>, String> {
+    #[cfg(feature = "mrr-data-search-composition")]
+    {
+        required_artifact(SEARCH_ARTIFACT_ENV).map(Some)
+    }
+    #[cfg(not(feature = "mrr-data-search-composition"))]
+    {
+        Ok(None)
+    }
 }
 
 fn required_artifact(name: &str) -> Result<PathBuf, String> {
@@ -386,4 +419,60 @@ fn set_executable(path: &Path) -> Result<(), String> {
 #[cfg(not(unix))]
 fn set_executable(_path: &Path) -> Result<(), String> {
     Err("Live Corpus provider launchers require Unix".to_owned())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::{LiveCorpusResource, publish_test_runtime_bundle, set_executable};
+
+    #[tokio::test]
+    async fn isolated_bundle_binds_and_publishes_search_owner_bytes() {
+        let root = tempfile::tempdir().expect("fixture root");
+        let server = root.path().join("asp-source");
+        let worker = root.path().join("search-source");
+        std::fs::write(&server, b"prebuilt ASP fixture").unwrap();
+        std::fs::write(&worker, b"prebuilt MRR fixture").unwrap();
+        set_executable(&server).unwrap();
+        set_executable(&worker).unwrap();
+        let state = root.path().join("state");
+        let resource = LiveCorpusResource {
+            resource_id: "org.fixture".to_owned(),
+            provider_id: "orgize".to_owned(),
+            language: "org".to_owned(),
+        };
+        publish_test_runtime_bundle(&server, Some(&worker), &resource, &state)
+            .await
+            .expect("publish isolated bundle");
+        let active = state.join("runtime/artifacts/active");
+        let bundle =
+            agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(
+                &active,
+            )
+            .await
+            .expect("admit content-bound bundle");
+        let member = bundle
+            .member_path("mrr-search")
+            .expect("search owner member");
+        assert_eq!(
+            std::fs::read(&member).unwrap(),
+            std::fs::read(&worker).unwrap()
+        );
+        assert_eq!(
+            bundle.member_digest("mrr-search").unwrap(),
+            &agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
+                &worker
+            )
+            .await
+            .unwrap(),
+        );
+        std::fs::write(&member, b"changed owner").unwrap();
+        assert!(
+            agent_semantic_artifacts::runtime_artifact_slots::verify_runtime_artifact_bound_bundle(
+                &active
+            )
+            .await
+            .is_err(),
+            "search owner mutation must invalidate the bundle",
+        );
+    }
 }

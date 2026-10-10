@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 use super::{
-    selected_playbook_provider_targets, selected_provider_targets,
+    selected_playbook_provider_targets, selected_syntax_plan_provider_targets,
     workspace_search_materialization_key,
 };
 
@@ -19,12 +19,9 @@ fn provider(language: &str) -> agent_semantic_search::WorkspaceSearchProvider {
 }
 
 #[test]
-fn pipe_order_is_preserved_and_duplicates_are_removed() {
-    let installed = vec![
-        ("python".to_owned(), "asp-python".to_owned()),
-        ("rust".to_owned(), "asp-rust".to_owned()),
-    ];
-    let targets = selected_provider_targets(Some("rust|python|rust"), &installed)
+fn generation_targets_are_canonical_and_duplicates_are_removed() {
+    let providers = vec![provider("python"), provider("rust")];
+    let targets = selected_playbook_provider_targets(Some("rust|python|rust"), None, &providers)
         .unwrap_or_else(|_| panic!("selected targets"));
 
     assert_eq!(
@@ -32,14 +29,14 @@ fn pipe_order_is_preserved_and_duplicates_are_removed() {
             .iter()
             .map(|target| target.language_id.as_str())
             .collect::<Vec<_>>(),
-        vec!["rust", "python"]
+        vec!["python", "rust"]
     );
 }
 
 #[test]
 fn unrelated_uninstalled_provider_is_not_part_of_selected_closure() {
-    let installed = vec![("rust".to_owned(), "asp-rust".to_owned())];
-    let targets = selected_provider_targets(Some("rust"), &installed)
+    let providers = vec![provider("rust")];
+    let targets = selected_playbook_provider_targets(Some("rust"), None, &providers)
         .unwrap_or_else(|_| panic!("selected target"));
 
     assert_eq!(targets.len(), 1);
@@ -73,6 +70,14 @@ fn embedded_document_producer_has_no_external_provider_generation_target() {
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].language_id, "org");
     assert_eq!(targets[0].provider_id, None);
+    let syntax_targets = selected_syntax_plan_provider_targets("org", &providers)
+        .unwrap_or_else(|_| panic!("embedded syntax plan target admission"));
+    assert_eq!(syntax_targets[0].language_id, "org");
+    assert_eq!(syntax_targets[0].provider_id, None);
+    let code_targets = selected_syntax_plan_provider_targets("rust", &[provider("rust")])
+        .unwrap_or_else(|_| panic!("code syntax plan target admission"));
+    assert_eq!(code_targets[0].provider_id.as_deref(), Some("asp-rust"));
+    assert!(selected_syntax_plan_provider_targets("unknown", &providers).is_err());
 }
 
 fn search_request(

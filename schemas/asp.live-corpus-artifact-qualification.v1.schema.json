@@ -41,9 +41,9 @@
         "candidateLanguageFileCount"
       ],
       "properties": {
-        "authority": { "const": "provider-project-resolution" },
+        "authority": { "enum": ["provider-project-resolution", "embedded-document-language"] },
         "candidateSetAuthority": {
-          "const": "provider-registry-extension-index"
+          "enum": ["provider-registry-extension-index", "embedded-document-extension-index"]
         },
         "sourceExtensions": {
           "type": "array",

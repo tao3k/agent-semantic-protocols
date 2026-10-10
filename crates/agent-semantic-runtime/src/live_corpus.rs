@@ -95,7 +95,7 @@ pub struct LiveCorpusGitCheckoutQualification {
     pub checkout_identity_digest: String,
 }
 
-/// Provider-owned language-extension evidence read from a clean Git index.
+/// Source-owner language-extension evidence read from a clean Git index.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveCorpusLanguageExtensionEvidence {
@@ -381,6 +381,18 @@ pub fn qualify_live_corpus_language_extensions(
         .iter()
         .map(|entry| String::from_utf8_lossy(entry.path(&index).as_ref()).into_owned());
     language_extension_evidence_from_paths(paths, target, candidates)
+}
+
+/// Qualify clean Git index coverage using the embedded document owner inventory.
+pub fn qualify_live_corpus_embedded_document_extensions(
+    source_root: &Path,
+    source_extensions: &[String],
+) -> Result<LiveCorpusLanguageExtensionEvidence, String> {
+    let mut evidence =
+        qualify_live_corpus_language_extensions(source_root, source_extensions, source_extensions)?;
+    evidence.authority = "embedded-document-language".to_owned();
+    evidence.candidate_set_authority = "embedded-document-extension-index".to_owned();
+    Ok(evidence)
 }
 
 fn language_extension_evidence_from_paths(

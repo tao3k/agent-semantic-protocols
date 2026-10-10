@@ -80,7 +80,7 @@
           ],
           "properties": {
             "extensionAuthority": {
-              "const": "provider-project-resolution"
+              "enum": ["provider-project-resolution", "embedded-document-language"]
             },
             "minimumMatchingFiles": {
               "type": "integer",
@@ -100,7 +100,8 @@
           "properties": {
             "owner": { "type": "string", "minLength": 1 },
             "query": { "type": "string", "minLength": 1 },
-            "dependency": { "type": "string", "minLength": 1 }
+            "dependency": { "type": "string", "minLength": 1 },
+            "materializationSearch": { "type": "string", "minLength": 1 }
           }
         }
       },

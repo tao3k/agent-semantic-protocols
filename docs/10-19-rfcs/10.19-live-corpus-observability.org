@@ -532,3 +532,31 @@ lockfile resource before replaying =qualify=.  Qualification itself never
 performs those phases.  Runtime restart, plugin refresh, Hook mutation,
 provider fallback, compatibility aliases, and hidden retry remain outside this
 RFC's acceptance path.
+
+** Embedded document producer admission
+
+Org and Markdown qualification read extensions and producer identity from the
+shared embedded DocumentLanguage model used by the Runtime Search owner. They
+do not require an external provider registration or workspace artifact. Git
+index coverage remains mandatory. V1 artifact qualification admits the additive
+=embedded-document-language= authority and =embedded-document-extension-index=
+candidate authority. External language qualification retains its registered
+provider authority. Public Search and Query remain the execution evidence for
+the actual Server artifact; embedded metadata alone cannot qualify a search.
+
+The isolated workspace manifest uses the existing durable Git locator syntax,
+including its required =.git= suffix. Locked acquisition URLs remain unchanged;
+transport URLs without that suffix normalize only in the workspace identity.
+
+V1 corpus inputs may declare =materializationSearch= as one public Search
+Scheme expression. Materialization executes that expression through the typed
+public client before exact Query; omission retains the existing literal
+acquisition. Embedded document corpora declare parser-native structure because
+byte matches without admitted anchors correctly require refinement. This does
+not turn incomplete lexical evidence into a Ready selector or alter budgets.
+
+The current embedded document producer does not publish an enhanced Query
+capability table. Its configured structural acquisition therefore rejects with
+=enhanced-query-capability-table-missing=. Closing that producer contract and
+publishing admitted structural anchors remain required before the corpus can
+produce a Ready materialization receipt.

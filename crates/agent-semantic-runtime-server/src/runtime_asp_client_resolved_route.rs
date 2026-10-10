@@ -38,7 +38,7 @@ use super::{
 
 #[path = "runtime_asp_client_resolved_route_provider_targets.rs"]
 mod provider_targets;
-use provider_targets::{selected_playbook_provider_targets, selected_provider_targets};
+use provider_targets::{selected_playbook_provider_targets, selected_syntax_plan_provider_targets};
 
 pub(super) struct ResolvedRouteContext {
     pub(super) dispatch_budget: RequestDispatchBudget,
@@ -498,17 +498,22 @@ pub(super) async fn dispatch_resolved_route(
                 workspace_search_providers.as_ref(),
             )?
         }
-        ServerClientRoute::WorkspaceSyntaxQuery => selected_provider_targets(
-            workspace_syntax_query_params
+        ServerClientRoute::WorkspaceSyntaxQuery => {
+            let params = workspace_syntax_query_params
                 .as_ref()
-                .and_then(|params| params.languages.as_deref()),
-            active_provider_targets.as_ref(),
-        )?,
-        ServerClientRoute::WorkspaceSyntaxPlanContext => selected_provider_targets(
-            workspace_syntax_plan_context_params
+                .expect("workspace syntax Query request was decoded");
+            selected_playbook_provider_targets(
+                params.languages.as_deref(),
+                params.documents.as_deref(),
+                workspace_search_providers.as_ref(),
+            )?
+        }
+        ServerClientRoute::WorkspaceSyntaxPlanContext => selected_syntax_plan_provider_targets(
+            &workspace_syntax_plan_context_params
                 .as_ref()
-                .map(|params| params.producer.as_str()),
-            active_provider_targets.as_ref(),
+                .expect("workspace syntax plan context request was decoded")
+                .producer,
+            workspace_search_providers.as_ref(),
         )?,
         _ => vec![
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {

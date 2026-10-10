@@ -101,6 +101,8 @@ struct LiveCorpusInputs {
     owner: String,
     query: String,
     dependency: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    materialization_search: Option<String>,
 }
 
 #[derive(Debug)]
@@ -380,23 +382,38 @@ async fn materialize(
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let registration =
-        runtime_provider_registration(runtime_handoff.provider_socket_addr(), corpus).await?;
-    if registration.provider_id != corpus.provider_id {
-        return Err(format!(
-            "live corpus provider mismatch: lock={} registration={}",
-            corpus.provider_id, registration.provider_id
-        ));
-    }
-    let source_inventory = registration.source_inventory()?;
-    let registry_extensions = source_inventory.source_extensions.clone();
-    let extension_evidence = qualify_live_corpus_language_extensions(
-        &source,
-        &source_inventory.source_extensions,
-        &registry_extensions,
-    )?;
+    let extension_evidence = if let Some(language) = orgize::agent::DocumentLanguage::ALL
+        .into_iter()
+        .find(|language| language.id() == corpus.language)
+    {
+        if language.provider_id() != corpus.provider_id {
+            return Err(format!(
+                "live corpus embedded producer mismatch: lock={} embedded={}",
+                corpus.provider_id,
+                language.provider_id(),
+            ));
+        }
+        let extensions = language
+            .source_extensions()
+            .iter()
+            .map(|extension| (*extension).to_owned())
+            .collect::<Vec<_>>();
+        agent_semantic_runtime::qualify_live_corpus_embedded_document_extensions(
+            &source,
+            &extensions,
+        )?
+    } else {
+        let registration =
+            runtime_provider_registration(runtime_handoff.provider_socket_addr(), corpus).await?;
+        let source_inventory = registration.source_inventory()?;
+        qualify_live_corpus_language_extensions(
+            &source,
+            &source_inventory.source_extensions,
+            &source_inventory.source_extensions,
+        )?
+    };
     validate_extension_admission(corpus, &extension_evidence)?;
-    emit_live_corpus_timing("provider-registration", &mut step_started);
+    emit_live_corpus_timing("source-inventory", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
     let isolated = agent_semantic_workspace_scheduler::RuntimeServerOwnedTask::spawn_blocking(
@@ -437,13 +454,23 @@ async fn materialize(
         runtime_handoff,
     );
     let runtime_result = async {
-        let search = qualification::client_protocol::search_receipt_for_literal(
-            &client,
-            &benchmark_workspace,
-            corpus.language.as_str(),
-            &corpus.inputs.query,
-        )
-        .await?;
+        let search = if let Some(expression) = corpus.inputs.materialization_search.as_deref() {
+            qualification::client_protocol::search_receipt_for_scheme(
+                &client,
+                &benchmark_workspace,
+                corpus.language.as_str(),
+                expression,
+            )
+            .await?
+        } else {
+            qualification::client_protocol::search_receipt_for_literal(
+                &client,
+                &benchmark_workspace,
+                corpus.language.as_str(),
+                &corpus.inputs.query,
+            )
+            .await?
+        };
         let selector = search.selectors.first().ok_or_else(|| {
             format!(
                 "Live Corpus Search Playbook returned no parser-owned selector: resourceId={}",

@@ -6,40 +6,6 @@
 
 use super::AspClientOperationError;
 
-pub(super) fn selected_provider_targets(
-    languages: Option<&str>,
-    active_provider_targets: &[(String, String)],
-) -> Result<
-    Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
-    AspClientOperationError,
-> {
-    let provider_by_language = active_provider_targets
-        .iter()
-        .map(|(language_id, provider_id)| (language_id.as_str(), provider_id.as_str()))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let mut seen = std::collections::BTreeSet::new();
-    languages
-        .into_iter()
-        .flat_map(|languages| languages.split('|'))
-        .map(str::trim)
-        .filter(|language_id| !language_id.is_empty())
-        .filter(|language_id| seen.insert((*language_id).to_owned()))
-        .map(|language_id| {
-            let provider_id = provider_by_language
-                .get(language_id)
-                .ok_or_else(|| {
-                    AspClientOperationError::Message(format!(
-                        "installed provider target missing for languageId={language_id}"
-                    ))
-                })?;
-            Ok(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget {
-                language_id: language_id.to_owned(),
-                provider_id: Some((*provider_id).to_owned()),
-            })
-        })
-        .collect()
-}
-
 pub(super) fn selected_playbook_provider_targets(
     language: Option<&str>,
     documents: Option<&str>,
@@ -105,4 +71,32 @@ pub(super) fn selected_playbook_provider_targets(
         }
     }
     Ok(targets)
+}
+
+pub(super) fn selected_syntax_plan_provider_targets(
+    producer: &str,
+    providers: &[agent_semantic_search::WorkspaceSearchProvider],
+) -> Result<
+    Vec<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+    AspClientOperationError,
+> {
+    let provider = providers
+        .iter()
+        .find(|provider| provider.language_id == producer)
+        .ok_or_else(|| {
+            AspClientOperationError::Message(format!(
+                "syntax plan producer is not admitted: producer={producer}",
+            ))
+        })?;
+    match provider.producer_axes.as_slice() {
+        [agent_semantic_search::WorkspaceSearchProducerAxis::Language] => {
+            selected_playbook_provider_targets(Some(producer), None, providers)
+        }
+        [agent_semantic_search::WorkspaceSearchProducerAxis::Document] => {
+            selected_playbook_provider_targets(None, Some(producer), providers)
+        }
+        _ => Err(AspClientOperationError::Message(format!(
+            "syntax plan producer axis is ambiguous: producer={producer}",
+        ))),
+    }
 }

@@ -73,6 +73,7 @@ fn corpus(admission: Option<LiveCorpusExtensionAdmission>) -> LiveCorpusLockEntr
             owner: "index.org".to_string(),
             query: "agenda".to_string(),
             dependency: "Org".to_string(),
+            materialization_search: None,
         },
     }
 }
@@ -182,6 +183,50 @@ fn repository_corpus_lock_is_the_materializer_contract() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../benchmarks/large-library-runtime-corpora.json");
     let lock = load_lock(&lock_path).expect("repository corpus lock must decode");
+
+    let schemas = lock_path
+        .parent()
+        .expect("corpus directory")
+        .join("../schemas");
+    let schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(schemas.join("semantic-sandtable-large-library-corpora.v1.schema.json"))
+            .expect("corpus schema"),
+    )
+    .expect("corpus schema JSON");
+    let artifact_schema: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(schemas.join("asp.live-corpus-artifact.v1.schema.json"))
+            .expect("artifact schema"),
+    )
+    .expect("artifact schema JSON");
+    let registry = referencing::Registry::new()
+        .add(
+            "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-artifact.v1.schema.json",
+            artifact_schema,
+        )
+        .expect("schema URI")
+        .prepare()
+        .expect("local schema registry");
+    let validator = jsonschema::options()
+        .with_registry(&registry)
+        .build(&schema)
+        .expect("corpus contract must compile");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&lock_path).expect("repository corpus lock"))
+            .expect("corpus lock JSON");
+    validator
+        .validate(&value)
+        .expect("repository lock must satisfy the shared V1 schema");
+    let worg = value["corpora"]
+        .as_array_mut()
+        .expect("corpora")
+        .iter_mut()
+        .find(|corpus| corpus["resourceId"] == "org.worg")
+        .expect("Worg corpus");
+    worg["inputs"]["materializationSearch"] = serde_json::json!("");
+    assert!(
+        !validator.is_valid(&value),
+        "empty configured search must fail schema admission"
+    );
 
     assert_eq!(lock.corpora.len(), 17);
     assert!(

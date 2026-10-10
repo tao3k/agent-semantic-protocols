@@ -82,8 +82,14 @@ fn write_benchmark_topology_manifest(
         .ok_or_else(|| "Live Corpus topology manifest has no parent".to_owned())?;
     std::fs::create_dir_all(parent)
         .map_err(|error| format!("create Live Corpus topology manifest directory: {error}"))?;
+    let remote = remote.trim_end_matches('/');
+    let repository_locator = if remote.ends_with(".git") {
+        remote.to_owned()
+    } else {
+        format!("{remote}.git")
+    };
     let source = format!(
-        "#+TITLE: Live Corpus Project Workspace\n:PROPERTIES:\n:CONTRACT_ORG: [[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]\n:END:\n\n* Project Workspace\n:PROPERTIES:\n:PROJECT_WORKSPACE_ID: {resource_id}\n:PROJECT_WORKSPACE_IDENTITY: git+{remote}#workspace/root\n:WORKSPACE_ROOT_PATH: .\n:PORTABILITY: cross-machine\n:REPOSITORY_ALIASES: []\n:END:\n"
+        "#+TITLE: Live Corpus Project Workspace\n:PROPERTIES:\n:CONTRACT_ORG: [[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]\n:END:\n\n* Project Workspace\n:PROPERTIES:\n:PROJECT_WORKSPACE_ID: {resource_id}\n:PROJECT_WORKSPACE_IDENTITY: git+{repository_locator}#workspace/root\n:WORKSPACE_ROOT_PATH: .\n:PORTABILITY: cross-machine\n:REPOSITORY_ALIASES: []\n:END:\n"
     );
     std::fs::write(&path, source)
         .map_err(|error| format!("write Live Corpus topology manifest: {error}"))?;

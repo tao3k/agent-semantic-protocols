@@ -71,11 +71,11 @@
       "directory": "md-mdn-content",
       "environment": "SANDTABLE_MD_MDN_CONTENT_ROOT",
       "admission": {
-        "extensionAuthority": "provider-project-resolution",
+        "extensionAuthority": "embedded-document-language",
         "minimumMatchingFiles": 1000,
         "minimumMatchingFileRatio": 0.8
       },
-      "inputs": {"owner": "files/en-us/web/javascript/index.md", "query": "JavaScript", "dependency": "Web API"}
+      "inputs": {"owner": "files/en-us/web/javascript/index.md", "query": "JavaScript", "dependency": "Web API", "materializationSearch": "(search (producers (documents md)) (syntax md \"(_) @item\"))"}
     },
     {
       "resourceId": "org.worg",
@@ -90,11 +90,11 @@
       "directory": "org-worg",
       "environment": "SANDTABLE_ORG_WORG_ROOT",
       "admission": {
-        "extensionAuthority": "provider-project-resolution",
+        "extensionAuthority": "embedded-document-language",
         "minimumMatchingFiles": 100,
         "minimumMatchingFileRatio": 0.8
       },
-      "inputs": {"owner": "index.org", "query": "agenda", "dependency": "Org"}
+      "inputs": {"owner": "index.org", "query": "agenda", "dependency": "Org", "materializationSearch": "(search (producers (documents org)) (syntax org \"(headline) @item\"))"}
     },
     {
       "resourceId": "python.fastapi",

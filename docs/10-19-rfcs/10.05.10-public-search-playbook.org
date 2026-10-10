@@ -759,3 +759,17 @@ reasoning. ASP retains query interpretation, resident source authority, ranking
 policy and public receipt projection. No new search language or packet version
 is introduced. This is candidate execution consolidation; dependent Temporal
 continuation and reusable physical backend acquisition remain separate gates.
+
+The isolated Live Corpus runner uses the same content-bound owner lifecycle.
+Feature-enabled qualification requires the explicit prebuilt
+=ASP_LIVE_CORPUS_MRR_SEARCH_ARTIFACT= and publishes it as =mrr-search= in both
+the execution closure and Runtime bundle. Missing owner assets fail before
+Server startup. The runner performs no producer compilation or PATH discovery.
+The build recipe accepts a feature list so qualification can explicitly select
+=live-corpus-test,mrr-data-search-composition= without changing the default
+product profile or any public V1 packet.
+
+Syntax Query and syntax plan context select generation targets from admitted
+producer axes, as Search does. A document target has no external provider id.
+Capability absence remains a typed failure; bypassing an external registration
+check does not synthesize an enhanced Query vocabulary or certify acquisition.
