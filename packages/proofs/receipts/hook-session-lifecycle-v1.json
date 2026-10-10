@@ -1,0 +1,194 @@
+{"sourcePath": "ASPProof/HookSessionLifecycle.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.HookSessionLifecycle",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.HookSessionLifecycle.nextAction ASPProof.HookSessionLifecycle.registeredButAbsent =\n  ASPProof.HookSessionLifecycle.HookAction.recover ASPProof.HookSessionLifecycle.RecoveryAction.materializeResident",
+   "theoremFamily": "registered-absence-materialization",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-HSLA-CONFIGURED", "ASP-RFC-10.05-HSLA-MATERIALIZE"],
+   "name":
+   "ASPProof.HookSessionLifecycle.registered_absence_requires_materialization",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.HookSessionLifecycle.LegacyResumeExecutable ASPProof.HookSessionLifecycle.registeredButAbsent",
+   "theoremFamily": "legacy-resume-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-RESUME"],
+   "name":
+   "ASPProof.HookSessionLifecycle.legacy_resume_is_not_executable_for_registered_absence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.nextAction ASPProof.HookSessionLifecycle.partialSpawn =\n  ASPProof.HookSessionLifecycle.HookAction.recover ASPProof.HookSessionLifecycle.RecoveryAction.reconcileRegistry",
+   "theoremFamily": "partial-spawn-reconciliation",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-RECONCILE"],
+   "name":
+   "ASPProof.HookSessionLifecycle.partial_spawn_requires_registry_reconciliation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.nextAction ASPProof.HookSessionLifecycle.unboundResident =\n  ASPProof.HookSessionLifecycle.HookAction.recover ASPProof.HookSessionLifecycle.RecoveryAction.bindMessageTarget",
+   "theoremFamily": "message-target-reconciliation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-HSLA-RECONCILE", "ASP-RFC-10.05-HSLA-TARGET"],
+   "name":
+   "ASPProof.HookSessionLifecycle.bound_registry_without_target_requires_target_binding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.nextAction ASPProof.HookSessionLifecycle.staleResident =\n  ASPProof.HookSessionLifecycle.HookAction.recover ASPProof.HookSessionLifecycle.RecoveryAction.replaceGeneration",
+   "theoremFamily": "stale-generation-replacement",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-HSLA-GENERATION", "ASP-RFC-10.05-HSLA-REPLACEMENT"],
+   "name":
+   "ASPProof.HookSessionLifecycle.stale_generation_requires_replacement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.HookSessionLifecycle.ResidentState) (childSessionId messageTargetId : Nat),\n  ASPProof.HookSessionLifecycle.ActiveResident\n    (ASPProof.HookSessionLifecycle.materializeResident state childSessionId messageTargetId)",
+   "theoremFamily": "materialization-active-invariant",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-MATERIALIZE"],
+   "name":
+   "ASPProof.HookSessionLifecycle.materialization_produces_active_resident",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.nextAction ASPProof.HookSessionLifecycle.activeResidentState =\n  ASPProof.HookSessionLifecycle.HookAction.dispatch",
+   "theoremFamily": "active-dispatch-selection",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ACTION"],
+   "name": "ASPProof.HookSessionLifecycle.active_resident_dispatches",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {state : ASPProof.HookSessionLifecycle.ResidentState},\n  ASPProof.HookSessionLifecycle.nextAction state = ASPProof.HookSessionLifecycle.HookAction.dispatch →\n    ASPProof.HookSessionLifecycle.ActiveResident state",
+   "theoremFamily": "dispatch-active-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ACTION"],
+   "name": "ASPProof.HookSessionLifecycle.dispatch_action_implies_active",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.CanDispatch ASPProof.HookSessionLifecycle.activeResidentState\n  ASPProof.HookSessionLifecycle.activeReceipt",
+   "theoremFamily": "receipt-bound-dispatch",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-RECEIPT", "ASP-RFC-10.05-HSLA-TARGET"],
+   "name": "ASPProof.HookSessionLifecycle.bound_receipt_authorizes_dispatch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.replacementState.physicalGeneration =\n    ASPProof.HookSessionLifecycle.activeResidentState.physicalGeneration + 1 ∧\n  ASPProof.HookSessionLifecycle.replacementState.authorityGeneration =\n      ASPProof.HookSessionLifecycle.activeResidentState.authorityGeneration + 1 ∧\n    ASPProof.HookSessionLifecycle.replacementState.authorityRevision =\n      ASPProof.HookSessionLifecycle.activeResidentState.authorityRevision + 1",
+   "theoremFamily": "replacement-monotonicity",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-REPLACEMENT"],
+   "name":
+   "ASPProof.HookSessionLifecycle.replacement_increments_generation_and_revision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.HookSessionLifecycle.CanDispatch ASPProof.HookSessionLifecycle.replacementState\n    ASPProof.HookSessionLifecycle.activeReceipt",
+   "theoremFamily": "stale-receipt-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-HSLA-GENERATION", "ASP-RFC-10.05-HSLA-RECEIPT"],
+   "name":
+   "ASPProof.HookSessionLifecycle.old_receipt_cannot_dispatch_replacement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.nextAction\n    (ASPProof.HookSessionLifecycle.materializeResident ASPProof.HookSessionLifecycle.registeredButAbsent 200 200) =\n  ASPProof.HookSessionLifecycle.HookAction.dispatch",
+   "theoremFamily": "materialization-deadlock-elimination",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-HSLA-ACTION", "ASP-RFC-10.05-HSLA-MATERIALIZE"],
+   "name":
+   "ASPProof.HookSessionLifecycle.materialization_eliminates_registered_absence_deadlock",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.observedRustProvider.manifestActivated = true ∧\n  ¬ASPProof.HookSessionLifecycle.ExecutableProvider ASPProof.HookSessionLifecycle.observedRustProvider",
+   "theoremFamily": "activation-status-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ECOSYSTEM"],
+   "name":
+   "ASPProof.HookSessionLifecycle.manifest_activation_does_not_imply_provider_execution",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ActiveResident ASPProof.HookSessionLifecycle.observedLifecycleEcosystem.resident ∧\n  ¬ASPProof.HookSessionLifecycle.EndToEndExecutable ASPProof.HookSessionLifecycle.observedLifecycleEcosystem",
+   "theoremFamily": "local-readiness-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ECOSYSTEM"],
+   "name":
+   "ASPProof.HookSessionLifecycle.active_resident_does_not_imply_end_to_end_execution",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ecosystemNextAction ASPProof.HookSessionLifecycle.observedLifecycleEcosystem =\n  ASPProof.HookSessionLifecycle.EcosystemAction.recover\n    ASPProof.HookSessionLifecycle.EcosystemRecoveryAction.reconcileHookRouting",
+   "theoremFamily": "observed-hook-routing-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-CALIBRATION"],
+   "name":
+   "ASPProof.HookSessionLifecycle.observed_ecosystem_first_repairs_hook_routing",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ecosystemNextAction ASPProof.HookSessionLifecycle.hookRoutedEcosystem =\n  ASPProof.HookSessionLifecycle.EcosystemAction.recover\n    ASPProof.HookSessionLifecycle.EcosystemRecoveryAction.repairActivationSchema",
+   "theoremFamily": "activation-schema-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-CALIBRATION"],
+   "name":
+   "ASPProof.HookSessionLifecycle.routed_hook_then_repairs_activation_schema",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ecosystemNextAction ASPProof.HookSessionLifecycle.schemaRepairedEcosystem =\n  ASPProof.HookSessionLifecycle.EcosystemAction.recover\n    ASPProof.HookSessionLifecycle.EcosystemRecoveryAction.restoreWorkspaceOwner",
+   "theoremFamily": "workspace-owner-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-CALIBRATION"],
+   "name":
+   "ASPProof.HookSessionLifecycle.repaired_schema_then_restores_workspace_owner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ecosystemNextAction ASPProof.HookSessionLifecycle.ownerRestoredEcosystem =\n  ASPProof.HookSessionLifecycle.EcosystemAction.recover\n    ASPProof.HookSessionLifecycle.EcosystemRecoveryAction.materializeProviderGeneration",
+   "theoremFamily": "provider-generation-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-CALIBRATION"],
+   "name":
+   "ASPProof.HookSessionLifecycle.restored_owner_then_materializes_provider_generation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {state : ASPProof.HookSessionLifecycle.LifecycleEcosystemState},\n  ASPProof.HookSessionLifecycle.ecosystemNextAction state =\n      ASPProof.HookSessionLifecycle.EcosystemAction.dispatchSearch →\n    ASPProof.HookSessionLifecycle.EndToEndExecutable state",
+   "theoremFamily": "end-to-end-dispatch-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ECOSYSTEM"],
+   "name":
+   "ASPProof.HookSessionLifecycle.ecosystem_dispatch_implies_end_to_end_execution",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.HookSessionLifecycle.ecosystemNextAction ASPProof.HookSessionLifecycle.executableLifecycleEcosystem =\n  ASPProof.HookSessionLifecycle.EcosystemAction.dispatchSearch",
+   "theoremFamily": "end-to-end-dispatch-sufficiency",
+   "rfcClauseIds": ["ASP-RFC-10.05-HSLA-ECOSYSTEM"],
+   "name":
+   "ASPProof.HookSessionLifecycle.fully_executable_ecosystem_dispatches",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 20,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 20,
+ "axiomDependentDeclarationCount": 0}

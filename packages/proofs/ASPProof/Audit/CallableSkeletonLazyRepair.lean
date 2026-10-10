@@ -1,0 +1,20 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.CallableSkeletonLazyRepair
+
+#print axioms ASPProof.CallableSkeletonLazyRepair.ownerReadinessDoesNotRequireDerivedProjection
+#print axioms ASPProof.CallableSkeletonLazyRepair.staleCandidateIsRejected
+#print axioms ASPProof.CallableSkeletonLazyRepair.wrongSelectorIsRejected
+#print axioms ASPProof.CallableSkeletonLazyRepair.wrongProjectionKindIsRejected
+#print axioms ASPProof.CallableSkeletonLazyRepair.missingBaseSelectorCannotBeRepaired
+#print axioms ASPProof.CallableSkeletonLazyRepair.relocatedSelectorCannotBeExactHit
+#print axioms ASPProof.CallableSkeletonLazyRepair.stdinOnlyProviderNativeRouteIsRejected
+#print axioms ASPProof.CallableSkeletonLazyRepair.admittedCandidatePublishesExactlyRequestedSelector
+#print axioms ASPProof.CallableSkeletonLazyRepair.publicationDoesNotMutateOwnerGeneration
+#print axioms ASPProof.CallableSkeletonLazyRepair.boundedTerminalObservationNeverLeaksBuilding
+#print axioms ASPProof.CallableSkeletonLazyRepair.distinctMutationsCannotAliasSingleFlight
+#print axioms ASPProof.CallableSkeletonLazyRepair.admittedMutationCannotRestorePreviousGeneration
+#print axioms ASPProof.CallableSkeletonLazyRepair.distinctGenerationRootsCannotAliasPublication
+#print axioms ASPProof.CallableSkeletonLazyRepair.distinctSelectorSetsCannotAliasPublication

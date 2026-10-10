@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Retired root parser compact snapshot command."""
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     del argv
     sys.stderr.write(
         "root parser compact snapshots are retired; run compact checks in the "
-        "language harness that owns the provider output\n"
+        "ASP language provider that owns the provider output\n"
     )
     return 1
 

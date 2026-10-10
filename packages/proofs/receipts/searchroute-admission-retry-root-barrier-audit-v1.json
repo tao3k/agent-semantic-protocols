@@ -1,0 +1,63 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryRootBarrier.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryRootBarrier",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type} {cycle : SearchRouteAdmissionGcBarrier.GcCycle Identity} {commitEpoch : Nat}\n  {record : SearchRouteAdmissionHistory.AdmissionRecord Identity} {externalRoot : Identity → Prop},\n  SearchRouteAdmissionGcBarrier.ConcurrentCommitCertificate cycle commitEpoch record →\n    ASPProof.SearchRouteAdmissionRetryRootBarrier.RecordCoveredBy\n      (ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot cycle externalRoot) record",
+   "theoremFamily": "complete-root bridge",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRB-BARRIER-CAPTURE", "ASP-RFC-10.05-CRRB-ROOT-UNION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.concurrent_retry_barrier_enters_complete_live_roots",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type} {cycle : SearchRouteAdmissionGcBarrier.GcCycle Identity} {commitEpoch : Nat}\n  {record : SearchRouteAdmissionHistory.AdmissionRecord Identity}\n  {beforeRotation afterRotation : ASPProof.SearchRouteAdmissionIssueLogRotation.IssueLogState Identity}\n  {externalRoot : Identity → Prop},\n  ASPProof.SearchRouteAdmissionRetryRootBarrier.ConcurrentRetryAdmissionCertificate cycle commitEpoch record\n      beforeRotation →\n    ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation beforeRotation afterRotation\n        (ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot cycle externalRoot) →\n      afterRotation.issued record.baselineReceiptIdentity ∧ afterRotation.issued record.extendedReceiptIdentity",
+   "theoremFamily": "safe-rotation bridge",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRB-ISSUE-BEFORE-CUT",
+    "ASP-RFC-10.05-CRRB-ROTATION-BRIDGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.certified_concurrent_retry_survives_safe_issue_log_rotation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle.remembered true ∧\n  ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot\n      ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle\n      ASPProof.SearchRouteAdmissionRetryRootBarrier.noExternalRoot true ∧\n    ¬ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle.snapshotReferenced true",
+   "theoremFamily": "snapshot-only counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRB-NONIMPLICATION", "ASP-RFC-10.05-CRRB-ROOT-UNION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.remembered_retry_is_live_but_snapshot_only_roots_drop_it",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "(∀ (identity : Bool),\n    ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle.snapshotReferenced identity →\n      ASPProof.SearchRouteAdmissionIssueLogRotation.issuedAllState.issued identity →\n        ASPProof.SearchRouteAdmissionIssueLogRotation.publicationOnlyState.issued identity) ∧\n  ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot\n      ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle\n      ASPProof.SearchRouteAdmissionRetryRootBarrier.noExternalRoot true ∧\n    ASPProof.SearchRouteAdmissionIssueLogRotation.issuedAllState.issued true ∧\n      ¬ASPProof.SearchRouteAdmissionIssueLogRotation.publicationOnlyState.issued true ∧\n        ¬ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation\n            ASPProof.SearchRouteAdmissionIssueLogRotation.issuedAllState\n            ASPProof.SearchRouteAdmissionIssueLogRotation.publicationOnlyState\n            (ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot\n              ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle\n              ASPProof.SearchRouteAdmissionRetryRootBarrier.noExternalRoot)",
+   "theoremFamily": "incomplete-rotation counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRB-NONIMPLICATION", "ASP-RFC-10.05-CRRB-ROTATION-BRIDGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.rotation_over_snapshot_only_roots_is_unsafe_for_remembered_retry",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot\n    ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle\n    ASPProof.SearchRouteAdmissionRetryRootBarrier.noExternalRoot true ∧\n  ASPProof.SearchRouteAdmissionIssueLogRotation.SafeIssueLogRotation\n      ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog\n      ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog\n      (ASPProof.SearchRouteAdmissionRetryRootBarrier.CompleteLiveRoot\n        ASPProof.SearchRouteAdmissionRetryRootBarrier.rememberedRetryCycle\n        ASPProof.SearchRouteAdmissionRetryRootBarrier.noExternalRoot) ∧\n    ¬ASPProof.SearchRouteAdmissionIssueLogRotation.emptyIssueLog.issued true",
+   "theoremFamily": "origin counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRB-ISSUE-BEFORE-CUT", "ASP-RFC-10.05-CRRB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryRootBarrier.root_membership_without_pre_rotation_issue_does_not_create_origin",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 5,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 3}

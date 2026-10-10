@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the agent healthcheck schema for runtime repair reports."""
 
 import json
@@ -73,11 +77,11 @@ class SemanticAgentHealthcheckSchemaTests(unittest.TestCase):
             "providers": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
-                    "binary": "rs-harness",
-                    "resolvedBinary": "/tmp/project/.bin/rs-harness",
-                    "argv": ["/tmp/project/.bin/rs-harness"],
+                    "providerId": "asp-rust",
+                    "manifestId": "agent.semantic-protocols.providers.rust.asp-rust",
+                    "binary": "asp-rust",
+                    "resolvedBinary": "/tmp/project/.bin/asp-rust",
+                    "argv": ["/tmp/project/.bin/asp-rust"],
                     "healthStatus": "available",
                 }
             ],

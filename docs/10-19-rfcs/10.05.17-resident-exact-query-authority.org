@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Resident Exact Query Authority
+#+startup: overview
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Status
+
+Normative. This document refines the interactive graph-first SearchLoop for
+exact structural projections. Schema versions remain =v1=; no compatibility
+surface is introduced.
+
+* Problem
+
+An exact query was able to resolve the lifecycle-published workspace session
+and then open the generation pointer and mmap segment inside the short-lived
+CLI process. That path duplicated epoch observation per command and bypassed
+the Runtime Server's load-once memory backend, telemetry, admission state, and
+single generation authority. A healthy daemon therefore did not imply that an
+exact query consumed the daemon-owned generation.
+
+* Normative authority
+
+For every workspace identity there is one resident Runtime Server entry. The
+entry owns the generation pointer, immutable mapped generation, epoch refresh,
+and exact-projection read lease.
+
+An agent-facing exact query MUST:
+
+1. resolve the lifecycle-published workspace session;
+2. send the typed =ReadRuntimeSelector= operation through that session;
+3. receive a =WorkspaceRuntimeSelectorRead= bound to the resident generation;
+4. render the typed hit or miss without opening a database, pointer, provider,
+   activation, or mmap segment in the CLI process.
+
+An exact query MUST NOT build, publish, repair, refresh, or otherwise mutate a
+generation. Mutation observation belongs to the asynchronous hook lifecycle;
+generation construction and epoch publication belong to the resident writer
+lane. A stale selector is a typed semantic result from the admitted resident
+generation, never permission for query-time reconstruction.
+
+* Concurrency and lifecycle
+
+Concurrent exact queries for the same workspace share the daemon-owned mapped
+generation. Epoch replacement is atomic: an individual read observes either
+the complete previous epoch or the complete next epoch. Different workspaces
+remain independent. Shutdown drains resident reads and writer tasks; a client
+disconnect cannot retain a generation lease or initiate a daemon restart.
+
+* Performance and observability
+
+The warm resident operation is a memory lookup plus IPC framing. It performs
+zero Turso opens, zero provider processes, zero manifest writes, zero source
+walks, and zero client mmap opens. OpenTelemetry records command identity,
+workspace identity, generation epoch, result state, elapsed micros, and budget
+failure. A budget exceedance is a defect receipt, not a retry policy.
+
+* Required gates
+
+- typed contract: the exact consumer can reach only =ReadRuntimeSelector=;
+- concurrency: same-workspace readers remain coherent across atomic epoch
+  replacement and multiple workspaces proceed independently;
+- lifecycle: repeated client connect/disconnect leaves no tasks or handles;
+- performance: cold admission and warm resident reads have separate budgets;
+- empirical: repeated exact selectors on a large dirty worktree return current
+  owner bytes without =selector-stale=, =item-not-in-live-owner=, or duplicate
+  output.

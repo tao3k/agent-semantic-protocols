@@ -49,20 +49,8 @@
                 ],
                 "properties": {
                     "variant": {
-                        "enum": [
-                            "full",
-                            "no-receipt",
-                            "no-read-memory",
-                            "no-quality-fields",
-                            "no-provider-facts",
-                            "relation-weight-flat",
-          "no-query-seed-prior",
-          "no-package-cohesion",
-          "no-query-clause-coverage",
-          "no-local-evidence",
-          "no-topology-membership"
-        ]
-      },
+                      "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/variant"
+                    },
                     "changes": {
                         "type": "object"
                     },

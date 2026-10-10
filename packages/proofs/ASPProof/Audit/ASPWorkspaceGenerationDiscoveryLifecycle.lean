@@ -1,0 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ASPWorkspaceGenerationDiscoveryLifecycle
+
+#print axioms ASPProof.WorkspaceGenerationDiscovery.discovering_cannot_silently_return_to_absent
+#print axioms ASPProof.WorkspaceGenerationDiscovery.terminal_receipt_is_not_discovering
+#print axioms ASPProof.WorkspaceGenerationDiscovery.expired_observation_is_not_discovering
+#print axioms ASPProof.WorkspaceGenerationDiscovery.every_discovery_step_is_progressive
+#print axioms ASPProof.WorkspaceGenerationDiscovery.expired_build_is_not_building
+#print axioms ASPProof.WorkspaceGenerationDiscovery.every_build_step_is_progressive

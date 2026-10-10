@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-shell-parser"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+toml = { workspace = true }
+
+[[bench]]
+name = "shell_parser_scenarios"
+harness = false
+
+
+[dependencies]
+globset.workspace = true
+tree-sitter = "0.26"
+tree-sitter-bash = "0.25"
+tantivy-query-grammar = "0.26.0"
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

@@ -1,0 +1,16 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-rust-main",
+  "candidateGeneration": {
+    "algorithm": "blake3-worktree-state-v1",
+    "digest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "authorities": ["git-index", "git-worktree"]
+  },
+  "policyOverlayDigest": "blake3:policy-rust-main",
+  "state": "ready",
+  "accepted": false,
+  "attempt": 2,
+  "commit": null,
+  "error": null
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate line-protocol path rules for synthesis window sets."""
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:src/a.ts,"
                                         "tests:tests/a.test.ts,"
@@ -65,7 +69,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:0:src/a.ts')"
                                     ),
@@ -100,7 +104,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=owner:tests/a.test.ts')"
                                     ),
@@ -135,7 +139,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|synthesis algorithm=query-set "
                                         "scope=text windowSet=tests:src/a.ts')"
                                     ),

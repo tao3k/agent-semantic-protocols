@@ -1,0 +1,21 @@
+{
+  "auditSha256": "c7cebd2af847fd20bf43174a465014519fe7bd7259b44462eb48aa1ed3fa87c0",
+  "axiomDependentDeclarationCount": 6,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "propext"
+  ],
+  "declarationCount": 6,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SCI-KEY-IDENTITY",
+    "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "cache-identity",
+    "cache-counterexample",
+    "cache-transition",
+    "typed-invalidation"
+  ]
+}

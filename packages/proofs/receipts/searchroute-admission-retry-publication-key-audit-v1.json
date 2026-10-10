@@ -1,0 +1,71 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryPublicationKey.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryPublicationKey",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {left right : ASPProof.SearchRouteAdmissionRetryPublicationKey.RetryPublicationKey},\n  left = right →\n    left.workspaceIdentity = right.workspaceIdentity ∧\n      left.ledgerGeneration = right.ledgerGeneration ∧\n        left.contractVersion = right.contractVersion ∧\n          left.tenantScope = right.tenantScope ∧ left.retryIdentity = right.retryIdentity",
+   "theoremFamily": "full-key identity",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPKS-FULL-KEY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.full_key_equality_preserves_all_scope_dimensions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.otherWorkspaceKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKey.omitWorkspace\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.omitWorkspace\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.otherWorkspaceKey",
+   "theoremFamily": "workspace omission counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKS-NONIMPLICATION", "ASP-RFC-10.05-RPKS-WORKSPACE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.omitting_workspace_aliases_distinct_publication_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.otherGenerationKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKey.omitGeneration\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.omitGeneration\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.otherGenerationKey",
+   "theoremFamily": "generation omission counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKS-GENERATION", "ASP-RFC-10.05-RPKS-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.omitting_generation_aliases_distinct_publication_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.otherContractVersionKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKey.omitContractVersion\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.omitContractVersion\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.otherContractVersionKey",
+   "theoremFamily": "contract omission counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKS-CONTRACT", "ASP-RFC-10.05-RPKS-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.omitting_contract_version_aliases_distinct_publication_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.otherTenantScopeKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKey.omitTenantScope\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.omitTenantScope\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.otherTenantScopeKey",
+   "theoremFamily": "tenant omission counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKS-NONIMPLICATION", "ASP-RFC-10.05-RPKS-TENANT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.omitting_tenant_scope_aliases_distinct_publication_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.otherRetryIdentityKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKey.omitRetryIdentity\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.baseKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKey.omitRetryIdentity\n      ASPProof.SearchRouteAdmissionRetryPublicationKey.otherRetryIdentityKey",
+   "theoremFamily": "retry omission counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKS-NONIMPLICATION", "ASP-RFC-10.05-RPKS-RETRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKey.omitting_retry_identity_aliases_distinct_publication_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 1}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/cold-rg-corpus-receipt.v1.schema.json",
+  "title": "Cold ripgrep corpus receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "contentGenerationDigest", "ownerCount",
+    "corpusDigest", "ownerSpansDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.cold-rg-corpus-receipt"},
+    "schemaVersion": {"const": "1"},
+    "contentGenerationDigest": {"$ref": "#/$defs/digest"},
+    "ownerCount": {"type": "integer", "minimum": 1},
+    "corpusDigest": {"$ref": "#/$defs/digest"},
+    "ownerSpansDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+  }
+}

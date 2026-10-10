@@ -1,0 +1,223 @@
+{"sourcePath": "ASPProof/PolyglotSearchConformance.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.PolyglotSearchConformance",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.PolyglotSearchConformance.documentAdmitted ASPProof.PolyglotSearchConformance.validDocument = true",
+   "theoremFamily": "document-positive",
+   "rfcClauseIds": ["ASP-RFC-PSC-DOCUMENT", "ASP-RFC-PSC-PARSER"],
+   "name": "ASPProof.PolyglotSearchConformance.valid_document_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.documentAdmitted ASPProof.PolyglotSearchConformance.gqlMutationDocument = false",
+   "theoremFamily": "gql-mutation-rejection",
+   "rfcClauseIds": ["ASP-RFC-PSC-GQL", "ASP-RFC-PSC-READ-ONLY"],
+   "name": "ASPProof.PolyglotSearchConformance.gql_mutation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.documentAdmitted ASPProof.PolyglotSearchConformance.forgedSummaryDocument = false",
+   "theoremFamily": "source-summary-binding",
+   "rfcClauseIds": ["ASP-RFC-PSC-BINDING", "ASP-RFC-PSC-PARSER"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.safe_summary_beside_mutating_source_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.documentAdmitted ASPProof.PolyglotSearchConformance.unboundedLogicDocument = false",
+   "theoremFamily": "logic-evaluation-bound",
+   "rfcClauseIds": ["ASP-RFC-PSC-BOUND", "ASP-RFC-PSC-LOGIC"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.unbounded_logic_evaluation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.relationBatchAdmitted ASPProof.PolyglotSearchConformance.validRelationBatch = true",
+   "theoremFamily": "relation-positive",
+   "rfcClauseIds": ["ASP-RFC-PSC-ABI", "ASP-RFC-PSC-RELATION"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.valid_relation_batch_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.relationBatchAdmitted ASPProof.PolyglotSearchConformance.staleRelationBatch = false",
+   "theoremFamily": "relation-snapshot-drift",
+   "rfcClauseIds": ["ASP-RFC-PSC-RELATION", "ASP-RFC-PSC-SNAPSHOT"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.stale_relation_snapshot_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.relationBatchAdmitted ASPProof.PolyglotSearchConformance.mismatchedRowBatch = false",
+   "theoremFamily": "relation-row-schema",
+   "rfcClauseIds": ["ASP-RFC-PSC-ABI", "ASP-RFC-PSC-RELATION"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.relation_row_schema_mismatch_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.relationBatchAdmitted ASPProof.PolyglotSearchConformance.elevatedTurboBatch = false",
+   "theoremFamily": "turbo-authority",
+   "rfcClauseIds": ["ASP-RFC-PSC-AUTHORITY", "ASP-RFC-PSC-TURBO"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.turbo_feature_authority_elevation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.frontierAdmitted ASPProof.PolyglotSearchConformance.validFrontier = true",
+   "theoremFamily": "frontier-positive",
+   "rfcClauseIds": ["ASP-RFC-PSC-BOUND", "ASP-RFC-PSC-FRONTIER"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.valid_progressive_frontier_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.frontierAdmitted ASPProof.PolyglotSearchConformance.unexposedSelectionFrontier =\n  false",
+   "theoremFamily": "unexposed-selection",
+   "rfcClauseIds": ["ASP-RFC-PSC-FRONTIER", "ASP-RFC-PSC-SELECTION"],
+   "name": "ASPProof.PolyglotSearchConformance.unexposed_selection_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.frontierAdmitted ASPProof.PolyglotSearchConformance.staleContinuationFrontier = false",
+   "theoremFamily": "stale-continuation",
+   "rfcClauseIds": ["ASP-RFC-PSC-CONTINUATION", "ASP-RFC-PSC-FRONTIER"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.stale_frontier_continuation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.frontierAdmitted ASPProof.PolyglotSearchConformance.duplicateVisibleFrontier = false",
+   "theoremFamily": "frontier-deduplication",
+   "rfcClauseIds": ["ASP-RFC-PSC-DETERMINISM", "ASP-RFC-PSC-FRONTIER"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.duplicate_visible_candidates_are_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.certificateAdmitted ASPProof.PolyglotSearchConformance.validCertificate = true",
+   "theoremFamily": "certificate-positive",
+   "rfcClauseIds": ["ASP-RFC-PSC-CERTIFICATE", "ASP-RFC-PSC-CUTOVER"],
+   "name": "ASPProof.PolyglotSearchConformance.valid_certificate_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.certificateAdmitted ASPProof.PolyglotSearchConformance.unboundProjectionCertificate =\n  false",
+   "theoremFamily": "certificate-packet-binding",
+   "rfcClauseIds": ["ASP-RFC-PSC-CERTIFICATE", "ASP-RFC-PSC-TOCTOU"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.certificate_must_bind_exact_projected_packet",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.certificateAdmitted ASPProof.PolyglotSearchConformance.runtimeDriftCertificate =\n  false",
+   "theoremFamily": "certificate-runtime-drift",
+   "rfcClauseIds": ["ASP-RFC-PSC-CERTIFICATE", "ASP-RFC-PSC-RUNTIME"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.runtime_drift_certificate_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.pipelineAdmitted ASPProof.PolyglotSearchConformance.validPipeline = true",
+   "theoremFamily": "pipeline-positive",
+   "rfcClauseIds": ["ASP-RFC-PSC-PIPELINE", "ASP-RFC-PSC-REFINEMENT"],
+   "name": "ASPProof.PolyglotSearchConformance.valid_pipeline_is_executable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (pipeline : ASPProof.PolyglotSearchConformance.PipelineConformance),\n  ASPProof.PolyglotSearchConformance.PipelineRefines pipeline →\n    ASPProof.PolyglotSearchConformance.documentAdmitted pipeline.document = true",
+   "theoremFamily": "refinement-document",
+   "rfcClauseIds": ["ASP-RFC-PSC-PIPELINE", "ASP-RFC-PSC-REFINEMENT"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.refinement_exposes_document_conformance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (pipeline : ASPProof.PolyglotSearchConformance.PipelineConformance),\n  ASPProof.PolyglotSearchConformance.PipelineRefines pipeline →\n    ASPProof.PolyglotSearchConformance.relationBatchAdmitted pipeline.relations = true",
+   "theoremFamily": "refinement-relation",
+   "rfcClauseIds": ["ASP-RFC-PSC-PIPELINE", "ASP-RFC-PSC-REFINEMENT"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.refinement_exposes_relation_conformance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (pipeline : ASPProof.PolyglotSearchConformance.PipelineConformance),\n  ASPProof.PolyglotSearchConformance.PipelineRefines pipeline →\n    ASPProof.PolyglotSearchConformance.frontierAdmitted pipeline.frontier = true",
+   "theoremFamily": "refinement-frontier",
+   "rfcClauseIds": ["ASP-RFC-PSC-PIPELINE", "ASP-RFC-PSC-REFINEMENT"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.refinement_exposes_frontier_conformance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (pipeline : ASPProof.PolyglotSearchConformance.PipelineConformance),\n  ASPProof.PolyglotSearchConformance.PipelineRefines pipeline →\n    ASPProof.PolyglotSearchConformance.certificateAdmitted pipeline.certificate = true",
+   "theoremFamily": "refinement-certificate",
+   "rfcClauseIds": ["ASP-RFC-PSC-PIPELINE", "ASP-RFC-PSC-REFINEMENT"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.refinement_exposes_certificate_conformance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.validatorAfterState \"state:before\"\n    (ASPProof.PolyglotSearchConformance.documentAdmitted ASPProof.PolyglotSearchConformance.gqlMutationDocument)\n    \"state:accepted\" =\n  \"state:before\"",
+   "theoremFamily": "rejected-document-pure",
+   "rfcClauseIds": ["ASP-RFC-PSC-FAIL-CLOSED", "ASP-RFC-PSC-STATE"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.rejected_document_preserves_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.validatorAfterState \"state:before\"\n    (ASPProof.PolyglotSearchConformance.relationBatchAdmitted ASPProof.PolyglotSearchConformance.staleRelationBatch)\n    \"state:accepted\" =\n  \"state:before\"",
+   "theoremFamily": "rejected-relation-pure",
+   "rfcClauseIds": ["ASP-RFC-PSC-FAIL-CLOSED", "ASP-RFC-PSC-STATE"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.rejected_relation_batch_preserves_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.validatorAfterState \"state:before\"\n    (ASPProof.PolyglotSearchConformance.frontierAdmitted ASPProof.PolyglotSearchConformance.staleContinuationFrontier)\n    \"state:accepted\" =\n  \"state:before\"",
+   "theoremFamily": "rejected-frontier-pure",
+   "rfcClauseIds": ["ASP-RFC-PSC-FAIL-CLOSED", "ASP-RFC-PSC-STATE"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.rejected_frontier_preserves_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.PolyglotSearchConformance.validatorAfterState \"state:before\"\n    (ASPProof.PolyglotSearchConformance.certificateAdmitted ASPProof.PolyglotSearchConformance.runtimeDriftCertificate)\n    \"state:accepted\" =\n  \"state:before\"",
+   "theoremFamily": "rejected-certificate-pure",
+   "rfcClauseIds": ["ASP-RFC-PSC-FAIL-CLOSED", "ASP-RFC-PSC-STATE"],
+   "name":
+   "ASPProof.PolyglotSearchConformance.rejected_certificate_preserves_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 24,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 24,
+ "axiomDependentDeclarationCount": 0}

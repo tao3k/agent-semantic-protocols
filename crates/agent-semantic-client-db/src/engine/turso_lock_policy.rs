@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Lock and retry policy shared by local Turso DB engine owners.
 
 use std::time::Duration;
@@ -7,8 +11,6 @@ pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS: usize = 80;
 pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_BASE_MS: u64 = 5;
 pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_MAX_MS: u64 = 200;
 pub(crate) const TURSO_CLIENT_DB_STATEMENT_LOCK_RETRY_ATTEMPTS: usize = 80;
-pub(crate) const TURSO_CLIENT_DB_OPERATION_LOCK_RETRY_ATTEMPTS: usize = 1_000;
-pub(crate) const TURSO_CLIENT_DB_OPERATION_LOCK_RETRY_MS: u64 = 5;
 
 pub(crate) fn is_turso_lock_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();

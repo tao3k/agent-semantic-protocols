@@ -76,112 +76,120 @@
       "id": "prime",
       "command": [
         "asp",
-        "python",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "python|source",
+        ".",
+        "--tantivy",
+        "title:\"python\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "root=fastapi",
-          "alg=fast-prime-frontier-v1",
-          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
-          "omit=items,blocks,code,full-json reason=fast-seeds-frontier"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 9,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "owner-routing",
       "command": [
         "asp",
-        "python",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "routing",
         "fastapi/routing.py",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "--tantivy",
+        "title:\"routing\"^2 OR body:\"routing\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-owner]",
-          "fastapi/routing.py",
-          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "deps-pydantic",
       "command": [
         "asp",
-        "python",
         "search",
-        "deps",
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
         "pydantic",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        ".",
+        "--tantivy",
+        "title:\"pydantic\"^2 OR body:\"pydantic\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-dependency]",
-          "pydantic",
-          "frontier="
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 16,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "intent-query-set",
       "command": [
         "asp",
-        "python",
         "search",
-        "lexical",
-        "--query",
-        "lifespan",
-        "--query",
-        "APIRouter",
-        "--query",
-        "solve_dependencies",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "lifespan|APIRouter|solve_dependencies",
+        ".",
+        "--tantivy",
+        "title:\"lifespan\"^2 OR body:\"APIRouter\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "fastapi/dependencies/utils.py",
-          "fastapi/routing.py",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/canonical-language-item-identity.schema.json",
+  "title": "Canonical Language Item Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "kind",
+    "symbol",
+    "scopes"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.canonical-language-item-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scopes": {
+      "$ref": "exact-definitions.v1.schema.json#/$defs/scopeList"
+    }
+  }
+}

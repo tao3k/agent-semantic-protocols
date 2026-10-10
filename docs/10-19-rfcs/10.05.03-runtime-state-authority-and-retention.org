@@ -1,0 +1,449 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime State Authority and Bounded Content Retention
+#+startup: overview
+
+* Status
+
+This RFC defines the V1 Runtime State Home authority, reachability model, and
+migration boundary.  It does not introduce a second Runtime, a second artifact
+catalog, or a protocol version bump.
+
+* Problem
+
+The Runtime State Home accumulated overlapping state families and, inside the
+Artifacts authority itself, two physical representations of the same executable:
+
+- member-addressed binaries under =runtime/artifacts/blake3-256=;
+- bundle-addressed candidates under =runtime/artifacts/bundles=;
+- the sole =runtime/artifacts/active= and =runtime/artifacts/healthy= selectors;
+- provider artifacts, builds, launchers, locks, and superseded provider trees;
+- server databases, workspace materializations, receipts, and telemetry.
+
+The member store and bundle store are not independent products.  A bundle is
+the executable unit admitted by Runtime.  Persisting every member once in a
+member CAS and again as a bundle of links creates two garbage-collection
+graphs, two failure surfaces, and ambiguous ownership when a member is shared
+by bundles.  The prior cleanup then compounded the problem by deleting sibling
+Runtime state before all consumers had migrated.
+
+* Decision
+
+** One durable artifact authority
+
+=runtime/artifacts/generations/<bundle-digest>= is the only durable executable
+store.  Each generation directory contains the executable members and the
+manifest that binds their names, content digests, evaluator/config/schema
+digests, and Runtime execution binding to the bundle digest.  Member digests
+remain identity leaves in the manifest; they are not persistent directory
+authorities.
+
+The target state is:
+
+#+begin_src text
+~/.local/bin/
+  asp      -> <state-home>/runtime/artifacts/active/asp
+  asp-hook -> <state-home>/runtime/artifacts/active/asp-hook
+
+runtime/
+  bin/
+    asp      -> ~/.local/bin/asp
+    asp-hook -> ~/.local/bin/asp-hook
+    <provider-binary> -> ../artifacts/active/<provider-binary>
+  artifacts/
+    generations/<bundle-digest>/
+      asp
+      asp-hook
+      <provider-binary>...
+      bundle.json
+      binding.json
+      activation.json
+    staging/
+      providers/
+        downloads/
+        packages/
+        receipts/
+    active  -> generations/<bundle-digest>
+    healthy -> generations/<bundle-digest>
+    leases/
+      artifact-mutation.lock
+      candidates/<bundle-digest>.lock
+    activation/
+      pending.json
+      applied.json
+    staging/removal/<retention-transaction>/...
+    retention-receipt.json
+#+end_src
+
+The stable =active= and =healthy= references are the only serving and rollback
+roots.  At quiescence the generation store contains exactly their distinct
+bundle digests: one directory when active equals healthy, otherwise two.  A
+same-content republication may have a different transaction sequence and nonce,
+but it reuses the same generation directory and does not create a third copy.
+
+The PATH-visible =~/.local/bin/asp= entry (or the explicitly configured
+=SEMANTIC_AGENT_BIN_DIR/asp= entry) is the canonical installed client entry.
+It is an atomic symlink into the admitted =artifacts/active= bundle and owns no
+independent generation, health, or rollback decision.  The matching
+=runtime/bin/asp= entry is a compatibility alias whose only legal direction is
+toward that PATH-visible entry.  The same direction applies to the bundled
+=asp-hook= member.  Publication MUST reject a reverse PATH-to-Runtime edge, a
+two-node alias cycle, or a split bundle in which =asp= and =asp-hook= use
+different authority directions.  Migration atomically publishes the
+PATH-visible entries before switching the Runtime aliases, so every observable
+intermediate state resolves either the complete predecessor bundle or the
+complete successor bundle.
+
+Provider executables remain derived atomic symlinks into =artifacts/active=
+until their separate public-entry contract is defined.  This exception cannot
+be used to restore the old =asp= or =asp-hook= direction.  =runtime/bin=
+contains no executable bytes and owns no independent generation, health, or
+rollback decision.
+
+The Artifacts package is the only module allowed to derive these paths, create
+generation directories, switch selectors, validate manifests, or remove
+unreachable generations.  CLI cleanup, providers, Runtime Server, Hook, and
+launchers consume typed Artifacts APIs; none may enumerate or repair this tree.
+
+** Candidate preparation lease
+
+A publisher acquires an operating-system exclusive lock keyed by bundle digest
+before materializing a candidate outside the mutation
+guard. Retention must acquire the corresponding exclusive lock before removing
+that candidate.  Process death releases the exclusive lock without an mtime grace
+period or a second liveness database.
+
+This rule distinguishes three states:
+
+#+begin_src text
+active or healthy candidate -> reachable, retain
+unreferenced candidate with live exclusive lease -> in flight, retain
+unreferenced candidate with obtainable exclusive lease -> dead, delete
+#+end_src
+
+** Two transactions, one owner
+
+Publication and retention are separate transactions owned by the Artifacts
+package and serialized by the same artifact mutation guard.
+
+Publication commits the pending event, stable launchers, and active/healthy
+slots.  Retention then rereads the committed selectors, atomically renames every
+unreachable generation directory into a transaction-scoped removal staging directory,
+and releases the guard.  Recursive deletion and receipt serialization occur
+outside the guard.  There is no second member-CAS pass.
+
+This split preserves a single authority while preventing deletion latency from
+becoming publication latency.  A retention failure after publication is
+reported as a typed post-commit maintenance failure; it must not be interpreted
+as permission to replay the publication transaction.
+
+** Activation receipts and validation order
+
+Activation transaction sequence and publication nonce are fencing and
+observability data.  They are not artifact, evaluator, provider, source, or
+workspace identity.
+
+A commit first compares the attempted bundle digest, artifact digest, and
+publication nonce with the current pending receipt.  A superseded actor fails
+with =stale-active-bundle= before reading its staged candidate. A current
+actor validates executable content outside the mutation guard and repeats the
+pending identity comparison under the guard before committing.
+
+Receipt canonicalization validates superseded content while migrating it.
+For already-current receipts, canonical publication performs content validation
+before acquiring the guard; the guarded canonicalizer must not hash the binary
+a second time.
+
+* Rejected alternatives
+
+** Retain every historical digest
+
+This avoids stale path errors but makes State Home growth unbounded and turns
+disk capacity into an implicit lifecycle authority.  Rejected.
+
+** Delete everything not named by active and healthy
+
+This deletes candidates prepared concurrently outside the mutation guard and
+changes a deterministic stale-actor rejection into a filesystem error.
+Rejected.
+
+** Keep both a member CAS and a bundle store
+
+Hard links reduce byte duplication but do not remove the duplicated authority:
+publication and retention must still reconcile two directory graphs.  Symlinks
+also allow a retained bundle to depend on a prematurely deleted member. The
+bundle is the admitted execution unit, so its immutable generation directory is
+the only persistent unit.  Rejected.
+
+** Let =asp clean= migrate Runtime layout
+
+A cache command cannot prove that every Runtime consumer has rebound to a new
+layout.  Deleting names because they are absent from a new allowlist can sever
+transport, Hook, provider, or session consumers.  Layout migration belongs to
+the Artifacts publication transaction and becomes eligible only after exact
+consumer admission.  Rejected.
+
+** Use timestamps to protect recent candidates
+
+Clock windows cannot distinguish a slow live publisher from a dead publisher.
+They also make crash recovery and tests nondeterministic.  Rejected in favor of
+operating-system locks.
+
+** Delete large artifacts while holding the publication guard
+
+This is safe but makes lock duration scale with historical bytes.  Rejected in
+favor of atomic removal staging under the guard and deletion outside it.
+
+** Treat activation generation as freshness
+
+The same content may be republished with a later sequence, and different
+content cannot be proven equal by a number.  Generation remains a monotonic
+fence only.  Rejected as artifact selection, cache, or admission identity.
+
+* Provider state
+
+Provider executables required by a Runtime generation are members of that same
+generation manifest.  Provider id and binary digest are manifest leaves, not a
+sibling provider artifact authority.  Provider build workspaces and downloaded
+archives live only under the Artifacts-owned =staging/providers= namespace;
+they are inputs and provenance outside the admitted generation.  Successful
+publication must not retain or consult them as serving fallbacks, and no
+=runtime/providers= sibling tree exists.
+
+A provider refresh is a complete-generation replacement, not a member-CAS
+write.  The Artifacts owner verifies the current active manifest, copies every
+unchanged member into the successor candidate, replaces the requested provider
+member, and compares the originally observed active generation again under the
+publication guard.  Concurrent active drift fails with
+=active-generation-cas-mismatch=; the publisher must not silently rebase.  The
+same transaction switches =active= and the derived
+=runtime/bin/<provider-binary>= launcher.  Failure restores both selectors, so
+no provider-private active slot or launcher authority exists.
+
+Provider source installation and Provider release installation are different
+input authorities and must not share a descriptor:
+
+- The V1 Provider release catalog contains only immutable distribution facts:
+  language id, provider id, binary name, repository, release version, target
+  matrix, archive layout, download authority, and pinned checksums.  It cannot
+  contain a checkout root, source root, workspace build descriptor, build
+  command, or path fallback.
+- The Provider development register contains source roots and workspace build
+  descriptors.  It is consulted only when the Runtime artifact catalog is in
+  explicit =dev= mode.  Release mode must not parse it to discover executable
+  identity or installation paths.
+- Installing a new ASP binary composes a complete successor from the verified
+  active generation: it replaces =asp= and =asp-hook= and preserves admitted
+  Provider members.  It never publishes an ASP-only active generation and then
+  reconstructs Providers from a mutable sibling projection.
+
+The installed Provider set is the Provider-member set of the active bundle,
+not every entry in the release catalog.  During a release-mode ASP refresh,
+the installer reconciles only that installed set against the embedded release
+catalog.  Before publication it downloads each installed Provider's catalogued
+asset into ephemeral staging, verifies the target-specific checksum embedded in
+the catalog, validates the archive executable, and supplies the resulting
+Provider members to the same complete-successor transaction that replaces
+=asp= and =asp-hook=.  Any missing target checksum, download failure, archive
+identity mismatch, or content mismatch aborts before the active selector is
+mutated.  The release checksum sidecar is not an authority and is not fetched.
+A catalog entry that was not already installed remains lazy and is added only
+by an explicit Provider install.  This prevents an ASP update from unexpectedly
+downloading every supported language while preventing installed Providers from
+remaining silently pinned to an obsolete release.
+
+Runtime launch derives this set directly from the verified =active/bundle.json=
+member map and the immutable capability register.  There is no persistent
+=installed-provider-artifacts.json= projection and no
+=installed-provider-binding.v1.json= CAS.  Provider install locks are
+installation provenance only: Runtime admission and launch never read them.
+The workspace =RuntimeProviderExecutionBinding= carries the exact
+=runtimeBundleDigest=, while =RuntimeArtifactBundleBinding= carries the
+=providerArtifactSetDigest=.  These content identities replace the former
+provider-binding generation vocabulary; no compatibility reader or automatic
+side-document reconstruction remains.
+
+The activation actor completes the lifecycle.  Publication makes the new
+generation =active= while retaining the predecessor as =healthy=.  Exact
+Runtime health and admission for the published bundle digest then atomically
+make =healthy= equal =active=.  Immediately after that commit, Artifacts
+retention deletes every generation unreachable from those two selectors. A
+failed candidate restores =active= from =healthy= and deletes only the failed
+candidate.  Installation itself cannot mark a candidate healthy.
+
+The failed candidate's exact pending receipt MAY remain as the idempotence
+marker for replaying the same rollback after its generation is pruned.  A
+later publisher treats that receipt as retired only when the candidate path is
+absent, =active= and =healthy= both equal the separately validated applied
+generation, and the pending receipt names that applied artifact as its
+predecessor.  Any other missing pending candidate remains corruption.  A new
+successful publication atomically replaces the retired marker; it is never a
+serving or rollback selector.
+
+* One State Home physical interface
+
+=agent-semantic-artifacts= owns the only V1 physical State Home interface.
+Owning the interface means deriving paths, validating object identity, staging
+filesystem mutations, committing content-addressed publications, issuing
+leases, and removing unreachable state. It does not mean owning Hook,
+Session, Search, Provider, or Runtime lifecycle semantics.  Those components
+own their state machines and consume typed Artifacts handles instead of
+constructing paths.
+
+The State Home contains distinct global-control and workspace-data scopes, but
+the distinction must not create multiple layout authorities:
+
+#+begin_src text
+StateHome
+  control
+    catalog
+    sessions
+    runtime transport and bounded mailboxes
+    admitted client configuration
+  runtime
+    bin
+    artifacts/{active,healthy,generations,activation,leases,staging}
+  workspaces/<workspace-content-digest>
+    facts
+    cache
+    artifacts
+    observations
+  cache/<content-digest>
+  resources/{org,live-corpus}
+  blobs/blake3-256
+  receipts
+  trash
+#+end_src
+
+Atomicity is per typed object and publication transaction, not one lock over
+the complete State Home.  Global control data therefore does not belong under
+a synthetic project id, while workspace facts, Hook observations, and
+workspace caches must be selected only by the exact =WorkspaceIdentity=
+digest.  A repository id, display name, remote URL, checkout path, or
+activation sequence cannot select persistent workspace state.
+
+Only the Host edge adapter may read =ASP_STATE_HOME= or the default HOME-based
+location.  It produces one immutable =StateHomeBinding= and one
+=StateHomeLayout=.  Runtime, Client, Hook, Session, Provider, Search, and
+cleanup code receive typed projections from that layout.  They must not call
+=Path::join= to reconstruct a State Home sibling path.  Layout structs keep
+their roots private; public APIs return purpose-specific handles rather than a
+general writable =PathBuf=.
+
+The V1 State Home contract is closed. Only the positive layout declared by
+=StateHomeLayout= may exist or act as authority. Installation performs one
+content-preserving convergence into that layout; subsequent sync rejects and
+removes output outside the contract rather than naming, decoding, or retaining
+historical layouts.
+
+Hook policy/configuration is admitted global control input.  Its content digest
+is a Runtime execution-binding leaf; mutable configuration paths never become
+an evaluator or artifact identity.  Reader behavior is an explicitly bounded
+global content cache.  Hook event and replay observations are workspace data.
+Host-native handoff and break-glass capabilities are bounded Runtime control
+mailboxes with exactly-once consumption and retention leases, not independent
+top-level State Home products.
+
+=asp cache clean= consumes the Artifacts retention interface. It may delete
+objects already declared unreachable by their owning control or workspace
+catalog, but it cannot discover identity from directory names, repair a
+serving selector, or import non-contract output. =asp state sync= is the
+separate physical contract-convergence operation; it uses the positive V1
+allowlist and never derives product identity from an entry selected for removal.
+
+* Server and derived state
+
+Workspace indexes, telemetry databases, endpoint observations, and live-corpus
+materializations are derived Runtime state, not executable identities.  Each
+family requires its own bounded retention policy and typed receipt.  Deleting
+or rebuilding derived state must not change active artifact identity.
+
+A resident transaction receipt with =state= =ready= proves that a Runtime
+artifact transaction completed.  It does not prove that the invoking client
+has rebound to the endpoint contract of that artifact.  A client that activates
+a different executable and then continues with its own endpoint-path algorithm
+must hand off to the content-bound executable or fail as superseded; it must not
+report the missing path as Runtime termination.
+
+* Deterministic obligations
+
+- Three sequential distinct publications retain only the distinct healthy and
+  active generation directories.
+- No =blake3-256= member store or =bundles= directory is created by a fresh V1
+  publication.
+- Replacing one provider member preserves every other verified active member,
+  publishes one complete successor generation, and rejects concurrent active
+  drift before selector mutation.
+- Active and healthy always resolve to complete manifest-verified generations;
+  a directory, regular file, or dangling selector fails before mutation.
+- Same-content republication changes the fencing sequence but reuses the same
+  generation directory.
+- Refreshing =asp= preserves every admitted Provider member in the complete
+  successor generation; after exact health commit, =active= equals =healthy=
+  and only that generation remains.
+- Release catalog decoding rejects every development-only source or build
+  field, requires exact checksum coverage for every supported target, and
+  rejects checksum entries for unsupported targets.  Development source
+  installation is unreachable in release mode.
+- Release-mode ASP refresh preflights every installed Provider from immutable
+  catalog inputs, performs exactly one complete-successor publication, and
+  performs no active mutation when any Provider preflight fails.
+- A live preparation lease prevents deletion; releasing the lease makes the
+  dead candidate reclaimable on the next retention transaction.
+- A stale actor is rejected by pending content identity even after its files are
+  staged for removal.
+- Current receipt content validation remains fail-closed.
+- Publication guard latency does not scale with previous artifact bytes.
+- Recursive removal occurs after the artifact mutation guard is
+  released.
+- Retention receipt candidate counters are additive V1 fields so historical V1
+  receipts remain decodable.
+- Every State Home path returned to a consumer originates from one
+  =agent-semantic-artifacts= layout projection.
+- Production source outside Artifacts contains no direct =ASP_STATE_HOME=
+  resolution and no reconstruction of State Home sibling directories.
+- A worktree change changes =WorkspaceIdentity= without creating or consulting
+  a repository-id directory.
+- Hook event state and cache state cannot collide across two workspace digests
+  of the same repository.
+- Session registration, Hook routing, and Runtime transport consume one Session
+  Registry identity and do not publish mirror files under =hooks=.
+- Invalid configuration admission retains a bounded typed receipt rather than
+  one permanent timestamped copy per failure.
+
+* Rollout
+
+1. Remove the Runtime-root deletion call from =asp clean=.
+2. Replace member-CAS plus bundle publication with the single generation store.
+3. Bind Runtime and provider executable consumers to active/healthy generation
+   selectors through Artifacts APIs.
+4. After exact consumer tests pass, Artifacts publication stages obsolete
+   physical stores for deletion inside one guarded transaction; the V1
+   retention receipt reports =removedSupersededStoreCount= and
+   =removedSupersededLeaseDirectoryCount=. A misplaced State Home =bin=
+   directory is removed only when every entry is a managed symlink into the
+   current active generation, and the receipt reports
+   =removedMisplacedLauncherRootCount=. Never treat convergence as a fallback
+   or cache cleanup concern. The obsolete Provider staging root is handled by
+   the same transaction and reported as
+   =removedSupersededProviderStagingRootCount=; new staging is derived only
+   through the Artifacts layout.
+   Migration requires a verified canonical
+   =active=/=healthy= generation and rejects symlinked or non-directory old
+   roots without following or deleting them.
+5. Add bounded policies for server workspace, telemetry, and live-corpus derived
+   state independently of artifact identity.
+6. Introduce the Artifacts-owned global-control, workspace-data, cache,
+   resource, receipt, and trash projections.  Migrate consumers to typed
+   handles before making layout roots private.
+7. Delete =StatePaths= project-id materialization and its migration writer.
+   Retain only typed deletion receipts in the Artifacts cleanup owner.
+8. Move Hook session mirrors into the Session Registry, Hook workspace state
+   into canonical workspace observations, and Host capability queues into the
+   Runtime control mailbox.  Do not dual-write during cutover.
+9. Add a source architecture gate rejecting direct State Home environment reads
+   and sibling-path reconstruction outside the Host adapter and Artifacts.
+10. After consumer gates pass, run the one-time =asp state sync= convergence
+    and verify a second sync reports no non-contract entries.

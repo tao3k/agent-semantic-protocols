@@ -1,0 +1,239 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 00.63 Orthogonal Cache Credit Ledger
+#+startup: overview
+
+#+property: rfc_layer receipts-cache-identity
+
+* Status
+
+Draft.
+
+This module separates search-result cache accounting from model-prefix cache
+accounting.  It makes cache savings explicit, dimension-specific,
+execution-bound, and non-replayable.
+
+* Discovered Design Gap
+
+A single =cacheHit=true= field is ambiguous.
+
+- A search-result cache hit may avoid graph work, a provider round, or search
+  payload transfer.
+- A model-prefix cache hit reduces uncached model computation for an identical
+  prefix.
+- Reusing search evidence requires current graph dependency identity.
+- Reusing a stable model prefix does not necessarily depend on graph
+  generation.
+
+Conflating these cases either over-credits cost or unnecessarily destroys model
+prefix cache hits after unrelated graph changes.
+
+* Cost Dimensions
+
+The canonical route cost contains:
+
+- =graphHops=;
+- =toolRounds=;
+- =searchTokens=;
+- =uncachedModelTokens=.
+
+A search cache credit may reduce only the first three dimensions.  A model
+prefix credit may reduce only =uncachedModelTokens=.
+
+#+name: orthogonal-cache-credit-ledger-math
+#+begin_src typst
+#let planned = (
+  graph-hops: 4,
+  tool-rounds: 2,
+  search-tokens: 100,
+  uncached-model-tokens: 1000,
+)
+
+#let search-credit = (
+  graph-hops: 2,
+  tool-rounds: 1,
+  search-tokens: 80,
+)
+
+#let model-prefix-credit = (
+  uncached-model-tokens: 800,
+)
+
+#let realized = (
+  graph-hops: planned.graph-hops - search-credit.graph-hops,
+  tool-rounds: planned.tool-rounds - search-credit.tool-rounds,
+  search-tokens: planned.search-tokens - search-credit.search-tokens,
+  uncached-model-tokens:
+    planned.uncached-model-tokens
+      - model-prefix-credit.uncached-model-tokens,
+)
+
+(
+  graph-conserved:
+    realized.graph-hops + search-credit.graph-hops
+      == planned.graph-hops,
+  rounds-conserved:
+    realized.tool-rounds + search-credit.tool-rounds
+      == planned.tool-rounds,
+  search-tokens-conserved:
+    realized.search-tokens + search-credit.search-tokens
+      == planned.search-tokens,
+  model-work-conserved:
+    realized.uncached-model-tokens
+      + model-prefix-credit.uncached-model-tokens
+      == planned.uncached-model-tokens,
+)
+#+end_src
+
+Every credit is bounded by its planned dimension.  Realized cost plus credited
+cost equals planned cost independently in every dimension.
+
+* Search Cache Receipt Identity
+
+A search cache receipt binds:
+
+- graph generation;
+- semantic request digest;
+- execution identifier;
+- dependency certificate digest;
+- credited graph hops, tool rounds, and search tokens.
+
+Changing graph generation or dependency identity invalidates the receipt unless
+a certified transport is provided.
+
+* Model-Prefix Cache Receipt Identity
+
+A model-prefix receipt binds:
+
+- semantic request digest;
+- execution identifier;
+- prefix digest;
+- model digest;
+- credited uncached model tokens.
+
+It does not bind graph generation directly.  If a graph correction changes no
+bytes in the cached prefix, the prefix digest remains valid and the model cache
+credit can survive.
+
+If graph-derived evidence is embedded in the prefix, its bytes change the
+prefix digest and the receipt fails closed naturally.
+
+This is narrower and more cache-efficient than invalidating every model prefix
+when graph generation changes.
+
+* Execution Binding and Replay
+
+Cache lookup identity and accounting identity are different.
+
+- The semantic request and prefix/dependency digests identify reusable cache
+  material.
+- The execution identifier identifies one accounting event.
+
+A credit record contains receipt digest, execution identifier, credit kind,
+revision, and status.  Applying a credit atomically changes status from
+=pending= to =applied= and advances revision.  Replaying the proposal is
+rejected.
+
+Repeated semantic requests may receive new cache-hit receipts, but each
+execution needs a distinct accounting record.
+
+* Completion and Potential Independence
+
+Applying cache credits changes only realized cost.  It MUST NOT change:
+
+- initial potential;
+- final potential;
+- completion key;
+- coverage certificate;
+- generation.
+
+A cache hit cannot upgrade incomplete completion, discharge evidence without a
+valid search certificate, or authorize a stale route.
+
+* Cache Credits Are Not Interchangeable
+
+Search payload tokens and uncached model tokens are both measured in tokens but
+belong to different resource dimensions.
+
+The same textual bytes can legitimately participate in both systems:
+
+- search cache can avoid re-executing and re-transferring a provider result;
+- model-prefix cache can avoid recomputing a prefix containing that result.
+
+This is not double counting when the dimensions and receipts remain separate.
+It becomes double counting only when the same receipt is applied twice to the
+same dimension or a credit is projected into an unauthorized dimension.
+
+* Agent-Facing Receipt
+
+#+begin_src json
+{
+  "completionKey": "sha256:...",
+  "executionId": "exec-42",
+  "searchCache": {
+    "dependencyGeneration": 8,
+    "creditedGraphHops": 2,
+    "creditedToolRounds": 1,
+    "creditedSearchTokens": 80
+  },
+  "modelPrefixCache": {
+    "prefixDigest": "sha256:...",
+    "modelDigest": "sha256:...",
+    "creditedUncachedModelTokens": 800
+  },
+  "potentialChanged": false,
+  "completionChanged": false
+}
+#+end_src
+
+SearchLoop should expose this compact accounting summary.  Inspect can project
+the underlying cache and CAS receipts.
+
+* Python Turbo Graph Consequences
+
+A future Python implementation should use separate typed records for:
+
+- planned route cost;
+- search cache credit;
+- model-prefix cache credit;
+- realized route cost;
+- per-execution credit commit.
+
+It should not flatten cache credits into one integer or let cache code mutate
+completion state.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-OCC-CONSERVATION=: valid cache credits preserve every cost
+   dimension;
+2. =ASP-RFC-10.05-OCC-NO-WORSE=: realized cost is component-wise no worse than
+   planned cost;
+3. =ASP-RFC-10.05-OCC-SEARCH-ORTHOGONAL=: search credit cannot change model
+   work;
+4. =ASP-RFC-10.05-OCC-MODEL-ORTHOGONAL=: model-prefix credit cannot change
+   graph, round, or search-token cost;
+5. =ASP-RFC-10.05-OCC-SEMANTICS=: cache application preserves completion and
+   potential;
+6. =ASP-RFC-10.05-OCC-SEARCH-STALE=: a stale graph-generation search receipt
+   is rejected;
+7. =ASP-RFC-10.05-OCC-PREFIX-TRANSPORT=: a valid model-prefix receipt survives
+   an unrelated graph-generation change;
+8. =ASP-RFC-10.05-OCC-REPLAY=: a committed cache credit rejects replay.
+
+The Lean kernel audit reports two axiom-free declarations and eight
+axiom-dependent declarations.  Search/model dimension orthogonality and model
+prefix transport across graph generation are axiom-free.  The complete
+inventory is =Classical.choice=, =Quot.sound=, and =propext=; no declaration
+depends on =sorryAx=.
+
+The model does not yet prove:
+
+- authenticity of runtime cache-hit measurements;
+- cross-process atomic storage;
+- prefix-digest construction;
+- cache eviction safety;
+- monetary conversion of saved resource dimensions.

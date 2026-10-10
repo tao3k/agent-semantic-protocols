@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate semantic AST patch request schema variants."""
 
 from __future__ import annotations
@@ -48,9 +52,9 @@ def test_ast_patch_request_schema_accepts_bounded_mechanical_delete() -> None:
 def test_ast_patch_request_schema_accepts_provider_native_owner_split() -> None:
     packet = minimal_ast_patch_request()
     packet["languageId"] = "rust"
-    packet["providerId"] = "rs-harness"
-    packet["binary"] = "rs-harness"
-    packet["namespace"] = "agent.semantic-protocols.languages.rust.rs-harness"
+    packet["providerId"] = "asp-rust"
+    packet["binary"] = "asp-rust"
+    packet["namespace"] = "agent.semantic-protocols.languages.rust.asp-rust"
     packet["target"] = {
         "ownerPath": "src/lib.rs",
         "locator": "src/lib.rs#fn:moved",

@@ -62,11 +62,11 @@ def emit(line: str) -> None:
 
 def write_fake_provider(provider_bin: pathlib.Path) -> None:
     provider_bin.mkdir()
-    provider = provider_bin / "rs-harness"
+    provider = provider_bin / "asp-rust"
     provider.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "guide" ]; then\n'
-        "  printf '%s\\n' '[agent-guide] runtime=sandtable language=rust provider=rs-harness'\n"
+        "  printf '%s\\n' '[agent-guide] runtime=sandtable language=rust provider=asp-rust'\n"
         "fi\n"
         "exit 0\n",
         encoding="utf-8",

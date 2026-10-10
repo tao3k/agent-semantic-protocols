@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "runtime-resident-grep-semantics"
+scenario = "runtime-resident-grep-semantics"
+performance_owner = "resident_grep_4096_owner_reads_have_submillisecond_kernel_and_wall_p99"
+semantic_case_count = 13
+normal_process_count = 0
+normal_filesystem_operation_count = 0
+
+[gate]
+policy = "SEARCH-RUNTIME-RESIDENT-GREP-SEMANTICS-001"
+semantic_matrix_is_exact = true
+external_rg_is_qualification_only = true

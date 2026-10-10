@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Resolve and run sandtable step processes."""
 
 from __future__ import annotations
@@ -49,7 +53,7 @@ def workspace_dev_command(
         "run",
         "--quiet",
         "--manifest-path",
-        str(repo_root / "crates" / "agent-semantic-protocol" / "Cargo.toml"),
+        str(repo_root / "crates" / "agent-semantic-client" / "Cargo.toml"),
         "--",
         *command[1:],
     ]

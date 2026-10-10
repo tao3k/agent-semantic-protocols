@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/source-index-candidate-lookup.v1.schema.json",
+  "title": "Source Index Candidate Lookup V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "acquisitionSource",
+    "sourceSnapshotRootDigest",
+    "projectionArtifactDigest",
+    "lookupState",
+    "databaseOpenCount",
+    "projectionLatencyMicros",
+    "candidates"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.source-index-candidate-lookup"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "acquisitionSource": {
+      "enum": [
+        "live-snapshot",
+        "persisted-index"
+      ]
+    },
+    "sourceSnapshotRootDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionArtifactDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lookupState": {
+      "enum": [
+        "hit",
+        "miss",
+        "empty-index",
+        "cold-required",
+        "busy",
+        "missing-db"
+      ]
+    },
+    "databaseOpenCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "projectionLatencyMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "acquisitionSource": {
+            "const": "live-snapshot"
+          }
+        },
+        "required": [
+          "acquisitionSource"
+        ]
+      },
+      "then": {
+        "properties": {
+          "databaseOpenCount": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lookupState": {
+            "const": "hit"
+          }
+        },
+        "required": [
+          "lookupState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "minItems": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "candidates": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sourceKind",
+        "queryKeys"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "selectorSymbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectorKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectorProof": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

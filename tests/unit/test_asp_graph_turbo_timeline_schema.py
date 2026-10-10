@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema validation tests for graph turbo timeline audit packets."""
 
 from __future__ import annotations
@@ -8,12 +12,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo.artifact_events import (
+from asp_python_graphs.artifact_events import (
     artifact_events_from_packet,
     artifact_events_packet,
     scan_artifact_events,
 )
-from asp_graph_turbo.artifact_timeline import (
+from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_events_timeline,
 )
@@ -32,6 +36,28 @@ _TIMELINE_SCHEMA = (
     / "schemas"
     / "semantic-graph-turbo-artifact-timeline.v1.schema.json"
 )
+_TIMELINE_REQUEST_SCHEMA = (
+    _REPO_ROOT / "schemas" / "asp-client-graphs-timeline-request.v1.schema.json"
+)
+
+
+def test_timeline_request_is_server_owned_and_rejects_resident_alias_fields() -> None:
+    packet = {
+        "schemaId": "agent.semantic-protocols.graph-turbo-artifact-events",
+        "schemaVersion": "1",
+        "artifactDir": "/tmp/artifacts",
+        "source": {"kind": "db-engine", "clientDir": "/tmp/client"},
+        "events": [],
+    }
+    request = {
+        "schemaId": "agent.semantic-protocols.asp-client-graphs-timeline-request",
+        "schemaVersion": "1",
+        "eventPacket": packet,
+        "arguments": ["--recent-sessions"],
+    }
+    assert list(schema_validator_for(_TIMELINE_REQUEST_SCHEMA).iter_errors(request)) == []
+    invalid = {**request, "graphTurboResident": True}
+    assert list(schema_validator_for(_TIMELINE_REQUEST_SCHEMA).iter_errors(invalid))
 
 
 def test_timeline_events_packet_is_schema_owned_db_engine_boundary(tmp_path) -> None:
@@ -81,15 +107,15 @@ def test_timeline_cli_accepts_schema_owned_events_json(tmp_path) -> None:
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(
-        _REPO_ROOT / "packages" / "python" / "asp_graph_turbo" / "src"
+        _REPO_ROOT / "packages" / "python" / "asp_python_graphs" / "src"
     )
 
     completed = subprocess.run(
         [
             sys.executable,
             "-S",
-            "-m",
-            "asp_graph_turbo",
+            "-c",
+            "from asp_python_graphs.graph_turbo_cli import main; raise SystemExit(main())",
             "timeline",
             str(tmp_path),
             "--events-json",

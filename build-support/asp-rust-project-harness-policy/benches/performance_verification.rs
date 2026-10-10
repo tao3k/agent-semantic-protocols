@@ -1,0 +1,28 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use asp_rust_project_harness_policy::asp_search_scenario_package;
+use asp_rust_project_harness_policy::asp_workspace_member_policies;
+use criterion::Criterion;
+use criterion::criterion_group;
+use criterion::criterion_main;
+
+fn policy_lookup_smoke_benchmark(criterion: &mut Criterion) {
+    criterion.bench_function("asp_workspace_member_policies", |bencher| {
+        bencher.iter(asp_workspace_member_policies)
+    });
+}
+
+fn scenario_package_smoke_benchmark(criterion: &mut Criterion) {
+    criterion.bench_function("asp_search_scenario_package", |bencher| {
+        bencher.iter(asp_search_scenario_package)
+    });
+}
+
+criterion_group!(
+    performance_verification,
+    policy_lookup_smoke_benchmark,
+    scenario_package_smoke_benchmark
+);
+criterion_main!(performance_verification);

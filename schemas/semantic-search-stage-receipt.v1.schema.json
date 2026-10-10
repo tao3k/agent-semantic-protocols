@@ -27,7 +27,8 @@
       "enum": [
         "search-candidate-merge",
         "overlay-search",
-        "stable-fts",
+        "native-syntax",
+        "tantivy-lexical",
         "source-index-lookup",
         "provider-proof",
         "graph-route-rank"
@@ -75,7 +76,8 @@
         "receipt-anchor",
         "dynamic-overlay",
         "provider-delta",
-        "turso-fts",
+        "provider-native-syntax",
+        "tantivy",
         "source-index",
         "semantic-vector",
         "evidence-graph-rank",
@@ -93,7 +95,7 @@
         "empty-index",
         "stale-generation",
         "overlay-unavailable",
-        "fts-unavailable",
+        "lexical-index-unavailable",
         "provider-required",
         "native-finder-control",
         "timeout",

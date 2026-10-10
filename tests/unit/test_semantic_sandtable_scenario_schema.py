@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for semantic sandtable scenarios."""
 
 from __future__ import annotations
@@ -6,7 +10,7 @@ import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -17,11 +21,12 @@ def _load_json(path: Path) -> dict[str, object]:
 
 
 class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         schema_path = (
             _REPO_ROOT / "schemas" / "semantic-sandtable-scenario.v1.schema.json"
         )
-        self.validator = Draft202012Validator(_load_json(schema_path))
+        cls.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, scenario: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(scenario)]
@@ -41,7 +46,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                             "languageId": "typescript",
                             "routeKind": "query",
                             "routeCommandContains": [
-                                "ts-harness query --from-hook",
+                                "asp-typescript query --from-hook",
                                 "--surface owners,tests",
                             ],
                             "routeCommandNotContains": [
@@ -52,12 +57,6 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                                 "entries=owner-query(O,Q=>items+tests+dependency-usage)"
                             ],
                             "outputNotContains": ["profiles" + "="],
-                            "primeOutput": {
-                                "requiresStructureStatus": True,
-                                "entries": [
-                                    "entries=owner-query(O,Q=>items+tests+dependency-usage)"
-                                ],
-                            },
                         }
                     },
                 }
@@ -65,30 +64,6 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
         }
 
         self.assertEqual([], self.validation_errors(scenario))
-
-    def test_guide_quality_prime_output_entries_must_be_entries_lines(self) -> None:
-        scenario: dict[str, object] = {
-            "id": "typescript.codex-guide",
-            "language": "typescript",
-            "workdir": ".",
-            "steps": [
-                {
-                    "id": "guide",
-                    "command": ["node", "-e", "console.log('{}')"],
-                    "expect": {
-                        "guideQuality": {
-                            "primeOutput": {
-                                "entries": ["entries=ad-hoc-owner-map(O=>items)"],
-                            }
-                        }
-                    },
-                }
-            ],
-        }
-
-        self.assertTrue(
-            any("does not match" in error for error in self.validation_errors(scenario))
-        )
 
     def test_agent_cli_claude_step_is_valid(self) -> None:
         scenario: dict[str, object] = {

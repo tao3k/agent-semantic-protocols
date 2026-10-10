@@ -1,27 +1,25 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the semantic determinism readiness schema contract."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _ROOT = Path(__file__).resolve().parents[2]
 
 
-def _load_schema() -> dict:
-    return json.loads(
-        (_ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
+def _schema_path() -> Path:
+    return _ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json"
 
 
 def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None:
-    schema = _load_schema()
-    validator = Draft202012Validator(schema)
+    validator = schema_validator_for(_schema_path())
 
     validator.validate(
         {
@@ -32,8 +30,8 @@ def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None
             "readinessId": "rust.determinism-readiness.project",
             "producer": {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                "providerId": "asp-rust",
+                "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
             },
             "project": {"root": "."},
             "status": "needs-injection",
@@ -67,8 +65,7 @@ def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None
 
 
 def test_determinism_readiness_rejects_absolute_observation_paths() -> None:
-    schema = _load_schema()
-    validator = Draft202012Validator(schema)
+    validator = schema_validator_for(_schema_path())
 
     errors = list(
         validator.iter_errors(
@@ -80,8 +77,8 @@ def test_determinism_readiness_rejects_absolute_observation_paths() -> None:
                 "readinessId": "rust.determinism-readiness.project",
                 "producer": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                    "providerId": "asp-rust",
+                    "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
                 },
                 "project": {"root": "."},
                 "status": "needs-injection",

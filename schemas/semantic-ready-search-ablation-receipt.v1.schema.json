@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-ready-search-ablation-receipt.v1.schema.json",
+  "title": "ASP Ready Search Transport Ablation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "sourceRootDigest",
+    "generationDigest",
+    "schemaCatalogDigest",
+    "algorithmDigest",
+    "planDigest",
+    "languageId",
+    "operation",
+    "transport",
+    "cacheMode",
+    "budget",
+    "work",
+    "effects",
+    "timing",
+    "terminal",
+    "resultDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-ready-search-ablation-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "$ref": "#/$defs/nonEmpty" },
+    "sourceRootDigest": { "$ref": "#/$defs/blake3" },
+    "generationDigest": { "$ref": "#/$defs/blake3" },
+    "schemaCatalogDigest": { "$ref": "#/$defs/blake3" },
+    "algorithmDigest": { "$ref": "#/$defs/blake3" },
+    "planDigest": { "$ref": "#/$defs/blake3" },
+    "languageId": { "$ref": "#/$defs/nonEmpty" },
+    "operation": {
+      "enum": ["exact", "search", "query"]
+    },
+    "transport": {
+      "enum": ["direct-service-core", "grpc", "http-json-debug"]
+    },
+    "cacheMode": {
+      "enum": ["cold-build", "cold-load", "warm-read"]
+    },
+    "budget": { "$ref": "#/$defs/searchBudget" },
+    "work": { "$ref": "#/$defs/searchWork" },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerProcessCount",
+        "providerRpcCount",
+        "workspaceScanCount",
+        "durableDbReadCount",
+        "durableDbWriteCount",
+        "generationMutationCount",
+        "endpointDiscoveryCount",
+        "clientRetryCount"
+      ],
+      "properties": {
+        "providerProcessCount": { "const": 0 },
+        "providerRpcCount": { "const": 0 },
+        "workspaceScanCount": { "const": 0 },
+        "durableDbReadCount": { "const": 0 },
+        "durableDbWriteCount": { "const": 0 },
+        "generationMutationCount": { "const": 0 },
+        "endpointDiscoveryCount": { "const": 0 },
+        "clientRetryCount": { "const": 0 }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceCoreNs",
+        "frameCodecNs",
+        "generationLeaseNs",
+        "planNs",
+        "residentReadNs",
+        "mergeEncodeNs",
+        "transportNs",
+        "totalNs"
+      ],
+      "properties": {
+        "serviceCoreNs": { "$ref": "#/$defs/nanos" },
+        "frameCodecNs": { "$ref": "#/$defs/nanos" },
+        "generationLeaseNs": { "$ref": "#/$defs/nanos" },
+        "planNs": { "$ref": "#/$defs/nanos" },
+        "residentReadNs": { "$ref": "#/$defs/nanos" },
+        "mergeEncodeNs": { "$ref": "#/$defs/nanos" },
+        "transportNs": { "$ref": "#/$defs/nanos" },
+        "totalNs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 999999
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "kind"],
+      "properties": {
+        "count": { "const": 1 },
+        "kind": { "enum": ["ready", "failed", "cancelled"] },
+        "reasonKind": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "resultDigest": { "$ref": "#/$defs/blake3" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "blake3": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "nanos": { "type": "integer", "minimum": 0 },
+    "searchBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exactEntries",
+        "lexicalPostings",
+        "graphNodes",
+        "graphEdges",
+        "outputBytes"
+      ],
+      "properties": {
+        "exactEntries": { "type": "integer", "minimum": 0 },
+        "lexicalPostings": { "type": "integer", "minimum": 0 },
+        "graphNodes": { "type": "integer", "minimum": 0 },
+        "graphEdges": { "type": "integer", "minimum": 0 },
+        "outputBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "searchWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exactEntries",
+        "lexicalPostings",
+        "lexicalBlocksSkipped",
+        "graphNodes",
+        "graphEdges",
+        "graphFrontierPeak",
+        "outputBytes"
+      ],
+      "properties": {
+        "exactEntries": { "type": "integer", "minimum": 0 },
+        "lexicalPostings": { "type": "integer", "minimum": 0 },
+        "lexicalBlocksSkipped": { "type": "integer", "minimum": 0 },
+        "graphNodes": { "type": "integer", "minimum": 0 },
+        "graphEdges": { "type": "integer", "minimum": 0 },
+        "graphFrontierPeak": { "type": "integer", "minimum": 0 },
+        "outputBytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/hook-enablement-acceptance.schema.json",
+  "title": "Hook Enablement Acceptance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "status",
+    "reasonKind",
+    "projectRoot",
+    "pluginLauncher",
+    "activeDigest",
+    "healthyDigest",
+    "retentionProtectedDigests",
+    "policyDecisionSamples",
+    "policyDecisionMaxCpuMicros",
+    "policyDecisionBudgetMicros",
+    "launcherSamples",
+    "launcherP99Micros",
+    "launcherMaxMicros"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-enablement-acceptance" },
+    "schemaVersion": { "const": "1" },
+    "status": { "const": "ready" },
+    "reasonKind": { "const": "none" },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "pluginLauncher": { "type": "string", "minLength": 1 },
+    "activeDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "healthyDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "retentionProtectedDigests": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "policyDecisionSamples": { "const": 16 },
+    "policyDecisionMaxCpuMicros": { "type": "integer", "minimum": 0, "maximum": 999 },
+    "policyDecisionBudgetMicros": { "const": 1000 },
+    "launcherSamples": { "const": 16 },
+    "launcherP99Micros": { "type": "integer", "minimum": 0, "maximum": 49999 },
+    "launcherMaxMicros": { "type": "integer", "minimum": 0, "maximum": 99999 }
+  }
+}

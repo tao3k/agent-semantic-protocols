@@ -1,14 +1,19 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Request model passed from `agent-semantic-client` to execution backends.
 
 use std::path::PathBuf;
 
 use crate::types::LanguageId;
-use agent_semantic_tree_sitter::{
-    SyntaxQueryAbiPredicate, SyntaxQueryPredicateValue, builtin_catalog_source,
-    compile_query_abi_source,
-};
+use agent_semantic_tree_sitter::SyntaxQueryAbiPredicate;
+use agent_semantic_tree_sitter::SyntaxQueryPredicateValue;
+use agent_semantic_tree_sitter::builtin_catalog_source;
+use agent_semantic_tree_sitter::compile_query_abi_source;
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Internal ASP-to-provider argument carrying query capture names.
 ///
@@ -39,6 +44,7 @@ pub enum ClientMethod {
     CacheImport,
     CacheInvalidate,
     CacheFlush,
+    ProjectResolution,
     Search,
     Query,
     Check,
@@ -88,19 +94,16 @@ impl ClientRequest {
         self
     }
 
-    /// Return true when this request is the hook recovery direct-source-read
-    /// route. This route is an explicit policy escape for exact bounded source
-    /// recovery and must not be treated as a generic cache-replayable query.
+    /// Return the typed exact-query projection, if present.
     #[must_use]
-    pub fn is_hook_direct_source_read(&self) -> bool {
-        self.method == ClientMethod::Query
-            && option_value(&self.forwarded_args, "--from-hook")
-                .is_some_and(|value| value == "direct-source-read")
+    pub fn exact_projection(&self) -> Option<&str> {
+        option_value(&self.forwarded_args, "--projection")
     }
 
-    /// Return true for request shapes whose stdout is source text copied from
-    /// a selected locator. These outputs are useful last-mile reads, but they
-    /// are too volatile to cache or replay safely.
+    /// Return true for exact-query source projections.
+    ///
+    /// Exact projection is a typed contract. Removed flag aliases are
+    /// intentionally not recognized here.
     #[must_use]
     pub fn is_source_content_output(&self) -> bool {
         self.method == ClientMethod::Query
@@ -108,7 +111,7 @@ impl ClientRequest {
                 .forwarded_args
                 .iter()
                 .any(|arg| arg == "--selector" || arg.starts_with("--selector="))
-            && self.forwarded_args.iter().any(|arg| arg == "--code")
+            && self.exact_projection() == Some("source")
             && !self
                 .forwarded_args
                 .iter()
@@ -117,14 +120,14 @@ impl ClientRequest {
 }
 
 fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    let prefix = format!("{name}=");
+    let inline_prefix = format!("{name}=");
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].as_str();
         if arg == name {
             return args.get(index + 1).map(String::as_str);
         }
-        if let Some(value) = arg.strip_prefix(&prefix) {
+        if let Some(value) = arg.strip_prefix(&inline_prefix) {
             return Some(value);
         }
         index += 1;

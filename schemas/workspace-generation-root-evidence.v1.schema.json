@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-generation-root-evidence.v1.schema.json",
+  "title": "Workspace Generation Root Evidence v1",
+  "description": "Constant-size Merkle root, depth, and coverage evidence shared by resident generation consumers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rootDigest",
+    "rootDepth",
+    "leafCount",
+    "ownerCount"
+  ],
+  "properties": {
+    "rootDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rootDepth": {
+      "type": "integer",
+      "enum": [0, 1]
+    },
+    "leafCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ownerCount": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

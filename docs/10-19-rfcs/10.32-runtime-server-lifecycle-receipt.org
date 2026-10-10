@@ -1,0 +1,300 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Server Lifecycle and Drain Receipt
+#+date: 2026-08-05
+
+* Status
+
+Normative design for the Tokio Runtime Server lifecycle. The platform
+supervisor is responsible only for admission and unload; the daemon owns all
+Tokio tasks, provider children, workspace builders, and service drain.
+
+* Global server identity
+:PROPERTIES:
+:ID: ASP-RFC-10.32-GLOBAL-SERVER-IDENTITY
+:END:
+
+One ASP State Home owns exactly one global Runtime Server.  The server identity,
+endpoint, lifecycle lock, process receipt, and terminal drain receipt MUST be
+rooted in that State Home.  A Git workspace, worktree, project path, or
+=projectId= MUST NOT participate in server identity, endpoint selection,
+lifecycle lock selection, or process cardinality.
+
+** Internal project dispatch
+:PROPERTIES:
+:ID: ASP-RFC-10.32-INTERNAL-PROJECT-DISPATCH
+:END:
+
+Workspace and project identity belong only to internal request dispatch.  A
+request admitted by the global server MAY carry a workspace or =projectId= so
+the daemon can select the corresponding generation, index, or provider state.
+Those fields do not create another server and do not widen the public lifecycle
+surface.
+
+The public lifecycle commands are:
+
+#+begin_src sh
+asp server start
+asp server status
+asp server stop
+asp server restart
+#+end_src
+
+These commands MUST NOT require or accept a workspace as lifecycle authority.
+=status= is a read-only observation.  =start= and =restart= return only after a
+bounded Ready or typed terminal result; =stop= returns only after the bounded
+drain protocol reaches its terminal result.
+
+** Socket liveness authority
+:PROPERTIES:
+:ID: ASP-RFC-10.32-SOCKET-LIVENESS-AUTHORITY
+:END:
+
+An endpoint pathname, endpoint/receipt file, recorded PID, or process receipt is
+not liveness authority.  In particular, existence of the State-Home control
+=.sock= file MUST NOT be interpreted as a live or Ready server.  Those artifacts
+are discovery hints and recovery evidence only.
+
+The authoritative liveness observation is a successful control-protocol
+handshake over the one Host-published transport capability.  The capability is
+selected before socket I/O and may bind Host loopback HTTP/2 or an inherited
+connected descriptor for a restricted sandbox.  A sandbox MUST NOT probe the
+Host loopback address or a State-Home pathname before consuming its inherited
+descriptor.  All bindings carry the same =ClientFrame= service and endpoint
+identity; none creates a second lifecycle authority.
+
+The handshake MUST bind the responding server to the requesting ASP State Home
+and validate the control protocol identity, protocol/contract digest, current
+=ownerEpoch=, and a fresh request nonce.  Its response MUST distinguish at
+least =ready= from =draining=.  A response is live only when all identity and
+digest checks pass and the nonce is echoed by the current owner epoch.
+
+An authenticated =ready= response admits normal request dispatch.  An
+authenticated =draining= response proves a live owner but rejects new
+admission; it MUST NOT trigger a replacement spawn.  An active operator-stop
+intent has priority over Hook =ensure=, including when the endpoint is missing
+or refusing connections.  Hook recovery MUST NOT recreate a server that an
+operator is stopping or has explicitly stopped.
+
+A missing capability or failed connection is an observation failure, not a
+lifecycle state and not immediate spawn authority.  =EPERM=, timeout, early EOF,
+or an unauthenticated response MUST return one typed transport/observation
+terminal and MUST NOT be rendered as =starting=, =stopped=, or =failed=.  Only
+the Host supervisor may enter the State-Home election, acquire the single
+lifecycle start right, re-check operator-stop intent, and repeat the handshake
+before spawning one detached server.  Losing supervisors join the elected
+generation.  A sandbox client never becomes the supervisor and never falls
+through to pathname, loopback, spawn, restart, retry, or Hook configuration.
+
+Hook probes use a short, independently bounded latency budget suitable for
+command interception.  An explicit operator =asp server start= or =restart=
+uses its own lifecycle budget and MUST NOT inherit the shorter Hook probe
+deadline.  Exceeding either budget produces its corresponding typed failure;
+it does not convert socket-file existence into liveness evidence.
+
+*** Socket security hardening
+:PROPERTIES:
+:ID:       ASP-RFC-10.32-SOCKET-SECURITY-HARDENING
+:END:
+
+The control and data sockets MUST authenticate both ends with kernel-provided
+Unix peer credentials.  A path, endpoint document, binding token, PID, or
+successfully decoded frame is not peer authority.  The peer effective UID MUST
+equal the ASP State Home owner UID; an unavailable or mismatched credential
+fails closed before request parsing, admission, cleanup, or spawn.
+
+Each control =requestId= is also the request nonce for its owner epoch.  The
+server MUST admit it at most once for the complete owner epoch.  Replay state
+MUST be memory bounded; exhaustion fails closed and requires a new elected
+owner epoch rather than evicting old nonces and making them replayable.  The
+receipt echoes the nonce, and clients reject a missing or mismatched echo.
+
+Runtime transport paths MUST be rooted in private, non-symlink directories
+owned by the current UID.  Directories are =0700=, sockets and endpoint
+documents are =0600=, socket nodes are verified after bind, and endpoint
+publication uses an exclusive, non-following temporary file plus atomic
+rename.  Discovery never follows a pre-positioned temporary-file symlink.
+
+Frames, accepted connections, Hook connect workers, and connection-drain time
+are independently bounded.  Oversize frames, excess connections, exhausted
+Hook workers, stalled exchanges, and replay-capacity exhaustion are typed
+failures; none may create unbounded tasks, threads, buffers, or competing
+servers.  Shutdown aborts handlers that exceed the bounded drain interval.
+
+Logs and public receipts MUST NOT emit the binding token, endpoint-publication
+temporary nonce, peer credentials, or raw request bodies.  Request IDs may be
+emitted only as correlation identities and never as authorization secrets.
+
+* Hook observation contract
+:PROPERTIES:
+:ID: ASP-RFC-10.32-ENSURE-IDEMPOTENCE
+:END:
+
+The ASP Hook performs only a bounded observation before dispatch.  If the
+global server is Ready, it may use the published endpoint.  If no live owner or
+Ready endpoint exists, it returns a typed NotReady receipt.  A Hook never wins
+the lifecycle election, spawns, restarts, stops, or waits for a Runtime Server.
+
+Only the explicit Runtime supervisor commands own election and spawn.  The
+resident Runtime Server owns identity monitoring and latest-generation
+successor handoff.  This separation keeps the Hook millisecond-bounded and
+prevents command admission from becoming a second lifecycle implementation.
+
+** Fixed hook contract
+:PROPERTIES:
+:ID: ASP-RFC-10.32-FIXED-HOOK-CONTRACT
+:END:
+
+The installed Codex plugin and its =hooks.json= are a fixed host contract.
+Runtime Server recovery, binary replacement, provider recovery, or lifecycle
+repair MUST NOT rewrite project trust, reinstall the plugin, or require a Codex
+restart when the plugin payload itself did not change.
+
+* State machine
+
+#+begin_example
+stopped -> starting -> ready -> draining -> stopped
+             |           |          |
+             v           v          v
+           failed      failed     failed
+#+end_example
+
+This state machine describes the one State-Home server, not a workspace
+generation.  Workspace generation building and cancellation are daemon-owned
+internal states after request dispatch.
+
+Only one =starting= owner may exist for one State Home.  Repeated or concurrent
+=start=/Hook =ensure= operations are idempotent: they either observe Ready,
+join the same in-flight start generation, or receive the same typed terminal
+failure.  A stale process identifier alone is not a live-owner proof; endpoint
+health and the lifecycle generation receipt MUST agree before Ready is
+published.
+
+** Graceful stop
+:PROPERTIES:
+:ID: ASP-RFC-10.32-GRACEFUL-STOP
+:END:
+
+=draining= rejects new request admission while allowing owned work to finish or
+be cancelled within the declared boundary.  Repeated =stop= operations join the
+same drain generation.  Stopping an already stopped server succeeds
+idempotently.  A failed or timed-out drain publishes a typed terminal failure
+and MUST NOT be reported as a clean stop.
+
+** Restart convergence
+:PROPERTIES:
+:ID: ASP-RFC-10.32-RESTART-CONVERGENCE
+:END:
+
+=restart= is one serialized lifecycle operation: it joins or initiates a
+graceful stop, observes its terminal drain receipt, and only then creates the
+next start generation.  It MUST NOT overlap old and new server ownership or
+delete an endpoint owned by another generation.
+
+* Receipt ordering
+
+The daemon joins every owned task and child before atomically publishing
+~daemon-drain~. The receipt contains owner epoch, per-service elapsed time and
+errors, active task/child counts, and ~cleanDrain~. The daemon then publishes
+the owner exit receipt. Only after that may endpoint/socket cleanup and
+supervisor unload occur. An exit receipt is valid only when the drain receipt
+preceded it and both counts are zero.
+
+Endpoint cleanup MUST compare the recorded server generation and owner identity
+before unlinking.  A previous process or losing concurrent caller MUST NOT
+remove the endpoint published by the current generation.
+
+* Typed failure
+:PROPERTIES:
+:ID: ASP-RFC-10.32-TYPED-FAILURE
+:END:
+
+Every bounded lifecycle failure MUST be machine-readable.  The failure records
+the lifecycle operation, stage, State-Home server generation when known,
+=reasonKind=, terminal state, elapsed boundary, and whether retry is admitted.
+Human prose MAY accompany these fields but MUST NOT replace them.
+
+Failures distinguish at least lock contention that remains live, detached spawn
+failure, endpoint publication failure, Ready-boundary exhaustion, health
+identity mismatch, drain-boundary exhaustion, owned task/child failure, and
+generation-safe endpoint cleanup failure.  A failure MUST NOT be projected as
+Ready, stopped, or clean drain merely because the initiating client exited.
+
+* Invariants
+
+1. One ASP State Home owns at most one live global Server.
+2. Ready implies one canonical server generation and a matching healthy endpoint.
+3. Workspace and =projectId= identity affect request dispatch only.
+4. Concurrent ensure/start/stop operations converge on one lifecycle generation.
+5. Draining rejects new admission.
+6. A clean stopped receipt implies zero tasks/children and a prior drain receipt.
+7. Restart never overlaps ownership generations.
+8. Runtime recovery does not mutate plugin trust or require a Codex restart.
+
+9. Startup loads only durable workspace locators; it does not open every
+   historical generation segment.  The first request for one workspace uses
+   admission-owned =RestoreOnly= for that pointer and may enter scope-local
+   =RestoreOrBuild= only for the requested workspace.  Neither path gates
+   Global Healthy publication.
+   The active-generation pointer, its checkpoint, and referenced mmap
+   projections are the sole restore authority.  Turso materialization cannot
+   authorize, reject, or replace that restore.  The provider-independent
+   =RestoreRuntimeGenerationFromPointer= Runtime IPC operation performs this
+   cold restore without a provider invocation or source build.
+   A restored generation exposes both its source snapshot root and its owner
+   Merkle root.  These are distinct authorities bound by the same generation
+   digest: source recovery compares the source root, while owner inclusion
+   proofs compare the owner Merkle root.  They are never interchangeable or
+   required to be equal.
+10. A failed workspace/provider generation enters typed terminal Backoff with
+    =nextRetryAt=; no immediate retry is permitted until identity changes or
+    the bounded retry deadline is reached.
+11. HTTP-JSON provider processes are Runtime-Server-global by language,
+    provider, binary, manifest, and catalog identity; =projectRoot= is request
+    payload, never process ownership.
+12. Monitor heartbeats and process-memory telemetry are bounded/aggregated and
+    MUST NOT perform persistent file/DB writes at sub-second sampling cadence.
+13. Runtime active I/O and lifecycle ownership are Tokio-owned. Async server,
+    provider, admission, artifact, monitor, and telemetry paths MUST use
+    `tokio::fs`, `tokio::process`, and Tokio synchronization. CPU-heavy or
+    platform inspection work MUST cross a bounded `spawn_blocking` boundary;
+    synchronous process spawning and filesystem I/O are not valid lifecycle
+    owners.
+14. =asp install binary= publishes only the configured Developer direct link
+    or Managed Release identity.  It never starts, stops, reconciles, or waits
+    for a Runtime Server, and it never creates a candidate-generation artifact.
+    If the Server is absent it remains stopped.
+15. Runtime artifact identity changes are observed by the resident
+    Runtime-owned Tokio monitor.  The current owner drains completely, publishes
+    terminal receipts, validates and retires its epoch/PID/executable-bound
+    owner receipt while it still owns election authority, releases that
+    authority, and only then admits one latest-generation successor.
+16. A control-exchange timeout does not authorize termination by itself.
+    Fallback termination requires the current endpoint =ownerEpoch= and
+    =ownerProcessId=, the owner receipt =processId=, and the expected executable
+    identity to match.  Any mismatch fails closed without termination or
+    cleanup.
+17. Endpoint publication is Global readiness; workspace generation restore is
+    workspace-keyed readiness.  =workspaceEntryCount=0= is valid for a Healthy
+    endpoint and is never a reason to block the control/data listeners.
+18. Runtime Server candidate directories, candidate promotion envelopes, and
+    previous-generation lifecycle fallbacks are not part of the v1
+    architecture and MUST NOT be recreated.
+19. The short hashed State-Home owner lock is the only lifecycle election.
+    Datagram singleton sockets and any second single-flight ownership layer are
+    legacy designs and MUST NOT be recreated.
+20. Concurrent explicit starts use that same owner lock for a short supervisor
+    reservation covering reclassification, child launch, and owner-receipt
+    publication.  The daemon waits for the reservation handoff and then owns
+    the same lock for its lifetime; contending callers join the published start
+    generation and never launch a second child.
+21. Live-corpus qualification may select one pinned resource.  It performs one
+    bounded cold =RestoreRuntimeGenerationFromPointer= step after a Server
+    generation change, then measures resident search/query samples separately.
+    Cold restore latency never weakens or contaminates the resident
+    sub-millisecond budget.
+
+The executable Rust receipt and the Lean model
+~ASPProof.RuntimeServerLifecycle~ are refinement witnesses for these claims.

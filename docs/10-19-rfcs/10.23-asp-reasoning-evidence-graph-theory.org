@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * One-sentence summary
 ASP should treat agent reasoning as typed, replayable, graph-transforming evidence: =ReasoningTree= records how a run moved, =EvidenceGraph= stores reusable evidence across runs, =DynamicTopology= explains the current architecture state and legal reasoning branches, and =GraphRoute= navigates toward exact selectors, commands, tests, edits, and writing actions.
 * Scope
@@ -15,7 +19,7 @@ It does not own:
 - the DB Engine / Turso state layout, which remains in [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]];
 - the codebase-memory-mcp search comparison, which remains in [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]];
 - policy facts and recipes, which remain in [[file:10.24-policy-facts-recipes-schema.org][10.24 policy facts recipes schema]];
-- the compact graph feature details, which remain tied to [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]] and schema work.
+- the search projection details, which remain tied to [[file:10.06-agent-search-projection.org][10.06 agent search projection]] and schema work.
 * Document map
 This theory should be the shared conceptual root for the surrounding RFCs:
 
@@ -70,7 +74,7 @@ Which facts are stale because the task, generation, or feature scope changed?
 The minimum =TopologySlice= for an agent turn should include:
 
 - target role: writer, reader, adapter, boundary, renderer, validator, orchestrator, or invariant owner;
-- ownership: package/module/language harness/schema owner;
+- ownership: package/module/ASP language provider/schema owner;
 - structural edges: produces, consumes, validates, depends-on, routes-to, renders, persists;
 - trust boundary: external input, internal invariant, legacy migration zone, dirty overlay, or unknown;
 - pressure: hot path, memory pressure, token budget, concurrency, stale-index risk, or prompt-critical render;
@@ -138,16 +142,24 @@ recommendedNext:
 
 The model should not be told only "avoid defensive programming". It should be shown why a branch is legal or illegal in the current topology slice.
 
-* Python and Julia ownership
-The runtime and research boundary is strict.
+* Runtime, Python, and Julia ownership
+The derivation, ranking, and research boundaries are strict.
 
-Python owns the production graph intelligence runtime:
+The immutable Runtime generation owns production graph construction:
 
-- build and update production =EvidenceGraph= projections from Rust/artifact inputs;
-- compute =DynamicTopology= slices for the active feature/task;
-- run graph-route ranking, next-jump selection, diversity, and failure-aware routing;
-- assemble compact =QualityFrame= / =WhereFrame= / =HowFrame= projections for the agent;
-- emit deterministic, schema-backed packets that Rust can validate and render.
+- collect language-owned syntax facts and Runtime/artifact receipts;
+- derive =EvidenceGraph= and =DynamicTopology= through the shared Ascent/GQL
+  program;
+- publish rule-attributable, schema-backed graph generations.
+
+The shared program is implemented in =agent-semantic-mrr::evidence_graph= and
+the fixed producer boundary is =agent-semantic-runtime-server::runtime_evidence_graph=.
+Its domain types carry no version suffix; version identity exists only in the
+JSON Schema contract.
+
+Python may consume an admitted graph generation for ranking, next-jump
+selection, diversity, failure-aware routing, and compact frame assembly. It
+must not build or mutate an alternate production =EvidenceGraph=.
 
 Julia owns offline graph algorithm research:
 
@@ -236,50 +248,6 @@ Agent-grade codebase reasoning also needs to know:
 - whether the action can be replayed without re-running providers.
 
 ASP should therefore treat a reasoning action as the beginning of evidence construction, not as the final artifact.
-* Legacy three-layer framing
-This section is retained as historical compression only. The authoritative model is the four-layer model above: =ReasoningTree=, =EvidenceGraph=, =DynamicTopology=, and =GraphRoute=.
-
-#+begin_src mermaid
-flowchart LR
-  RT["ReasoningTree<br/>How this run got here"] --> EG["EvidenceGraph<br/>What evidence exists and how it connects"]
-  EG --> GR["GraphRoute<br/>Where the agent should go next"]
-  GR --> NA["NextAction<br/>Exact selector / command / recovery"]
-  NA --> RT
-#+end_src
-
-=ReasoningTree= is the causal trace of a run. It answers:
-
-#+begin_src text
-How did the agent get here?
-Which action produced which observation?
-Which branch failed?
-Which recovery was tried?
-Which evidence supports the answer?
-#+end_src
-
-=EvidenceGraph= is the cross-session evidence substrate. It answers:
-
-#+begin_src text
-What selectors, entities, tests, dependencies, artifacts, observations,
-errors, receipts, and route decisions are known?
-How are they connected?
-Which facts are stable, overlay-local, stale, or accepted?
-#+end_src
-
-=GraphRoute= is the navigation policy over the evidence state. It answers:
-
-#+begin_src text
-Given this intent and what the system already knows,
-which exact owner, selector, test, dependency, writing anchor,
-or recovery action should the agent use next?
-#+end_src
-
-The relationship is:
-- =ReasoningTree= produces dynamic evidence;
-- =EvidenceGraph= joins dynamic evidence with stable codebase, artifact, Org, and DB facts;
-- =DynamicTopology= projects graph evidence into the current architecture state;
-- =GraphRoute= reads the graph plus topology and chooses the next action;
-- the next action creates more reasoning evidence.
 * Layer boundaries
 The boundaries are strict.
 
@@ -479,7 +447,10 @@ Runtime authority should remain strict:
 - Python owns production graph-route algorithms: fusion, ranking, pruning, stale-route suppression, recovery ranking, and scoring receipts.
 - Julia is offline only: large session replay, topology jump evaluation, ranking-failure mining, graph metric design, and candidate algorithm notes for Python.
 
-Julia must not execute runtime route decisions. A route improvement should flow from Julia research to Python production implementation to Rust-validated receipt/render output.
+Julia must not execute runtime route decisions. A route improvement flows from
+Julia research to the appropriate Ascent/GQL derivation or Python ranking
+implementation, then through Runtime admission and Rust-validated receipt/render
+output.
 * Core invariants
 - Executable identity is selector/entity/generation/overlay id, not line range.
 - Raw JSON is a debug/analyzer surface, not the default agent prompt surface.
@@ -492,4 +463,4 @@ Julia must not execute runtime route decisions. A route improvement should flow 
 - [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
 - [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]]
 - [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]]
-- [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]]
+- [[file:10.06-agent-search-projection.org][10.06 agent search projection]]

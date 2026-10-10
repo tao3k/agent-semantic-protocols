@@ -1,0 +1,84 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryPublication.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryPublication",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} {validate : Certificate → Prop}\n  {state : ASPProof.SearchRouteAdmissionRetryPublication.RetryPublicationState RetryKey Certificate},\n  ASPProof.SearchRouteAdmissionRetryPublication.WellFormed validate state →\n    ASPProof.SearchRouteAdmissionRetryPublication.Visible state →\n      ASPProof.SearchRouteAdmissionRetryPublication.DurableValidCertificate validate state",
+   "theoremFamily": "publication validity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPCS-CERTIFICATE", "ASP-RFC-10.05-RPCS-PUBLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.visible_retry_has_durable_valid_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} {validate : Certificate → Prop}\n  {state : ASPProof.SearchRouteAdmissionRetryPublication.RetryPublicationState RetryKey Certificate},\n  ASPProof.SearchRouteAdmissionRetryPublication.WellFormed validate state →\n    ASPProof.SearchRouteAdmissionRetryPublication.Acknowledged state →\n      ASPProof.SearchRouteAdmissionRetryPublication.Visible state",
+   "theoremFamily": "acknowledgment ordering",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPCS-ACKNOWLEDGMENT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.durable_acknowledgment_requires_visible_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublication.WellFormed\n    ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n    ASPProof.SearchRouteAdmissionRetryPublication.beforeCertificateState ∧\n  ¬ASPProof.SearchRouteAdmissionRetryPublication.DurableValidCertificate\n        ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n        ASPProof.SearchRouteAdmissionRetryPublication.beforeCertificateState ∧\n    ¬ASPProof.SearchRouteAdmissionRetryPublication.Visible\n          ASPProof.SearchRouteAdmissionRetryPublication.beforeCertificateState ∧\n      ¬ASPProof.SearchRouteAdmissionRetryPublication.Acknowledged\n          ASPProof.SearchRouteAdmissionRetryPublication.beforeCertificateState",
+   "theoremFamily": "pre-certificate crash",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPCS-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.crash_before_certificate_is_unpublished_and_unrecoverable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublication.WellFormed\n    ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n    ASPProof.SearchRouteAdmissionRetryPublication.certificateDurableState ∧\n  ASPProof.SearchRouteAdmissionRetryPublication.DurableValidCertificate\n      ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n      ASPProof.SearchRouteAdmissionRetryPublication.certificateDurableState ∧\n    ¬ASPProof.SearchRouteAdmissionRetryPublication.Visible\n          ASPProof.SearchRouteAdmissionRetryPublication.certificateDurableState ∧\n      ¬ASPProof.SearchRouteAdmissionRetryPublication.Acknowledged\n          ASPProof.SearchRouteAdmissionRetryPublication.certificateDurableState",
+   "theoremFamily": "certificate-only crash",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPCS-CERTIFICATE",
+    "ASP-RFC-10.05-RPCS-NONIMPLICATION",
+    "ASP-RFC-10.05-RPCS-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.durable_certificate_before_publication_is_recoverable_but_invisible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublication.WellFormed\n    ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n    ASPProof.SearchRouteAdmissionRetryPublication.publicationDurableAcknowledgmentLostState ∧\n  ASPProof.SearchRouteAdmissionRetryPublication.Visible\n      ASPProof.SearchRouteAdmissionRetryPublication.publicationDurableAcknowledgmentLostState ∧\n    ¬ASPProof.SearchRouteAdmissionRetryPublication.Acknowledged\n        ASPProof.SearchRouteAdmissionRetryPublication.publicationDurableAcknowledgmentLostState",
+   "theoremFamily": "lost-acknowledgment crash",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPCS-ACKNOWLEDGMENT",
+    "ASP-RFC-10.05-RPCS-NONIMPLICATION",
+    "ASP-RFC-10.05-RPCS-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.lost_acknowledgment_does_not_revoke_durable_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublication.Visible\n    ASPProof.SearchRouteAdmissionRetryPublication.publicationWithoutCertificateState ∧\n  ¬ASPProof.SearchRouteAdmissionRetryPublication.WellFormed\n      ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n      ASPProof.SearchRouteAdmissionRetryPublication.publicationWithoutCertificateState",
+   "theoremFamily": "publication-order counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPCS-NONIMPLICATION", "ASP-RFC-10.05-RPCS-PUBLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.publication_without_certificate_is_not_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublication.Acknowledged\n    ASPProof.SearchRouteAdmissionRetryPublication.acknowledgmentWithoutPublicationState ∧\n  ¬ASPProof.SearchRouteAdmissionRetryPublication.WellFormed\n      ASPProof.SearchRouteAdmissionRetryPublication.validateUnitCertificate\n      ASPProof.SearchRouteAdmissionRetryPublication.acknowledgmentWithoutPublicationState",
+   "theoremFamily": "acknowledgment-order counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPCS-ACKNOWLEDGMENT", "ASP-RFC-10.05-RPCS-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublication.acknowledgment_without_publication_is_not_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 7,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 5}

@@ -1,13 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate shared semantic handle schema examples."""
 
 from __future__ import annotations
 
 import copy
-import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,12 +25,12 @@ def minimal_policy_handle() -> dict[str, object]:
         "aliases": ["src-layout", "packaged-project-layout"],
         "labels": ["layout", "project-policy"],
         "status": "active",
-        "ownerPath": "src/python_lang_project_harness/_project_policy_catalog.py",
-        "implementationOwnerPath": "src/python_lang_project_harness/_project_policy_layout.py",
-        "testPaths": ["tests/unit/harness/project_policy/test_layout.py"],
+        "ownerPath": "src/asp_python/_project_policy_catalog.py",
+        "implementationOwnerPath": "src/asp_python/_project_policy_layout.py",
+        "testPaths": ["tests/unit/asp_python/project_policy/test_layout.py"],
         "locations": [
             {
-                "path": "src/python_lang_project_harness/_project_policy_catalog.py",
+                "path": "src/asp_python/_project_policy_catalog.py",
                 "lineRange": "14:14",
             }
         ],
@@ -35,7 +38,7 @@ def minimal_policy_handle() -> dict[str, object]:
         "relations": [
             {
                 "kind": "implements",
-                "target": "src/python_lang_project_harness/_project_policy_layout.py",
+                "target": "src/asp_python/_project_policy_layout.py",
             }
         ],
         "fields": {"pack": "project", "severity": "warning"},
@@ -49,7 +52,7 @@ def minimal_handle_packet() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "python",
-        "providerId": "py-harness",
+        "providerId": "asp-python",
         "projectRoot": ".",
         "scope": "policy",
         "query": "PY-PROJ-R001",
@@ -61,9 +64,7 @@ def minimal_handle_packet() -> dict[str, object]:
 class SemanticHandleSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         schema_path = _REPO_ROOT / "schemas" / "semantic-handle.v1.schema.json"
-        with schema_path.open("r", encoding="utf-8") as handle:
-            schema = json.load(handle)
-        self.validator = Draft202012Validator(schema)
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, packet: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(packet)]

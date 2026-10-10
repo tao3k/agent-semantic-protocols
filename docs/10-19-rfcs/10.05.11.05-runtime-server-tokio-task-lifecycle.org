@@ -1,0 +1,283 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Runtime Server Tokio Task Lifecycle and Telemetry Isolation
+#+RFC_ID: ASP-RFC-10.05.11.05
+#+STATUS: normative
+#+PROPERTY: rfc_layer runtime-lifecycle
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Purpose
+
+The Runtime Server is one long-lived Tokio daemon serving many workspaces and
+many agent sessions.  Throughput alone is insufficient: every background actor
+must have one owner, one cancellation path, one join path, and one terminal
+receipt.  Telemetry is observability and MUST NOT become data-plane authority
+or a source of read-only request latency.
+
+* Normative lifecycle
+
+The daemon and each resident component move monotonically through
+=accepting -> draining -> terminated=.  Once draining begins, no new owned task
+may be admitted.  Every admitted task must reach exactly one terminal outcome:
+=completed=, =cancelled=, or =failed=.
+
+A successful shutdown publishes
+=agent.semantic-protocols.runtime-server-task-lifecycle-receipt= version =1=
+and satisfies:
+
+#+begin_example
+started = completed + cancelled + failed
+active = 0
+leaked = 0
+#+end_example
+
+Dropping a task handle is cancellation, never detachment.  A component that
+cannot prove the equations above must fail shutdown and remain diagnostically
+visible; it must not claim a healthy terminal state.
+
+* Generation-attempt ownership
+
+=Queued= is the only non-terminal state before the admission dispatcher owns a
+build.  The dispatcher changes the same workspace attempt to =Building=
+immediately before invoking its builder and emits exactly one
+=generation-build-started= event.  =Building= is valid only while a supervised
+provider peer or source-index task owns that attempt.
+
+Every accepted build carries an entry-bound terminal authority coupling its
+workspace, attempt, receipt publisher, cancellation authority, and
+single-writer lane.  Normal completion consumes that authority.  Join failure,
+peer EOF, handshake failure, panic, abort, dispatcher closure, cancellation,
+and Runtime drain publish exactly one =Ready=, =Failed=, or =Cancelled=
+terminal before releasing the lane.  A later request can therefore never
+coalesce an orphaned =Building= entry.
+
+The exact =GenerationCancellation= authority travels through provider
+readiness, provider operation, source snapshot, projection, and
+materialization.  Each suspension is a Tokio event race over terminal state,
+response closure, and cancellation.  A nested future MUST NOT survive after
+its admission attempt has terminalized.  Request deadlines, sleeps, polling,
+and elapsed-time repair are not lifecycle transitions.
+
+Runtime drain MUST close generation admission and publish cancellation to
+every accepted producer before draining the workspace registry, its writer
+lanes, or generation publishers.  The workspace registry is a consumer of
+admitted generation work; draining that consumer while admission can still
+produce or retain work is an ownership inversion and MUST NOT be repaired by
+raising the owner-exit deadline.  After admission reaches terminal state, the
+workspace registry drains its accepted writes and publishers, and only then
+may the daemon publish its terminal owner receipt.
+
+* Bounded public request semantics
+
+=EnsureWorkspace= and public =search/query= requests submit or coalesce demand,
+read the current Tokio =watch= snapshot, and respond without awaiting a build
+terminal.  =Ready= continues to resident execution.  =Queued=, =Building=,
+=Failed=, and =Cancelled= return their typed current phase, provider and
+generation authority, service timing, work counters, and =recommendedNext=.
+The entry-owned build continues after a request handle is dropped.
+
+The shared ClientFrame gRPC transport has no operation deadline and invents no
+client-request-timeout terminal.  Per-request =oneshot= completion is bounded
+by the Runtime actor returning payload-bearing =Ready= or the typed current
+phase.  Cancellation is an explicit frame.  Connection failure cannot replace
+Runtime phase evidence or acquire provider/generation lifecycle authority.
+
+* Telemetry isolation
+
+Agent-facing control, search, and exact-query paths may only submit telemetry
+with a bounded non-blocking enqueue.  They MUST NOT await telemetry capacity,
+open a telemetry database, acquire its writer lock, flush an exporter, or probe
+process state.  Queue overflow is represented by an explicit dropped counter.
+
+The resident telemetry component owns its ingress, query, process sampler, and
+exporter tasks.  Shutdown first closes admission, then drains accepted
+observations, stops sampling and query admission, flushes the exporter, joins
+all owned tasks, removes sockets, and finally publishes the lifecycle receipt.
+Every resident observability actor has an explicit daemon-owned shutdown
+authority.  It MUST close its receiver, drain already accepted observations,
+persist its terminal state, and join independently of whether producers still
+retain clonable non-blocking publisher handles.  Sender reference counts and
+incidental Rust drop order are not lifecycle or termination authorities.
+
+* Required observations
+
+The resident telemetry store must expose success and failure distributions and
+the lifecycle dimensions needed to diagnose host stalls: enqueue latency,
+queue depth/high-water/drops, active and terminal task counts, Tokio event-loop
+lag, process RSS and peak RSS, disk bytes, page-ins, and open descriptors.
+Generation observations are attempt-bound and distinguish dispatcher enqueue,
+provider-artifact load, readiness, source collection, publication, and the
+terminal transition.  Live Corpus cannot qualify an attempt that has neither a
+later progress event nor one terminal event at corpus completion.
+
+* Empirical qualification
+
+The strong gate runs multiple sessions over multiple workspaces with telemetry
+enabled.  It requires sub-millisecond request-side telemetry enqueue p99,
+bounded event-loop lag and resource growth, zero lifecycle leaks after repeated
+start/stop cycles, and no surviving Runtime Server socket or task after the
+terminal receipt.  Passing a focused throughput test alone is not closure.
+
+* Scheduler authority and compile closure
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-SCHEDULER-AUTHORITY
+:END:
+
+Runtime scheduling primitives are not database capabilities.  The lightweight
+=agent-semantic-workspace-scheduler= package owns Runtime profiles, bounded
+CPU/memory admission, owned tasks, cancellation accounting, and lifecycle V1
+receipts.  =agent-semantic-client-db= owns Turso generations and may consume
+those primitives, but MUST NOT define them.  Runtime Server generation code
+depends directly on the scheduler package rather than importing scheduler
+authority through =client-db=.
+
+This boundary does not change a public packet or schema.  In particular, the
+=agent.semantic-protocols.runtime-server-task-lifecycle-receipt= remains
+version =1=.  Runtime profiles, resource permits, and task scopes use the
+scheduler namespace directly.  Connection admission remains a Runtime Server
+transport concern in the explicitly named =runtime_server_connection= module;
+it is not disguised as scheduler ownership.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  RuntimeServer[Runtime Server Query Generation] --> Scheduler[workspace-scheduler]
+  ClientDB[client-db / Turso generations] --> Scheduler
+  RuntimeServer --> ClientDB
+  Scheduler --> Tokio[Tokio]
+  Scheduler -. forbidden .-> ClientDB
+#+end_src
+
+The compile-closure model separates behavioral latency from build latency.  If
+=C_s= is scheduler compilation, =C_d= is the positive database/search closure,
+and =C_r= is Runtime Server code, importing scheduling through the database
+costs =C_r + C_d + C_s=.  Direct ownership costs =C_r + C_s= for scheduler-only
+validation.  It cannot increase the closure and strictly reduces it whenever
+=C_d > 0=.  This is a direction theorem, not a measured speedup claim.
+
+#+begin_src typst :exports code
+#let old(c-r, c-d, c-s) = c-r + c-d + c-s
+#let direct(c-r, c-s) = c-r + c-s
+$ C_d > 0 => direct(C_r, C_s) < old(C_r, C_d, C_s) $
+#+end_src
+
+=ASPProof.RuntimeSchedulerOwnership= proves the authority exclusions and both
+compile-closure inequalities.  Rust scheduler tests independently verify
+adaptive worker ownership, cancellation-on-drop, concurrent drain equations,
+caller-runtime borrowing, and the resident sub-millisecond executor lookup.
+Cold package timing remains an empirical qualification and MUST be reported
+separately from these proofs.
+
+* Request-stage resource lifecycle and Scenario authority
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-REQUEST-RESOURCE-LIFECYCLE
+:END:
+
+Resident Search is a sequence of CPU stages whose intermediate values may
+remain live across stage boundaries.  Retrieval, parser grounding, graph
+evaluation, and topology projection MUST consume the same daemon-owned
+=RuntimeServerResourceSupervisor=.  A file-static semaphore derived from host
+=available_parallelism= is a second, unobservable capacity authority and is
+forbidden.  CPU-heavy closures cross a =spawn_blocking= boundary only after
+admission; they MUST NOT block an async worker.
+
+CPU and memory lifetimes are deliberately different.  Completion of stage
+=i= releases its CPU permit immediately, but retains the memory permit for its
+live result until the last consumer settles or drops it.  This prevents both a
+one-lane deadlock and false memory availability.  New requests acquire memory
+before CPU, so a memory waiter cannot hoard execution capacity required by an
+admitted stage to finish and release retained memory:
+
+#+begin_src mermaid :exports code
+flowchart LR
+  Request[resident Search request] --> Supervisor[Runtime resource supervisor]
+  Supervisor -->|CPU + memory| Retrieval[retrieval spawn_blocking]
+  Retrieval -->|release CPU; retain result memory| Evidence[resident evidence]
+  Supervisor -->|reused CPU + additional memory| Grounding[parser grounding spawn_blocking]
+  Grounding -->|release CPU; retain result memory| Evidence
+  Evidence --> Settlement[graph and topology settlement]
+  Settlement -->|drop retained memory permits| Supervisor
+  Request -. forbidden .-> LocalSemaphore[file-static CPU semaphore]
+#+end_src
+
+For CPU capacity =C=, stage demand =c_i=, retained result memory =m_i=, and
+daemon memory capacity =M=, stage =i+1= is admissible after stage =i= exactly
+when CPU has been released and the cumulative live memory still fits:
+
+#+name: runtime-search-stage-resource-admission
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code
+#let admitted(c, c-next, held-memory, next-memory, memory) = c-next <= c and held-memory + next-memory <= memory
+$ "releaseCPU"(i) => c_(i+1) <= C quad "and" quad sum_(j=0)^(i+1) m_j <= M $
+#+end_src
+
+=ASPProof.RuntimeSchedulerOwnership= proves that CPU release preserves retained
+memory and makes the next one-lane stage admissible when cumulative memory is
+within capacity.
+
+Empirical timing authority belongs to executable Scenarios, not prose.  The
+=runtime-search-tokio-resource-lifecycle= Scenario owns immutable inputs,
+warmup and sample counts, monotonic-clock distributions, memory, queue wait,
+and work metrics.  Its generated =benchmark.toml= records total and per-phase
+=p50/p95/p99/max=.  =Maximum= metrics aggregate the worst sample, =Minimum=
+metrics aggregate the least sample, and =Stable/Exact= metrics reject sample
+drift.  RFC text records the invariant and interpretation only; a copied
+timing table is never qualification evidence.
+
+With =n= samples, =k= named phases, and =q= metrics, Scenario collection is
+=O(n(k+q))= and percentile calculation is =O(kn log n)=.  This harness cost is
+reported outside the measured stage durations and cannot be presented as
+Runtime Search latency.
+
+* Observation model and exporter separation
+:PROPERTIES:
+:CLAUSE_ID: ASP-RFC-10.05.11.05-OBSERVATION-AUTHORITY
+:END:
+
+The Version 1 observation is a neutral value contract.  The package
+=agent-semantic-runtime-observability= owns its Rust data model and the single
+process-local, non-blocking sink registry.  It owns no Tokio runtime, socket,
+Turso database, OpenTelemetry SDK, sampler, or exporter.  Producers including
+=client-db= may construct the V1 value and attempt admission, but cannot acquire
+exporter lifecycle authority.
+
+The minimal =agent-semantic-runtime-process-observation= adapter owns only the
+audited OS resource probes and their narrow libc boundary.  It does not own a
+Tokio runtime, sampler task, sink, exporter, or database.  Runtime Server owns
+the sampler task and cancellation; its crate keeps =deny(unsafe_code)=.  The DB
+Engine retains construction and pooling authority and exposes only a
+purpose-limited Runtime-observability database acquisition function to the
+Runtime Server exporter.
+
+The Runtime Server installs exactly one sink implementation after its telemetry
+lane is ready.  Shutdown unregisters that exact registration before draining
+the lane.  A stale registration token cannot revoke a newer sink.  Missing or
+poisoned admission remains a bounded =false= result; it cannot block Search or
+Query and cannot change their semantic result.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  ClientDB[client-db producer] --> Core[V1 observation + sink registry]
+  Search[Runtime Search/Query] --> Core
+  Core -->|try_record| Server[Runtime Server telemetry sink]
+  Probe[process-observation OS adapter] -->|resource values| Server
+  Server --> OTel[OpenTelemetry adapter]
+  Server -->|purpose-limited acquisition| Engine[client-db DB Engine]
+  Engine --> Turso[Turso telemetry store]
+  Core -. no dependency .-> OTel
+  Core -. no dependency .-> Turso
+  Probe -. no lifecycle authority .-> Server
+#+end_src
+
+For active registration =a= and stale token =s=, unregister is identity when
+=a != s= and clears the sink only when =a = s=:
+
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'" :exports code
+$ "unregister"("some"(a), s) = "cases"("none", a = s; "some"(a), a != s) $
+#+end_src
+
+=ASPProof.RuntimeObservationAuthority= proves the model, OS boundary, sampler,
+database-pool, and exporter ownership exclusions plus stale-registration
+fencing.  Rust tests bind those statements to the concrete registry and also
+assert that serialized observations retain schema version =1=.

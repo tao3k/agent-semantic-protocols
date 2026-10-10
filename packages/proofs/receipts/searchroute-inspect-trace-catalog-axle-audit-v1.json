@@ -1,0 +1,29 @@
+{
+  "auditSha256": "1e597f453e4423fcaaee586c5262592c39474eb495f4c7d4b0b7801dc129950b",
+  "axiomDependentDeclarationCount": 12,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 12,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-STC-COMPLETE",
+    "ASP-RFC-10.05-STC-GLOBAL",
+    "ASP-RFC-10.05-STC-INCOMPLETE",
+    "ASP-RFC-10.05-STC-REALIZATION",
+    "ASP-RFC-10.05-STC-SELECTOR"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "catalog-global-optimality",
+    "catalog-provenance",
+    "counterexample",
+    "selector-feasibility",
+    "selector-local-optimality",
+    "selector-membership",
+    "selector-order"
+  ]
+}

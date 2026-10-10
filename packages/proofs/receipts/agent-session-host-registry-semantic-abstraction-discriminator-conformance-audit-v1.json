@@ -1,0 +1,183 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "leanVersion": "4.32.2",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.AgentSessionHostRegistrySemanticAbstractionDiscriminatorConformance",
+  "sourcePath": "packages/proofs/ASPProof/AgentSessionHostRegistrySemanticAbstractionDiscriminatorConformance.lean",
+  "declarationCount": 21,
+  "axiomFreeDeclarationCount": 21,
+  "axiomDependentDeclarationCount": 0,
+  "declarations": [
+    {
+      "name": "adequate_abstraction_reflects_observational_equivalence",
+      "kind": "theorem",
+      "theoremFamily": "abstraction-adequacy",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-ABSTRACTION"],
+      "type": "AbstractionAdequate abstract -> abstract left = abstract right -> ObservationallyEquivalent left right",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "observational_equivalence_binds_all_relevant_fields",
+      "kind": "theorem",
+      "theoremFamily": "abstraction-adequacy",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-ABSTRACTION"],
+      "type": "ObservationallyEquivalent left right -> equality of stdout, stderr, exit, and effect fields",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "constant_abstraction_is_not_adequate",
+      "kind": "theorem",
+      "theoremFamily": "abstraction-adequacy",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-ABSTRACTION"],
+      "type": "Not (AbstractionAdequate constantAbstraction)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "injective_encoding_reflects_semantic_equality",
+      "kind": "theorem",
+      "theoremFamily": "encoding-injectivity",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-ENCODING"],
+      "type": "EncodingInjective encode -> encode left = encode right -> left = right",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "constant_encoding_is_not_injective",
+      "kind": "theorem",
+      "theoremFamily": "encoding-injectivity",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-ENCODING"],
+      "type": "Not (EncodingInjective constantEncoding)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "every_reference_discriminator_is_total",
+      "kind": "theorem",
+      "theoremFamily": "discriminator-conformance",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "Exists decision, reference accepted conflicting = decision",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_discriminator_binds_artifact",
+      "kind": "theorem",
+      "theoremFamily": "discriminator-conformance",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "ExecutableDiscriminatorConforms ... -> invocation.artifactDigest = expectedArtifact",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_discriminator_binds_input",
+      "kind": "theorem",
+      "theoremFamily": "discriminator-conformance",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "ExecutableDiscriminatorConforms ... -> invocation.inputDigest = expectedInput",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_discriminator_requires_exit_zero",
+      "kind": "theorem",
+      "theoremFamily": "discriminator-conformance",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "ExecutableDiscriminatorConforms ... -> invocation.exitZero = true",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_discriminator_matches_reference_decision",
+      "kind": "theorem",
+      "theoremFamily": "discriminator-conformance",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "ExecutableDiscriminatorConforms ... -> invocation.decision = reference accepted conflicting",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_replay_binds_artifact_input_output",
+      "kind": "theorem",
+      "theoremFamily": "replay-binding",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "ExecutableDiscriminatorConforms ... -> replay artifact, input, and response bindings",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_replay_matches_decision",
+      "kind": "theorem",
+      "theoremFamily": "replay-binding",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "ExecutableDiscriminatorConforms ... -> replay.decision = invocation.decision",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_replay_uses_independent_executor",
+      "kind": "theorem",
+      "theoremFamily": "replay-binding",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "ExecutableDiscriminatorConforms ... -> replay.executorId != primaryExecutor",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "conforming_replay_is_marked_replayed",
+      "kind": "theorem",
+      "theoremFamily": "replay-binding",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "ExecutableDiscriminatorConforms ... -> replay.replayed = true",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "artifact_drift_rejects_discriminator",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "artifact drift -> Not (ExecutableDiscriminatorConforms ...)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "input_drift_rejects_discriminator",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "input drift -> Not (ExecutableDiscriminatorConforms ...)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "reference_mismatch_rejects_discriminator",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "reference mismatch -> Not (ExecutableDiscriminatorConforms ...)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "same_executor_rejects_discriminator_replay",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "same executor -> Not (ExecutableDiscriminatorConforms ...)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "response_drift_rejects_discriminator_replay",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-REPLAY"],
+      "type": "response drift -> Not (ExecutableDiscriminatorConforms ...)",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "exit_zero_only_evidence_is_constructible",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "Exists receipt, receipt.exitZero = true",
+      "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "always_prefer_accepted_disagrees_with_equivalent_reference",
+      "kind": "theorem",
+      "theoremFamily": "conformance-counterexamples",
+      "rfcClauseIds": ["ASP-RFC-10.05-ASAD-DISCRIMINATOR"],
+      "type": "preferAccepted != equivalent",
+      "axioms": [], "hasSorryAx": false
+    }
+  ],
+  "axiomInventory": [],
+  "hasSorryAx": false
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/exact-query-materialization.v1.schema.json",
+  "title": "Exact Query Materialization V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentityDigest",
+    "rootDigest",
+    "selectorIdentityDigest",
+    "ownerPath",
+    "sourceContentDigest",
+    "sourceSliceDigest",
+    "byteStart",
+    "byteEnd"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.exact-query-materialization.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "rootDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "selectorIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceContentDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceSliceDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "byteStart": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "byteEnd": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

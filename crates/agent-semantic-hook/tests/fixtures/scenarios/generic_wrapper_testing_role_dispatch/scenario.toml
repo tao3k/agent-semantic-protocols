@@ -1,0 +1,17 @@
+schemaId = "agent.semantic-protocols.hook-match-scenario"
+schemaVersion = "v1"
+scenarioId = "generic-wrapper-testing-role-dispatch"
+commands = [
+  "direnv exec . cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+  "organization-local-wrapper --profile ci cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+  "future-wrapper alpha beta gamma cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+]
+
+[expected]
+ruleId = "testing-role-dispatch"
+decision = "deny"
+targetAgent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[performance]
+maxMatcherMicros = 1000

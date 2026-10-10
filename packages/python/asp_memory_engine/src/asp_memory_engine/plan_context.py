@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Plan memory visibility context derived from Org plan properties."""
 
 from __future__ import annotations
@@ -6,7 +10,7 @@ from dataclasses import dataclass
 
 from .feedback import RecallPlanTuning, apply_feedback_to_plan_tuning, normalize_feedback_bias
 
-GLOBAL_PROJECT_SCOPE = "_global_project"
+GLOBAL_PROJECT_RESOLUTION = "_global_project"
 DEFAULT_BRANCH_SCOPE = "_main"
 PLAN_SHARING_MODES = frozenset(
     {"isolated", "plan", "session", "branch", "project", "global"}
@@ -75,7 +79,7 @@ class PlanRecallComputation:
 
 @dataclass(frozen=True)
 class PlanMemoryContext:
-    project_id: str = GLOBAL_PROJECT_SCOPE
+    project_id: str = GLOBAL_PROJECT_RESOLUTION
     session_id: str | None = None
     plan_id: str | None = None
     branch_id: str | None = None
@@ -85,7 +89,7 @@ class PlanMemoryContext:
         return cls(
             project_id=normalize_plan_token(
                 properties.get("PLAN_PROJECT") or properties.get("PROJECT_ID"),
-                GLOBAL_PROJECT_SCOPE,
+                GLOBAL_PROJECT_RESOLUTION,
             ),
             session_id=normalize_optional_plan_token(
                 properties.get("SESSION_ID")
@@ -103,8 +107,8 @@ class PlanMemoryContext:
         if sharing == "global":
             return True
         if normalize_plan_token(
-            getattr(episode, "project_id", None), GLOBAL_PROJECT_SCOPE
-        ) != normalize_plan_token(self.project_id, GLOBAL_PROJECT_SCOPE):
+            getattr(episode, "project_id", None), GLOBAL_PROJECT_RESOLUTION
+        ) != normalize_plan_token(self.project_id, GLOBAL_PROJECT_RESOLUTION):
             return False
         if sharing == "project":
             return True

@@ -1,0 +1,132 @@
+#+TITLE: RFC 10.06.19 - Project Topology Manifest Authority
+#+LANGUAGE: en
+#+DATE: 2026-09-07
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:topology:manifest:org:gitops:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Project Topology Manifest Authority
+:PROPERTIES:
+:ID: 74437087-fb37-4ce8-b221-ea74cbd1ad97
+:CUSTOM_ID: asp-project-topology-manifest-authority
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: one parser-owned GitOps authority for Project Workspace identity
+:SDD_SCOPE: project topology manifest parsing identity admission and handoff
+:SDD_OWNER: ASP shared topology contract
+:TRACEABILITY_STATUS: formal-model-mapped
+:EVIDENCE_STATUS: RFC and Lean candidate
+:REVIEW_STATUS: architecture-candidate
+:END:
+
+** Decision
+
+=.agents/asp/topology/manifest.org= is the only repository-owned declaration
+of the Project Workspace binding consumed by Project Topology. The manifest is
+an Org document governed by =project.workspace-manifest.v1=. A native Org parser
+MUST decode exactly one level-one Project Workspace headline and its property
+drawer. Regex, line scanning, shell evaluation, and implicit environment
+resolution are not admission paths.
+
+The parser projects these properties into the shared
+=project-workspace-binding.v1= product:
+
+- =PROJECT_WORKSPACE_IDENTITY= -> =projectWorkspaceIdentity=
+- =WORKSPACE_ROOT_PATH= -> =workspaceRootPath=
+- =PORTABILITY= -> =portability=
+- =REPOSITORY_ALIASES= -> =repositoryAliases=
+
+=REPOSITORY_ALIASES= is a compact JSON array of unique canonical repository
+locators in lexicographic order. An empty alias set is written as =[]=. This is
+data inside an Org property, not a second manifest grammar.
+
+The stable declaration contains no source, provider, parser, MRR, compiled ABI,
+or topology-root digest. Those mutable identities belong to Runtime-owned
+program, generation, closure, and attachment receipts that independently bind
+this exact Project Workspace value. Copying them into the Git-tracked manifest
+would create stale authority and a self-referential source identity.
+
+** Authority And Failure Semantics
+
+The manifest loader MUST fail closed when the canonical manifest is absent,
+when zero or multiple level-one topology-program declarations exist, when the
+Org contract reference is absent or different, when a required property is
+absent, or when the projected Project Workspace binding is invalid.
+
+The loader MUST NOT derive or repair the binding from:
+
+- the checkout directory or absolute workspace path;
+- Git remote names or the currently selected remote;
+- branch, worktree-private, session, or task identifiers;
+- a Runtime-generated =workspaceId= or =workspaceIdentity=;
+- an active generation, cache entry, or previously admitted binding.
+
+A Host may resolve a local checkout *from* the admitted binding. It may not
+construct the durable binding *from* the local checkout. This direction keeps
+cross-machine identity stable while allowing checkout placement to vary.
+
+** Parser Boundary
+
+The native Org parser returns one typed Project Workspace binding or one typed
+failure. It does not calculate a source snapshot, compile an MRR program,
+activate a Runtime generation, or publish Project Topology. Those later stages
+must bind this exact value into their own product identities.
+
+Program and topology admission MUST accept the parser-owned binding as an
+independent expected value and compare the embedded binding against it. Merely
+validating that the embedded locator has legal syntax is insufficient: a
+different, syntactically valid repository locator is still a manifest bypass.
+
+The property drawer is the machine-readable authority. Prose, tables, source
+blocks, headings below the program headline, and model-authored annotations
+cannot override its values. Git history is the review archive; no =current=
+pointer or host-local shadow manifest is part of the contract.
+
+** Query And Search Consequence
+
+Search may import only a topology generation whose Project Workspace binding
+equals the binding parsed from the manifest for the admitted source snapshot.
+Query remains selector-native and Runtime-bound. It does not accept a Search
+settlement handle and it does not rediscover Project Workspace identity from a
+selector, current directory, or Runtime workspace id.
+
+Neither Search nor Query output contains planner directives. The manifest
+authority supplies identity and containment evidence only; the Agent chooses
+subsequent Search or Query operations from the returned evidence graph and
+query grammar.
+
+** Proof Obligations
+
+1. Exactly one parser-owned, contract-admitted declaration produces a binding.
+2. Duplicate declarations are rejected rather than merged by document order.
+3. Host-derived and Runtime-generated candidates cannot substitute for the Org
+   manifest declaration.
+4. An invalid locator/portability combination is rejected before topology or
+   Runtime admission.
+5. Moving a checkout without changing the manifest preserves Project Workspace
+   identity; changing =workspaceRootPath= changes the binding boundary.
+6. Parsing is deterministic and independent of process environment, checkout
+   placement, cache state, and activation generation.
+
+** Non-Goals
+
+- defining Project Topology facts, MRR rules, or GQL projection syntax;
+- storing source content or Runtime state in the Git-tracked topology tree;
+- choosing an Agent action or emitting a recommended next step;
+- supporting a legacy filename, second authority, or automatic identity repair.
+
+** Traceability
+
+- [[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]] owns the complete Project Topology architecture.
+- [[file:../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]] owns the stable Org manifest assertions.
+- [[file:../../../org/contracts/asp/topology/program.v1.org][asp.topology.program.v1]] governs the distributable native topology rule source parsed by =orgize=.
+- [[file:../../../org/contracts/project.topology-program.v1.org][project.topology-program.v1]] owns the separately admitted MRR program projection.
+- [[file:../../../schemas/project-workspace-binding.v1.schema.json][project-workspace-binding.v1]] owns the projected shared product.
+- =ASPProof.ProjectTopologyIdentityRefinement= owns the executable authority counterexamples.
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later

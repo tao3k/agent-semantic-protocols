@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Resilient Authority Median
+#+subtitle: Three-authority safety and liveness with one Byzantine report
+#+options: toc:3 num:t
+
+* Status
+
+This proof-backed RFC follows RFC 10.05.94 under the canonical Interactive
+Graph-First Progressive SearchLoop architecture.
+
+It defines one concrete resilience profile:
+
+#+begin_example
+three distinct authority slots
+  + at most one Byzantine authority
+  + median aggregation
+#+end_example
+
+Rust and Python implementation remain out of scope.
+
+* Problem
+
+RFC 10.05.94 proves maximum aggregation safe when an unknown included report is
+conservative. A Byzantine authority can nevertheless report an arbitrarily high
+bound and prevent the downstream quorum threshold from passing.
+
+Minimum aggregation has the opposite failure: one Byzantine low report can
+move the aggregate below actual faulty weight.
+
+A three-authority profile with at least two honest authorities can use the
+median to discard one extreme low or high report.
+
+* Honest interval
+
+For this RFC, an honest authority report lies in a policy-defined interval:
+
+#+begin_example
+actualFaultWeight <= report <= liveUpperBound
+#+end_example
+
+The lower bound preserves safety. The upper bound preserves the possibility of
+passing a quorum-intersection threshold that is feasible under the active
+policy.
+
+* Normative clauses
+
+** RAM-DISTINCT: distinct authority slots
+
+The three aggregation slots MUST be owned by three distinct authority
+identities.
+
+Multiple reports or equivocations from one authority MUST NOT occupy multiple
+coverage slots.
+
+** RAM-COVERAGE: one-Byzantine resilience
+
+The active authority policy MUST establish that at least two of the three
+distinct slots contain honest-interval reports.
+
+Report authenticity alone does not establish this resilience assumption.
+
+** RAM-ORDER: median ordering evidence
+
+The aggregate receipt MUST contain an ordering witness identifying one of the
+six possible non-strict orderings of the three bounds.
+
+Ties are allowed. At least one ordering witness exists for every triple.
+
+** RAM-MEDIAN: resilient aggregate
+
+The aggregate MUST be the middle value selected by the ordering witness.
+
+If at least two reports lie in the honest interval, the median MUST satisfy:
+
+#+begin_example
+actualFaultWeight <= median <= liveUpperBound
+#+end_example
+
+The same value therefore preserves both safety and the policy's live upper
+bound.
+
+** RAM-SAFETY: lower-bound safety
+
+The router MUST NOT use an aggregate below actual faulty weight in the
+honest-overlap theorem.
+
+One Byzantine low report makes minimum-of-three unsafe.
+
+** RAM-LIVENESS: upper-bound liveness
+
+The aggregate SHOULD remain at or below the live upper bound when the resilience
+assumption holds.
+
+One Byzantine high report makes maximum-of-three violate this property.
+
+** RAM-EQUIVOCATION: canonical report per authority
+
+Before median aggregation, the evidence graph MUST resolve each authority slot
+to one canonical report or an explicit equivocation verdict.
+
+An unresolved equivocating authority keeps the aggregation frontier open.
+
+** RAM-COUNTEREXAMPLE: retain extreme-aggregation failures
+
+The Lean audit MUST retain:
+
+- the maximum liveness counterexample; and
+- the minimum safety counterexample.
+
+* Executable mathematical model
+
+#+name: searchroute-resilient-authority-median-model
+#+begin_src typst
+#let median3(first, second, third) = if first <= second {
+  if second <= third {
+    second
+  } else if first <= third {
+    third
+  } else {
+    first
+  }
+} else {
+  if first <= third {
+    first
+  } else if second <= third {
+    third
+  } else {
+    second
+  }
+}
+#assert(median3(1, 1, 2) == 1)
+#assert(median3(1, 1, 0) == 1)
+#assert(calc.max(1, 1, 2) > 1)
+#assert(calc.min(1, 1, 0) < 1)
+"ok"
+#+end_src
+
+The resilient interval theorem is:
+
+#+name: searchroute-resilient-authority-median-proposition
+#+begin_src typst
+#let median-interval = $
+  upright("AtLeastTwoHonest")(B_1, B_2, B_3)
+  and F_"actual" <= B_"honest"
+  and B_"honest" <= B_"live"
+  arrow.r.double
+  F_"actual" <= upright("median")(B_1, B_2, B_3)
+  <= B_"live"
+$
+#assert(type(median-interval) == content)
+"ok"
+#+end_src
+
+Both blocks are extracted by =orgize eval plan= and evaluated through stdin
+with =typst eval=. No generated Typst source or PDF is required.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.lean
+#+end_example
+
+The module defines:
+
+- =HonestBound=;
+- =AtLeastTwoHonestBounds=;
+- =PairwiseDistinct=;
+- =MedianOfThree= with six ordering constructors;
+- =safeMinimum=;
+- =maximumOfThree=; and
+- =minimumOfThree=.
+
+The focused proofs establish:
+
+1. every three-bound input has a median ordering witness;
+2. two honest-interval reports force the median into the honest interval;
+3. maximum aggregation can violate the live upper bound;
+4. minimum aggregation can violate the actual-fault lower bound; and
+5. one authority cannot fill two distinct slots by equivocation.
+
+The interval theorem is expanded into all three honest-pair choices and all six
+median orderings using explicit transitivity proofs.
+
+* Modular audit
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedian.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinResilientAuthorityMedianAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-resilient-authority-median-audit-v1.json
+#+end_example
+
+* Progressive SearchLoop consequence
+
+The aggregation frontier is complete only after the loop has:
+
+#+begin_example
+three distinct authority slots
+  -> one canonical report or equivocation verdict per slot
+  -> at-least-two-honest resilience evidence
+  -> median ordering witness
+  -> median interval receipt
+#+end_example
+
+The agent receives the median and compact receipts, not all internal comparison
+steps or full authority subgraphs.
+
+If one slot is unresolved, the router should expose that slot as the next graph
+action rather than expanding unrelated search branches.
+
+* Scope boundary
+
+This RFC proves one fixed unweighted profile. It does not yet cover:
+
+- more than three authorities;
+- a general Byzantine bound;
+- weighted authority votes;
+- authority-set rotation; or
+- report identity across epochs.
+
+* Proof-discovered next boundary
+
+The next model must generalize the fixed median profile to a policy with
+=n >= 2f + 1= authority slots and an order statistic that removes up to =f=
+low and =f= high Byzantine reports.
+
+It must bind the authority-set and aggregation-policy identity into the receipt
+and prove that rotation cannot mix reports from old and new authority epochs.

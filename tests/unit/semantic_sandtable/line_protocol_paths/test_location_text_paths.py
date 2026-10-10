@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate line-protocol path handling for locations and text snippets."""
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-owner]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|owner src/a.ts locations=42:17,77:9 "
                                         "next=owner:src/b.ts')\n"
                                         "print('|edge O:src/a.ts -import-> O:src/b.ts')"
@@ -63,7 +67,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-lexical]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|hit src/a.ts:42:17 owner=src/a.ts kind=text')"
                                     ),
                                 ],
@@ -97,7 +101,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-ingest]')\n"
+                                        "print('[search-playbook]')\n"
                                         "print('|hit path=src/a.ts line=3 "
                                         "kind=text text=\"/3:7/u\"')\n"
                                         "print('|hit path=src/b.ts line=4 "

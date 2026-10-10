@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate"
+target_total = "100ms"
+max_total = "500ms"
+observed_total = "100ms"
+regression_budget = "500ms"
+memory_budget_bytes = 2147483648
+observed_memory_bytes = 1048576
+route_source = "provider-process-group"
+max_provider_process_count = 1
+max_stdout_bytes = 1024
+fallback_reason = "none"
+target_rationale = "The provider leader exits immediately while a bounded sleep descendant simulates the leaked Scheme binary. ASP must kill the process group without waiting for the child or the 2 GiB ceiling."
+
+[observed_timings]
+provider_process = "100ms"
+descendant_cleanup = "10ms"

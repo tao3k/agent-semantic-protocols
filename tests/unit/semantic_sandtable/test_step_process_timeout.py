@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate timeout evidence retention for sandtable step processes."""
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ def test_timeout_keeps_partial_stdout_observations() -> None:
         "content": [
             {
                 "name": "Bash",
-                "input": {"command": "asp rust search prime --workspace . --view seeds"},
+                "input": {"command": "asp search playbook --language rust --rg --files . --tantivy term source"},
             }
         ],
     }
@@ -40,4 +44,4 @@ def test_timeout_keeps_partial_stdout_observations() -> None:
     assert isinstance(result, StepResult)
     assert result.status == "fail"
     assert result.stdout_lines == 1
-    assert result.observations["pipeFlow"]["aspCommands"] == 1
+    assert result.observations["commandFlow"]["aspCommands"] == 1

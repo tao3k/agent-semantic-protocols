@@ -1,5 +1,8 @@
-#[path = "../../src/identity.rs"]
-mod identity;
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use agent_semantic_artifacts as identity;
 
 use identity::{
     ARTIFACT_IDENTITY_SCHEMA_ID, ARTIFACT_IDENTITY_SCHEMA_VERSION, ArtifactChildRef,
@@ -18,8 +21,12 @@ fn normalized_json_hash_ignores_object_key_order() {
     let right = json!({"items": [2, 1], "schemaId": "x", "schemaVersion": "1"});
 
     assert_eq!(
-        hash_normalized_json(&ArtifactJson::new(left)),
-        hash_normalized_json(&ArtifactJson::new(right))
+        hash_normalized_json(
+            &ArtifactJson::from_serializable(&left).expect("left JSON must serialize"),
+        ),
+        hash_normalized_json(
+            &ArtifactJson::from_serializable(&right).expect("right JSON must serialize"),
+        )
     );
 }
 
@@ -89,13 +96,13 @@ fn provider_manifest_drift_changes_node_and_root_hashes() {
         kind: ArtifactKind::new("providerOutput"),
         schema_id: "semantic-provider-output".to_string(),
         schema_version: "1".to_string(),
-        producer_hash: Some(ArtifactHash::blake3(b"rust-harness-manifest-a")),
+        producer_hash: Some(ArtifactHash::blake3(b"asp-rust-manifest-a")),
         payload_hash: Some(ArtifactHash::blake3(b"owner-items-payload")),
         metadata_hash: Some(ArtifactHash::blake3(b"provider-metadata")),
         children: Vec::new(),
     };
     let changed_provider = ArtifactNodeInput {
-        producer_hash: Some(ArtifactHash::blake3(b"rust-harness-manifest-b")),
+        producer_hash: Some(ArtifactHash::blake3(b"asp-rust-manifest-b")),
         ..base.clone()
     };
     let base_node_hash = hash_node(&base);

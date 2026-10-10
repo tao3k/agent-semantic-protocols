@@ -1,0 +1,24 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+pub use agent_semantic_context_product::agent_session_lifecycle::AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_ID;
+pub use agent_semantic_context_product::agent_session_lifecycle::AGENT_SESSION_LIFECYCLE_PROJECTION_SCHEMA_VERSION;
+pub use agent_semantic_context_product::agent_session_lifecycle::AgentSessionLifecycleFacts;
+pub use agent_semantic_context_product::agent_session_lifecycle::AgentSessionLifecycleProjection;
+pub use agent_semantic_context_product::agent_session_lifecycle::BindingPhase;
+pub use agent_semantic_context_product::agent_session_lifecycle::DispatchLifecycleProjection;
+pub use agent_semantic_context_product::agent_session_lifecycle::DispatchObservation;
+pub use agent_semantic_context_product::agent_session_lifecycle::DispatchPhase;
+pub use agent_semantic_context_product::agent_session_lifecycle::HostBindingFacts;
+pub use agent_semantic_context_product::agent_session_lifecycle::HostBindingObservation;
+pub use agent_semantic_context_product::agent_session_lifecycle::HostBindingProjection;
+pub use agent_semantic_context_product::agent_session_lifecycle::RequiredDispatchAction;
+pub use agent_semantic_context_product::agent_session_lifecycle::ServerHealth;
+pub use agent_semantic_context_product::agent_session_lifecycle::SessionLifecycleProjection;
+pub use agent_semantic_context_product::agent_session_lifecycle::SessionPhase;
+pub use agent_semantic_context_product::agent_session_lifecycle::WorkspaceServerProjection;
+pub use agent_semantic_context_product::agent_session_lifecycle::project_agent_session_lifecycle;
+pub use agent_semantic_context_product::agent_session_lifecycle::project_dispatch;
+pub use agent_semantic_context_product::agent_session_lifecycle::project_host_binding;
+pub use agent_semantic_context_product::agent_session_lifecycle::session_phase_from_registry_status;

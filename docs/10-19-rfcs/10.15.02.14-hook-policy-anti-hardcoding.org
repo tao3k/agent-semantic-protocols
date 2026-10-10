@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Hook Policy Anti-Hardcoding Boundary
+#+property: schemaId agent.semantic-protocols.rfc.hook-policy-anti-hardcoding
+#+property: schemaVersion 1
+
+* Status
+
+Normative refinement boundary for every Hook policy rule.  Wrapped-command
+matching is one instance; it does not own this boundary.
+
+* Architecture
+
+The only admitted decision path is:
+
+#+begin_example
+Host event
+  -> structured tool/action parser
+  -> provider-schema extension projection
+  -> normalized ActionFacts
+  -> serialized and compiled policy rules
+  -> local Hook Policy Kernel decision
+#+end_example
+
+The kernel MUST NOT branch on raw executable names, shell names, provider IDs,
+language names, tool envelope spellings, or absolute paths.  Such values may be
+parsed into normalized facts or selected by configuration, but they cannot form
+a second admission gate in Rust.
+
+Combination coverage is owned by =agent-semantic-config=. It derives an
+abstract covering plan from enabled rules, composed action policies, configured
+effect prefixes, provider-owned extensions, wrapper-depth bounds, and the
+cardinality of production Host projections. The plan contains no concrete Host
+JSON input. =agent-semantic-hook= only materializes those cases through its
+production ToolAction envelopes; the black-box process compares the resulting
+decision with the complete compiled-policy reference evaluator. Static TOML
+=cases= and copied rule ids are non-conforming.
+
+All rule dimensions are compositional.  In particular, =ReadAction +
+languageExtension= and =wrapped-mode + commandProfile.testing= are conjunctions
+over normalized facts.  Adding a new provider extension, Host wrapper, or tool
+envelope requires parser/schema/config evidence, not a new kernel branch.
+
+* Formal obligations
+
+=ASPProof.HookPolicyAntiHardcoding= owns these obligations:
+
+- every component of an =allOf= rule must hold;
+- equal normalized facts imply equal decisions for every policy snapshot;
+- arbitrary raw relabeling is decision-invariant when normalization agrees;
+- any raw-name admission gate has a counterexample that rejects a novel label
+  even though the configured policy facts are identical;
+- wrapped testing is retained only as one witness of the general theorem.
+- config auto covers every provider extension and Host-envelope slot with
+  positive and negative witnesses before Hook materialization;
+- black-box Host execution refines the config-owned case after normalization.
+
+The Lean model is intentionally parametric in action kind, language extension,
+command profile, and tool surface.  Replacing these types with finite enums of
+current production strings does not discharge the anti-hardcoding obligation.
+
+* Executable refinement gates
+
+Rust refinement MUST include config-generated black/white combinations covering:
+
+- every registered action effect combined with provider-owned extensions;
+- every configured command profile under direct and wrapped envelopes;
+- an unseen wrapper label with the same parsed nested argv;
+- an unseen provider extension supplied through the provider schema projection;
+- rule reordering and unrelated-rule addition;
+- malformed syntax and incomplete provider projection fail-closed behavior.
+
+The same scenario artifact MUST drive the in-process matcher test and the
+normal Host Hook process test.  A focused helper test alone is insufficient.

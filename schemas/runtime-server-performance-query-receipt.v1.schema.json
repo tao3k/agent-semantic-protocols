@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.dev/schemas/runtime-server-performance-query-receipt.v1.schema.json",
+  "title": "Runtime Server Performance Query Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "surface",
+    "stage",
+    "observationCount",
+    "budgetFailureCount",
+    "p50Micros",
+    "p95Micros",
+    "p99Micros",
+    "latestAttributesJson"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-performance-query-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "surface": { "type": "string", "minLength": 1 },
+    "stage": { "type": "string", "minLength": 1 },
+    "observationCount": { "type": "integer", "minimum": 0 },
+    "budgetFailureCount": { "type": "integer", "minimum": 0 },
+    "p50Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "p95Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "p99Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "latestAttributesJson": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,155 @@
+{"sourcePath": "ASPProof/SearchRouteShortcutEnvelopeAdmission.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteShortcutEnvelopeAdmission",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.admissionGate policy raw = true →\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionGateFacts policy raw",
+   "theoremFamily": "admission-gate-soundness",
+   "rfcClauseIds": ["SEA-GATE"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.admission_gate_true_implies_facts",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionGateFacts policy raw →\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.admissionGate policy raw = true",
+   "theoremFamily": "admission-gate-completeness",
+   "rfcClauseIds": ["SEA-GATE"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.admission_facts_imply_gate_true",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "{policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy} →\n  {start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate} →\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut policy start endpoint →\n      ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint",
+   "theoremFamily": "verified-to-replay-cache-derivation",
+   "rfcClauseIds": ["SEA-COHERENCE"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut.toCachedShortcut",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy) →\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope) →\n    (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) →\n      ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint →\n        ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut policy start endpoint",
+   "theoremFamily": "raw-envelope-witnessed-verification",
+   "rfcClauseIds": ["SEA-ADMISSION"],
+   "name": "ASPProof.SearchRouteShortcutEnvelopeAdmission.verifyRawShortcut",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.admitRawShortcut policy raw start endpoint none =\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionOutcome.explicitChainFallback",
+   "theoremFamily": "raw-envelope-without-witness-fallback",
+   "rfcClauseIds": ["SEA-FALLBACK"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.raw_without_witness_falls_back",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (witness : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.admitRawShortcut policy raw start endpoint (some witness) =\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionOutcome.verified\n      (ASPProof.SearchRouteShortcutEnvelopeAdmission.verifyRawShortcut policy raw start endpoint witness)",
+   "theoremFamily": "witnessed-envelope-verification",
+   "rfcClauseIds": ["SEA-ADMISSION"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.witnessed_raw_becomes_verified",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (verified : ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut policy start endpoint),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.replayVerifiedAgainst policy.expectedCommitment verified = true",
+   "theoremFamily": "admitted-shortcut-policy-acceptance",
+   "rfcClauseIds": ["SEA-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.admitted_shortcut_is_accepted_under_policy",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (verified : ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut policy start endpoint),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.replayVerifiedAgainst expected verified = true →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates endpoint start = true",
+   "theoremFamily": "verified-replay-removal-soundness",
+   "rfcClauseIds": ["SEA-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.accepted_verified_replay_preserves_removal_soundness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (verified : ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut policy start endpoint),\n  expected ≠ verified.toCachedShortcut.commitment →\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.replayVerifiedAgainst expected verified = false",
+   "theoremFamily": "verified-shortcut-context-change-rejection",
+   "rfcClauseIds": ["SEA-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.changed_context_rejects_verified_shortcut",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  policy.expectedSchemaVersion ≠ raw.schemaVersion →\n    ∀ (a : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint), False",
+   "theoremFamily": "schema-mismatch-blocks-admission",
+   "rfcClauseIds": ["SEA-SCHEMA"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.schema_mismatch_blocks_admission_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  policy.expectedHashAlgorithmId ≠ raw.hashAlgorithmId →\n    ∀ (a : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint), False",
+   "theoremFamily": "hash-algorithm-mismatch-blocks-admission",
+   "rfcClauseIds": ["SEA-HASH"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.hash_algorithm_mismatch_blocks_admission_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  policy.recomputedCanonicalPayloadDigest ≠ raw.canonicalPayloadDigest →\n    ∀ (a : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint), False",
+   "theoremFamily": "canonical-digest-mismatch-blocks-admission",
+   "rfcClauseIds": ["SEA-CANONICAL"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.canonical_digest_mismatch_blocks_admission_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  policy.expectedCommitment ≠ raw.commitment →\n    ∀ (a : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint), False",
+   "theoremFamily": "commitment-mismatch-blocks-admission",
+   "rfcClauseIds": ["SEA-COMMITMENT"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.commitment_mismatch_blocks_admission_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteShortcutEnvelopeAdmission.ShortcutAdmissionPolicy)\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  raw.claimedDirectDominance = false →\n    ∀ (a : ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness policy raw start endpoint), False",
+   "theoremFamily": "false-dominance-claim-blocks-admission",
+   "rfcClauseIds": ["SEA-PROOF"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.false_dominance_claim_blocks_admission_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.verifiedReplayProjectionTokens = 6",
+   "theoremFamily": "verified-replay-projection-constant-shape",
+   "rfcClauseIds": ["SEA-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.verified_replay_projection_is_constant_shape",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (chainLength : Nat),\n  ASPProof.SearchRouteShortcutEnvelopeAdmission.verifiedReplayProjectionTokens <\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.explicitChainFallbackTokens chainLength.succ",
+   "theoremFamily": "verified-replay-beats-nonempty-fallback",
+   "rfcClauseIds": ["SEA-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.verified_replay_beats_nonempty_fallback_projection",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 16,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 16,
+ "axiomDependentDeclarationCount": 0}

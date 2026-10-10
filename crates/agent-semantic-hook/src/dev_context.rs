@@ -1,12 +1,20 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Development-mode active hook context markers.
 
 use crate::protocol::HookDecision;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 const PROJECT_ANCHORS: &[&str] = &[
     "Cargo.toml",
@@ -16,8 +24,6 @@ const PROJECT_ANCHORS: &[&str] = &[
     "Project.toml",
     ".git",
 ];
-const ASP_DEV_CONFIG_PATH: &str = ".agents/asp.toml";
-
 /// Named input for writing a development active-context marker.
 pub struct ActiveContextRecord<'a> {
     /// Project activation path used to infer the workspace root.
@@ -34,7 +40,7 @@ pub struct ActiveContextRecord<'a> {
 
 /// Records the active hook context when development diagnostics are enabled.
 pub fn record_active_context(record: ActiveContextRecord<'_>) {
-    if !dev_mode_enabled(record.activation_path) {
+    if !dev_diagnostics_enabled() {
         return;
     }
     let Some(marker) = build_active_context_marker(record) else {
@@ -131,21 +137,8 @@ fn env_truthy(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn dev_mode_enabled(activation_path: &Path) -> bool {
-    if env_truthy("SEMANTIC_PROTOCOL_DEV_MODE") {
-        return true;
-    }
-    infer_project_root(activation_path)
-        .as_deref()
-        .is_some_and(asp_config_develop_mode)
-}
-
-fn asp_config_develop_mode(project_root: &Path) -> bool {
-    fs::read_to_string(project_root.join(ASP_DEV_CONFIG_PATH))
-        .ok()
-        .and_then(|content| toml::from_str::<toml::Value>(&content).ok())
-        .and_then(|config| config.get("develop_mode").and_then(toml::Value::as_bool))
-        .unwrap_or(false)
+fn dev_diagnostics_enabled() -> bool {
+    env_truthy("SEMANTIC_PROTOCOL_DEV_MODE")
 }
 
 fn env_first(names: &[&str]) -> Option<String> {

@@ -1,0 +1,173 @@
+{"sourcePath": "ASPProof/SearchRouteEndToEndReplayStateMachine.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteEndToEndReplayStateMachine",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope →\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload",
+   "theoremFamily": "raw-envelope-canonical-payload-projection",
+   "rfcClauseIds": ["ERS-CANONICAL"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalPayloadOfRaw",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalPayloadOfRaw replay.negotiated.verified.raw =\n    context.expectedPayload",
+   "theoremFamily": "accepted-replay-payload-identity",
+   "rfcClauseIds": ["ERS-NEGOTIATION", "ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay.payloadEqual",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  {start finish : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState context},\n  ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayTransition context start finish →\n    ASPProof.SearchRouteEndToEndReplayStateMachine.pipelineStageRank finish =\n      ASPProof.SearchRouteEndToEndReplayStateMachine.pipelineStageRank start + 1",
+   "theoremFamily": "transition-increments-stage-rank",
+   "rfcClauseIds": ["ERS-PATH"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.transition_increments_stage_rank",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (startRank length : Nat), startRank + 1 + length = startRank + (length + 1)",
+   "theoremFamily": "constructive-path-rank-arithmetic",
+   "rfcClauseIds": ["ERS-PATH"],
+   "name": "ASPProof.SearchRouteEndToEndReplayStateMachine.add_one_then_length",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext} {length : Nat}\n  {start finish : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState context},\n  ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPath context length start finish →\n    ASPProof.SearchRouteEndToEndReplayStateMachine.pipelineStageRank finish =\n      ASPProof.SearchRouteEndToEndReplayStateMachine.pipelineStageRank start + length",
+   "theoremFamily": "path-stage-rank-accounting",
+   "rfcClauseIds": ["ERS-PATH"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.path_stage_rank_accounting",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext} {length : Nat}\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPath context length\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.raw raw)\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.accepted replay) →\n    length = 3",
+   "theoremFamily": "raw-to-accepted-exact-transition-count",
+   "rfcClauseIds": ["ERS-NO-BYPASS", "ERS-PATH"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.raw_to_accepted_path_has_exact_length",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext} {length : Nat}\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.NegotiatedReplay context)\n  (fallbackSelected :\n    ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode replay.outcome =\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.explicitFieldFallback),\n  ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPath context length\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.raw raw)\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.explicitFieldFallback replay\n        fallbackSelected) →\n    length = 3",
+   "theoremFamily": "raw-to-fallback-exact-transition-count",
+   "rfcClauseIds": ["ERS-FALLBACK", "ERS-PATH"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.raw_to_fallback_path_has_exact_length",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPath context 3\n    (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.raw replay.negotiated.verified.raw)\n    (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.accepted replay)",
+   "theoremFamily": "canonical-three-transition-accepted-path",
+   "rfcClauseIds": ["ERS-ADMISSION", "ERS-NEGOTIATION", "ERS-PATH"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalAcceptedPath",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (raw : ASPProof.SearchRouteShortcutEnvelopeAdmission.RawShortcutEnvelope)\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  ¬ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayTransition context\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.raw raw)\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.accepted replay)",
+   "theoremFamily": "no-direct-raw-to-accepted-transition",
+   "rfcClauseIds": ["ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.no_direct_raw_to_accepted_transition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (verified :\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.VerifiedCachedShortcut context.policy context.start context.endpoint)\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  ¬ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayTransition context\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.admitted verified)\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayPipelineState.accepted replay)",
+   "theoremFamily": "no-direct-admitted-to-accepted-transition",
+   "rfcClauseIds": ["ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.no_direct_admitted_to_accepted_transition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "{context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext} →\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context) →\n    ASPProof.SearchRouteShortcutEnvelopeAdmission.AdmissionWitness context.policy replay.negotiated.verified.raw\n      context.start context.endpoint",
+   "theoremFamily": "accepted-replay-admission-witness",
+   "rfcClauseIds": ["ERS-ADMISSION", "ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.acceptedReplayAdmissionWitness",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context),\n  replay.negotiated.outcome =\n    ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity context.digest context.admittedPayload\n      (ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalPayloadOfRaw replay.negotiated.verified.raw)\n      context.expectedPayload ⋯ ⋯ replay.negotiated.collisionEvidence replay.negotiated.digestEquality\n      replay.negotiated.canonicalEquality",
+   "theoremFamily": "accepted-replay-negotiated-identity",
+   "rfcClauseIds": ["ERS-NEGOTIATION", "ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.accepted_replay_contains_negotiated_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "{context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext} →\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context) →\n    ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplayGateClosure context replay",
+   "theoremFamily": "accepted-replay-combined-gate-closure",
+   "rfcClauseIds": ["ERS-ADMISSION", "ERS-NEGOTIATION", "ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.acceptedReplayGateClosure",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.NegotiatedReplay context),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode replay.outcome =\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.explicitFieldFallback →\n    ¬ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode replay.outcome ≠\n        ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.explicitFieldFallback",
+   "theoremFamily": "fallback-is-not-accepted",
+   "rfcClauseIds": ["ERS-FALLBACK"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.fallback_is_not_accepted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (shortcut baseline : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayCoreCost),\n  shortcut.graphTransitions < baseline.graphTransitions →\n    shortcut.providerToolTurns < baseline.providerToolTurns →\n      shortcut.receiptTokens < baseline.receiptTokens →\n        ASPProof.SearchRouteEndToEndReplayStateMachine.StrictlyImprovesCore shortcut baseline",
+   "theoremFamily": "componentwise-core-cost-improvement",
+   "rfcClauseIds": ["ERS-COST"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.componentwise_cost_reduction_is_strict_improvement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.StrictlyImprovesCore\n  ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalDigestShortcutCost\n  ASPProof.SearchRouteEndToEndReplayStateMachine.illustrativeExplicitReplayCost",
+   "theoremFamily": "illustrative-digest-shortcut-core-improvement",
+   "rfcClauseIds": ["ERS-COST"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.illustrative_digest_shortcut_strictly_improves_core",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {context : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayContext}\n  (replay : ASPProof.SearchRouteEndToEndReplayStateMachine.AcceptedReplay context)\n  (_cacheCredits : ASPProof.SearchRouteEndToEndReplayStateMachine.CacheCostCredits),\n  ASPProof.SearchRouteEndToEndReplayStateMachine.canonicalPayloadOfRaw replay.negotiated.verified.raw =\n    context.expectedPayload",
+   "theoremFamily": "accepted-identity-independent-of-cache-credits",
+   "rfcClauseIds": ["ERS-CACHE", "ERS-NO-BYPASS"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.accepted_identity_is_independent_of_cache_credits",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (core : ASPProof.SearchRouteEndToEndReplayStateMachine.ReplayCoreCost)\n  (leftCredits rightCredits : ASPProof.SearchRouteEndToEndReplayStateMachine.CacheCostCredits),\n  { core := core, cacheCredits := leftCredits }.core = { core := core, cacheCredits := rightCredits }.core",
+   "theoremFamily": "cache-credits-do-not-change-core-cost",
+   "rfcClauseIds": ["ERS-CACHE", "ERS-COST"],
+   "name":
+   "ASPProof.SearchRouteEndToEndReplayStateMachine.cache_credits_do_not_change_core_cost",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 18,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 18,
+ "axiomDependentDeclarationCount": 0}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Graph-turbo optimization matrix for large-library report chains."""
 
 from __future__ import annotations
@@ -83,7 +87,7 @@ def _optimization_run(
             "requiresQuerySet",
             "requiresGraphSignals",
             "requiresHookEvents",
-            "requiresComplexPipeFlow",
+            "requiresComplexCommandFlow",
             "requiresTokenCost",
         )
         if question.get(name) is True

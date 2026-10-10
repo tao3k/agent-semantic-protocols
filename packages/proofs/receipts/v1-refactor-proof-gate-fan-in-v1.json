@@ -1,0 +1,114 @@
+{
+  "schemaId": "asp.v1-refactor-proof-gate-fan-in",
+  "schemaVersion": 1,
+  "status": "CORRECTION_REQUIRED",
+  "servingChanged": false,
+  "versionPolicy": "v1-in-place-only; no-v2; no-adapter; no-dual-serving",
+  "inputs": {
+    "impactInventory": "packages/proofs/receipts/v1-refactor-impact-inventory-v1.json",
+    "rfc": "docs/10-19-rfcs/10.05-content-addressed-search-execution-context.org",
+    "alex": {
+      "role": "Alex",
+      "status": "blocked",
+      "reasonKind": "host-operation-not-permitted",
+      "failureLayer": "asp-cli-startup-or-ipc-boundary",
+      "meaning": "No parser-owned source facts, selectors, or owner claims may be inferred from the blocked inventory read."
+    },
+    "lean": {
+      "status": "CORRECTION_REQUIRED",
+      "freshBuild": false,
+      "requiredBeforePass": "fresh Lake and AXLE audit with #print axioms"
+    }
+  },
+  "authorityRules": [
+    "activationGeneration may remain only as configuration/capability/provider-closure observation during migration",
+    "activationGeneration is never product, API, CLI, request, publication, admission, cache, or query authority",
+    "ASP Server owns the exact content binding and the single publication commit",
+    "provider produces stateless parser/project facts and cannot commit identity",
+    "same content identity is required for artifact, workspace, source, index, schema, provider catalog, and query admission"
+  ],
+  "contentIdentity": {
+    "requiredComponents": [
+      "runtimeArtifactDigest",
+      "workspaceSnapshotDigest",
+      "sourceGenerationDigest",
+      "sourceIndexDigest",
+      "schemaDigest",
+      "providerCatalogDigest"
+    ],
+    "requiredLemmas": [
+      "artifact_workspace_source_digest_binding",
+      "source_index_admission_requires_exact_content",
+      "admitted_query_has_one_content_identity",
+      "opaque_generation_label_is_not_authority"
+    ]
+  },
+  "linearization": {
+    "record": "ContentPublicationCommit(identity, commitDigest, durable)",
+    "requiredTheorems": [
+      "single_linearized_content_commit",
+      "visible_artifact_implies_same_commit_snapshot",
+      "visible_source_index_implies_same_commit_artifact",
+      "crash_before_commit",
+      "crash_after_commit",
+      "no_mixed_commit_observation"
+    ]
+  },
+  "failClosed": {
+    "requiredCountermodels": [
+      "same_label_different_content_is_rejected",
+      "larger_numeric_generation_cannot_override_digest_mismatch",
+      "cross_content_pointer_is_rejected",
+      "stale_source_index_is_rejected",
+      "rollback_without_explicit_authority_is_rejected",
+      "rollback_label_reuse_is_rejected",
+      "rejection_is_deterministic",
+      "recovery_preserves_complete_content_binding"
+    ]
+  },
+  "proofFileDisposition": {
+    "rewriteAuthority": [
+      "RuntimeClientServingPublication",
+      "RuntimeServerGenerationDurability",
+      "RuntimeWorkspaceGeneration",
+      "WorkspaceSearchGenerationAtomicity",
+      "ActiveGenerationProjectionCapability",
+      "ExactSelectorGenerationAdmission",
+      "RuntimeGenerationIncrementalAdmission",
+      "MutationOwnerDeltaAtomicity"
+    ],
+    "retireOnlyAfterContentTheorems": [
+      "publishes_exactly_one_epoch",
+      "two_reads_from_one_pointer_cannot_cross_epochs",
+      "durable_generation_is_query_and_restart_authority",
+      "older_candidate_cannot_overwrite_newer_generation"
+    ],
+    "freshBuildRequired": true
+  },
+  "serialMigrationOrder": [
+    {"step": 1, "name": "ContentIdentity", "gate": "typed identity includes all six required digests"},
+    {"step": 2, "name": "ActivationNonIdentity", "gate": "activation observation cannot satisfy product/request/publication authority"},
+    {"step": 3, "name": "ExactArtifactWorkspaceSourceIndexBinding", "gate": "all bindings share one ContentIdentity and provider catalog digest"},
+    {"step": 4, "name": "ContentPublicationCommit", "gate": "one durable commit plus crash-before/after and no mixed observation"},
+    {"step": 5, "name": "ReadinessSelectorIncrementalAdmissionRecovery", "gate": "admission and recovery require exact content, not numeric labels"},
+    {"step": 6, "name": "CrossContentAndRollbackCountermodels", "gate": "all rejection cases deterministic and fail closed"},
+    {"step": 7, "name": "SchemaNegativesAndRustCrashMismatchTests", "gate": "tests cover stale/torn/rollback/cancel/mismatch without sleep-only assertions"},
+    {"step": 8, "name": "LeanAudit", "gate": "fresh Lake, AXLE, #print axioms, Rust/schema/RFC mapping"}
+  ],
+  "parallelism": {
+    "canParallelize": [
+      "schema negative fixtures after ContentIdentity is fixed",
+      "independent crash-cut countermodels after ContentPublicationCommit is fixed",
+      "Rust mismatch test harness and proof-file inventory after authority names are fixed"
+    ],
+    "mustSerialize": [
+      "ContentIdentity before any authority proof",
+      "ActivationNonIdentity before deleting or rewriting epoch authority",
+      "exact binding before publication commit",
+      "publication commit before selector/admission/recovery",
+      "all countermodels and Rust tests before retiring old declarations",
+      "fresh Lean audit before any public V1 cutover"
+    ]
+  },
+  "nextAction": "Do not delete or change public V1 semantics. First make the eight-step proof/test plan executable and obtain fresh parser-owned inventory plus fresh Lake/AXLE evidence."
+}

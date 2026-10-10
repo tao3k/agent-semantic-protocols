@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-register-state.schema.json",
+  "title": "ASP Runtime External Provider Register State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "providers"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-register.state"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "provider-register-request.schema.json#/$defs/liveProviderRegistration"
+      }
+    }
+  }
+}

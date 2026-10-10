@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/rendered-search-projection.v1.schema.json",
+  "title": "Rendered Search Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectionId",
+    "density",
+    "semanticDigest",
+    "contentType",
+    "content"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.rendered-search-projection.v1"
+    },
+    "schemaVersion": {
+      "const": "v1"
+    },
+    "projectionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "density": {
+      "enum": [
+        "terse",
+        "standard",
+        "expanded"
+      ]
+    },
+    "semanticDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "contentType": {
+      "const": "text/plain; charset=utf-8"
+    },
+    "content": {
+      "type": "string"
+    }
+  }
+}

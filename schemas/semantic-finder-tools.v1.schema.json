@@ -66,13 +66,23 @@
       }
     },
     "notes": {
+      "$ref": "#/$defs/noteList"
+    }
+  },
+  "$defs": {
+    "dataFormatList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/dataFormat"
+      }
+    },
+    "noteList": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/note"
       }
-    }
-  },
-  "$defs": {
+    },
     "scalar": {
       "oneOf": [
         { "type": "string" },
@@ -165,10 +175,7 @@
     },
     "surface": {
       "enum": [
-        "search-lexical",
-        "search-lexical",
-        "search-ingest",
-        "search-pattern",
+        "search-playbook",
         "provider-internal",
         "custom"
       ]
@@ -237,18 +244,10 @@
           "$ref": "#/$defs/toolBoundary"
         },
         "inputFormats": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/dataFormat"
-          }
+          "$ref": "#/$defs/dataFormatList"
         },
         "outputFormats": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/dataFormat"
-          }
+          "$ref": "#/$defs/dataFormatList"
         },
         "supports": {
           "$ref": "#/$defs/toolSupport"
@@ -445,10 +444,7 @@
           "$ref": "#/$defs/pipelineOutput"
         },
         "notes": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/note"
-          }
+          "$ref": "#/$defs/noteList"
         },
         "fields": {
           "$ref": "#/$defs/fields"

@@ -1,0 +1,12 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-session-dispatch-disposition",
+  "schemaVersion": "1",
+  "registryBinding": "exact",
+  "hostPathObservation": "present",
+  "hostTaskObservation": "idle",
+  "bootstrapState": "registered",
+  "requiredAction": "followup-task",
+  "reasonKind": "agent-session-binding-current",
+  "agentPath": "/root/asp_explorer",
+  "registrationReceiptDigest": "blake3-256:0000000000000000000000000000000000000000000000000000000000000000"
+}

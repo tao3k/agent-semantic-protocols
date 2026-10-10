@@ -1,0 +1,171 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Workspace Resident Admission Lifecycle
+#+startup: overview
+
+* Status
+
+This document refines the project-scoped agent-session registry contract.  It
+is normative for workspace resident admission, generation-builder lifecycle,
+and the precondition under which the Session ChoicePlane may resolve a child
+namespace.
+
+* Observed failure
+
+The Runtime Server accepted a canonical workspace entry but retained
+=Rebuilding= with no generation, no terminal receipt, and no progress receipt
+after a mutation-free observation window.  Exact query then rendered
+=wrapper-byte-authority-required= instead of the admitted workspace's Building
+state.  A nested crate root was also presented with the repository's existing
+workspace identity and was correctly rejected as a canonical-root mismatch.
+
+These receipts establish a lifecycle and authority defect.  Increasing a wall
+timeout, submitting another builder, or refreshing the source index on the
+query path does not repair it.
+
+* Authoritative identity
+
+A workspace admission is identified by the pair:
+
+#+begin_example
+(workspaceId, canonicalWorkspaceRoot)
+#+end_example
+
+=canonicalWorkspaceRoot= MUST come from provider project-resolution.  A CLI
+=--workspace= path is an input location, not canonical identity.  One
+=workspaceId= MUST NOT own two canonical roots.  A mismatch is terminal for the
+request and MUST NOT mutate the existing catalog row.
+
+Agent-session namespace resolution additionally uses:
+
+#+begin_example
+(projectId, workspaceId, canonicalWorkspaceRoot,
+ platform, platformSessionId, rootNamespaceId, registeredAgentName)
+#+end_example
+
+* Durable admission state machine
+
+#+begin_example
+Missing
+  -> Building(ownerEpoch, operationId, identity)
+  -> Ready(ownerEpoch, generationDigest)
+  -> Failed(ownerEpoch, reason)
+  -> Cancelled(ownerEpoch, reason)
+#+end_example
+
+The arrows above describe allowed terminal publications from Building; Failed
+and Cancelled may start a new owner epoch only through a new explicit ensure
+transition.
+
+** Single flight
+
+Concurrent ensure requests for the same authoritative identity MUST join the
+same Building operation and receive the same operationId.  They MUST NOT start
+additional scans, database opens, provider processes, or writer transactions.
+
+** Epoch fencing
+
+Only the current ownerEpoch may publish progress or a terminal state.  A stale
+builder, cancelled task, or previous Runtime process MUST NOT overwrite a newer
+generation or failure receipt.
+
+** Terminal publication
+
+Every started builder MUST publish exactly one of Ready, Failed, or Cancelled.
+Task panic, provider exit, Runtime shutdown, writer-lane rejection, and source
+snapshot invalidation are terminal paths, not reasons to leave Building in the
+catalog.
+
+* Tokio ownership
+
+The Runtime Server owns one Tokio lifecycle.  Workspace ensures enter a bounded
+writer lane.  A tracked task owns the builder and cancellation token.  State is
+published through a watch-style stream so readers do not poll files or hold a
+mutex across await.
+
+The foreground ensure returns a typed Building receipt in the millisecond
+control-plane budget.  The background build does not inherit the foreground
+wall deadline.  Shutdown cancels and joins every tracked builder before the
+Runtime publishes its final drain receipt.
+
+** Operator stop and supervisor ordering
+
+Operator stop MUST first persist =desiredRuntimeState=stopped= under the State
+Home lifecycle authority.  Only after that durable intent is visible may the
+Runtime cancel builders, close lanes, join tasks, remove endpoints, and publish
+its exit receipt.  The supervisor MUST consult the desired state before every
+spawn and MUST NOT restart a daemon while it is stopped.
+
+Waiting for daemon exit before recording stopped intent is invalid: a stuck
+builder can exceed the exit boundary, and an external termination can then be
+immediately reversed by the supervisor.  Stop is idempotent and its successful
+receipt includes =operatorStopRecorded=true= plus removal of control, data, and
+status-memory endpoints.
+
+* Search and ChoicePlane behavior
+
+Ready is the only state that authorizes exact source projection.
+
+Building MUST be rendered as Building with operationId, ownerEpoch, last
+progress stage, and a resident evidence reference.  It MUST NOT be translated
+to =wrapper-byte-authority-required=, =CREATE_AND_REGISTER=, or an instruction
+to refresh/sync.
+
+Failed and Cancelled MUST expose their terminal reason and recovery authority.
+They MUST NOT silently create another builder from a read-only query.
+
+The Session ChoicePlane resolves namespaces only after workspace admission.
+If admission is Building, it returns an unavailable/Building pane and no Host
+action.  Once Ready, an existing namespace projects ASP =Resume= to Codex
+=followup_task=; an absent namespace projects ASP =Create= to Codex
+=spawn_agent=.
+
+* OpenTelemetry and durable incidents
+
+The resident telemetry stream MUST record:
+
+- workspaceId and a digest of canonicalWorkspaceRoot
+- operationId and ownerEpoch
+- transition, progress stage, and terminal reason
+- source bytes read, database opens, provider processes, and writer commits
+- queue wait, build duration, publication duration, and cancellation latency
+
+A Building operation without progress remains observable as an active incident.
+Publishing a terminal state resolves that incident.  Incident persistence is
+fail-soft and MUST NOT terminate the Runtime Server.
+
+* Required gates
+
+- 256 concurrent ensures produce one builder and one operationId.
+- Same Merkle root performs zero source-byte rescans.
+- One changed owner rebuilds only that owner.
+- Canonical-root mismatch leaves the existing catalog unchanged.
+- Stale ownerEpoch cannot publish Ready, Failed, progress, or cancellation.
+- Panic, provider failure, cancellation, and shutdown each publish one terminal
+  receipt and leave no task/thread/process behind.
+- Operator stop records stopped intent before cancellation; supervisor restart
+  remains forbidden after daemon exit or forced fault isolation.
+- Thirty-run ensure control-plane p99 remains below one millisecond.
+- ChoicePlane never emits a Host action while workspace admission is Building.
+- Exact query renders typed Building evidence instead of source-authority
+  fallback text.
+- Long-run I/O and RSS remain within explicit OpenTelemetry gates.
+
+* Prohibited recovery paths
+
+- query-time source-index refresh or activation sync
+- a manual workspace reconcile CLI
+- a second builder used to dislodge a stuck builder
+- increasing timeout budgets
+- raw source, Git, or direct provider-binary escape
+- implementing the lifecycle in a command adapter
+
+* Formal refinement
+
+The executable state model is
+=ASPProof.CodexMultiAgentV2WorkspaceAdmissionLifecycle=.  Rust production
+refinement belongs to the client-db Runtime Server admission catalog, tracked
+Tokio builder task, writer lane, and typed IPC receipt.  Command modules remain
+adapters only.

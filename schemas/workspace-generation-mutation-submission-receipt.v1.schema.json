@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-generation-mutation-submission-receipt.v1.schema.json",
+  "title": "Workspace Generation Mutation Submission Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "mutationId",
+    "workspaceIdentity",
+    "changedPathCount",
+    "state"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-generation-mutation-submission-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "mutationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changedPathCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "state": {
+      "enum": ["queued", "coalesced"]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteSafeReplayModeNegotiation
+
+open ASPProof.SearchRouteSafeReplayModeNegotiation
+
+#print axioms absent_collision_evidence_never_selects_digest
+#print axioms collision_and_digest_evidence_select_digest
+#print axioms absent_collision_with_canonical_evidence_selects_full_field
+#print axioms no_identity_evidence_selects_fallback
+#print axioms negotiated_digest_has_collision_evidence
+#print axioms accepted_outcome_implies_payload_equality
+#print axioms digest_outcome_receipt_has_assumption_identity
+#print axioms full_field_outcome_has_no_assumption_identity
+#print axioms full_and_digest_evidence_agree_on_payload_identity
+#print axioms negotiated_full_and_digest_modes_agree_on_payload_identity
+#print axioms digest_mode_receipt_token_cost_is_smaller

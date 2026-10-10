@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-generation-graph-receipt.v1.schema.json",
+  "title": "Search generation graph receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "identity", "contentGenerationDigest", "entryOwnerIds", "entryNodeIds", "candidateOwnerIds", "artifactDigest", "complete"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-generation-graph-receipt"},
+    "schemaVersion": {"const": "1"},
+    "identity": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/generationIdentity"},
+    "contentGenerationDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "entryOwnerIds": {"$ref": "#/$defs/ids"},
+    "entryNodeIds": {"$ref": "#/$defs/ids"},
+    "candidateOwnerIds": {"$ref": "#/$defs/ids"},
+    "artifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "complete": {"const": true}
+  },
+  "$defs": {
+    "ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  }
+}

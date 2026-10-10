@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-polyglot-search-trace.v1.schema.json",
+  "title": "Semantic Polyglot Search Trace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "generator",
+    "sourceSnapshotDigest",
+    "providerArtifactDigest",
+    "runtimeArtifactDigest",
+    "gqlProfile",
+    "logicProfile",
+    "gqlSourceDigest",
+    "gqlAstDigest",
+    "gqlBindingDigest",
+    "logicSourceDigest",
+    "logicAstDigest",
+    "logicBindingDigest",
+    "graphDigestBefore",
+    "graphDigestAfter",
+    "registryDigest",
+    "executionBindingDigest",
+    "gqlRows",
+    "logicRows",
+    "multiplicity",
+    "ordering",
+    "semanticTraceDigest",
+    "payloadDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.polyglot-search-trace.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "const": "asp-proofs-polyglot-search-trace" },
+        "version": { "const": "1" }
+      }
+    },
+    "sourceSnapshotDigest": { "$ref": "#/$defs/digest" },
+    "providerArtifactDigest": { "$ref": "#/$defs/digest" },
+    "runtimeArtifactDigest": { "$ref": "#/$defs/digest" },
+    "gqlProfile": { "const": "asp-gql-core:0.1-one-hop" },
+    "logicProfile": {
+      "const": "asp-logic-query-core:0.1-positive-conjunction"
+    },
+    "gqlSourceDigest": { "$ref": "#/$defs/digest" },
+    "gqlAstDigest": { "$ref": "#/$defs/digest" },
+    "gqlBindingDigest": { "$ref": "#/$defs/digest" },
+    "logicSourceDigest": { "$ref": "#/$defs/digest" },
+    "logicAstDigest": { "$ref": "#/$defs/digest" },
+    "logicBindingDigest": { "$ref": "#/$defs/digest" },
+    "graphDigestBefore": { "$ref": "#/$defs/digest" },
+    "graphDigestAfter": { "$ref": "#/$defs/digest" },
+    "registryDigest": { "$ref": "#/$defs/digest" },
+    "executionBindingDigest": { "$ref": "#/$defs/digest" },
+    "gqlRows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gqlRow" }
+    },
+    "logicRows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/logicRow" }
+    },
+    "multiplicity": { "const": "bag-by-witness-edge" },
+    "ordering": { "const": "canonical-row-json" },
+    "semanticTraceDigest": { "$ref": "#/$defs/digest" },
+    "payloadDigest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "gqlRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["function", "candidate"],
+      "properties": {
+        "function": { "type": "string", "minLength": 1 },
+        "candidate": { "type": "string", "minLength": 1 }
+      }
+    },
+    "logicRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Function", "Candidate", "Obligation"],
+      "properties": {
+        "Function": { "type": "string", "minLength": 1 },
+        "Candidate": { "type": "string", "minLength": 1 },
+        "Obligation": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

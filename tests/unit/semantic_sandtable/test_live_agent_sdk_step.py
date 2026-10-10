@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate liveAgent to Claude SDK step lowering."""
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ def test_live_agent_scenario_derives_single_repo_claude_step() -> None:
             "timeoutSeconds": 120,
             "expect": {
                 "agentAnswer": {"required": True},
-                "pipeFlow": {"maxAspCommands": 3},
+                "commandFlow": {"maxAspCommands": 3},
             },
         },
         "evidence": {

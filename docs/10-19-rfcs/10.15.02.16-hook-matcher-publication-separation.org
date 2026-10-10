@@ -1,0 +1,251 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Hook Matcher Publication Separation
+#+PROPERTY: schemaId agent.semantic-protocols.rfc.hook-matcher-publication-separation
+#+PROPERTY: schemaVersion 1
+
+* Status
+
+Normative executable-refinement contract.
+
+* Problem
+
+The Host action evaluator previously treated a missing, stale, or corrupt
+matcher as permission to read TOML, synchronize managed config, compile policy,
+and publish several mmap shards.  That coupled a sub-millisecond data plane to
+filesystem discovery and recovery work.  Under concurrent Hook actions it also
+allowed evaluation to wait on the same publication or lifecycle authority that
+the denied action needed to repair, producing recursive denial and terminal
+deadlock.
+
+* Canonical Runtime Hook binary
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-CONTROL-PLANE-PUBLICATION
+:END:
+
+Only canonical =asp install binary= may:
+
+- materialize and validate =hooks/config.toml=;
+- combine provider language extensions and configured policy rules;
+- compile complete, direct-read, wrapped-read, and command-profile projections;
+- publish the dedicated Rust =asp-hook= binary.
+
+Matcher, policy, Reader catalog, and Agent registry inputs are compiled into
+that binary. Artifacts materializes =asp= and =asp-hook= as one immutable bundle
+under the shared =ASP_STATE_HOME/runtime/artifacts= catalog and atomically
+switches the sole =runtime/artifacts/active= selector. The fixed
+=ASP_STATE_HOME/runtime/bin/asp-hook= launcher always traverses
+=../resident/active/asp-hook=; repeated developer installs do not rewrite it.
+There is no =hooks/current=, no copied evaluator under =hooks/generations=, no
+per-tool publication API, and no second executable retention policy.
+
+The Codex plugin owns only the stable shell entrypoint =bin/asp-hook-exec= and
+executes the Hook member of the active Runtime artifact bundle. It does not
+parse policy, read global configuration, resolve Runtime Server health, or
+carry a generation pointer.
+
+The embedded policy identity uses BLAKE3-256.  The command-profile section is
+generated from the finite =commandProfiles.categories= prefix space and the
+same Policy Kernel that produces the complete matcher.  Runtime selection is a
+normalized argv-prefix lookup followed by exact Host-envelope rebinding; it
+must not encode language, toolchain, =cargo test=, or wrapper literals in the
+Hook data-plane implementation.
+
+The installing =asp= and its sibling =asp-hook= MUST prove one build cohort
+before publication.  The installer derives the expected embedded policy
+content digest from its own linked Hook library and obtains the candidate's
+typed =hook-runtime-identity= projection.  Schema identity and policy content
+digest must match.  An executable sibling with a stale policy is not a valid
+candidate merely because it occupies the expected filename.
+
+The =--identity= projection is a bounded publication probe, not a compiler
+entrypoint.  It MUST derive the shared BLAKE3 content identity directly from
+the immutable Config and Agent Registry bytes linked into the executable.  It
+MUST NOT parse Config, construct policy rules, compile an AOT bundle, access the
+filesystem, contact Runtime Server, or acquire lifecycle state.  Its work is
+independent of policy-rule cardinality.  Full policy compilation remains a
+single installer-side candidate validation step; the installer compares that
+compiled bundle's generation digest with the same shared embedded-content
+identity before it invokes the candidate probe.  Raising the probe timeout or
+retrying a slow probe is not recovery and is forbidden.
+
+The old =hooks/current= selector is not an alternate read path.  A successful
+canonical installation retires that file or symlink and reports the retirement
+in its receipt; immutable historical bytes remain retention input for
+=asp clean --day=. Runtime activation carries no parallel numeric generation.
+The generic Artifacts =active=/=healthy= bundle plus its content digest and
+publication nonce is the sole lifecycle authority. Hook serving identity is the
+=asp-hook= member digest reachable through the =active= bundle selector.
+
+* Host-action data plane
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-DATA-PLANE-READ
+:END:
+
+The Hook action evaluator may only:
+
+1. normalize the Host action;
+2. access the policy bytes embedded in its own canonical executable;
+3. evaluate the bounded matcher and optional Reader behavior probe;
+4. return one schema-valid Host decision.
+
+It must not parse or stat policy sources, invoke Runtime Server, acquire a
+publication lock, synchronize config, compile matchers, or repair corruption.
+A missing or non-executable canonical Runtime Hook binary terminates as a
+schema-valid typed unavailable decision. Hook enablement is read by the Hook
+process from =control/config/asp.toml= before payload or policy evaluation.
+Recovery is =asp install binary=; there is no Hook-specific publication command.
+
+* Recovery override and recursive-dispatch fixed point
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-RECOVERY-FIXED-POINT
+:END:
+
+The retired dependency chain admits this concrete cycle:
+
+1. the installed old binary denies the command that builds its replacement;
+2. the denial targets the testing Agent, but the same testing policy dispatches
+   again after the Host has entered that typed Agent;
+3. Runtime/ChoicePlane authority is unavailable, so the recursive dispatch
+   cannot become executable work;
+4. canonical install requires the replacement binary that step 1 prevented.
+
+The new ordering has one explicit configuration boundary. For an actual
+=asp-hook <event>= dispatch, the Hook process resolves State Home, parses one
+typed =control/config/asp.toml= generation, and either returns the empty Host
+success response when =[hook-engine] enabled = false= or proceeds to the
+evaluator when enabled. Public =asp hook= commands remain ordinary Client
+administration. Environment variables, shell assignments, payload text,
+language, profile, and Runtime state cannot change this decision.
+
+Config-independent provider-binary admission uses a constant-time registry
+candidate gate before constructing a shell action graph.  Commands whose
+leading executable is not a registered provider-internal binary MUST NOT pay
+for a second shell parse before mmap shard selection.  The registry remains the
+identity authority and every positive candidate still runs the complete typed
+provider-binary policy.
+
+Match-policy conformance derives its rule inventory and witnesses from the
+resolved declarative configuration; it MUST NOT hard-code a rule count.  The
+conformance evaluator recompiles a verification-only capability snapshot in
+which every configured =lazy-executable= projector is available. Host PATH
+availability controls whether an optional projector may execute in production,
+but cannot turn a valid projector rule into policy-schema drift. Host-policy
+passthrough rules use the same end-to-end witness and branch inventory as every
+other production rule; they do not change global Hook enablement.
+
+Typed target dispatch is idempotent and Config-owned.  Configured ASP Agents
+are loaded from the embedded Agent Config registry.  A temporary SubAgent does
+not become a resident Agent merely because =SubagentStart= was observed; that
+event is an observational extension point and returns one empty Host-success
+object.  Policy uses the Host-provided configured Agent identity when present,
+and otherwise routes through Choice Plane without inventing registration.
+
+=agentKind= is a Config-owned route fact with the closed values =agent= and
+=subagent=.  Child/root/parent topology and the Host event name do not infer or
+overwrite it.  The registration receipt carries =agentKind= together with the
+canonical Agent name, Host role, platform, route/profile/policy digests, and a
+nonzero generation.  Choice Plane and PreTool claim consume this exact field;
+an absent, unknown, or cross-bound kind is typed stale and must be
+re-registered.  Missing or blank typed identity must be enriched from the Host
+session context before policy evaluation; an =is_subagent= boolean alone is
+not a dispatch identity.
+
+The Lean model contains the four-node legacy cycle as a reachable
+counterexample and proves that either recovery-override origin makes every
+pre-kernel source transition terminal, so that cycle is unreachable.  It also
+proves the typed-target dispatch fixed point.
+
+* Concurrency and performance gates
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-CONCURRENCY-PERFORMANCE
+:END:
+
+- evaluation CPU boundary: strictly less than 1,000 microseconds;
+- typical wall target: at least 75 percent at or below 500 microseconds;
+- process terminal safety boundary: one second;
+- no single-thread runtime, global mutex, Runtime Server warm dependency, or
+  recursive publication is permitted;
+- pre-tool and permission-request policy evaluation completes synchronously
+  without constructing a Tokio runtime;
+- observational lifecycle events return one valid empty JSON object and do not
+  enter Client, Runtime Server, Agent registration, or policy publication;
+- black-box witnesses are generated from configured policy combinations rather
+  than a hard-coded command list;
+- missing evaluator, malformed embedded policy, concurrent readers, ten
+  consecutive Developer publications, and 32 calls crossing one atomic
+  Runtime Hook binary switch are mandatory scenarios.
+
+The Lean refinement is
+=ASPProof.HookMatcherPublicationSeparation=.  Its coupled-model counterexample
+shows that evaluation-owned publication can self-wait; the separated model
+proves a missing canonical evaluator terminates and evaluation cannot mutate
+the installed Runtime Hook binary.
+
+* Host Action identity and semantic Action projection
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-ACTION-PROJECTION
+:END:
+
+The installed Host payload and the policy DSL have different responsibilities.
+Each physical =hooks.json= matcher entry names exactly one native Host Action or
+one open-ended native family whose members are individually named by the Host,
+such as =mcp__<server>__<tool>=.  Every PreTool entry invokes ASP with either
+one exact =--host-match= or one =--host-match-prefix=.  ASP binds that single
+physical signal to the payload's
+=tool_name= before policy evaluation.  Missing, unknown, or mismatched signals
+terminate as one valid JSON deny with
+=reasonKind=host-action-authority-unavailable=; they never fall through to an
+allow decision and never exit through a panic.  A wildcard entry must not erase
+the native Action identity before ASP receives the event.
+
+Each physical plugin entry passes only the native matcher fact through
+=--host-match= or =--host-match-prefix=.  Rust validates it against the payload
+and projects its typed Action once.  There is no parallel =--host-action= fact
+that could disagree with the matcher.
+
+The Config V1 Rule DSL consumes the same native identity directly through one
+optional =matcher= expression.  Aliases may be grouped with =|=, for example
+=matcher = "apply_patch|Write|Edit|NotebookEdit"=.  There is no top-level
+=actionMatchers= or =hostActions= projection table and no compatibility parser
+for either retired shape.  Profile, capability-policy, decision, and dispatch
+remain independent Rule axes.
+
+Read and Edit Action identity is not by itself a filesystem permission proof.
+A Read or Write permission fact is materialized only when the Host payload or a
+parser-owned shell behavior fact supplies a concrete subject.  Without a
+subject, Action IR retains the semantic Action and emits no null-subject
+permission.  Dominance is subject-local: Write dominates Read only for the same
+subject.
+
+Executable names are not a permission authority.  The classifier must not use
+lists such as =cat=, =sed=, =head=, or =bat= to infer Read/Edit behavior.  Native
+Host Action identity, subject-bearing filesystem facts, and parser-owned shell
+behavior facts are the admissible evidence layers.
+
+The physical Bash matcher always remains Host Action =execute=.  Bash AST facts
+may materialize subject-bound read or write permissions and semantic
+capabilities for the Rule DSL, but they cannot rewrite the Host action to Read
+or Edit.  Conversely, a native Read/Edit matcher supplies the Host action while
+the concrete payload path supplies its filesystem subject.
+
+* Native Host acceptance envelope
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-NATIVE-HOST-ACCEPTANCE
+:END:
+
+Host acceptance remains a schemaVersion v1 diagnostic receipt.  The reader
+MUST recognize both native =function_call.arguments= envelopes and unified-exec
+=custom_tool_call.input= envelopes.  A unified-exec output is a structured
+=custom_tool_call_output= value rather than a scalar string, so source-leak
+inspection recursively visits string fields.
+
+Probe calls and outputs MUST be correlated by =call_id=.  A sentinel emitted by
+an unrelated diagnostic command cannot reject an otherwise valid Host deny,
+and a sentinel returned by the protected probe MUST reject the receipt with
+=reasonKind=source-bytes-leaked=.  Acceptance requires all of the following in
+one real normal-task rollout: plugin evidence, the correlated probe call, a
+Hook event, a deny decision, and no protected source bytes.  Manual
+=asp hook pre-tool= execution is not Host acceptance evidence.

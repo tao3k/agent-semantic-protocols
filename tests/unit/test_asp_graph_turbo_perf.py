@@ -1,11 +1,15 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Performance guards for graph turbo warm ranking paths."""
 
 from __future__ import annotations
 
 import time
 
-from asp_graph_turbo.model import TypedGraph
-from asp_graph_turbo.ranking import rank_frontier
+from asp_python_graphs.model import TypedGraph
+from asp_python_graphs.ranking import rank_frontier
 
 _WARM_RANK_BUDGET_MS = 50.0
 

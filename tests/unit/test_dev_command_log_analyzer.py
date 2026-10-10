@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate dev command log session summaries."""
 
 from __future__ import annotations
@@ -14,20 +18,20 @@ from tools.dev_command_log_analyzer import load_command_events, render_summary  
 
 
 def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> None:
-    command_dir = tmp_path / "rust" / "rs-harness" / "commands"
+    command_dir = tmp_path / "rust" / "asp-rust" / "commands"
     command_dir.mkdir(parents=True)
     (command_dir / "2026-06-02T10-20-31Z-000002-b.jsonl").write_text(
-        json.dumps(_event(2, "search/lexical", "metadata")) + "\n",
+        json.dumps(_event(2, "search/playbook", "metadata")) + "\n",
         encoding="utf-8",
     )
     (command_dir / "2026-06-02T10-20-30Z-000001-a.jsonl").write_text(
         json.dumps(_event(1, "agent/guide", None)) + "\n",
         encoding="utf-8",
     )
-    fallback_dir = tmp_path / "python" / "py-harness" / "commands"
+    fallback_dir = tmp_path / "python" / "asp-python" / "commands"
     fallback_dir.mkdir(parents=True)
     (fallback_dir / "2026-06-02T10-20-32Z-000001-c.jsonl").write_text(
-        json.dumps(_event(1, "search/lexical", "fallback", session_id="project-x", context="project-fallback"))
+        json.dumps(_event(1, "search/playbook", "fallback", session_id="project-x", context="project-fallback"))
         + "\n",
         encoding="utf-8",
     )
@@ -37,7 +41,7 @@ def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> No
     assert "[dev-log-summary] sessions=2 commands=3 activeContext=2 projectFallback=1" in summary
     session_summary = summary.split('|session id="session-1"', 1)[1]
     assert session_summary.index("method=agent/guide") < session_summary.index(
-        "method=search/lexical"
+        "method=search/playbook"
     )
     assert 'id="session-1" commands=2' in summary
     assert "rootHash=0123456789abcdef" in session_summary
@@ -77,9 +81,9 @@ def _event(
         "parentEventId": "hook-parent-1",
         "hookRunId": "hook-run-1",
         "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "argv": ["rs-harness"],
+        "providerId": "asp-rust",
+        "binary": "asp-rust",
+        "argv": ["asp-rust"],
         "cwd": "/repo",
         "projectRoot": "/repo",
         "projectRootHash": "0123456789abcdef",

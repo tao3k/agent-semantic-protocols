@@ -1,24 +1,94 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Shared DB Engine DTOs used by Turso adapters and client-facing receipts.
 
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash,
-    ClientDbJournalMode, ClientDbStatus, LanguageId, ProviderId, SemanticSchemaId,
+    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientDbStatus,
+    LanguageId, ProviderId, SemanticSchemaId,
 };
 use serde::{Deserialize, Serialize};
 
 /// Current Turso DB Engine schema version for the local agent semantic client DB.
 pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
-/// Runtime DB pragmas retained for receipt shape compatibility.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbJournalMode(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbSynchronousLevel(i64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbBusyTimeoutMillis(i64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbForeignKeyState(bool);
+
+/// Read-only diagnostic summary for the active DB Engine path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
-    pub journal_mode: ClientDbJournalMode,
-    pub synchronous: i64,
-    pub busy_timeout_ms: i64,
-    pub foreign_keys: bool,
+    journal_mode: ClientDbJournalMode,
+    synchronous: ClientDbSynchronousLevel,
+    busy_timeout_ms: ClientDbBusyTimeoutMillis,
+    foreign_keys: ClientDbForeignKeyState,
+}
+
+impl ClientDbRuntimePragmas {
+    pub fn new(
+        journal_mode: impl Into<String>,
+        synchronous: i64,
+        busy_timeout_ms: i64,
+        foreign_keys: bool,
+    ) -> Result<Self, String> {
+        let journal_mode = journal_mode.into();
+        if journal_mode.is_empty() {
+            return Err("client DB journal mode must be non-empty".to_string());
+        }
+        if !(0..=3).contains(&synchronous) {
+            return Err(format!(
+                "client DB synchronous level must be between 0 and 3, got {synchronous}"
+            ));
+        }
+        if busy_timeout_ms < 0 {
+            return Err(format!(
+                "client DB busy timeout must be non-negative, got {busy_timeout_ms}"
+            ));
+        }
+        Ok(Self {
+            journal_mode: ClientDbJournalMode(journal_mode),
+            synchronous: ClientDbSynchronousLevel(synchronous),
+            busy_timeout_ms: ClientDbBusyTimeoutMillis(busy_timeout_ms),
+            foreign_keys: ClientDbForeignKeyState(foreign_keys),
+        })
+    }
+
+    #[must_use]
+    pub fn journal_mode(&self) -> &str {
+        &self.journal_mode.0
+    }
+
+    #[must_use]
+    pub fn synchronous(&self) -> i64 {
+        self.synchronous.0
+    }
+
+    #[must_use]
+    pub fn busy_timeout_ms(&self) -> i64 {
+        self.busy_timeout_ms.0
+    }
+
+    #[must_use]
+    pub fn foreign_keys(&self) -> bool {
+        self.foreign_keys.0
+    }
 }
 
 /// Read-only diagnostic summary for the active DB Engine path.
@@ -32,15 +102,12 @@ pub struct ClientDbReport {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
-    pub structural_index_generation_count: u32,
-    pub structural_index_owner_count: u32,
-    pub structural_index_symbol_count: u32,
-    pub structural_index_dependency_usage_count: u32,
     pub source_index_generation_count: u32,
     pub source_index_owner_count: u32,
     pub source_index_selector_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
     pub reason: Option<String>,
 }
@@ -53,6 +120,7 @@ where
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Aggregate persisted-row counts exposed by the client DB diagnostics surface.
 pub struct ClientDbSummary {
     pub generation_count: u32,
     pub syntax_row_generation_count: u32,
@@ -93,88 +161,146 @@ pub struct ClientDbGenerationHit {
     pub artifact_ids: Vec<CacheArtifactId>,
 }
 
-/// Cached provider command selection for one activation context.
+macro_rules! client_db_provider_command_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+client_db_provider_command_text!(
+    /// Provider manifest identifier selected for execution.
+    ClientDbProviderManifestId
+);
+client_db_provider_command_text!(
+    /// Provider manifest digest selected for execution.
+    ClientDbProviderManifestDigest
+);
+client_db_provider_command_text!(
+    /// Provider binary identity selected for execution.
+    ClientDbProviderBinary
+);
+client_db_provider_command_text!(
+    /// Provider execution mode selected for execution.
+    ClientDbProviderExecution
+);
+client_db_provider_command_text!(
+    /// One provider command prefix argument.
+    ClientDbProviderCommandArg
+);
+client_db_provider_command_text!(
+    /// Resolved provider executable path.
+    ClientDbProviderExecutablePath
+);
+
+/// Unvalidated provider-command values accepted at the DB Engine boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbProviderCommandSelectionInput {
+    pub manifest_id: ClientDbProviderManifestId,
+    pub manifest_digest: ClientDbProviderManifestDigest,
+    pub language_id: LanguageId,
+    pub provider_id: ProviderId,
+    pub binary: ClientDbProviderBinary,
+    pub execution: ClientDbProviderExecution,
+    pub provider_command_prefix: Vec<ClientDbProviderCommandArg>,
+    pub executable_path: Option<ClientDbProviderExecutablePath>,
+    pub executable_len: Option<i64>,
+    pub executable_mtime_ms: Option<i64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated provider command identity persisted for Runtime Server activation.
 pub struct ClientDbProviderCommandSelection {
-    pub manifest_id: String,
-    pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub binary: String,
-    pub execution: String,
-    pub provider_command_prefix: Vec<String>,
-    pub executable_path: Option<String>,
+    pub manifest_id: ClientDbProviderManifestId,
+    pub manifest_digest: ClientDbProviderManifestDigest,
+    pub language_id: LanguageId,
+    pub provider_id: ProviderId,
+    pub binary: ClientDbProviderBinary,
+    pub execution: ClientDbProviderExecution,
+    pub provider_command_prefix: Vec<ClientDbProviderCommandArg>,
+    pub executable_path: Option<ClientDbProviderExecutablePath>,
     pub executable_len: Option<i64>,
     pub executable_mtime_ms: Option<i64>,
 }
 
 impl ClientDbProviderCommandSelection {
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        manifest_id: String,
-        manifest_digest: String,
-        language_id: String,
-        provider_id: String,
-        binary: String,
-        execution: String,
-        provider_command_prefix: Vec<String>,
-        executable_path: Option<String>,
-        executable_len: Option<i64>,
-        executable_mtime_ms: Option<i64>,
-    ) -> Self {
+    pub fn new(input: ClientDbProviderCommandSelectionInput) -> Self {
         Self {
-            manifest_id,
-            manifest_digest,
-            language_id,
-            provider_id,
-            binary,
-            execution,
-            provider_command_prefix,
-            executable_path,
-            executable_len,
-            executable_mtime_ms,
+            manifest_id: input.manifest_id,
+            manifest_digest: input.manifest_digest,
+            language_id: input.language_id,
+            provider_id: input.provider_id,
+            binary: input.binary,
+            execution: input.execution,
+            provider_command_prefix: input.provider_command_prefix,
+            executable_path: input.executable_path,
+            executable_len: input.executable_len,
+            executable_mtime_ms: input.executable_mtime_ms,
         }
     }
 
     #[must_use]
     pub fn manifest_id(&self) -> &str {
-        &self.manifest_id
+        self.manifest_id.as_str()
     }
 
     #[must_use]
     pub fn manifest_digest(&self) -> &str {
-        &self.manifest_digest
+        self.manifest_digest.as_str()
     }
 
     #[must_use]
-    pub fn language_id(&self) -> &str {
+    pub fn language_id(&self) -> &LanguageId {
         &self.language_id
     }
 
     #[must_use]
-    pub fn provider_id(&self) -> &str {
+    pub fn provider_id(&self) -> &ProviderId {
         &self.provider_id
     }
 
     #[must_use]
     pub fn binary(&self) -> &str {
-        &self.binary
+        self.binary.as_str()
     }
 
     #[must_use]
     pub fn execution(&self) -> &str {
-        &self.execution
+        self.execution.as_str()
     }
 
     #[must_use]
-    pub fn provider_command_prefix(&self) -> &[String] {
+    pub fn provider_command_prefix(&self) -> &[ClientDbProviderCommandArg] {
         &self.provider_command_prefix
     }
 
     #[must_use]
     pub fn executable_path(&self) -> Option<&str> {
-        self.executable_path.as_deref()
+        self.executable_path
+            .as_ref()
+            .map(ClientDbProviderExecutablePath::as_str)
     }
 
     #[must_use]
@@ -189,100 +315,191 @@ impl ClientDbProviderCommandSelection {
 }
 
 impl ClientDbArtifactEvent {
+    pub(crate) fn from_storage_columns(
+        columns: ClientDbArtifactEventStorageColumns,
+    ) -> Result<Self, String> {
+        let event_ordinal = u32::try_from(columns.event_ordinal).map_err(|_| {
+            format!(
+                "artifact event ordinal is outside the u32 domain: {}",
+                columns.event_ordinal
+            )
+        })?;
+        let bytes = u64::try_from(columns.bytes).map_err(|_| {
+            format!(
+                "artifact event byte count must be non-negative: {}",
+                columns.bytes
+            )
+        })?;
+        if columns.timestamp_ms < 0 {
+            return Err(format!(
+                "artifact event timestamp must be non-negative: {}",
+                columns.timestamp_ms
+            ));
+        }
+        if columns.artifact_path.is_empty()
+            || columns.kind.is_empty()
+            || columns.language.is_empty()
+            || columns.method.is_empty()
+            || columns.project_root.is_empty()
+        {
+            return Err(
+                "artifact event identity, kind, language, method, and project root must be non-empty"
+                    .to_string(),
+            );
+        }
+        Ok(Self {
+            artifact_path: ClientDbArtifactPath(columns.artifact_path),
+            event_ordinal: ClientDbEventOrdinal(event_ordinal),
+            timestamp_ms: ClientDbEventTimestampMillis(columns.timestamp_ms),
+            kind: ClientDbArtifactEventKind(columns.kind),
+            language: LanguageId::new(columns.language),
+            method: ClientDbArtifactEventMethod(columns.method),
+            target: ClientDbArtifactEventTarget(columns.target),
+            query: ClientDbArtifactEventQuery(columns.query),
+            project_root: ClientDbArtifactEventProjectRoot(columns.project_root),
+            project_root_arg: ClientDbArtifactEventProjectRootArg(columns.project_root_arg),
+            bytes: ClientDbArtifactEventByteCount(bytes),
+        })
+    }
+
     #[must_use]
     pub fn artifact_path(&self) -> &str {
-        &self.artifact_path
+        &self.artifact_path.0
     }
 
     #[must_use]
     pub fn event_ordinal(&self) -> u32 {
-        self.event_ordinal
+        self.event_ordinal.0
     }
 
     #[must_use]
     pub fn timestamp_ms(&self) -> i64 {
-        self.timestamp_ms
+        self.timestamp_ms.0
     }
 
     #[must_use]
     pub fn kind(&self) -> &str {
-        &self.kind
+        &self.kind.0
     }
 
     #[must_use]
     pub fn language(&self) -> &str {
-        &self.language
+        self.language.as_str()
     }
 
     #[must_use]
     pub fn method(&self) -> &str {
-        &self.method
+        &self.method.0
     }
 
     #[must_use]
     pub fn target(&self) -> &str {
-        &self.target
+        &self.target.0
     }
 
     #[must_use]
     pub fn query(&self) -> &str {
-        &self.query
+        &self.query.0
     }
 
     #[must_use]
     pub fn project_root(&self) -> &str {
-        &self.project_root
+        &self.project_root.0
     }
 
     #[must_use]
     pub fn project_root_arg(&self) -> &str {
-        &self.project_root_arg
+        &self.project_root_arg.0
     }
 
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        self.bytes
+        self.bytes.0
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactPath(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbEventOrdinal(u32);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbEventTimestampMillis(i64);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventKind(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventMethod(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventTarget(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventQuery(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventProjectRoot(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventProjectRootArg(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventByteCount(u64);
+
+pub(crate) struct ClientDbArtifactEventStorageColumns {
+    pub(crate) artifact_path: String,
+    pub(crate) event_ordinal: i64,
+    pub(crate) timestamp_ms: i64,
+    pub(crate) kind: String,
+    pub(crate) language: String,
+    pub(crate) method: String,
+    pub(crate) target: String,
+    pub(crate) query: String,
+    pub(crate) project_root: String,
+    pub(crate) project_root_arg: String,
+    pub(crate) bytes: i64,
 }
 
 /// Graph-turbo artifact event row stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbArtifactEvent {
-    pub artifact_path: String,
-    pub event_ordinal: u32,
-    pub timestamp_ms: i64,
-    pub kind: String,
-    pub language: String,
-    pub method: String,
-    pub target: String,
-    pub query: String,
-    pub project_root: String,
-    pub project_root_arg: String,
-    pub bytes: u64,
+    artifact_path: ClientDbArtifactPath,
+    event_ordinal: ClientDbEventOrdinal,
+    timestamp_ms: ClientDbEventTimestampMillis,
+    kind: ClientDbArtifactEventKind,
+    language: LanguageId,
+    method: ClientDbArtifactEventMethod,
+    target: ClientDbArtifactEventTarget,
+    query: ClientDbArtifactEventQuery,
+    project_root: ClientDbArtifactEventProjectRoot,
+    project_root_arg: ClientDbArtifactEventProjectRootArg,
+    bytes: ClientDbArtifactEventByteCount,
 }
 
 /// Merkle hash value used by artifact graph roots, edges, and proof receipts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactHash {
-    pub algorithm: String,
-    pub value: String,
+    pub(crate) algorithm: String,
+    pub(crate) value: String,
 }
 
 /// Queryable Merkle artifact root stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRoot {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
-    pub generation: String,
-    pub root_kind: String,
-    pub root_hash: ClientDbArtifactHash,
-    pub node_hash: ClientDbArtifactHash,
-    pub producer_hash: Option<ClientDbArtifactHash>,
-    pub schema_hash: Option<ClientDbArtifactHash>,
-    pub content_hash: Option<ClientDbArtifactHash>,
+    pub(crate) repo_id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) scope_id: String,
+    pub(crate) generation: String,
+    pub(crate) root_kind: String,
+    pub(crate) root_hash: ClientDbArtifactHash,
+    pub(crate) node_hash: ClientDbArtifactHash,
+    pub(crate) producer_hash: Option<ClientDbArtifactHash>,
+    pub(crate) schema_hash: Option<ClientDbArtifactHash>,
+    pub(crate) content_hash: Option<ClientDbArtifactHash>,
 }
 
 /// Queryable edge between two Merkle artifact roots.
@@ -300,34 +517,34 @@ pub struct ClientDbArtifactEdge {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRepairChainFrame {
-    pub frame_kind: String,
-    pub root: ClientDbArtifactRoot,
-    pub content_hash: ClientDbArtifactHash,
-    pub parents: Vec<ClientDbArtifactEdge>,
+    pub(crate) frame_kind: String,
+    pub(crate) root: ClientDbArtifactRoot,
+    pub(crate) content_hash: ClientDbArtifactHash,
+    pub(crate) parents: Vec<ClientDbArtifactEdge>,
 }
 
 /// Compact proof receipt summary persisted for artifact graph queries.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbProofReceipt {
-    pub receipt_id: String,
-    pub obligation_id: String,
-    pub recipe_id: String,
-    pub checker: String,
-    pub environment: String,
-    pub okay: bool,
-    pub trust_level: String,
-    pub summary_for_agent: String,
-    pub root: ClientDbArtifactRoot,
+    pub(crate) receipt_id: String,
+    pub(crate) obligation_id: String,
+    pub(crate) recipe_id: String,
+    pub(crate) checker: String,
+    pub(crate) environment: String,
+    pub(crate) okay: bool,
+    pub(crate) trust_level: String,
+    pub(crate) summary_for_agent: String,
+    pub(crate) root: ClientDbArtifactRoot,
 }
 
 /// Compact agent-facing render of queryable artifact graph facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactGraphCompactRender {
-    pub frame_count: u32,
-    pub proof_receipt_count: u32,
-    pub lines: Vec<String>,
+    pub(crate) frame_count: u32,
+    pub(crate) proof_receipt_count: u32,
+    pub(crate) lines: Vec<String>,
 }
 
 impl ClientDbArtifactGraphCompactRender {
@@ -551,12 +768,22 @@ pub struct ClientDbSyntaxQueryReplay {
     pub rows: Vec<ClientDbSyntaxCaptureReplay>,
 }
 
-/// Normalize a project root into the DB Engine wire path form.
-#[must_use]
-pub fn normalized_project_root(project_root: &Path) -> String {
+/// Resolve a project root into the canonical DB Engine wire identity.
+pub fn normalized_project_root(project_root: &Path) -> Result<String, String> {
     project_root
         .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf())
-        .to_string_lossy()
-        .into_owned()
+        .map_err(|error| {
+            format!(
+                "failed to canonicalize DB Engine project root {}: {error}",
+                project_root.display()
+            )
+        })?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| {
+            format!(
+                "DB Engine project root is not UTF-8: {}",
+                project_root.display()
+            )
+        })
 }

@@ -131,11 +131,9 @@
         "commandCount": {"type": "integer", "minimum": 0},
         "aspCommands": {"type": "integer", "minimum": 0},
         "searchCommands": {"type": "integer", "minimum": 0},
-        "searchPrimeCommands": {"type": "integer", "minimum": 0},
-        "searchPipeCommands": {"type": "integer", "minimum": 0},
+        "searchPlaybookCommands": {"type": "integer", "minimum": 0},
         "queryCommands": {"type": "integer", "minimum": 0},
         "querySelectorCommands": {"type": "integer", "minimum": 0},
-        "checkCommands": {"type": "integer", "minimum": 0},
         "guideCommands": {"type": "integer", "minimum": 0},
         "directReadCommands": {"type": "integer", "minimum": 0},
         "deniedCommands": {"type": "integer", "minimum": 0},
@@ -174,7 +172,7 @@
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "kind": {
-          "enum": ["search", "hook-deny", "subagent", "external-ingest", "check", "query", "guide", "other"]
+          "enum": ["search", "hook-deny", "subagent", "external-ingest", "query", "guide", "other"]
         },
         "argv": {
           "type": "array",
@@ -241,18 +239,7 @@
       }
     },
     "tokenCost": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["unit", "totalTokens", "basis"],
-      "properties": {
-        "unit": {"enum": ["token-estimate", "token-count"]},
-        "inputTokens": {"type": "integer", "minimum": 0},
-        "outputTokens": {"type": "integer", "minimum": 0},
-        "cacheReadInputTokens": {"type": "integer", "minimum": 0},
-        "totalTokens": {"type": "integer", "minimum": 0},
-        "costUsd": {"type": "number", "minimum": 0},
-        "basis": {"type": "string", "minLength": 1}
-      }
+      "$ref": "semantic-agent-definitions.schema.json#/$defs/tokenCost"
     },
     "stringList": {
       "type": "array",

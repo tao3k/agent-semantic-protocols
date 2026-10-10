@@ -1,0 +1,25 @@
+{
+  "auditSha256": "e436dc3f53ae68b69b2d5cc29f08619de70b5d064a82d597c81866d7cb698dc1",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 23,
+  "axiomInventory": [],
+  "declarationCount": 23,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-ASCR-CHANNELS",
+    "ASP-RFC-10.05-ASCR-EXECUTOR",
+    "ASP-RFC-10.05-ASCR-IDENTITY",
+    "ASP-RFC-10.05-ASCR-TIMING",
+    "ASP-RFC-10.05-ASCR-VECTORS",
+    "ASP-RFC-10.05-ASCR-WARM"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "channel-conformance",
+    "independent-executor",
+    "replay-identity",
+    "timing-separation",
+    "vector-replay",
+    "warm-effect-freedom"
+  ]
+}

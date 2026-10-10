@@ -15,6 +15,14 @@
     "memoryLimitBytes": { "type": "integer", "minimum": 1 },
     "memoryLimitEnforced": { "type": "boolean" },
     "memoryLimitExceeded": { "type": "boolean" },
+    "processGroupIsolationEnforced": {
+      "type": "boolean",
+      "description": "Whether ASP isolated and managed the provider as one process group."
+    },
+    "descendantCleanupRequired": {
+      "type": "boolean",
+      "description": "Whether descendants remained after the one-shot provider leader exited and ASP terminated them before returning."
+    },
     "exitCode": { "type": "integer" },
     "exitSignal": { "type": "integer", "minimum": 1 },
     "timedOut": { "type": "boolean" },

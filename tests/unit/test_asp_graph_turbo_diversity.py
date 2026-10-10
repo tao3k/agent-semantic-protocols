@@ -1,11 +1,15 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Diversity ranking tests for graph-turbo."""
 
 from __future__ import annotations
 
-from asp_graph_turbo import Node, TypedGraph
-from asp_graph_turbo.graph_model import Edge
-from asp_graph_turbo.diversity import rank_nodes
-from asp_graph_turbo.query_token_balance import query_tokens_for_seed_nodes
+from asp_python_graphs import Node, TypedGraph
+from asp_python_graphs.graph_model import Edge
+from asp_python_graphs.diversity import rank_nodes
+from asp_python_graphs.query_token_balance import query_tokens_for_seed_nodes
 
 
 def test_rank_nodes_preserves_hot_companion_for_selected_item() -> None:

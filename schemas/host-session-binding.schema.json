@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic.protocols/schemas/host-session-binding",
+  "title": "ASP Host Session Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "platform",
+    "rootSessionId",
+    "parentSessionId",
+    "currentSessionId"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.host-session-binding" },
+    "schemaVersion": { "const": "1" },
+    "platform": { "type": "string", "minLength": 1 },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "parentSessionId": { "type": "string", "minLength": 1 },
+    "currentSessionId": { "type": "string", "minLength": 1 }
+  }
+}

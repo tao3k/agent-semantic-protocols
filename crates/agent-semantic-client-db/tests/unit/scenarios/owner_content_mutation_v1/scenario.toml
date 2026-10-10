@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "owner-content-mutation-v1"
+title = "PostToolUse updates one owner without a Scope rebuild"
+package = "agent-semantic-client-db"
+phase = "resident-owner-content-transaction"
+intent = "bind edited bytes, identity, GREP coverage, path visibility, stale-symbol tombstones, and parser-rebound ranked symbol visibility at one writer linearization point"
+
+[identity]
+schema_version = 1
+base_generation_cas = true
+previous_owner_digest_cas = true
+
+[gate]
+changed_owner_count = 1
+full_scope_scan_count = 0
+full_merkle_rebuild_count = 0
+canonical_generation_publication_count = 0
+caller_retry_count = 0
+stale_base_grep_hit_count = 0
+stale_base_tantivy_hit_count = 0
+old_lease_partial_visibility_count = 0
+source_body_tantivy_hit_count = 0
+rebound_symbol_tantivy_hit_count = 1
+topology_rebind_writer_commit_count = 1
+topology_rebind_physical_view_count = 2
+resident_view_publication_count = 2
+stale_query_generation_lease_reuse_count = 0
+
+[scheme.tantivy_fields]
+title = "owner-path-and-file-navigation"
+body = "parser-owned-symbol-query-keys"

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-structural-selector-reference.v1.schema.json",
+  "title": "Exact Structural Selector Reference v1",
+  "description": "A compact Runtime-published reference to a validated generation-bound exact selector identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "selector",
+    "evidenceContextRef"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.exact-structural-selector-reference.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "selector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidenceContextRef": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-cached-health.v1.schema.json",
+  "title": "ASP Runtime Server Cached Health",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "elapsedMicros",
+    "resident"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-cached-health"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "resident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "state",
+        "runtimeArtifactDigest",
+        "artifactMode",
+        "artifactCatalogDigest",
+        "transportContractDigest",
+        "workspaceEntryCount"
+      ],
+      "properties": {
+        "schemaId": { "type": "string", "minLength": 1 },
+        "schemaVersion": { "const": "1" },
+        "requestId": { "type": "string", "minLength": 1 },
+        "state": { "enum": ["starting", "healthy", "draining"] },
+        "runtimeArtifactDigest": { "type": "string", "minLength": 1 },
+        "artifactMode": { "type": "string", "minLength": 1 },
+        "artifactCatalogDigest": { "type": "string", "minLength": 1 },
+        "transportContractDigest": { "type": "string", "minLength": 1 },
+        "workspaceEntryCount": { "type": "integer", "minimum": 0 },
+        "aspPythonGraphs": { "type": ["object", "null"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

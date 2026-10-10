@@ -1,0 +1,24 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.NoncancellableColdGenerationAdmission
+
+open ASPProof.NoncancellableColdGenerationAdmission
+
+#check timeoutCannotCancelQueuedRepair
+#check timeoutAfterAdmissionIsNotMissing
+#check queuedRepairPublishesReady
+#check timeoutDoesNotAuthorizeUnpublishedRead
+#check residentReadyNeverEnqueuesRepair
+#check residentReadyStaysInsideHundredMillisecondBudget
+#check residentReadyPerformsNoProviderOrDatabaseWork
+#check onlyServerBootstrapOwnsDurableRepair
+#check explicitQueryReleasesIffTerminalReady
+#check buildingAdmissionCannotEnterOwnerFreshness
+#check failedAdmissionCannotEnterOwnerFreshness
+#check terminalReadyPrecedesOwnerFreshness
+#check admissionReadyWithoutPublishedLeaseCannotRelease
+#check residentReadyAndPointerExistsWithoutCurrentSchemaCannotRelease
+#check currentSchemaPointerForAnotherGenerationCannotRelease
+#check publishedTerminalReadinessCanRelease

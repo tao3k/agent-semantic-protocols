@@ -1,11 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use crate::{
-    SyntaxCatalogDescriptor, builtin_catalog_source, compile_query_abi_source,
-    extract_capture_names, load_grammar_profile, load_syntax_catalog,
-};
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use crate::SyntaxCatalogDescriptor;
+use crate::builtin_catalog_source;
+use crate::compile_query_abi_source;
+use crate::extract_capture_names;
+use crate::load_grammar_profile;
+use crate::load_syntax_catalog;
 
 #[test]
 fn extracts_and_normalizes_capture_names_from_scm() {
@@ -91,7 +99,7 @@ fn load_catalog_rejects_malformed_query_source() {
         error.contains("failed to compile syntax query catalog"),
         "{error}"
     );
-    assert!(error.contains("unclosed query pattern"), "{error}");
+    assert!(error.contains("syntactically invalid"), "{error}");
 
     let _ = fs::remove_dir_all(dir);
 }
@@ -101,9 +109,7 @@ fn loads_real_rust_provider_calls_catalog() {
     let workspace_root = workspace_root();
     let descriptor = SyntaxCatalogDescriptor {
         id: "calls".to_string(),
-        path: PathBuf::from(
-            "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/queries/calls.scm",
-        ),
+        path: PathBuf::from("languages/asp-rust/tree-sitter/tree-sitter-rust/queries/calls.scm"),
         declared_captures: vec![
             "call.expression".to_string(),
             "call.target".to_string(),
@@ -128,9 +134,8 @@ fn loads_real_rust_provider_calls_catalog() {
 #[test]
 fn loads_real_rust_provider_grammar_profile() {
     let workspace_root = workspace_root();
-    let profile_path = PathBuf::from(
-        "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust/grammar-profile.json",
-    );
+    let profile_path =
+        PathBuf::from("languages/asp-rust/tree-sitter/tree-sitter-rust/grammar-profile.json");
 
     let profile = load_grammar_profile(&workspace_root, profile_path.clone()).expect("profile");
 

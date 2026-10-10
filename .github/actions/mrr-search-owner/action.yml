@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+name: Prepare declared MRR search owner
+description: Build the immutable MRR execution asset in its producer checkout.
+inputs:
+  install-toolchain:
+    description: Install the paired producer toolchain when it is not already present.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: tao3k/gerbil-scheme-rust/.github/actions/setup-gerbil@f61643b3a787d005612dc5021b4941612f3e1f68
+      if: inputs.install-toolchain == 'true'
+      with:
+        release-root: ${{ github.workspace }}/.ci/mrr-gerbil-release
+    - name: Resolve the declared immutable MRR owner
+      shell: bash
+      run: |
+        python3 - <<'PYTHON'
+        from pathlib import Path
+        import re, subprocess, tomllib
+        config = tomllib.loads(Path('crates/agent-semantic-mrr/Cargo.toml').read_text())
+        dependency = config['dependencies']['mrr-search-kernel']
+        revision = dependency['rev']
+        if not re.fullmatch(r'[0-9a-f]{40}', revision):
+            raise SystemExit('MRR source must use a full immutable SHA')
+        root = Path('.data/ci-search-mrr')
+        root.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['git', 'init', '--quiet', str(root)], check=True)
+        subprocess.run(['git', '-C', str(root), 'remote', 'add', 'origin', dependency['git']], check=True)
+        subprocess.run(['git', '-C', str(root), 'fetch', '--depth=1', 'origin', revision], check=True)
+        subprocess.run(['git', '-C', str(root), 'checkout', '--detach', revision], check=True)
+        if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip() != revision:
+            raise SystemExit('foreign MRR revision')
+        PYTHON
+        echo "PYTHONPATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/proofs/MRRProof/src" >> "$GITHUB_ENV"
+        echo "GERBIL_PATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/.gerbil" >> "$GITHUB_ENV"
+        echo "GERBIL_LOADPATH=$GITHUB_WORKSPACE/.data/ci-search-mrr/.gerbil/lib" >> "$GITHUB_ENV"
+    - name: Prepare the owner-declared Scheme dependencies
+      working-directory: .data/ci-search-mrr
+      shell: bash
+      run: |
+        python3 -m mrr_proof_validation.prepare_gerbil_dependencies
+        gerbil deps --install
+    - name: Build the declared MRR execution owner
+      working-directory: .data/ci-search-mrr
+      shell: bash
+      run: |
+        python3 -m mrr_proof_validation.process_runner --total 1800 --label MRR-OWNER -- cargo build --locked -p mrr-gerbil --bin mrr-native-worker
+    - name: Stage the explicit owner fixture
+      shell: bash
+      run: |
+        mkdir -p target/debug
+        cp .data/ci-search-mrr/target/debug/mrr-native-worker target/debug/mrr-native-worker

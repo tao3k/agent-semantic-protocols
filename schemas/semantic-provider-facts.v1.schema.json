@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-provider-facts.v1.schema.json",
   "title": "Semantic Provider Facts",
-  "description": "Provider-owned semantic facts emitted by language harnesses for ASP search graph enrichment. Candidate annotations are provider facts, not ASP path heuristics.",
+  "description": "Provider-owned semantic facts emitted by ASP language providers for ASP search graph enrichment. Candidate annotations are provider facts, not ASP path heuristics.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

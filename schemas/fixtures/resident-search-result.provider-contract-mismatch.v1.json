@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.resident-search-result",
+  "schemaVersion": "1",
+  "state": "ProviderContractMismatch",
+  "hits": [],
+  "workCounters": {
+    "databaseReadCount": 0,
+    "filesystemReadCount": 0,
+    "providerProcessCount": 0,
+    "socketOperationCount": 0,
+    "schedulerTaskCount": 0
+  },
+  "error": "installed provider runtime contract does not match the active catalog"
+}

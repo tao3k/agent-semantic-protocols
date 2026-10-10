@@ -1,0 +1,6 @@
+#+begin_src gql :profile search-evidence.v1 :binding "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :coverage partial :context-budget-lines 80 :eval never
+(r:Function {selector:"rust://src/registry.rs#item/function/refresh_registry", witness:"w1"})
+(s:SourceHit {path:"config/runtime.json", jq:".runtime | {artifactDigest, providerCatalog}", witness:"w2"})
+(t:SourceHit {path:"notes/migration.txt", lines:[[80,159]], witness:"w3"})
+(s)-[:SUPPORTS {witness:"e1"}]->(r)
+#+end_src

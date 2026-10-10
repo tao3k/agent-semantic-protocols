@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Trace receipt filtering for dev-command-log roots."""
 
 from __future__ import annotations
@@ -32,11 +36,11 @@ def test_build_receipt_filters_dev_log_directory_by_session(tmp_path: Path) -> N
     assert command["id"] == "event-a"
     assert command["kind"] == "search"
     assert command["argv"] == [
-        "py-harness",
+        "asp",
         "search",
-        "prime",
-        "--view",
-        "seeds",
+        "playbook",
+        "--language",
+        "python",
         "--json",
     ]
     assert command["metrics"] == {
@@ -75,7 +79,7 @@ def test_cli_build_receipt_filters_dev_log_root(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "python",
                 "--trace-provider-id",
-                "py-harness",
+                "asp-python",
             ]
         )
 
@@ -123,7 +127,7 @@ def _write_dev_log_root(
     *,
     include_failure_frontier: bool = False,
 ) -> Path:
-    command_dir = tmp_path / "semantic_protocol" / "python" / "py-harness" / "commands"
+    command_dir = tmp_path / "semantic_protocol" / "python" / "asp-python" / "commands"
     command_dir.mkdir(parents=True)
     (command_dir / "commands.jsonl").write_text(
         "\n".join(
@@ -164,9 +168,9 @@ def _dev_log_event(
         "eventId": event_id,
         "sessionId": session_id,
         "languageId": "python",
-        "providerId": "py-harness",
-        "argv": ["py-harness", "search", "prime", "--view", "seeds", "--json"],
-        "command": {"method": "search/prime"},
+        "providerId": "asp-python",
+        "argv": ["asp", "search", "playbook", "--language", "python", "--json"],
+        "command": {"method": "search/playbook"},
         "result": {
             "exitCode": 0,
             "elapsedMs": elapsed_ms,

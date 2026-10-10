@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.search-execution-group-view",
+  "schemaVersion": "1",
+  "loopId": "loop:search-1",
+  "stateBinding": {
+    "runId": "run:search-1",
+    "revision": 8,
+    "stateDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+    "authorityReceiptRef": "receipt:authority-8"
+  },
+  "viewId": "view:execution-group-joined",
+  "programRef": "program:search-1",
+  "programDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+  "executionGroupRef": "group:parallel-1",
+  "mode": "parallel",
+  "workItemCount": 2,
+  "providerDispatchCount": 2,
+  "status": "joined",
+  "completed": 2,
+  "pending": 0,
+  "failed": 0,
+  "cancelled": 0,
+  "grantRefs": [
+    "grant:parallel-1",
+    "grant:parallel-2"
+  ],
+  "resultReceiptRefs": [
+    "receipt:result-1",
+    "receipt:result-2"
+  ],
+  "pollAction": {
+    "commandId": "asp.search.loop.poll.v1",
+    "loopId": "loop:search-1",
+    "batchId": "batch:parallel-1",
+    "pollToken": "capability.poll.parallel-1.abcdefghijklmnopqrstuvwxyz012345"
+  },
+  "joinedEventSequence": 8,
+  "nextPanelRef": "panel:search-2"
+}

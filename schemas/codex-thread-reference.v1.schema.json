@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-thread-reference.v1.schema.json",
+  "title": "Codex Thread Reference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "threadId", "deeplink"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.codex-thread-reference" },
+    "schemaVersion": { "const": "1" },
+    "threadId": { "$ref": "#/$defs/threadId" },
+    "deeplink": {
+      "type": "string",
+      "pattern": "^codex://threads/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+    }
+  },
+  "$defs": {
+    "threadId": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+    }
+  }
+}

@@ -53,8 +53,11 @@
     },
     "reasonKind": {
       "enum": [
-        "none",
-        "direct-source-read",
+      "none",
+      "host-action-authority-unavailable",
+      "direct-source-read",
+      "registered-source-route-required",
+      "structured-source-read",
         "bulk-source-dump",
         "raw-broad-search",
         "asp-reasoning-routed",
@@ -63,7 +66,7 @@
         "semantic-ast-patch-required",
         "edit-before-prime",
         "changed-check-required",
-        "subagent-receipt-required",
+        "agent-choice-required",
         "unsupported-platform",
         "policy"
       ]
@@ -142,15 +145,9 @@
         },
         "kind": {
           "enum": [
-            "prime",
-            "owner",
+            "playbook",
             "query",
-            "lexical",
             "read",
-            "deps",
-            "api",
-            "ingest",
-            "tests",
             "check-changed"
           ]
         },
@@ -212,9 +209,76 @@
         }
       ]
     },
+    "normalizedAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolName",
+        "toolSurface",
+        "operationIntent",
+        "paths"
+      ],
+      "properties": {
+        "toolName": {
+          "type": "string"
+        },
+        "toolSurface": {
+          "enum": [
+            "apply-patch",
+            "direct-read",
+            "directory-read",
+            "fuzzy-file-search",
+            "mcp-read",
+            "nested-tools",
+            "shell-command",
+            "stdin-continuation",
+            "unknown"
+          ]
+        },
+        "operationIntent": {
+          "enum": [
+            "apply-patch",
+            "directory-read",
+            "direct-read",
+            "file-search",
+            "nested-tools",
+            "shell-command",
+            "stdin-continuation",
+            "unknown"
+          ]
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "fields": {
       "type": "object",
       "properties": {
+        "agentAction": {
+              "$ref": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
+          "description": "Layered HostInvocation, SemanticCapability, and Subject facts derived from Host payloads and parser-owned behavior evidence."
+        },
+        "normalizedActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/normalizedAction"
+          },
+          "description": "Typed host actions normalized from the hook payload. This field is never stringified JSON."
+        },
+        "hookPayloadKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Sorted top-level keys observed on the original hook payload."
+        },
         "configRuleId": {
           "$ref": "#/$defs/identifier",
           "description": "Client hook config rule id that produced this decision."
@@ -222,7 +286,7 @@
         "toolSurface": {
           "type": "string",
           "minLength": 1,
-      "description": "Normalized client tool surface that produced the decision, for example shell-command or direct-read."
+          "description": "Normalized client tool surface that produced the decision, for example shell-command or direct-read."
         },
         "operationIntent": {
           "enum": [
@@ -270,42 +334,28 @@
           "type": "string",
           "minLength": 1
         },
-        "targetAgentName": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Host-native managed profile selected from the hook deny intent, for example asp_explorer."
-        },
-        "targetAgentRole": {
+        "targetAgent": {
           "type": "string",
           "minLength": 1
+        },
+        "targetAgentSymbol": {
+          "type": "string",
+          "minLength": 2,
+          "pattern": "^@"
         },
         "targetAgentSelectionSource": {
-          "const": "hook-deny-intent"
+          "const": "config-agent-route"
         },
-        "targetAgentRegistrySource": {
-          "type": "string",
-          "minLength": 1
+        "dispatchSatisfied": {
+          "type": "boolean",
+          "description": "True when a verified current child registration already satisfies the selected dispatch capability, so dispatch is idempotent and must not recurse."
         },
-        "targetAgentHostRegistry": {
-          "type": "string",
-          "minLength": 1
-        },
-        "targetAgentLifecycleOwner": {
-          "const": "main-agent"
-        },
-        "targetAgentReusePolicy": {
-          "const": "reuse-unique-child-before-spawn"
-        },
-        "targetAgentRegistryStatus": {
+        "dispatchAdmission": {
           "enum": [
-            "ready",
-            "repaired-by-asp-sync",
-            "degraded-built-in-route"
-          ]
-        },
-        "targetAgentAutoSync": {
-          "type": "string",
-          "minLength": 1
+            "verified-registration-intent",
+            "verified-registration-role"
+          ],
+          "description": "Verified registration fact that established the dispatch fixed point. Intent authority is preferred after registration; role matching remains a selection receipt."
         },
         "hookConfigStatus": {
           "enum": [

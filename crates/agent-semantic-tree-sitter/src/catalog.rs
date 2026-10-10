@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Catalog loading and fingerprinting for tree-sitter-compatible `.scm` query surfaces.
 //!
 //! This module does not link tree-sitter runtime or grammar crates. It prepares
@@ -5,8 +9,10 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::compile_query_abi_source;
 

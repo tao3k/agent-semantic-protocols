@@ -1,0 +1,48 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-client-server-scenario",
+  "schemaVersion": "1",
+  "scenarioId": "native.rust.health-request-shutdown",
+  "qualificationMode": "native-fixture",
+  "authority": {
+    "workspaceIdentity": "workspace-fixture",
+    "generationDigest": "generation-fixture",
+    "rootDigest": "root-fixture",
+    "providerCatalogDigest": "catalog-fixture",
+    "languageId": "rust",
+    "providerId": "asp-rust"
+  },
+  "transport": "http-json",
+  "steps": [
+    {
+      "ordinal": 0,
+      "eventKind": "ready",
+      "operationId": "operation-native",
+      "budgetMicros": 1000
+    },
+    {
+      "ordinal": 1,
+      "eventKind": "request-terminal",
+      "operationId": "operation-native",
+      "terminalStatus": "ready",
+      "budgetMicros": 1000
+    },
+    {
+      "ordinal": 2,
+      "eventKind": "idle-closed",
+      "operationId": "operation-native",
+      "terminalStatus": "stopped",
+      "budgetMicros": 1000
+    }
+  ],
+  "invariants": [
+    "unique-operation-authority",
+    "terminal-receipt-immutable",
+    "cache-authority-exact"
+  ],
+  "expectedTerminalState": "stopped",
+  "otel": {
+    "traceId": "trace-native",
+    "requiredEventKinds": ["ready", "request-terminal", "idle-closed"],
+    "terminalEventObserved": true
+  }
+}

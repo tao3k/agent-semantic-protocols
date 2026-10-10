@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-command-diagnostics.v1.schema.json",
+  "title": "Search Command Diagnostics",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "traceId",
+    "commandIdentity",
+    "commandKind",
+    "languageId",
+    "projections",
+    "totalElapsedMicros",
+    "budgetMicros",
+    "budgetStatus",
+    "bug",
+    "stages"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.search-command-diagnostics" },
+    "schemaVersion": { "const": "1" },
+    "traceId": { "type": "string", "minLength": 1 },
+    "commandIdentity": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "commandKind": { "enum": ["search", "query"] },
+    "languageId": { "type": "string", "minLength": 1 },
+    "workspaceIdentity": { "type": ["string", "null"] },
+    "projections": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["verbose", "debug", "trace"] }
+    },
+    "totalElapsedMicros": { "type": "integer", "minimum": 0 },
+    "budgetMicros": { "type": "integer", "minimum": 1 },
+    "budgetStatus": { "enum": ["within-budget", "budget-exceeded"] },
+    "bug": { "type": "boolean" },
+    "failureReason": { "type": ["string", "null"] },
+    "debug": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "generationDigest": { "type": ["string", "null"] },
+        "providerId": { "type": ["string", "null"] },
+        "routeKind": { "type": ["string", "null"] },
+        "cacheState": { "type": ["string", "null"] }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sequence", "stage", "elapsedMicros", "totalMicros", "counters"],
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "stage": { "type": "string", "minLength": 1 },
+          "elapsedMicros": { "type": "integer", "minimum": 0 },
+          "totalMicros": { "type": "integer", "minimum": 0 },
+          "counters": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "databaseOpens",
+              "binaryReads",
+              "manifestWrites",
+              "providerProcessStarts",
+              "ipcRequests",
+              "cacheHits",
+              "cacheMisses"
+            ],
+            "properties": {
+              "databaseOpens": { "type": "integer", "minimum": 0 },
+              "binaryReads": { "type": "integer", "minimum": 0 },
+              "manifestWrites": { "type": "integer", "minimum": 0 },
+              "providerProcessStarts": { "type": "integer", "minimum": 0 },
+              "ipcRequests": { "type": "integer", "minimum": 0 },
+              "cacheHits": { "type": "integer", "minimum": 0 },
+              "cacheMisses": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

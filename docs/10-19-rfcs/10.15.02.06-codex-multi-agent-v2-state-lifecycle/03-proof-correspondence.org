@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Multi-agent Life Session proof correspondence
+
+| Contract | Lean owner | Rust obligation |
+|-
+| Orthogonal server/session/binding/dispatch layers | =AgentSessionLifecycleProduct= | state and transition enums preserve generation fences |
+| Root session contains many agents | =MultiAgentLifeSession.MultiAgentLifeSession= | aggregate registry is scoped by root session |
+| Typed identity separation | =ResidentProfile= | route, session, and platform target are newtypes |
+| Verified binding before dispatch | =durableResidentDispatchAuthorized= | dispatch claim requires current verification receipt |
+| One resident generation per slot | =ResidentOccupancy= | incumbent/replacement cannot coexist |
+| Temporary agents do not consume resident slots | =temporaryAgentsDoNotConsumeResidentSlots= | temporary lifecycle is stored separately |
+| Dynamic configured routes | =ResidentRegistry= | no fixed resident-name enumeration |
+
+The audit module =ASPProof.Audit.MultiAgentLifeSession= must report zero axiom
+dependencies for every theorem above.

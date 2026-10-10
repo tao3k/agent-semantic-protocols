@@ -1,8 +1,11 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for Merkle artifact fields in client receipts."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +39,9 @@ def artifact_root(root_kind: str = "searchReceipt") -> dict[str, Any]:
 
 def receipt_schema_validator() -> Draft202012Validator:
     schema_path = _REPO_ROOT / "schemas" / "agent-semantic-client-receipt.v1.schema.json"
-    with schema_path.open("r", encoding="utf-8") as handle:
-        return Draft202012Validator(json.load(handle))
+    from unit.schema_validation import schema_validator_for
+
+    return schema_validator_for(schema_path)
 
 
 def validation_errors(receipt: dict[str, Any]) -> list[str]:
@@ -59,8 +63,8 @@ def test_merkle_artifact_root_receipt_fields_are_valid() -> None:
         "providerCommands": [
             {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "argv": ["rs-harness", "search", "prime", "."],
+                "providerId": "asp-rust",
+                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                 "exitCode": 0,
                 "stdoutBytes": 300,
                 "stderrBytes": 0,

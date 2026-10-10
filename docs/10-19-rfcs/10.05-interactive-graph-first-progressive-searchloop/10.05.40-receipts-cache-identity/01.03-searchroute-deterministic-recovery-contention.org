@@ -1,0 +1,426 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.40.01.03 - Deterministic Recovery Contention
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module governs contention when multiple recovery candidates observe the
+same expired RFC 01.02 publication lease. It changes selection, receipt, and
+SearchLoop semantics only. It does not authorize Rust or Python implementation.
+
+* Abstract
+
+Lease expiry permits a takeover attempt; it does not select a successor. A
+contention round must:
+
+- close one candidate set;
+- assign every eligible candidate a unique deterministic order key;
+- select the minimum key;
+- commit the winner through the lease epoch and revision CAS;
+- redirect losers to the committed winner.
+
+#+name: searchroute-deterministic-recovery-contention-model
+#+begin_src typst
+#let choose(left-rank, right-rank, left, right) = (
+  if left-rank <= right-rank { left } else { right }
+)
+#assert(choose(1, 2, "a", "b") == "a")
+#assert(choose(2, 1, "a", "b") == "b")
+#assert(choose(1, 1, "a", "b") == "a")
+#assert(1 <= 2)
+"ok"
+#+end_src
+
+The comparison is deterministic only when equal priority tickets have a
+canonical identity tie-break.
+
+* Contention round identity
+
+A contention round binds:
+
+- =transitionId=;
+- =previousLeaseEpoch=;
+- =previousPublicationRevision=;
+- =verificationSnapshotId=;
+- =expiryObservationReceiptId=;
+- =candidateSetDigest=;
+- =selectionPolicyVersion=;
+- =registrationOpenedAt=;
+- =registrationClosedAt=;
+- =clockAuthorityId=;
+- =logicalTimeEpoch=.
+
+Two candidate sets that happen to select the same winner are still different
+rounds.
+
+* Candidate eligibility
+
+Each candidate MUST provide an eligibility receipt binding:
+
+- canonical candidate identity;
+- contention round identity;
+- observed expired lease identity;
+- expected lease epoch;
+- expected publication revision;
+- expected verification snapshot;
+- authentication and authorization evidence;
+- candidate registration time;
+- supported publication/recovery capabilities.
+
+A candidate is ineligible when it:
+
+- observes a different lease or transition;
+- registers after candidate-set closure;
+- uses a stale epoch, revision, or verification snapshot;
+- lacks takeover authorization;
+- duplicates another canonical candidate identity;
+- is quarantined or revoked.
+
+The candidate set MUST be identity-distinct before ranking.
+
+* Candidate-set closure
+
+The round MUST close registration before choosing a winner. Closure produces:
+
+#+begin_example
+candidateSetDigest = H(
+  contentionRoundId,
+  sortedEligibleCandidateIdentities,
+  eligibilityReceiptIds,
+  registrationClosedAt,
+  selectionPolicyVersion
+)
+#+end_example
+
+Candidates arriving after closure join a later round. The current digest MUST
+NOT be mutated.
+
+Without closure, two publishers may rank different candidate sets and both
+claim deterministic victory.
+
+* Deterministic order key
+
+The order key MUST be a total, identity-injective tuple:
+
+#+begin_example
+candidateOrderKey = (
+  priorityTicket,
+  canonicalCandidateId
+)
+#+end_example
+
+=priorityTicket= MAY be derived deterministically from the round and candidate,
+for example:
+
+#+begin_example
+priorityTicket = H(
+  contentionRoundId,
+  canonicalCandidateId,
+  selectionPolicyVersion
+)
+#+end_example
+
+The hash or ticket alone MUST NOT be treated as injective. Hash collisions,
+truncation, or equal policy priorities can assign the same ticket to distinct
+candidates. =canonicalCandidateId= is the mandatory final tie-break.
+
+The serialized tuple ordering and candidate identity normalization MUST be
+versioned.
+
+* Winner definition
+
+For eligible predicate \(E\), rank function \(\rho\), and winner \(w\):
+
+\[
+\mathsf{Winner}(w)
+\equiv
+E(w)\land
+\forall c,\ E(c)\Longrightarrow \rho(w)\le\rho(c).
+\]
+
+If \(\rho\) is identity-injective, any two winners are equal:
+
+#+name: searchroute-deterministic-recovery-contention-proposition
+#+begin_src typst
+#let unique-winner = $
+  upright("Winner")(x)
+  and upright("Winner")(y)
+  and upright("Injective")(rho)
+  arrow.r.double
+  x = y
+$
+#let commit-generation = $
+  lambda_"new" = lambda_"old" + 1
+  and r_"new" = r_"old" + 1
+$
+#let round-separation = $
+  w = w^prime
+  and C != C^prime
+  arrow.r.double
+  R != R^prime
+$
+#assert(type(unique-winner) == content)
+#assert(type(commit-generation) == content)
+#assert(type(round-separation) == content)
+"ok"
+#+end_src
+
+The Lean model also constructs a winner for a two-candidate comparison. General
+finite-set construction is an implementation obligation; uniqueness is the
+protocol safety theorem.
+
+* Selection certificate
+
+The selection certificate MUST include:
+
+- =contentionRoundId=;
+- =candidateSetDigest=;
+- =winnerCandidateId=;
+- =winnerOrderKey=;
+- =selectionPolicyVersion=;
+- one comparison or compact proof that every eligible candidate key is not
+  less than the winner key;
+- =selectedAt=;
+- certificate validity and audit identity.
+
+The verifier MUST reconstruct the winner from the closed candidate set or a
+proof object committed to that exact set.
+
+* CAS remains authoritative
+
+Deterministic selection does not replace the RFC 01.02 takeover CAS.
+
+Winner commit still requires:
+
+#+begin_example
+expectedLeaseEpoch == currentLeaseEpoch
+expectedPublicationRevision == currentPublicationRevision
+expectedVerificationSnapshotId == currentVerificationSnapshotId
+candidateSetDigest == closedCandidateSetDigest
+winnerCandidateId == selectedWinnerCandidateId
+#+end_example
+
+Success atomically produces:
+
+#+begin_example
+holderId = winnerCandidateId
+leaseEpoch = previousLeaseEpoch + 1
+publicationRevision = previousPublicationRevision + 1
+#+end_example
+
+If the CAS fails, the selection certificate is historical evidence only. It
+MUST NOT be advertised as an acquired lease.
+
+* Winner and loser receipts
+
+** Winner commit receipt
+
+#+begin_example
+recoveryContentionWinnerReceiptId = H(
+  contentionRoundId,
+  candidateSetDigest,
+  winnerCandidateId,
+  winnerOrderKey,
+  selectionCertificateId,
+  previousLeaseId,
+  committedLeaseId,
+  previousLeaseEpoch,
+  committedLeaseEpoch,
+  previousPublicationRevision,
+  committedPublicationRevision,
+  verificationSnapshotId,
+  committedAt
+)
+#+end_example
+
+** Loser redirect receipt
+
+Each loser receives:
+
+#+begin_example
+recoveryContentionLoserReceiptId = H(
+  contentionRoundId,
+  candidateSetDigest,
+  loserCandidateId,
+  winnerCandidateId,
+  winnerLeaseId,
+  committedLeaseEpoch,
+  selectionCertificateId
+)
+#+end_example
+
+The loser and winner identities MUST differ. The loser should follow the
+=inspect-winner-lease= or =wait-for-winner-publication= edge instead of polling
+the entire contention history.
+
+* Round and cache identity
+
+Contention compatibility requires equality of:
+
+- transition;
+- previous lease epoch;
+- previous publication revision;
+- verification snapshot;
+- candidate-set digest;
+- selection policy version.
+
+Consequences:
+
+- changing the candidate set invalidates selection cache;
+- changing policy invalidates selection cache;
+- same winner does not make rounds compatible;
+- changing previous epoch or revision invalidates commit authorization;
+- a model cache hit on the same rendered winner is not a contention receipt.
+
+* SearchLoop and graph-router consequences
+
+The compact graph path is:
+
+#+begin_example
+observe expired lease
+  -> open bounded candidate registration
+  -> close candidate set
+  -> verify identity-distinct order keys
+  -> select minimum winner
+  -> CAS next lease generation
+  -> emit winner and loser receipts
+  -> route winner to publication recovery
+  -> route losers to winner lease
+#+end_example
+
+Progressive inspection includes:
+
+- =inspect candidate-set=;
+- =inspect candidate-eligibility=;
+- =inspect winner-comparisons=;
+- =inspect takeover-cas=;
+- =inspect winner-lease=.
+
+The common loser path consumes one compact redirect receipt. It does not reopen
+every candidate or retry a complex CLI search, reducing graph edges, tokens,
+and interaction rounds.
+
+* Safety and liveness separation
+
+This RFC proves single-winner safety under:
+
+- one closed candidate set;
+- one deterministic policy;
+- an injective total order key;
+- an exact takeover CAS fence.
+
+It does not prove fairness or starvation freedom.
+
+A deterministic minimum candidate ID can repeatedly favor the same publisher.
+This does not violate single-winner safety but may violate operational fairness.
+Fairness must be modeled separately rather than hidden inside the uniqueness
+proof.
+
+* Failure receipts
+
+The protocol adds:
+
+- =candidate-registration-closed=;
+- =duplicate-recovery-candidate=;
+- =candidate-set-digest-mismatch=;
+- =candidate-order-key-collision=;
+- =selection-policy-mismatch=;
+- =selected-winner-mismatch=;
+- =contention-cas-lost=;
+- =stale-contention-epoch=;
+- =stale-contention-revision=;
+- =loser-redirect-invalid=.
+
+Every failure receipt MUST bind the contention round and candidate-set digest.
+
+* Proof-discovered gaps
+
+** A hash rank is not injective
+
+Two distinct candidates with the same rank both satisfy the minimum condition.
+The canonical identity tie-break is part of the proof contract.
+
+** Determinism requires the same candidate set
+
+The same algorithm over different inputs can correctly return different
+winners. Candidate-set closure and digest binding are mandatory.
+
+** Selection is not ownership
+
+A winner certificate does not acquire the lease. Only the epoch/revision CAS
+creates the next owner generation.
+
+** Same winner is not same round
+
+Different candidate sets, policies, or snapshots can coincidentally select the
+same candidate. Caching by winner identity is unsound.
+
+** Single-winner safety is not fairness
+
+An always-winning candidate is safe but can starve others. Fairness requires a
+separate temporal model.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.lean
+#+end_example
+
+It proves:
+
+- a two-candidate contention has a deterministic minimum;
+- injective ranking makes the winner unique;
+- non-injective ranking can admit two distinct winners;
+- winner commit advances epoch and publication revision;
+- the previous epoch is fenced after commit;
+- loser redirect identifies a distinct winner;
+- contention compatibility binds candidate-set digest;
+- changing candidate set invalidates the round;
+- equal winner identity does not imply compatible rounds;
+- stale epoch or revision blocks commit.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContentionAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-deterministic-recovery-contention-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- winner existence for every arbitrary finite representation;
+- starvation freedom;
+- probabilistic fairness;
+- bounded retry rounds;
+- Byzantine candidate registration flooding;
+- distributed candidate-set agreement.
+
+* Next proof boundary
+
+The next module should model bounded retry and fairness. It must guarantee that
+a candidate losing one round does not retain stale authority, while defining
+whether and when it may enter a later round.
+
+The proof should introduce a round number, bounded backoff, candidate attempt
+budget, and a fairness assumption explicitly. It must not claim unconditional
+liveness in an adversarial scheduler.

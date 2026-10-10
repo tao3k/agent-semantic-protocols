@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/resident-workspace-retirement-receipt.v1.schema.json",
+  "title": "Resident workspace retirement receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "reason",
+    "idleTimeoutSeconds",
+    "liveLeaseCount",
+    "inFlightRequestCount",
+    "checkpointCompleted",
+    "writerLaneDrained",
+    "endpointRetired"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.resident-workspace-retirement-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "enum": [
+        "workspace-missing",
+        "idle-timeout"
+      ]
+    },
+    "idleTimeoutSeconds": {
+      "type": "integer",
+      "minimum": 3600
+    },
+    "liveLeaseCount": {
+      "const": 0
+    },
+    "inFlightRequestCount": {
+      "const": 0
+    },
+    "checkpointCompleted": {
+      "const": true
+    },
+    "writerLaneDrained": {
+      "const": true
+    },
+    "endpointRetired": {
+      "const": true
+    }
+  }
+}

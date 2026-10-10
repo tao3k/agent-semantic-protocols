@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/runtime-artifact-identity.schema.json",
+  "title": "Runtime Artifact Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactKind",
+    "artifactMode",
+    "stablePath",
+    "sourcePath",
+    "sourceGeneration",
+    "sourceGenerationAlgorithm",
+    "artifactDigest",
+    "identityKind",
+    "identityValue",
+    "identityAlgorithm"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-artifact-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "artifactKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactMode": {
+      "enum": ["dev", "release"]
+    },
+    "stablePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceGeneration": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "sourceGenerationAlgorithm": {
+      "const": "filesystem-generation-v1"
+    },
+    "artifactDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identityKind": { "const": "content" },
+    "identityValue": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identityAlgorithm": { "const": "blake3-256" }
+    ,"sourceExecutableIdentity": { "$ref": "#/$defs/executableIdentity" }
+    ,"activeExecutableIdentity": { "$ref": "#/$defs/executableIdentity" }
+  },
+  "$defs": {
+    "executableIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "dev", "inode", "size", "mtimeSec", "mtimeNs", "ctimeSec", "ctimeNs", "contentDigest"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "dev": { "type": "integer", "minimum": 0 },
+        "inode": { "type": "integer", "minimum": 0 },
+        "size": { "type": "integer", "minimum": 0 },
+        "mtimeSec": { "type": "integer" },
+        "mtimeNs": { "type": "integer", "minimum": 0 },
+        "ctimeSec": { "type": "integer" },
+        "ctimeNs": { "type": "integer", "minimum": 0 },
+        "contentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

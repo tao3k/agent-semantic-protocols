@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-layout-execution-receipt.v1.schema.json",
+  "title": "ASP Search Layout Execution Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "layoutId",
+    "layoutVersion",
+    "layoutOwner",
+    "layoutDigest",
+    "requestDigest",
+    "sourceGenerationDigest",
+    "stages",
+    "terminalState"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-layout-execution-receipt"},
+    "schemaVersion": {"const": "1"},
+    "layoutId": {"$ref": "#/$defs/id"},
+    "layoutVersion": {"type": "integer", "minimum": 1},
+    "layoutOwner": {"const": "agent-semantic-search"},
+    "layoutDigest": {"$ref": "#/$defs/digest"},
+    "requestDigest": {"$ref": "#/$defs/digest"},
+    "sourceGenerationDigest": {"$ref": "#/$defs/digest"},
+    "stages": {
+      "type": "array",
+      "minItems": 3,
+      "items": {"$ref": "#/$defs/stageReceipt"}
+    },
+    "terminalState": {"enum": ["complete", "blocked", "failed"]},
+    "reasonKind": {"$ref": "#/$defs/id"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"terminalState": {"const": "complete"}}, "required": ["terminalState"]},
+      "then": {"not": {"required": ["reasonKind"]}},
+      "else": {"required": ["reasonKind"]}
+    }
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$(?![\\s\\S])"},
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"},
+    "stageReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stageId", "operator", "inputScopeDigest", "outputScopeDigest", "candidateCount", "state"],
+      "properties": {
+        "stageId": {"$ref": "#/$defs/id"},
+        "operator": {"enum": ["rg", "tantivy", "syntax", "native-syntax", "fusion", "native-parser", "graph"]},
+        "inputScopeDigest": {"$ref": "#/$defs/digest"},
+        "outputScopeDigest": {"$ref": "#/$defs/digest"},
+        "candidateCount": {"type": "integer", "minimum": 0},
+        "state": {"enum": ["complete", "skipped", "failed"]}
+      }
+    }
+  }
+}

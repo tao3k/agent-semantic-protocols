@@ -1,13 +1,23 @@
-"""Shared subprocess fixtures for graph turbo CLI tests."""
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+"""Shared packet fixtures for Graph-Turbo algorithm and evidence tests."""
 
 from __future__ import annotations
 
 import json
 import subprocess
-import sys
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from io import StringIO
+from os import environ
 from pathlib import Path
+from collections.abc import Iterator
 
-import jsonschema
+from asp_python_graphs.algorithm import RankOptions, load_packet, rank_packet
+from asp_python_graphs.cache_cli import main as cache_main
+from asp_python_graphs.render import render_compact
+from .schema_validation import schema_validator_for
 
 
 def sample_graph_turbo_request() -> dict[str, object]:
@@ -17,11 +27,25 @@ def sample_graph_turbo_request() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
-        "surface": "search-pipe",
+        "surface": "search-playbook",
+        "sourceSnapshot": {
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceKind": "derived-overlay",
+            "leafCount": 4,
+            "providerDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        },
+        "workspaceGeneration": {
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootDepth": 0,
+            "leafCount": 4,
+            "ownerCount": 1,
+        },
         "queryTerms": ["cache"],
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:cache"],
+        "entryNodeIds": ["query:cache"],
         "budget": 4,
         "kindBudgets": {"item": 2, "owner": 1, "test": 1},
         "pathBudget": 3,
@@ -99,33 +123,40 @@ def changed_sample_graph_turbo_request() -> dict[str, object]:
 def run_graph_turbo_rank(
     packet_path: Path, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "asp_graph_turbo",
-            "rank",
-            str(packet_path),
-            "--format",
-            "compact",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-        env=env,
+    with _patched_environment(env):
+        output = render_compact(
+            rank_packet(load_packet(str(packet_path)), RankOptions())
+        )
+    return subprocess.CompletedProcess(
+        ["asp-python-graphs", "algorithm", str(packet_path)], 0, output, ""
     )
 
 
 def run_graph_turbo_cache(
     args: list[str], env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "asp_graph_turbo", "cache", *args],
-        check=True,
-        text=True,
-        capture_output=True,
-        env=env,
+    stdout = StringIO()
+    stderr = StringIO()
+    with _patched_environment(env), redirect_stdout(stdout), redirect_stderr(stderr):
+        returncode = cache_main(args)
+    return subprocess.CompletedProcess(
+        ["asp-python-graphs", "offline-cache", *args],
+        returncode,
+        stdout.getvalue(),
+        stderr.getvalue(),
     )
+
+
+@contextmanager
+def _patched_environment(values: dict[str, str]) -> Iterator[None]:
+    previous = dict(environ)
+    environ.clear()
+    environ.update(values)
+    try:
+        yield
+    finally:
+        environ.clear()
+        environ.update(previous)
 
 
 def cache_key(output: str) -> str:
@@ -135,5 +166,4 @@ def cache_key(output: str) -> str:
 
 def validate_shared_schema(payload: object, schema_name: str) -> None:
     schema_path = Path(__file__).resolve().parents[2] / "schemas" / schema_name
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    jsonschema.Draft202012Validator(schema).validate(payload)
+    schema_validator_for(schema_path).validate(payload)

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "code-search-merkle-memory-warm-path"
+phase = "warm"
+timer_unit = "microseconds"
+sample_count = 128
+target_p95_us = 1000
+max_sample_us = 5000
+engine = "turso-0.7"
+merkle_algorithm = "blake3-merkle-v1"
+require_memory_hit = true
+max_turso_db_open_count = 0
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_source_blob_read_count = 0
+max_source_rehash_count = 0
+fallback_reason = "none"
+
+[gate]
+policy = "SEARCH-AGENT-ASP-CODE-SEARCH-MEMORY-PERF-001"
+require_all_samples_inside_max = true
+forbid_best_of_sampling = true
+require_client_directory_absent = true

@@ -1,0 +1,637 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/incremental-search-generation.v1.schema.json",
+  "title": "ASP Incremental Search Generation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "operation",
+    "languageId",
+    "providerId",
+    "providerWorkspaceRoot",
+    "providerWorkspaceIdentityDigest",
+    "generationBefore",
+    "generationAfter",
+    "completeness",
+    "ownerAcquisitions",
+    "projections",
+    "counters",
+    "continuation"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.incremental-search-generation"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "operation": {
+      "enum": [
+        "owner-items",
+        "treesitter-query"
+      ]
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerWorkspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerWorkspaceIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generationBefore": {
+      "$ref": "#/$defs/nullableGeneration"
+    },
+    "generationAfter": {
+      "$ref": "#/$defs/nullableGeneration"
+    },
+    "query": {
+      "$ref": "#/$defs/treeSitterQuery"
+    },
+    "inventory": {
+      "$ref": "#/$defs/providerOwnerInventory"
+    },
+    "completeness": {
+      "$ref": "#/$defs/completeness"
+    },
+    "ownerAcquisitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ownerAcquisition"
+      }
+    },
+    "queryOwnerResults": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/queryOwnerResult"
+      }
+    },
+    "projections": {
+      "type": "array"
+    },
+    "counters": {
+      "$ref": "#/$defs/counters"
+    },
+    "continuation": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/continuation"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootDigest",
+        "leafCount",
+        "ownerCount"
+      ],
+      "properties": {
+        "rootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "nullableGeneration": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/generation"
+        }
+      ]
+    },
+    "treeSitterQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "queryDigest",
+        "captureNames"
+      ],
+      "properties": {
+        "kind": {
+          "const": "treesitter"
+        },
+        "queryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "captureNames": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "providerOwnerInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "knownOwnerCount",
+        "inventoryDigest"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "exact",
+            "known"
+          ]
+        },
+        "knownOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "indexedOwnerCount",
+        "dirtyOwnerCount",
+        "processedOwnerCount",
+        "remainingOwnerCount",
+        "remainingCountKind",
+        "incrementalBudget"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "indexedOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dirtyOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "processedOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remainingOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remainingCountKind": {
+          "enum": [
+            "exact",
+            "known-lower-bound"
+          ]
+        },
+        "incrementalBudget": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ownerFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileIdentity",
+        "sizeBytes",
+        "modifiedUnixNanos",
+        "changeTimeUnixNanos",
+        "contentDigest"
+      ],
+      "properties": {
+        "fileIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modifiedUnixNanos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changeTimeUnixNanos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "ownerAcquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "decision",
+        "fingerprint"
+      ],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "enum": [
+            "unchanged",
+            "changed",
+            "new"
+          ]
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/ownerFingerprint"
+        }
+      }
+    },
+    "queryOwnerResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "ownerContentDigest",
+        "queryDigest",
+        "state",
+        "captureCount",
+        "completeOwnerRefreshCount"
+      ],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerContentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "state": {
+          "enum": [
+            "cached",
+            "processed"
+          ]
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completeOwnerRefreshCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "baseProjection": {
+      "type": "object",
+      "required": [
+        "ownerPath",
+        "sourceContentDigest",
+        "structuralSelector",
+        "signature",
+        "itemKind",
+        "itemName",
+        "captureName",
+        "sourceByteStart",
+        "sourceByteEnd"
+      ],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceContentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "structuralSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "captureName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceByteStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceByteEnd": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ownerItemProjection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseProjection"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "treeSitterProjection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseProjection"
+        },
+        {
+          "type": "object",
+          "required": [
+            "queryDigest",
+            "itemSourceByteStart",
+            "itemSourceByteEnd"
+          ],
+          "properties": {
+            "queryDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "itemSourceByteStart": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "itemSourceByteEnd": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metadataReads",
+        "sourceByteReads",
+        "sourceBytesRead",
+        "providerParses",
+        "queryCacheReads",
+        "queryCacheWrites",
+        "completeOwnerRefreshes",
+        "ownerIndexWrites",
+        "casWrites",
+        "merkleLeafWrites",
+        "merklePathNodeWrites",
+        "fullSourceWalks",
+        "fullCasMaterializations",
+        "fullMerkleRebuilds",
+        "unrelatedProviderCount"
+      ],
+      "properties": {
+        "metadataReads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceByteReads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceBytesRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "providerParses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryCacheReads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryCacheWrites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completeOwnerRefreshes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownerIndexWrites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "casWrites": {
+          "const": 0
+        },
+        "merkleLeafWrites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "merklePathNodeWrites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fullSourceWalks": {
+          "const": 0
+        },
+        "fullCasMaterializations": {
+          "const": 0
+        },
+        "fullMerkleRebuilds": {
+          "const": 0
+        },
+        "unrelatedProviderCount": {
+          "const": 0
+        }
+      }
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerWorkspaceIdentityDigest",
+        "queryDigest",
+        "generationRootDigest",
+        "inventoryState",
+        "remainingCountKind",
+        "nextOwnerCursor"
+      ],
+      "properties": {
+        "providerWorkspaceIdentityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "generationRootDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "inventoryState": {
+          "enum": [
+            "exact",
+            "known"
+          ]
+        },
+        "remainingCountKind": {
+          "enum": [
+            "exact",
+            "known-lower-bound"
+          ]
+        },
+        "nextOwnerCursor": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "treesitter-query"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "query",
+          "inventory",
+          "queryOwnerResults"
+        ],
+        "properties": {
+          "projections": {
+            "items": {
+              "$ref": "#/$defs/treeSitterProjection"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "owner-items"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "projections": {
+            "items": {
+              "$ref": "#/$defs/ownerItemProjection"
+            }
+          },
+          "counters": {
+            "properties": {
+              "sourceByteReads": {
+                "maximum": 1
+              },
+              "providerParses": {
+                "maximum": 1
+              },
+              "ownerIndexWrites": {
+                "maximum": 1
+              },
+              "merkleLeafWrites": {
+                "maximum": 1
+              },
+              "completeOwnerRefreshes": {
+                "maximum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "completeness": {
+            "properties": {
+              "state": {
+                "const": "complete"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "continuation": {
+            "type": "null"
+          },
+          "completeness": {
+            "properties": {
+              "remainingOwnerCount": {
+                "const": 0
+              },
+              "remainingCountKind": {
+                "const": "exact"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "continuation": {
+            "$ref": "#/$defs/continuation"
+          }
+        }
+      }
+    }
+  ]
+}

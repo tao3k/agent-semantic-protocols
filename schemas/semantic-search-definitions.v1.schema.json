@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json",
+  "title": "Semantic Search Family Definitions V1",
+  "description": "Shared definitions owned by the semantic-search schema family.",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "generationIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "workspaceId",
+        "sourceRootDigest",
+        "providerDigest",
+        "schemaDigest",
+        "generationCandidateDigest"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceRootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schemaDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "generationCandidateDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "nanos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "performanceDistribution": {
+      "type": "object",
+      "required": [
+        "samples",
+        "p50Nanos",
+        "p95Nanos",
+        "p99Nanos",
+        "maxNanos"
+      ],
+      "properties": {
+        "samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "p50Nanos": {
+          "$ref": "#/$defs/nanos"
+        },
+        "p95Nanos": {
+          "$ref": "#/$defs/nanos"
+        },
+        "p99Nanos": {
+          "$ref": "#/$defs/nanos"
+        },
+        "maxNanos": {
+          "$ref": "#/$defs/nanos"
+        }
+      }
+    },
+    "lineRange": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ],
+      "items": false
+    },
+    "lineRanges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/lineRange"
+      }
+    }
+  }
+}

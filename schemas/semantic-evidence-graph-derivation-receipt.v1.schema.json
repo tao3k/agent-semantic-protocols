@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-evidence-graph-derivation-receipt.v1.schema.json",
+  "title": "EvidenceGraph Derivation Receipt",
+  "description": "Runtime-owned receipt binding one semantic EvidenceGraph artifact to its immutable source generation, normalized source facts, GQL-compiled rule plans, and complete Ascent result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "programId",
+    "programDigest",
+    "sourceGenerationDigest",
+    "sourceFactDigest",
+    "graphDigest",
+    "inputNodeCount",
+    "inputFactCount",
+    "derivedEdgeCount",
+    "rules",
+    "complete"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.evidence-graph-derivation-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "programId": {
+      "const": "mrr.evidence-graph.runtime"
+    },
+    "programDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceGenerationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceFactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "graphDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "inputNodeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "inputFactCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "derivedEdgeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "complete": {
+      "const": true
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "gqlPlanDigest",
+        "inputRelation",
+        "outputEdgeKind"
+      ],
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "pattern": "^mrr\\.evidence-graph\\.runtime\\.[a-z][a-z0-9-]*$"
+        },
+        "gqlPlanDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inputRelation": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "outputEdgeKind": {
+          "$ref": "semantic-evidence-graph.v1.schema.json#/$defs/edgeKind"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "auditSha256": "befca46d724cf63ba3fd7171cc19f74e2af6f6237f95ed3c2f1183e7fe292bdb",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 25,
+  "axiomInventory": [],
+  "declarationCount": 25,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-ASRM-LIFECYCLE",
+    "ASP-RFC-10.05-ASRM-MATERIALIZED",
+    "ASP-RFC-10.05-ASRM-RETRY",
+    "ASP-RFC-10.05-ASRM-SEAL"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "capture-completeness",
+    "effect-observation",
+    "materialization-identity",
+    "materialization-lifecycle",
+    "payload-sealing",
+    "retry-stability"
+  ]
+}

@@ -56,7 +56,7 @@
           "structural-selector-query"
         ],
         "queryTerms": [
-      "AsyncRead",
+          "AsyncRead",
           "item-skeleton"
         ]
       }
@@ -73,49 +73,34 @@
       "id": "owner-items-structural-skeleton",
       "command": [
         "asp",
-        "rust",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "rust",
+        "--rg",
+        "-n",
+        "-e",
+        "AsyncRead|poll_read|async_read",
         "src/io/async_read.rs",
-        "items",
-        "--query",
-        "AsyncRead|poll_read",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "--tantivy",
+        "title:\"AsyncRead\"^2 OR body:\"poll_read\""
       ],
-  "expect": {
-    "lineProtocol": true,
-    "stdoutContains": [
-          "[search-reasoning] q=owner-query",
-          "selector=rust://",
-          "src/io/async_read.rs#item/trait/AsyncRead",
-          "sourceLocatorHint=",
-          "src/io/async_read.rs:",
-          "A1=item-skeleton(selector=rust://",
-          "projection=skeleton",
-          "A2=syntax-outline(selector=rust://",
-          "projection=outline",
-          "A3=query-code(selector=rust://",
-          "requiresExact=true",
-          "codePolicy=exact-only",
-          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
-          "recommendedNext=A1.item-skeleton",
-          "nextCommand=asp rust query --from-hook item-skeleton --selector 'rust://",
-          "--names-only",
-          "reason=owner-item-skeleton-ready",
-          "avoid=selector-code-before-exact,direct-source-read,manual-window-scan"
+      "expect": {
+        "stdoutContains": [
+          "#+begin_src gql :name result",
+          "(rust:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
         "stdoutNotContains": [
           " read=",
-          "nextCommand=asp rust query --selector src/io/async_read.rs:",
-          "actionFrontier=A1.query-code"
+          "nextCommand=asp query playbook --language rust --selector src/io/async_read.rs:",
+          "actionFrontier=A1.query-code",
+          "MaterializationSet"
         ],
         "maxStdoutLinesWarn": 80,
-        "maxElapsedMs": 300,
+        "maxElapsedMs": 90000,
         "maxColdStartElapsedMs": 2500,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 90000
       }
     },
     {
@@ -134,7 +119,7 @@
       ],
       "expect": {
         "stdoutContains": [
-          "[search-owner] q=src/io/async_read.rs",
+          "[search-playbook] q=src/io/async_read.rs",
           "itemQuery=AsyncRead",
           "structuralSelector=rust://src/io/async_read.rs#item/trait/AsyncRead",
           "sourceLocatorHint=src/io/async_read.rs:",

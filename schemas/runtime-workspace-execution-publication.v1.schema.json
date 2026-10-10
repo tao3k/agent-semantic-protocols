@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-workspace-execution-publication.v1.schema.json",
+  "title": "Runtime Workspace Execution Publication V1",
+  "description": "Immutable sidecar atomically binding one durable workspace source generation to one RuntimeExecutionBinding V2 product.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "sourceRootDigest",
+    "contentPublicationCommit",
+    "runtimeExecutionBinding",
+    "runtimeBundleDigest",
+    "publicationDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-workspace-execution-publication"},
+    "schemaVersion": {"const": "1"},
+    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "generationDigest": {"$ref": "#/$defs/contentDigest"},
+    "sourceRootDigest": {"$ref": "#/$defs/contentDigest"},
+    "contentPublicationCommit": {"$ref": "content-publication-commit.v1.schema.json"},
+    "runtimeExecutionBinding": {"$ref": "runtime-execution-binding.v2.schema.json"},
+    "runtimeBundleDigest": {"$ref": "#/$defs/contentDigest"},
+    "publicationDigest": {"$ref": "#/$defs/contentDigest"}
+  },
+  "$defs": {
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

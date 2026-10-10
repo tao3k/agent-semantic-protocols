@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-project-resolution-control.v1.schema.json",
+  "title": "Workspace project-resolution daemon control",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "operation"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-project-resolution-control"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "$ref": "#/$defs/workspaceIdentity"
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/attachSession"
+        },
+        {
+          "$ref": "#/$defs/detachSession"
+        },
+        {
+          "$ref": "#/$defs/refreshInputs"
+        },
+        {
+          "$ref": "#/$defs/getCurrentScope"
+        },
+        {
+          "$ref": "#/$defs/observeGeneration"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+      }
+    },
+    "workspaceIdentity": {
+      "$ref": "workspace-definitions.v1.schema.json#/$defs/workspaceIdentity"
+    },
+    "sessionIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attachSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sessionIdentity"
+      ],
+      "properties": {
+        "kind": {
+          "const": "attach-session"
+        },
+        "sessionIdentity": {
+          "$ref": "#/$defs/sessionIdentity"
+        }
+      }
+    },
+    "detachSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sessionIdentity"
+      ],
+      "properties": {
+        "kind": {
+          "const": "detach-session"
+        },
+        "sessionIdentity": {
+          "$ref": "#/$defs/sessionIdentity"
+        }
+      }
+    },
+    "projectEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "path",
+        "contentDigest"
+      ],
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "packageManagerInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "contentDigest"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "refreshInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "candidateGeneration",
+        "projectEntries",
+        "packageManagerInputs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "refresh-inputs"
+        },
+        "candidateGeneration": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectEntry"
+          }
+        },
+        "packageManagerInputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/packageManagerInput"
+          }
+        }
+      }
+    },
+    "getCurrentScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sessionIdentity"
+      ],
+      "properties": {
+        "kind": {
+          "const": "get-current-scope"
+        },
+        "sessionIdentity": {
+          "$ref": "#/$defs/sessionIdentity"
+        }
+      }
+    },
+    "observeGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "observe-generation"
+        }
+      }
+    }
+  }
+}

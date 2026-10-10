@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Workspace Generation Readiness
+
+* Status
+
+This is a proof specification for the ASP Runtime Server and source-index
+readiness boundary.  It precedes Rust changes.  It does not weaken fail-closed
+search admission and it does not use Agent Session recovery to repair a source
+workspace generation.
+
+* Observed counterexamples
+
+The Runtime Server reported =healthy= and =workspaceEntryCount=8= while the
+nested =.data/codex= workspace rejected parser-owned search with
+=active-workspace-generation-required=.  A subsequent process health check also
+reported =healthy= without publishing the missing nested generation.
+
+The root workspace separately rejected an exact callable-skeleton projection
+because =rootDigest= differed from =activeGenerationDigest=.  Therefore server
+health, registry membership, canonical generation publication, digest
+freshness, and projection availability are independent facts.
+
+None of these failures is Agent Session evidence.  They cannot archive,
+release, replace, or recreate the registered resident child.
+
+* Five-dimensional readiness model
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Unregistered
+  Unregistered --> Registered: register workspace identity
+  Registered --> GenerationMissing: no canonical publication
+  GenerationMissing --> Publishing: ensure_canonical_generation
+  Publishing --> GenerationCurrent: publish generation + root digest
+  GenerationCurrent --> ProjectionReady: publish requested projection mode
+  ProjectionReady --> DigestStale: source root digest changes
+  DigestStale --> Publishing: EnsureWorkspace exact workspace identity
+  Publishing --> ProjectionReady: atomic canonical republish
+
+  GenerationMissing --> QueryRejected: active-workspace-generation-required
+  DigestStale --> QueryRejected: active/root digest mismatch
+  GenerationCurrent --> QueryRejected: projection mode unavailable
+  QueryRejected --> Publishing: internal workspace repair
+
+  note right of QueryRejected
+    Search readiness failure is not
+    resident absence or replacement authority.
+  end note
+#+end_src
+
+The dimensions are:
+
+1. Runtime Server process health.
+2. Workspace identity registration.
+3. Canonical active generation publication.
+4. Equality of active and current root digests.
+5. Availability of the requested projection mode in that generation.
+
+A parent workspace generation does not activate a nested Git workspace.  Each
+workspace identity has an independent publication CAS and generation receipt.
+
+* Mathematical contract
+
+#+begin_src typst :lint typst-eval
+#let healthy = math.op("healthy")
+#let registered = math.op("registered")
+#let generation = math.op("generation")
+#let activeDigest = math.op("active-digest")
+#let rootDigest = math.op("root-digest")
+#let projection = math.op("projection")
+#let admitted = math.op("admitted")
+#let authority = math.op("agent-authority")
+#let repair = math.op("workspace-repair")
+
+$ healthy(s) not arrow.r registered(w) $
+$ registered(w) not arrow.r (generation(w) != none) $
+
+$ admitted(w, p) =
+  (generation(w) != none)
+  and (activeDigest(w) = rootDigest(w))
+  and projection(w, p) $
+
+$ authority(repair(s, w)) = authority(s) $
+#+end_src
+
+The first two expressions are non-implication claims.  The third is the exact
+query admission predicate.  The fourth is the cross-layer non-interference
+obligation.
+
+* Lean correspondence
+
+The executable model is maintained in:
+
+- =packages/proofs/ASPProof/ASPWorkspaceGenerationReadiness.lean=
+- =packages/proofs/ASPProof/Audit/ASPWorkspaceGenerationReadiness.lean=
+
+It proves:
+
+- healthy server state does not imply a published generation;
+- registry membership does not imply a published generation;
+- parent publication leaves a nested workspace unchanged;
+- a missing generation rejects exact projection;
+- an active/current digest mismatch rejects exact projection;
+- a missing projection mode rejects exact projection;
+- canonical publication establishes exact-query readiness; and
+- workspace repair preserves Agent Session authority.
+
+* Runtime refinement gate
+
+The Runtime Server =EnsureWorkspace= receipt MUST be workspace-specific.  A
+successful receipt includes the workspace identity,
+published generation digest, current root digest, projection capabilities, and
+publication CAS result.  A health-only receipt cannot satisfy workspace
+readiness.
+
+Warm indexing SHOULD publish registered nested workspaces in the background.
+An interactive search MAY wait on or request that internal publication, but it
+must not open the registry directly, restart the resident, or ask the agent to
+perform lifecycle repair.

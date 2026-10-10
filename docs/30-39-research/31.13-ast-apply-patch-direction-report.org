@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: 31.13 AST Apply Patch Direction Report
 #+DATE: 2026-06-02
 #+STATUS: active
@@ -29,9 +33,9 @@ boundaries, and post-edit checks.  The edit protocol should use that authority.
 The concrete TypeScript command was:
 
 #+begin_src shell
-ts-harness query src/cli/semantic-search/render.ts \
+asp-typescript query src/cli/semantic-search/render.ts \
   --term renderSemanticSearchSeedPacket \
-  --code languages/typescript-lang-project-harness
+  --code languages/asp-typescript
 #+end_src
 
 The provider selected the right function, but the output was a lossy control
@@ -86,7 +90,7 @@ the provider correctly found =codex-rs/apply-patch= and its relevant symbols:
 Small exact ranges returned code, for example:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read \
+asp-rust query --from-hook direct-source-read \
   --selector src/lib.rs:275:312 --code .
 #+end_src
 

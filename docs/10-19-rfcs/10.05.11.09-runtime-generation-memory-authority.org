@@ -1,0 +1,251 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Generation Memory Authority and Capability-Lazy Search
+#+startup: overview
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Status
+
+Normative.  This RFC defines the memory and ownership invariants for resident
+workspace generations used by ASP search and exact query.
+
+* Problem
+
+A resident exact query historically crossed three unbounded amplification
+boundaries before it could read one selector:
+
+1. repository candidate discovery happened before workspace single-flight;
+2. selector, lexical, and relation indexes were eagerly built together;
+3. the complete canonical materialization was deeply cloned between the
+   generation builder, writer batch, Turso commit, session cache, and Memory
+   Backend publication.
+
+Two concurrent exact queries therefore admitted multiple high-cost discovery
+and materialization copies.  Connection count, file-descriptor count, and
+thread count remained small while process RSS grew by gigabytes.  Connection
+timeouts alone cannot correct this failure because the retained heap belongs to
+generation construction rather than transport admission.
+
+* Normative invariants
+
+** GEN-MEM-001: one byte authority
+
+For one =(workspaceIdentity, projectRoot, generationDigest)=, Runtime Server
+MUST retain exactly one owner-byte authority.  Actor boundaries MUST transfer
+ownership or share an immutable lease.  They MUST NOT deep-clone the canonical
+materialization.
+
+** GEN-MEM-002: complete single-flight
+
+Workspace single-flight MUST begin before candidate discovery and cover:
+
+#+begin_example
+candidate discovery -> source build -> Turso commit -> Memory Backend publish
+#+end_example
+
+Concurrent callers observe the same typed admission receipt.  They do not run
+parallel discovery or build work for the same workspace generation.
+
+** GEN-MEM-003: capability-lazy indexes
+
+Exact selector lookup MAY eagerly prepare only the selector-position index.
+Lexical terms and graph relations MUST be independent load-once capabilities:
+
+- exact query does not allocate lexical postings;
+- exact query does not allocate graph relation adjacency;
+- first lexical use builds one term index per admitted generation;
+- first graph use builds one relation index per admitted generation;
+- concurrent first use builds each capability at most once.
+
+** GEN-MEM-004: no duplicate session authority
+
+The workspace session/Turso client MUST NOT retain a second complete
+materialization after commit.  Durable Turso state and the resident Memory
+Backend have distinct responsibilities; neither is a clone-based cache for the
+other.
+
+** GEN-MEM-005: bounded transport is necessary but independent
+
+Every Runtime Server listener uses adaptive connection admission and owned
+tasks.  Diagnostics use a bounded queue.  These bounds prevent connection and
+event storms, but MUST NOT be presented as evidence that generation memory is
+bounded.
+
+** GEN-MEM-006: typed empirical receipt
+
+OpenTelemetry MUST persist process RSS, peak RSS, scheduler pressure,
+connections, diagnostic depth, and dropped events in Turso.  A generation
+admission observation MUST also persist owner count, selector count, relation
+count, source bytes, projection bytes, and canonical encoded bytes.
+
+Closure requires a real installed cold-to-warm run with:
+
+- one and two concurrent sessions;
+- exact, lexical, and graph capability activation measured independently;
+- no duplicate build receipt for the same generation;
+- bounded RSS delta and non-positive warm-idle RSS slope;
+- sub-millisecond warm selector lookup;
+- canonical shutdown receipt with zero active or leaked owned tasks.
+
+** GEN-MEM-007: query budgets do not own generation work
+
+Search and exact query are immutable data-plane consumers.  A missing resident
+generation MUST return =active-workspace-generation-required= without starting,
+retrying, or waiting for a generation build.  Only the Hook/supervisor
+lifecycle and explicit mutation control plane may acquire a generation writer
+lease.
+
+A request deadline is not a cancellation mechanism for detached generation
+work.  The following trace is forbidden:
+
+#+begin_example
+query miss -> detached generation build -> query budget expires -> build keeps allocating
+#+end_example
+
+Lifecycle-owned generation work MUST carry an owned task receipt.  Shutdown,
+generation supersession, and workspace eviction cancel work that has not
+entered the atomic durable-commit phase.  Once durable commit begins, the
+workspace writer lane owns completion and publishes exactly one terminal
+receipt.  Dropping a query connection never creates or transfers that writer
+authority.
+
+** GEN-MEM-008: semantic axes are not cross-multiplied
+
+An exact-selector packet owns item-local parser facts.  A provider relation
+generation owns graph relations.  Selector proof construction MUST NOT embed
+or serialize the complete owner/workspace relation collection once per item.
+The two authorities meet through their generation identities; they are not
+copied into one another.
+
+Generation build memory and encoded work therefore scale as:
+
+#+begin_example
+O(source bytes + selector facts + relation facts)
+#+end_example
+
+and never as =O(selector count * relation count)=.  A high-cardinality fixture
+MUST prove that increasing unrelated relations does not change normalized
+item-fact bytes or exact-selector packet allocation.
+
+** GEN-MEM-009: resident evaluation owns complete generation decode
+
+The Runtime Server is the only process allowed to decode the complete search
+generation into a =WorkspaceMemoryBackend=. A short-lived Search Playbook
+adapter reads the compact generation authority, submits typed source-index and
+relation fact requests to the admitted workspace session, and receives only
+the bounded facts required by that request.
+
+The following path is forbidden even when backed by =mmap=:
+
+#+begin_example
+short-lived client -> mmap complete generation JSON -> deserialize all owners and relations
+#+end_example
+
+Memory mapping avoids a file copy but does not avoid JSON allocation or a
+second in-process graph.  Search latency and allocation therefore MUST be
+independent of the complete encoded generation size after the daemon has
+admitted that generation.  The compact authority may contain path digests and
+project-resolution facts; relation reads are keyed by typed =(kind, id)=
+sources and return a generation-bound, deduplicated subset.
+
+** GEN-MEM-010: candidate identity is captured with the source envelope
+
+The workspace writer MUST derive candidate identity from the same immutable
+base-plus-overlay envelope whose bytes are parsed and committed.  Candidate
+discovery before a build and rediscovery before commit are observations of two
+different moving worktrees; equality between them is not an atomicity proof.
+
+A writer capture has three authorities:
+
+- the Git base object/index identity;
+- one immutable overlay containing dirty and untracked bytes plus tombstones;
+- provider/schema identities used to interpret those bytes.
+
+The resulting candidate digest and source root are outputs of that capture.
+Mutations arriving after capture are coalesced into the next writer epoch while
+the previous admitted generation remains readable.  A busy multi-session
+worktree therefore cannot starve generation publication merely because files
+continue to change.
+
+** GEN-MEM-011: compact authority never contains the workspace path map
+
+The active-generation pointer contains publication identity and segment
+locators only.  It MUST NOT be extended with the complete =WorkspaceSnapshot=
+or project-level search data.  A search adapter obtains an O(1) authority
+receipt from the admitted resident lease.  Bounded source-index, graph, and
+Memory Search facts are separate typed RPC results bound to the same generation
+digest.
+
+If source-index evidence is not terminal, a programming-language search MUST
+use resident Memory Search.  It MUST NOT rescue the request by walking or
+reading the worktree in the short-lived CLI process.  Document search uses its
+own resident Git-scope acquisition contract; Org and Markdown are not modeled
+as programming-language providers.
+
+* Refinement obligations
+
+Rust/Python/provider implementations refine this RFC only if they preserve the
+same language-neutral ownership model.  Provider payloads describe semantic
+owners and projections; providers do not own Runtime Server worktrees,
+generation lifecycles, or cross-capability caches.
+
+* Adversarial reflection
+
+The following are not accepted fixes:
+
+- increasing a timeout;
+- killing or restarting the daemon after RSS growth;
+- lowering concurrency without removing duplicate materialization;
+- replacing deep clones with several long-lived =Arc= authorities;
+- making lexical/graph indexes lazy while still cloning owner bytes;
+- passing a focused fixture while installed two-session RSS remains unbounded.
+- serializing the complete relation set into every selector proof.
+- decoding the complete resident generation in every short-lived CLI process.
+- adding the complete workspace path map to the active-generation pointer or
+  compact search authority.
+- requiring the worktree to remain unchanged from a pre-build candidate scan
+  through a post-build candidate scan.
+
+It is also not acceptable to return a typed 800ms query timeout while a
+detached generation task continues consuming CPU and memory.  The timeout
+hides the lifecycle defect from the caller and leaves the machine under load.
+
+The governing counterexample is a repository where source bytes are moderate
+but token/term cardinality is high.  Exact query memory must remain independent
+of that lexical cardinality until lexical search is explicitly requested.
+
+The installed two-session counterexample observed both query clients return at
+approximately 800ms while Runtime Server continued from 4.10GB to 5.71GB RSS.
+This falsifies request-budget containment and is the empirical reason for
+=GEN-MEM-007=.
+
+A second installed counterexample reached =activation-loaded= in 12.5ms and
+=ranker-admitted= in 15.0ms, then spent the remaining 785ms opening a 50MB+
+generation into a process-local =WorkspaceMemoryBackend=.  This falsifies the
+claim that mmap alone is a resident search backend and motivates
+=GEN-MEM-009=.
+
+* Milestone reflection: compact authority is closed, search generation is not
+
+The compact-authority milestone is accepted only because all of the following
+hold together:
+
+- the complete workspace path map is absent from pointer and authority bytes;
+- the old authority RPC and pointer-derived authority client are physically
+  removed;
+- publication writes and syncs an epoch-specific authority segment before the
+  pointer switches;
+- 64 sessions and 3,072 reads report cold p99 28us, concurrent p99 22us, hot
+  p99 4us, zero database opens, zero provider spawns, zero control-socket
+  roundtrips, and zero workspace canonicalizations;
+- authority wire size remains below 2KiB and independent of owner count.
+
+This does not close the whole search-generation problem.  Resident Memory
+Search and resident document Git-scope acquisition are still required before
+filesystem overlay projection can be deleted without reducing search
+capability.  Candidate publication is also not closed while the writer still
+compares independently observed pre-build and post-build worktree states.
+Those failures are architectural blockers, not timeout or retry candidates.

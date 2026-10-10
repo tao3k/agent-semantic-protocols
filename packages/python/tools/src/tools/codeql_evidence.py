@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Normalize CodeQL CLI metadata into ASP evidence artifacts."""
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from typing import Any, Sequence
 def emit_codeql_evidence(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--language-id", default="rust")
-    parser.add_argument("--provider-id", default="rs-harness")
+    parser.add_argument("--provider-id", default="asp-rust")
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--codeql-language", default="rust")
     parser.add_argument("--generated-at")

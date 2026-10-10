@@ -1,0 +1,68 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheInvalidationBarrier.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Replica : Type u}\n  {barrier : ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.DistributedInvalidationBarrier Replica},\n  ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.BarrierSafe barrier →\n    ∀ {replica : Replica},\n      barrier.serving replica →\n        barrier.acknowledged replica ∧ barrier.targetGeneration ≤ barrier.installedGeneration replica",
+   "theoremFamily": "serving-replica barrier",
+   "rfcClauseIds": ["ASP-RFC-10.05-DCIB-ACKNOWLEDGMENT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.safe_barrier_serving_replica_has_crossed_target_generation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Replica : Type u}\n  {barrier : ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.DistributedInvalidationBarrier Replica},\n  ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.BarrierSafe barrier →\n    ∀ {replica : Replica},\n      barrier.serving replica →\n        ∀ {entryGeneration : Nat},\n          entryGeneration < barrier.targetGeneration → entryGeneration ≠ barrier.installedGeneration replica",
+   "theoremFamily": "stale-entry rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-DCIB-STALE-ENTRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.safe_barrier_rejects_older_entry_at_serving_replica",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.eventEmitted ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.BarrierSafe\n      ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier",
+   "theoremFamily": "event-emission counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-DCIB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.emitted_invalidation_event_does_not_establish_safe_barrier",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.QuorumAcknowledged\n    ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier ∧\n  ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.serving true ∧\n    ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.installedGeneration true = 0 ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.BarrierSafe\n          ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier",
+   "theoremFamily": "quorum-only counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-DCIB-NONIMPLICATION", "ASP-RFC-10.05-DCIB-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.one_replica_quorum_does_not_protect_unfenced_late_replica",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.QuorumAcknowledged\n    ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.fencedLateReplicaBarrier ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.fencedLateReplicaBarrier.serving true ∧\n    ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.BarrierSafe\n      ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.fencedLateReplicaBarrier",
+   "theoremFamily": "quorum fencing",
+   "rfcClauseIds": ["ASP-RFC-10.05-DCIB-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.quorum_with_unacknowledged_replica_fenced_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.serving true ∧\n  ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.installedGeneration true = 0 ∧\n    0 = ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.installedGeneration true ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfencedLateReplicaBarrier.acknowledged true",
+   "theoremFamily": "late-replica counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-DCIB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheInvalidationBarrier.unfenced_late_replica_can_treat_stale_entry_as_locally_current",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 4}

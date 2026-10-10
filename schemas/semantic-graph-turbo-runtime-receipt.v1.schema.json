@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-runtime-receipt.v1.schema.json",
+  "title": "ASP semantic Graph Turbo runtime receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "sessionId", "snapshotDigest", "processId", "runtimeArtifact", "executionCommandDigest", "coldRankMicros", "warmRankMicros", "graphTurboInvocations", "semanticGraphHops", "executedGraphHops", "authority", "tursoExactStatus", "tursoStaleSnapshotStatus", "tursoRestartStatus"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.semantic-graph-turbo-runtime-receipt"},
+    "schemaVersion": {"const": "1"},
+    "sessionId": {"type": "string", "minLength": 1},
+    "snapshotDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "processId": {"type": "integer", "minimum": 1},
+    "runtimeArtifact": {"type": "string", "minLength": 1},
+    "executionCommandDigest": {"type": "string", "minLength": 1},
+    "coldRankMicros": {"type": "integer", "minimum": 0},
+    "warmRankMicros": {"type": "integer", "minimum": 0},
+    "graphTurboInvocations": {"const": 2},
+    "semanticGraphHops": {"const": 0},
+    "executedGraphHops": {"const": 0},
+    "authority": {"const": "candidate"},
+    "tursoExactStatus": {"const": "hit"},
+    "tursoStaleSnapshotStatus": {"const": "miss"},
+    "tursoRestartStatus": {"const": "hit"}
+  }
+}

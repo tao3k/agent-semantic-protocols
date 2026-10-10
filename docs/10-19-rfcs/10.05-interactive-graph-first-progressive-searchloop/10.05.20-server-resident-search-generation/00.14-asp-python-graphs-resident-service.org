@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: ASP Python Graphs Resident Service
+#+startup: overview
+
+* Decision
+
+=asp-python-graphs= is the production Python graph-algorithm service used by
+the ASP Server.  It is not a language provider, compatibility wrapper, or fallback
+engine.  Graph Turbo remains the algorithm/profile identity implemented inside
+the service, including its schema-visible algorithm and packet identities.
+Only the standalone executable, public route, and independent lifecycle are
+forbidden; =graph-turbo= is not a package, binary, or second authority.
+
+ASP Server is the only lifecycle and admission authority.  It owns the
+installed artifact identity, process, local endpoint, long-lived gRPC channel,
+workspace-generation admission, bounded queues, cancellation, crash
+terminalization, replacement, drain, and shutdown.  Python owns graph loading,
+incremental graph state, ranking, path reasoning, and explanation generation.
+
+The following paths are non-conforming and must be removed rather than kept as
+aliases:
+
+- per-request Python process execution;
+- stdin/stdout JSON-lines resident framing;
+- direct workspace database IPC evaluation;
+- source-checkout, =uv run=, host Python, or PATH discovery at request time;
+- Rust ranking fallback or a second graph authority;
+- a public standalone =graph-turbo= executable, route, or lifecycle authority;
+  schema-visible algorithm/profile identity remains valid.
+
+* Northbound language clients
+
+Language clients call the single ASP Client Protocol owner.  Languages with a
+supported gRPC stack use its bidirectional gRPC ClientFrame transport.  Gerbil
+Scheme uses the HTTP/JSON adapter because its current ecosystem has no admitted
+gRPC implementation.  Both transports decode the same versioned ClientFrame,
+resolve the same catalog, and call the same ASP Server dispatcher.  HTTP is an
+adapter, not a second route or lifecycle authority.
+
+* Southbound algorithm service
+
+ASP Server calls =asp-python-graphs= over one long-lived local gRPC session.
+The protobuf envelope contains versioned JSON bytes so the graph packet remains
+schema-owned and can evolve without duplicating graph semantics in generated
+protobuf types.  The envelope binds schema/protocol version, artifact digests,
+request/session identity, workspace identity, admitted generation digest,
+monotone sequence, message kind, deadline/cancellation identity, payload schema
+identity, and JSON bytes.
+
+The service is private to ASP Server and is not registered as a language
+provider.  Python never publishes a public Runtime endpoint.  ASP Server
+creates the private Unix-domain endpoint, starts the installed service artifact
+with that endpoint, performs the health/hello exchange, and publishes Ready
+only after digest and protocol validation.
+
+The Python project MUST NOT publish a =[project.scripts]= entry or a user-facing
+Python command.  Users enter through the formal =asp graph= subcommands; those
+subcommands dispatch ClientFrames to ASP Server, which alone invokes the
+private service artifact.  Internal Python callables are implementation APIs,
+not alternate CLI authorities.
+
+* Tokio owner and concurrency model
+
+The ASP daemon uses its existing Tokio runtime; no second Rust executor is
+allowed.  One supervised task group owns the child process, gRPC connection,
+response reader, stderr telemetry pump, and shutdown drain.  Request admission
+uses bounded Tokio =mpsc=; response correlation uses request IDs and bounded
+per-request =oneshot= channels.  Python uses =grpc.aio= and bounded per-
+workspace concurrency rather than threads per request.
+
+Each stream declares producer, consumer, capacity, overflow behavior,
+ordering, cancellation propagation, and terminal receipt.  Queue saturation
+returns a typed =asp-python-graphs-backpressure= terminal.  It never drops an
+authority receipt, retries silently, or selects another algorithm.  CPU-heavy
+Python ranking is isolated behind a bounded executor/semaphore so its event
+loop remains responsive to cancellation and health traffic.
+
+The linearization points are:
+
+1. generation admission: ASP Server commits the immutable generation identity;
+2. service readiness: the validated hello receipt enters resident actor state;
+3. request acceptance: the bounded queue accepts the request ID;
+4. result commit: ASP Server validates request/workspace/generation identity
+   and records exactly one terminal before exposing a result;
+5. cancellation: cancellation wins before result commit and prevents late
+   Python results from becoming visible.
+
+* Lifecycle
+
+1. ASP Server starts without Python when no graph route is requested.
+2. The first admitted request enters a single-flight lazy start.
+3. Concurrent first callers share that start and cannot spawn another process.
+4. ASP Server opens an admitted workspace-generation once; unchanged warm
+   requests perform zero process spawns and zero generation reloads.
+5. Requests carry terms, profile, budgets, page roots, and evidence classes;
+   they do not serialize source files or a second workspace authority.
+6. Artifact/protocol drift creates a supervised replacement epoch.  No caller
+   installs, kills, restarts, or repairs the service.
+7. Shutdown stops admission, drains accepted work within a bounded deadline,
+   cancels remaining requests, closes gRPC, joins tasks, and reaps the child.
+
+* Failure model
+
+Crash, malformed envelope, generation mismatch, late result after cancellation,
+queue saturation, slow consumer, protocol drift, artifact drift, and memory
+pressure are typed ASP Server terminals and telemetry incidents.  Recovery is
+bounded and circuit-broken.  Exact and lexical language reads remain available
+when the graphs service is unavailable; graph-dependent requests fail closed
+and do not run a different algorithm.
+
+* Qualification gates
+
+- 256 concurrent first requests create exactly one Python process and one gRPC
+  channel;
+- 30 warm requests create zero processes and reload zero generations;
+- two workspaces and two generations remain isolated under concurrency;
+- slow-consumer and saturation tests return typed backpressure without an
+  unbounded allocation;
+- cancellation, crash, malformed response, stale response, and shutdown drain
+  each produce exactly one terminal;
+- deterministic Tokio tests use controlled scheduling or paused time rather
+  than sleep-based correctness assertions;
+- three live-corpus runs record cold/warm, 10 sequential, 32 concurrent, and
+  failure-injection throughput plus p50/p95/p99/max, errors, timeouts, RSS,
+  task/process counts, bytes, cache hit/miss, and generation/request identity;
+- installed execution succeeds with no source checkout, =uv=, or host Python.

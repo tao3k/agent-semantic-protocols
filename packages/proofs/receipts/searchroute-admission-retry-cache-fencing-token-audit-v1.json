@@ -1,0 +1,62 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryCacheFencingToken.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheFencingToken",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Replica : Type u} {authority : ASPProof.SearchRouteAdmissionRetryCacheFencingToken.FenceAuthority Replica}\n  {token : ASPProof.SearchRouteAdmissionRetryCacheFencingToken.ServingToken Replica},\n  ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe authority token →\n    authority.issued token ∧ token.fenceGeneration = authority.currentFenceGeneration token.replica",
+   "theoremFamily": "serving-token validity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CSFT-AUTHENTICITY", "ASP-RFC-10.05-CSFT-CURRENT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.serving_token_is_authentic_and_generation_current",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Replica : Type u} {before after : ASPProof.SearchRouteAdmissionRetryCacheFencingToken.FenceAuthority Replica},\n  ASPProof.SearchRouteAdmissionRetryCacheFencingToken.FenceMonotone before after →\n    ∀ {token : ASPProof.SearchRouteAdmissionRetryCacheFencingToken.ServingToken Replica},\n      token.fenceGeneration < before.currentFenceGeneration token.replica →\n        ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe after token",
+   "theoremFamily": "monotonic fencing",
+   "rfcClauseIds": ["ASP-RFC-10.05-CSFT-MONOTONE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.monotonic_fence_advance_keeps_old_token_stale",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority.issued\n    ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken ∧\n  ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken.fenceGeneration <\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority.currentFenceGeneration\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken.replica ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken",
+   "theoremFamily": "old-token counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CSFT-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.formerly_authentic_old_token_cannot_serve_after_fence_advance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.forgedCurrentToken.fenceGeneration =\n    ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority.currentFenceGeneration\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.forgedCurrentToken.replica ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority.issued\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.forgedCurrentToken ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority\n        ASPProof.SearchRouteAdmissionRetryCacheFencingToken.forgedCurrentToken",
+   "theoremFamily": "forged-current counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CSFT-AUTHENTICITY", "ASP-RFC-10.05-CSFT-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.forged_current_generation_without_issuance_cannot_serve",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.unsafeBooleanServingFlag\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken.replica =\n    true ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.rejoinFenceAuthority\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.oldToken",
+   "theoremFamily": "boolean-serving counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CSFT-NONIMPLICATION",
+    "ASP-RFC-10.05-CSFT-REJOIN",
+    "ASP-RFC-10.05-CSFT-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.boolean_serving_flag_can_reenable_replica_with_stale_token",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 5,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 3}

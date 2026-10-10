@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Checks for RFC 011 real-project evidence docs."""
 
 from pathlib import Path
@@ -34,7 +38,7 @@ def test_rust_syntax_real_evidence_records_bounded_claims() -> None:
     text = _RUST_EVIDENCE.read_text(encoding="utf-8")
 
     required_terms = [
-        "[syntax-real-evidence] language=rust provider=rs-harness project=agent-semantic-protocols",
+        "[syntax-real-evidence] language=rust provider=asp-rust project=agent-semantic-protocols",
         "metrics=commandCount=5,providerProcessCount=5,packetBytes=3914,coldElapsedMs=303,warmElapsedMs=93",
         "cacheClaim=warm-provider",
         "does not claim cache hit replay",
@@ -53,7 +57,7 @@ def test_typescript_syntax_real_evidence_records_bounded_claims() -> None:
     text = _TYPESCRIPT_EVIDENCE.read_text(encoding="utf-8")
 
     required_terms = [
-        "[syntax-real-evidence] language=typescript provider=ts-harness project=typescript-lang-project-harness",
+        "[syntax-real-evidence] language=typescript provider=asp-typescript project=asp-typescript",
         "metrics=commandCount=6,providerProcessCount=6,packetBytes=13040,coldElapsedMs=31,warmElapsedMs=50",
         "cacheClaim=warm-provider",
         "does not claim cache hit replay",

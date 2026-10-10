@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CLI listing for trace sessions."""
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ def test_cli_lists_trace_sessions(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "rust",
                 "--trace-provider-id",
-                "rs-harness",
+                "asp-rust",
             ]
         )
 
@@ -35,10 +39,10 @@ def test_cli_lists_trace_sessions(tmp_path: Path) -> None:
     assert exit_code == 0
     assert "[trace-sessions] sessions=2 commands=15 files=1" in output
     assert (
-        "|session id=baseline commands=10 languages=rust providers=rs-harness" in output
+        "|session id=baseline commands=10 languages=rust providers=asp-rust" in output
     )
     assert (
-        "|session id=candidate commands=5 languages=rust providers=rs-harness" in output
+        "|session id=candidate commands=5 languages=rust providers=asp-rust" in output
     )
     assert "stdoutBytes=7000" in output
     assert "stdoutBytes=660" in output
@@ -60,7 +64,7 @@ def test_cli_lists_trace_sessions_as_json(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "rust",
                 "--trace-provider-id",
-                "rs-harness",
+                "asp-rust",
             ]
         )
 

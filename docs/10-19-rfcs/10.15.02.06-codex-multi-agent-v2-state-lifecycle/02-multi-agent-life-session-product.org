@@ -1,0 +1,169 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Rust refinement of Multi-agent Life Session
+
+* Current V1 authority
+
+The Host owns subagent creation, resume, messaging, archive, and task history.
+ASP does not expose a second lifecycle menu and does not ask an Agent to select
+or reconstruct a resident session through command-line flags.
+
+The only public ASP session mutation is the callback delivered to a newly
+created Codex child:
+
+#+begin_src shell
+asp session register-child \
+  --parent-thread-id <parent-thread-id> \
+  --agent-name <configured-agent-name>
+#+end_src
+
+This command is not a user-selected lifecycle action. It binds the Host-owned
+child identity from =CODEX_THREAD_ID= to the explicit parent and the
+=CODEX_SESSION_ID= root after the Host has already created the child. It then
+submits one typed =agent/session/register= request to Runtime Server. Status,
+resume, archive, replacement, and dispatch remain Host actions or internal
+Runtime operations; they are not public ASP subcommands.
+
+The following surfaces are removed and MUST fail closed:
+
+- =asp agent session ...=;
+- =asp session --agents choice-plane=;
+- public =status=, =resume=, =archive=, =close=, =reconcile=, or =delete=
+  lifecycle adapters;
+- a Rust-owned agent menu, session guide, or compatibility alias.
+
+* Required Rust types
+
+Rust exposes one aggregate rooted at the Host root session:
+
+#+begin_example
+MultiAgentLifeSession
+  root_session_id
+  resident_slots: RouteKey -> ResidentSlot
+  temporary_agents: AgentInstanceId -> LifecycleProduct
+
+ResidentProfile
+  route_key
+  platform_host_agent_name
+  profile_digest
+  model_digest
+
+ResidentSlot
+  profile
+  occupancy: Vacant | Incumbent | Replacement
+#+end_example
+
+The route key, root session id, parent thread id, child thread id, Agent name,
+and Agent path are distinct validated newtypes. Root, parent, and child MUST
+never collapse into one identifier.
+
+* Configuration authority
+
+Rust does not define a second agent catalog. The authority chain is:
+
+#+begin_src mermaid
+flowchart LR
+  CR[Codex agents-config-schema.json] --> CP[agents/*_codex.toml]
+  HR[Claude frontmatter contract] --> HP[agents/*_claude.md]
+  CP --> AR[ASP AgentsRegistry]
+  HP --> AR
+  AC[agents/config.toml route metadata] --> AR
+  AR --> HS[immutable Hook route snapshot]
+  HS --> HC[Host collaboration action]
+  HC --> RC[asp session register-child callback]
+  RC --> RS[Runtime Server]
+  RS --> DB[(AgentSessionRegistry)]
+#+end_src
+
+=agents/config.toml= relates route keys, lifetimes, roles, and exact platform
+matchers. The referenced platform profile's schema-owned =name= is the only
+registration lookup key. Agent names must not be duplicated as Rust literals,
+Hook tables, or fallback mappings.
+
+A Hook rule selects a semantic role. The Hook resolves that role through the
+compiled =AgentsRegistry= and renders a native Host collaboration instruction.
+The Host decides whether to create or resume a task. ASP receives the created
+child identity only through the typed callback above; natural-language task
+text is never parsed as identity evidence.
+
+* Registration transaction
+
+The callback transaction is:
+
+#+begin_src mermaid
+sequenceDiagram
+  participant H as Host
+  participant C as Child
+  participant A as ASP Client
+  participant R as Runtime Server
+  participant D as AgentSessionRegistry
+  H->>C: create child(root,parent,child,agentName)
+  C->>A: register-child(parent,agentName)
+  A->>A: bind CODEX_SESSION_ID + CODEX_THREAD_ID
+  A->>R: agent/session/register typed frame
+  R->>R: verify workspace + configured route
+  R->>D: single-writer registration transaction
+  D-->>R: generation-bound receipt
+  R-->>A: AgentSessionRegisterReceipt
+  A-->>C: JSON receipt
+#+end_src
+
+The Runtime Server is the sole registry writer. Client and Hook adapters do
+not open Turso directly. Registration must preserve root, parent, child,
+configured Agent name, route key, workspace identity, and Runtime generation in
+one receipt. A missing Host environment identity, unknown configured Agent,
+non-resident profile, workspace mismatch, or non-ready Runtime response fails
+closed without fallback registration.
+
+* Performance boundary
+
+The measured registration request plane begins immediately before the typed
+gRPC request and ends after the validated Runtime receipt. Server startup, test
+fixture construction, and CI compilation are separate observations and must
+not be charged to the resident request plane.
+
+The benchmark records request-plane elapsed time, provider process count,
+stdout bytes, observed and budgeted memory, the Runtime method and receipt
+schema, and whether registry mutation created, reused, or rejected a generation.
+Provider process count is zero.
+
+A static budget declaration is not performance evidence. The test executes the
+gRPC/Runtime/registry path and compares its observation with the Scenario-owned
+budget.
+
+* Test admission
+
+Every Rust source file under a scenario test-module directory must be referenced
+by that target's module root. An unreferenced file is not dormant coverage; it
+is an architecture drift defect. CI rejects:
+
+- Scenario TOML whose named test is absent from the compiled target;
+- a scenario module that exists on disk but is not registered by the target;
+- removed =asp agent session= or =choice-plane= command strings in active tests;
+- benchmark fields that are deserialized but never checked.
+
+* Boundary
+
+CLI and Hook are adapters. They submit typed commands to Runtime Server and
+render typed receipts. They do not derive lifecycle authority from process
+health, parse natural-language identity, or maintain a private registry.
+
+* Verification ownership
+
+- Hook tests own registry-derived collaboration instructions and do not
+  perform registration themselves.
+- Client tests own argument parsing, Host identity separation, Runtime handoff,
+  and typed receipt rendering.
+- Runtime Server integration owns the real gRPC registration request and the
+  single-writer registry mutation.
+- Scenario qualification owns request-plane latency, memory, process count,
+  output size, and the replayable Benchmark receipt.
+- Host acceptance owns actual create/resume/archive behavior; ASP tests do not
+  emulate Host task control through retired CLI commands.
+
+Legacy =asp-explore= session names, manual menus, choice-plane fixtures, rollout
+inference as registration authority, and CLI status/resume fixtures are not
+compatibility coverage. They are removed rather than retained as a parallel
+lifecycle model.

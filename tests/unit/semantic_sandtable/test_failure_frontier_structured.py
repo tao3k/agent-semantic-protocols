@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Structured failure-frontier comparison tests."""
 
 from __future__ import annotations
@@ -24,11 +28,9 @@ def test_compare_receipts_uses_structured_failure_frontier() -> None:
     )
     candidate = _receipt(
         "rust.cache-replay-structured-frontier",
-        [
-            _structured_frontier_check("check", _TEST_BLOCK),
-            _direct_read("test-a", _TEST_BLOCK, stdout_bytes=100),
-        ],
+        [_direct_read("test-a", _TEST_BLOCK, stdout_bytes=100)],
         stdout_bytes=100,
+        policy_receipts=[_structured_frontier_receipt(_TEST_BLOCK)],
     )
 
     comparison = compare_failure_frontier_receipts(
@@ -69,6 +71,7 @@ def _receipt(
     commands: list[dict[str, object]],
     *,
     stdout_bytes: int,
+    policy_receipts: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     for command in commands:
         metrics = command["metrics"]
@@ -83,6 +86,7 @@ def _receipt(
         "intent": "Compare baseline source-window scan with failure-frontier flow.",
         "editBoundary": "before-edit",
         "commands": commands,
+        "policyReceipts": policy_receipts or [],
         "summary": {
             "commandCount": len(commands),
             "stdoutBytes": sum(
@@ -94,12 +98,10 @@ def _receipt(
     }
 
 
-def _structured_frontier_check(command_id: str, selector: str) -> dict[str, object]:
+def _structured_frontier_receipt(selector: str) -> dict[str, object]:
     return {
-        "id": command_id,
-        "kind": "check",
-        "argv": ["asp", "rust", "check", "--changed", "."],
-        "outputMode": "compact",
+        "receiptId": "rust.policy.failure-frontier",
+        "authority": "asp-rust-build-dependency-api",
         "failureFrontier": [
             {
                 "rule": "RUST-PROJ-R003",
@@ -117,7 +119,6 @@ def _structured_frontier_check(command_id: str, selector: str) -> dict[str, obje
                 "nextRoot": ".",
             }
         ],
-        "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
     }
 
 

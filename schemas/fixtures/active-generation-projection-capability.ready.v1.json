@@ -1,0 +1,23 @@
+{
+  "schemaId": "agent.semantic-protocols.active-generation-projection-capability",
+  "schemaVersion": "1",
+  "state": "ready",
+  "workspaceIdentity": "workspace-example",
+  "generationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "rootDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+  "providerCatalogDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "providerCatalogReadable": true,
+  "publicationEpoch": 1,
+  "selectors": [
+    {
+      "selector": "rust://src/lib.rs#item/function/example",
+      "ownerPath": "src/lib.rs",
+      "projectionModes": ["source", "callable-skeleton"]
+    },
+    {
+      "selector": "rust://src/lib.rs#item/function/example/segment/branch/ordinal-2",
+      "ownerPath": "src/lib.rs",
+      "projectionModes": ["source"]
+    }
+  ]
+}

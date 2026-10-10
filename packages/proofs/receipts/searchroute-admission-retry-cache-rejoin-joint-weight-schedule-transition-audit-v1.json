@@ -1,0 +1,104 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ValidPhaseTransition\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.oldOnly\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ValidPhaseTransition\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly",
+   "theoremFamily": "old-joint-new-phase-progression",
+   "rfcClauseIds": ["JWST-MONOTONE", "JWST-PHASE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.valid_phase_progression",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ValidPhaseTransition\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.oldOnly",
+   "theoremFamily": "phase-regression-rejection",
+   "rfcClauseIds": ["JWST-PHASE", "JWST-REGRESSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.new_only_cannot_regress_to_old_only",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {ScheduleId : Type} (oldSchedule newSchedule : ScheduleId),\n  oldSchedule ≠ newSchedule →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ScheduleAuthorized\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.oldOnly oldSchedule\n        newSchedule newSchedule",
+   "theoremFamily": "old-only-schedule-authorization",
+   "rfcClauseIds": ["JWST-AUTHORIZATION", "JWST-OLD"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.old_only_rejects_new_schedule",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {ScheduleId : Type} (oldSchedule newSchedule : ScheduleId),\n  oldSchedule ≠ newSchedule →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ScheduleAuthorized\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.newOnly oldSchedule\n        newSchedule oldSchedule",
+   "theoremFamily": "new-only-schedule-authorization",
+   "rfcClauseIds": ["JWST-AUTHORIZATION", "JWST-NEW"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.new_only_rejects_old_schedule",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {ScheduleId : Type} (oldSchedule newSchedule : ScheduleId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ScheduleAuthorized\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint oldSchedule\n      newSchedule oldSchedule ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ScheduleAuthorized\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.TransitionPhase.joint oldSchedule\n      newSchedule newSchedule",
+   "theoremFamily": "joint-dual-schedule-authorization",
+   "rfcClauseIds": ["JWST-AUTHORIZATION", "JWST-JOINT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.joint_authorizes_both_schedules",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId ScheduleDigest Epoch ReportSetDigest : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.WeightedReceiptKey SnapshotId\n      ScheduleDigest Epoch ReportSetDigest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ReceiptCompatible left right →\n    left.weightScheduleDigest = right.weightScheduleDigest",
+   "theoremFamily": "receipt-schedule-binding",
+   "rfcClauseIds": ["JWST-RECEIPT", "JWST-SCHEDULE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.receipt_compatibility_binds_weight_schedule",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId ScheduleDigest Epoch ReportSetDigest : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.WeightedReceiptKey SnapshotId\n      ScheduleDigest Epoch ReportSetDigest),\n  left.weightScheduleDigest ≠ right.weightScheduleDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ReceiptCompatible left right",
+   "theoremFamily": "schedule-change-cache-invalidation",
+   "rfcClauseIds": ["JWST-CACHE", "JWST-SCHEDULE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.changed_schedule_invalidates_receipt_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId ScheduleDigest Epoch ReportSetDigest : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.WeightedReceiptKey SnapshotId\n      ScheduleDigest Epoch ReportSetDigest),\n  left.selectedValue = right.selectedValue →\n    left.weightScheduleDigest ≠ right.weightScheduleDigest →\n      left.selectedValue = right.selectedValue ∧\n        ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ReceiptCompatible left right",
+   "theoremFamily": "same-value-compatibility-counterexample",
+   "rfcClauseIds": ["JWST-COUNTEREXAMPLE", "JWST-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.same_selected_value_does_not_imply_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId ScheduleDigest Epoch ReportSetDigest : Type} {oldSnapshot newSnapshot : SnapshotId}\n  {oldSchedule newSchedule : ScheduleDigest}\n  (receiptPair :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.JointTransitionReceiptPair SnapshotId\n      ScheduleDigest Epoch ReportSetDigest oldSnapshot newSnapshot oldSchedule newSchedule),\n  oldSnapshot ≠ newSnapshot →\n    receiptPair.oldReceipt.selectedValue = receiptPair.newReceipt.selectedValue →\n      receiptPair.oldReceipt.selectedValue = receiptPair.newReceipt.selectedValue ∧\n        ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.ReceiptCompatible\n            receiptPair.oldReceipt receiptPair.newReceipt",
+   "theoremFamily": "joint-separate-receipts",
+   "rfcClauseIds": ["JWST-JOINT", "JWST-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.joint_pair_remains_two_receipts_when_selected_values_match",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (materializedWeight oldScheduleWeight newScheduleWeight :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  materializedWeight = oldScheduleWeight →\n    materializedWeight = newScheduleWeight → oldScheduleWeight ≠ newScheduleWeight → False",
+   "theoremFamily": "weight-reinterpretation-rejection",
+   "rfcClauseIds": ["JWST-MATERIALIZATION", "JWST-SCHEDULE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.one_materialized_weight_cannot_realize_two_different_schedule_weights",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 10,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 0}

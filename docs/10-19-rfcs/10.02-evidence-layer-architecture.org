@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Evidence-Layer Architecture — from lint collection to agent engineering system
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
@@ -297,7 +301,7 @@ candidateIds             linked P0 InvariantCandidate ids
 The first P2 slice is schema and registry alignment.  It should let adapters
 attach expect-test or golden-output behavior to the same evidence packet family
 without turning the Rust harness into a large behavior simulator.
-Rust exposes this as =rs-harness behavior snapshot --receipt-json PATH= so an
+Rust exposes this as =asp-rust behavior snapshot --receipt-json PATH= so an
 execution receipt from =expect-test= can become a linked behavior snapshot
 without re-running or re-parsing the test output.
 
@@ -335,7 +339,7 @@ owned by parser or graph facts, for example:
 
 The first Rust pilot targets =AGENT-R009= dependency graph acyclicity. The rule
 core is factored into an index-based pure graph function, and
-=rs-harness proof pilot dependency-graph-acyclicity --max-nodes N= runs an
+=asp-rust proof pilot dependency-graph-acyclicity --max-nodes N= runs an
 exhaustive small-model check. The claim is bounded but concrete: for every
 directed graph up to =N= nodes, the AGENT-R009 core reports a cycle iff an
 independent directed-cycle checker finds one. Later Kani, Creusot, or Verus
@@ -382,12 +386,13 @@ Proposed additional advisory rules (=Info= or config-enabled =Warning=):
 These should stay =Info= by default — API quality matters for agents, but
 should not default to harder blocking than syntax/project/modularity policy.
 
-** P6 Persistent Evidence Graph and Assurance Cases
+** P6 Runtime-Derived Evidence Graph
 
-P6 introduces a portable =EvidenceGraph= artifact over the evidence packets
-created by P0 through P5. The first slice is intentionally not a database,
-cache, or long-term storage engine. It is a graph-shaped packet that makes the
-relationships between reviewer evidence explicit:
+P6 introduces a portable =EvidenceGraph= artifact over immutable language
+facts and Runtime receipts. Language providers publish only parser-owned syntax
+and language facts. The Runtime composes those inputs through the shared
+Ascent/GQL reasoning program; providers do not construct, analyze, or render a
+parallel graph.
 
 #+begin_example
 ReviewPacket
@@ -405,7 +410,7 @@ The shared =EvidenceGraph= contract owns:
 #+begin_example
 schemaId/protocolId      shared graph identity
 graphId                  stable graph artifact id
-producer/project         language provider and project metadata
+producer/project         Runtime generation and project metadata
 summary                  node/edge/owner/claim/stale/gap counters
 nodes                    evidence vertices with typed ids and locations
 edges                    derived-from, requires-evidence, verified-by,
@@ -414,11 +419,17 @@ edges                    derived-from, requires-evidence, verified-by,
 gaps                     compact review-visible missing evidence summaries
 #+end_example
 
-P6.1 builds this graph from one or more review packets. The graph should show
-which owner declared or exposed an invariant candidate, which receipts or
-behavior snapshots support it, which waivers still apply or are stale, and which
-review actions remain. Providers should derive the graph from structured packet
-fields, not from rendered findings or summary prose.
+P6.1 derives this graph centrally from immutable generation inputs. The graph
+shows which owner declared or exposed a fact, which receipts or behavior
+snapshots support it, which waivers still apply or are stale, and which review
+actions remain. Every derived edge must be attributable to an Ascent/GQL rule
+and its input facts rather than provider-private graph code or rendered prose.
+The executable authority is
+[[file:../../crates/agent-semantic-mrr/src/evidence_graph/mod.rs][agent-semantic-mrr/evidence_graph]],
+published only through
+[[file:../../crates/agent-semantic-runtime-server/src/runtime_evidence_graph.rs][Runtime EvidenceGraph]].
+Rust domain types remain unversioned; wire compatibility is owned by
+=schemaId= / =schemaVersion= and the versioned schema filenames.
 
 Later P6 slices can render assurance cases from the same graph, for example:
 
@@ -430,14 +441,14 @@ Claim: AGENT-R009 dependency graph acyclicity judgment is reliable
   gaps: none
 #+end_example
 
-The evidence graph is the common input for assurance-case rendering, review
-packets that span several providers, and stale-waiver audits. It should stay
-portable and artifact-first; storage, visualization, and indexing are separate
+The evidence graph is the common Runtime read model for assurance-case
+rendering, cross-language review, and stale-waiver audits. It stays portable
+and artifact-first; storage, visualization, and indexing remain separate
 concerns.
 
-P6.2 introduces a shared =AssuranceCase= packet derived from an evidence graph.
-It does not duplicate the graph. Instead, it groups graph nodes into reviewer
-claims:
+P6.2 introduces a shared =AssuranceCase= projection derived by the same central
+reasoning authority. It does not duplicate the graph. Instead, it groups graph
+nodes into reviewer claims:
 
 #+begin_example
 caseId/claim          stable assurance claim identity
@@ -450,22 +461,16 @@ actions               review-action graph node references
 gaps                  missing evidence or stale waiver summaries
 #+end_example
 
-The first renderer is:
-
-#+begin_example
-rs-harness evidence assurance --evidence-graph-json PATH [--json]
-#+end_example
-
-The compact output is reviewer-first:
+The Runtime-owned compact output is reviewer-first:
 
 #+begin_example
 assurance-case cases=12 claims=12 supported=3 gaps=8 stale-items=2
 #+end_example
 
-Providers should create cases from graph structure, not from rendered review
-packet prose. A case with missing receipts, stale waivers, or pending review
-actions is =needs-review=. A case with failed or blocked proof evidence is
-=blocked=. A case with support and no gaps is =supported=.
+The central Ascent/GQL program creates cases from graph structure, not from
+rendered review packet prose. A case with missing receipts, stale waivers, or
+pending review actions is =needs-review=. A case with failed or blocked proof
+evidence is =blocked=. A case with support and no gaps is =supported=.
 
 * Layer 4: Performance Optimization (owner-gated, evidence-required)
 
@@ -591,7 +596,7 @@ render_rust_project_flow_closeout(...)       // findings + receipts + waivers
 ** Flow artifact format (repo-local)
 
 #+begin_src yaml
-change_id: rust-harness-perf-policy-m1
+change_id: asp-rust-perf-policy-m1
 spec:
   intent: "add parser-native performance candidate facts"
   non_goals:
@@ -724,6 +729,44 @@ Each profile decides:
 - Which verification receipts must be persisted
 - Which performance baselines belong to =source_baseline=
 
+* Cargo package atoms and explicit workspace composition
+:PROPERTIES:
+:CUSTOM_ID: asp-rust-package-atomicity
+:CONTRACT_ID: ASP-RFC-10.02-RUST-HARNESS-PACKAGE-ATOMICITY
+:END:
+
+The library/build-support API resolves =Cargo.toml= into a package graph before
+source analysis.  A downstream =build.rs= or dev-dependency gate selects exactly
+the package named by =CARGO_MANIFEST_DIR=.  Its targets, manifest, source roots,
+cache snapshot, rerun inputs, verification plan, and findings are one package
+atom.  A filesystem prefix, nested directory, shell wrapper, or executable name
+is not package-membership evidence.
+
+Workspace evaluation is explicit composition over those package atoms.  It may
+expand only member and path-dependency edges emitted by the Cargo manifest
+parser, then evaluate each selected package with its own policy.  It must not
+replace that graph with a recursive workspace walk or apply one member's policy
+to siblings.  Consequently:
+
+- changing an unselected sibling cannot invalidate a package cache key;
+- a package root that is also a workspace root still excludes declared members;
+- arbitrary nested =Cargo.toml= files do not invent package-graph edges;
+- Hook scenarios call focused Cargo package/test/function atoms and never own
+  Rust workspace discovery;
+- only a separately named workspace API may select more than one package.
+
+The executable refinement must test both directions: package noninterference
+under sibling mutation and explicit workspace visibility of that same mutation.
+The Lean model rejects path-prefix ownership and command-spelling admission, so
+an implementation cannot recover broad scanning by hardcoding wrappers or tool
+names.
+
+No root =Cargo.toml= means there is no package-graph anchor.  The harness must
+return a typed non-package result; it must not recursively search for nested
+manifests and promote them to owners.  Workspace glob expansion is legal only
+after parsing an anchored =[workspace].members= pattern and is bounded to that
+pattern's fixed prefix.
+
 * The Bottom Line
 
 Rust harness's correct evolution is not "make the agent guess better."  It's
@@ -754,10 +797,10 @@ continuously-optimizable engineering system.
 - [[https://doc.rust-lang.org/cargo/guide/tests.html][Cargo Book — Tests]]
 - [[https://doc.rust-lang.org/cargo/commands/cargo-test.html][Cargo Book — cargo test]]
 - [[https://arxiv.org/abs/2604.05278][Spec Kit Agents: Context-Grounded Agentic Workflows (arXiv)]]
-- [[file:../../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]]
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]]
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]]
-- [[file:../../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]]
-- [[file:../../languages/rust-lang-project-harness/src/agent_snapshot.rs][agent_snapshot.rs — snapshot renderer]]
-- [[file:../../languages/rust-lang-project-harness/src/model.rs][model.rs — RustRulePack::rule_ids()]]
-- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/pack.rs][pack.rs — RUST_PROJ_R015]]
+- [[file:../../languages/asp-rust/docs/01_core/101_harness_boundary.md][Harness Boundary]]
+- [[file:../../languages/asp-rust/docs/03_features/201_rule_catalog.md][Rule Catalog]]
+- [[file:../../languages/asp-rust/docs/03_features/202_runner_modes.md][Runner Modes]]
+- [[file:../../languages/asp-rust/docs/03_features/204_verification_policy.md][Verification Policy]]
+- [[file:../../languages/asp-rust/src/agent_snapshot.rs][agent_snapshot.rs — snapshot renderer]]
+- [[file:../../languages/asp-rust/src/model.rs][model.rs — RustRulePack::rule_ids()]]
+- [[file:../../languages/asp-rust/src/rules/project_policy/pack.rs][pack.rs — RUST_PROJ_R015]]

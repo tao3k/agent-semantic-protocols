@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp.live-corpus-cache-state-request.v1.schema.json",
+  "title": "ASP Live Corpus Cache State Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "operationId", "resourceId", "languageId",
+    "providerId", "artifactDigest", "cacheState", "prepareAction",
+    "mutationScope", "expectedGenerationDigest", "expectedRootDigest"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.live-corpus-cache-state-request" },
+    "schemaVersion": { "const": "1" },
+    "operationId": { "type": "string", "minLength": 1 },
+    "resourceId": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/identifier" },
+    "languageId": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/identifier" },
+    "providerId": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/identifier" },
+    "artifactDigest": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" },
+    "cacheState": { "enum": ["cold-build", "cold-load", "warm-read", "released"] },
+    "prepareAction": {
+      "enum": [
+        "new-isolated-workspace-generation",
+        "evict-resident-generation-only",
+        "reuse-exact-resident-generation",
+        "release-exact-benchmark-generation"
+      ]
+    },
+    "mutationScope": { "enum": ["benchmark-workspace-generation", "none"] },
+    "expectedGenerationDigest": {
+      "oneOf": [
+        { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "expectedRootDigest": {
+      "oneOf": [
+        { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "cacheState": { "const": "cold-build" } } },
+      "then": {
+        "properties": {
+          "prepareAction": { "const": "new-isolated-workspace-generation" },
+          "mutationScope": { "const": "benchmark-workspace-generation" },
+          "expectedGenerationDigest": { "type": "null" },
+          "expectedRootDigest": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "cacheState": { "const": "cold-load" } } },
+      "then": {
+        "properties": {
+          "prepareAction": { "const": "evict-resident-generation-only" },
+          "mutationScope": { "const": "benchmark-workspace-generation" },
+          "expectedGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+          "expectedRootDigest": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "cacheState": { "const": "warm-read" } } },
+      "then": {
+        "properties": {
+          "prepareAction": { "const": "reuse-exact-resident-generation" },
+          "mutationScope": { "const": "none" },
+          "expectedGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+          "expectedRootDigest": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "cacheState": { "const": "released" } } },
+      "then": {
+        "properties": {
+          "prepareAction": { "const": "release-exact-benchmark-generation" },
+          "mutationScope": { "const": "benchmark-workspace-generation" },
+          "expectedGenerationDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+          "expectedRootDigest": { "$ref": "asp.live-corpus-artifact.v1.schema.json#/$defs/blake3Digest" }
+        }
+      }
+    }
+  ]
+}

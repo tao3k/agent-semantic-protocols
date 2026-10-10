@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Provider-owned relation facts bound to canonical owner and item endpoints.
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::ProviderRelationEndpointKindV1;
+use crate::ProviderRelationKindV1;
+
+/// Schema identifier for one immutable provider relation generation.
+pub const PROVIDER_RELATION_GENERATION_SCHEMA_ID: &str = "asp.provider-relation-generation.v1";
+/// Endpoint discriminator for a source owner.
+pub const PROVIDER_RELATION_OWNER_ENDPOINT_KIND: ProviderRelationEndpointKindV1 =
+    ProviderRelationEndpointKindV1::Owner;
+/// Endpoint discriminator for a parser-owned item.
+pub const PROVIDER_RELATION_ITEM_ENDPOINT_KIND: ProviderRelationEndpointKindV1 =
+    ProviderRelationEndpointKindV1::Item;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Typed endpoint of a provider-projected semantic relation.
+pub struct ProviderProjectedRelationEndpoint {
+    pub kind: ProviderRelationEndpointKindV1,
+    pub id: String,
+}
+
+impl ProviderProjectedRelationEndpoint {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("provider projected relation endpoint is incomplete".to_owned());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Directed relation between canonical provider-owned endpoints.
+pub struct ProviderProjectedRelation {
+    pub from: ProviderProjectedRelationEndpoint,
+    pub kind: ProviderRelationKindV1,
+    pub to: ProviderProjectedRelationEndpoint,
+}
+
+impl ProviderProjectedRelation {
+    pub fn validate(&self) -> Result<(), String> {
+        self.from.validate()?;
+        self.to.validate()?;
+        if self.kind.as_str().trim().is_empty() {
+            return Err("provider projected relation kind is empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Content-bound relations emitted by one provider generation.
+pub struct ProviderRelationGeneration {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub generation_digest: String,
+    pub relations: Vec<ProviderProjectedRelation>,
+}
+
+impl ProviderRelationGeneration {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != PROVIDER_RELATION_GENERATION_SCHEMA_ID || self.schema_version != "1" {
+            return Err("provider relation generation schema identity mismatch".to_owned());
+        }
+        let digest = self
+            .generation_digest
+            .strip_prefix("blake3-256:")
+            .ok_or_else(|| "provider relation generation digest is not BLAKE3".to_owned())?;
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("provider relation generation digest is invalid".to_owned());
+        }
+        let mut unique = std::collections::BTreeSet::new();
+        for relation in &self.relations {
+            relation.validate()?;
+            if !unique.insert(relation) {
+                return Err("provider relation generation contains a duplicate edge".to_owned());
+            }
+        }
+        Ok(())
+    }
+}

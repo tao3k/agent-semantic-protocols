@@ -1,0 +1,102 @@
+{"sourcePath": "ASPProof/SearchRouteBoundedDominanceWitnessChain.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteBoundedDominanceWitnessChain",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) (fuel : Nat)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates fuel start).steps ≤ fuel",
+   "theoremFamily": "witness-resolution-steps-bounded-by-fuel",
+   "rfcClauseIds": ["BWC-BOUND", "BWC-FUEL"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.resolution_steps_bounded_by_fuel",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) (fuel : Nat)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates fuel start).status =\n      ASPProof.SearchRouteBoundedDominanceWitnessChain.ResolutionStatus.retained →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate candidates\n        (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain candidates fuel start).endpoint =\n      true",
+   "theoremFamily": "retained-resolution-endpoint-is-kept",
+   "rfcClauseIds": ["BWC-ENDPOINT", "BWC-RETAINED", "BWC-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.retained_resolution_endpoint_is_kept",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidates : List ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (start : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate),\n  (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWithCandidateCapacity candidates start).steps ≤\n    candidates.length",
+   "theoremFamily": "capacity-resolution-step-bound",
+   "rfcClauseIds": ["BWC-BOUND", "BWC-CAPACITY"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.capacity_resolution_steps_are_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain\n      ASPProof.SearchRouteBoundedDominanceWitnessChain.exampleCandidates 1\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute).status =\n  ASPProof.SearchRouteBoundedDominanceWitnessChain.ResolutionStatus.exhausted",
+   "theoremFamily": "insufficient-fuel-exhaustion-counterexample",
+   "rfcClauseIds": ["BWC-COUNTEREXAMPLE", "BWC-EXHAUSTED", "BWC-FUEL"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.one_step_fuel_is_insufficient_for_example",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain\n        ASPProof.SearchRouteBoundedDominanceWitnessChain.exampleCandidates 2\n        ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute).status =\n    ASPProof.SearchRouteBoundedDominanceWitnessChain.ResolutionStatus.retained ∧\n  (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain\n          ASPProof.SearchRouteBoundedDominanceWitnessChain.exampleCandidates 2\n          ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute).endpoint =\n      ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute ∧\n    (ASPProof.SearchRouteBoundedDominanceWitnessChain.resolveWitnessChain\n          ASPProof.SearchRouteBoundedDominanceWitnessChain.exampleCandidates 2\n          ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.slowestRoute).steps =\n      2",
+   "theoremFamily": "sufficient-fuel-reaches-retained-endpoint",
+   "rfcClauseIds": ["BWC-ENDPOINT", "BWC-EXAMPLE", "BWC-FUEL"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.two_step_fuel_reaches_retained_example_endpoint",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate} {length : Nat},\n  ASPProof.SearchRouteBoundedDominanceWitnessChain.DescendingWitnessChain start endpoint length →\n    length = 0 ∧ start = endpoint ∨\n      ASPProof.SearchRouteBoundedDominanceWitnessChain.totalCost endpoint.cost <\n        ASPProof.SearchRouteBoundedDominanceWitnessChain.totalCost start.cost",
+   "theoremFamily": "nonempty-witness-chain-strict-rank-descent",
+   "rfcClauseIds": ["BWC-CHAIN", "BWC-DESCENT"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.descending_chain_rank_relation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidate : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) (length : Nat),\n  ¬ASPProof.SearchRouteBoundedDominanceWitnessChain.DescendingWitnessChain candidate candidate length.succ",
+   "theoremFamily": "strictly-descending-witness-chain-acyclic",
+   "rfcClauseIds": ["BWC-ACYCLIC", "BWC-DESCENT"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.nonempty_descending_chain_cannot_cycle",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.keepCandidate\n    ASPProof.SearchRouteBoundedDominanceWitnessChain.exampleCandidates\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.fasterRoute =\n  true",
+   "theoremFamily": "example-chain-retained-endpoint",
+   "rfcClauseIds": ["BWC-CHAIN", "BWC-EXAMPLE", "BWC-RETAINED"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.example_chain_has_retained_endpoint",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteBoundedDominanceWitnessChain.WitnessChainReceiptBudget) (observedBytes : Nat),\n  observedBytes ≤ ASPProof.SearchRouteBoundedDominanceWitnessChain.witnessChainReceiptUpperBound budget →\n    observedBytes ≤ ASPProof.SearchRouteBoundedDominanceWitnessChain.witnessChainReceiptUpperBound budget",
+   "theoremFamily": "explicit-witness-chain-receipt-capacity-bound",
+   "rfcClauseIds": ["BWC-CAPACITY", "BWC-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.explicit_witness_chain_receipt_is_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedSummaryBytes firstLength secondLength : Nat),\n  ASPProof.SearchRouteBoundedDominanceWitnessChain.summarizedWitnessChainReceiptBytes fixedSummaryBytes firstLength =\n    ASPProof.SearchRouteBoundedDominanceWitnessChain.summarizedWitnessChainReceiptBytes fixedSummaryBytes secondLength",
+   "theoremFamily": "summary-witness-chain-receipt-constant-size",
+   "rfcClauseIds": ["BWC-RECEIPT", "BWC-SUMMARY"],
+   "name":
+   "ASPProof.SearchRouteBoundedDominanceWitnessChain.summarized_witness_chain_receipt_is_length_independent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 10,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 0}

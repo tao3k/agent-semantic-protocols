@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-loop-runtime-binding.v1.schema.json",
+  "title": "Search Loop Runtime Binding v1",
+  "description": "Durable State Home command-resolution records for one SearchLoop. Raw bearer tokens are forbidden; commands resolve typed artifact bindings and capability ledger subjects.",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/openEnvelope"
+    },
+    {
+      "$ref": "#/$defs/runtimeBinding"
+    }
+  ],
+  "$defs": {
+    "typedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+    },
+    "digest": {
+      "$ref": "context-product-state.v1.schema.json#/$defs/digest"
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "languageId": {
+      "$ref": "semantic-command.v1.schema.json#/$defs/languageId"
+    },
+    "artifactBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifactRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifactSchemaId": {
+          "$ref": "#/$defs/typedId"
+        }
+      },
+      "required": [
+        "artifactRef",
+        "artifactDigest",
+        "artifactSchemaId"
+      ]
+    },
+    "graphCursorArtifactBinding": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        {
+          "properties": {
+            "artifactSchemaId": {
+              "const": "agent.semantic-protocols.search-graph-cursor"
+            }
+          }
+        }
+      ]
+    },
+    "openEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-loop-open-envelope"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "dispatchRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "dispatchReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "residentIdentityRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextStateArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "authorityReceiptArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "proposalSetArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "choicePanelArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "graphCursorArtifact": {
+          "$ref": "#/$defs/graphCursorArtifactBinding"
+        },
+        "issuedAtUnixMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      },
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "dispatchRef",
+        "dispatchReceiptDigest",
+        "residentIdentityRef",
+        "languageId",
+        "contextBindingDigest",
+        "contextStateArtifact",
+        "authorityReceiptArtifact",
+        "proposalSetArtifact",
+        "choicePanelArtifact",
+        "graphCursorArtifact",
+        "issuedAtUnixMs"
+      ]
+    },
+    "activePanelBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "panelId": {
+          "$ref": "#/$defs/typedId"
+        },
+        "panelArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "proposalSetArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "graphCursorArtifact": {
+          "$ref": "#/$defs/graphCursorArtifactBinding"
+        },
+        "basedOnRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      },
+      "required": [
+        "panelId",
+        "panelArtifact",
+        "proposalSetArtifact",
+        "graphCursorArtifact",
+        "basedOnRevision"
+      ]
+    },
+    "batchBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "batchId": {
+          "$ref": "#/$defs/typedId"
+        },
+        "executionGroupRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "programRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "viewArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "basedOnRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "joined",
+            "failed",
+            "cancelled"
+          ]
+        }
+      },
+      "required": [
+        "batchId",
+        "executionGroupRef",
+        "programRef",
+        "programDigest",
+        "viewArtifact",
+        "basedOnRevision",
+        "status"
+      ]
+    },
+    "terminalBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "closureReceiptRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "closureReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryHandoffArtifact": {
+          "$ref": "#/$defs/artifactBinding"
+        },
+        "finalizedAtRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      },
+      "required": [
+        "closureReceiptRef",
+        "closureReceiptDigest",
+        "queryHandoffArtifact",
+        "finalizedAtRevision"
+      ]
+    },
+    "runtimeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "terminalBinding"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "activePanel"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "activePanel"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-loop-runtime-binding"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "loopId": {
+          "$ref": "#/$defs/typedId"
+        },
+        "runId": {
+          "$ref": "#/$defs/typedId"
+        },
+        "residentIdentityRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "dispatchRef": {
+          "$ref": "#/$defs/typedId"
+        },
+        "dispatchReceiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "openedAtRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "activePanel": {
+          "$ref": "#/$defs/activePanelBinding"
+        },
+        "batches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/batchBinding"
+          },
+          "maxItems": 10,
+          "uniqueItems": true
+        },
+        "terminalBinding": {
+          "$ref": "#/$defs/terminalBinding"
+        }
+      },
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "loopId",
+        "runId",
+        "residentIdentityRef",
+        "dispatchRef",
+        "dispatchReceiptDigest",
+        "contextBindingDigest",
+        "openedAtRevision",
+        "batches"
+      ]
+    }
+  }
+}

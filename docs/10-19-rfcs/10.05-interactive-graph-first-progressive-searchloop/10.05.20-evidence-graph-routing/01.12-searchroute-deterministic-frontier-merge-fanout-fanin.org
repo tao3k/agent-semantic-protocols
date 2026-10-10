@@ -1,0 +1,228 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Deterministic Frontier Merge for Fan-Out/Fan-In
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status
+
+This RFC is a proof-driven refinement of
+=01.11-searchroute-incremental-pareto-frontier-provenance-delta.org=.
+
+It specifies the semantic merge boundary for graph-first SearchLoop fan-out and
+fan-in. Parallel agents, tool parallelism, and provider concurrency are optional
+execution accelerators. They are not part of the shared protocol. Given the same
+evaluation identity, candidate facts, cost policy, and canonical duplicate
+policy, parallel fan-in MUST produce the same semantic frontier as sequential
+folding.
+
+This RFC changes no Rust or Python runtime code.
+
+* Problem
+
+The 01.11 insertion model proves that one candidate can update a
+provenance-sensitive Pareto frontier while preserving coverage and bounded
+decision-delta accounting. It does not prove that independently computed
+frontiers can be merged in arbitrary completion order.
+
+That missing step matters for an interactive graph router:
+
+- fan-out branches may finish in different orders;
+- repeated branches may return the same canonical route;
+- the same route may carry different evidence;
+- one branch may use a stale graph snapshot or policy;
+- each branch may cover only part of the committed candidate universe;
+- an explicit merge transcript may exceed the token budget.
+
+A deterministic insertion function alone is insufficient. If duplicate
+provenance is resolved by last-writer-wins, the result changes when branch
+completion order changes. Associativity, commutativity, and idempotence must be
+requirements on the canonical duplicate merge policy itself.
+
+* Semantic boundary
+
+** Evaluation identity
+
+Every merge input MUST bind:
+
+1. graph snapshot digest;
+2. query and obligation digest;
+3. canonical cost-policy digest;
+4. canonical duplicate/provenance-policy digest.
+
+Inputs with different evaluation identities MUST NOT be merged as if they were
+one frontier. A stale branch may be re-evaluated under the current identity, or
+published as a separately identified historical result, but it cannot silently
+participate in the current frontier.
+
+** Canonical membership
+
+At the canonical membership layer, a frontier is a predicate over canonical
+route identities. Merge is set union. Therefore membership merge is:
+
+- associative;
+- commutative;
+- idempotent.
+
+These are pointwise semantic laws. The wire order of receipt entries need not
+be identical, but canonical serialization MUST impose a deterministic order
+before hashing or caching.
+
+** Provenance merge
+
+Equal cost is not canonical route identity. Distinct route identities with equal
+cost remain distinct frontier entries when neither strictly dominates the
+other.
+
+When two branches report the same canonical route identity, provenance MUST be
+merged by a deterministic ACI operation, normally canonical evidence-set union.
+Last-writer-wins, first-writer-wins, branch-priority overwrite, and arrival-order
+selection are invalid unless their ordering is itself part of the evaluation
+identity and the resulting operation still satisfies the declared algebra.
+
+** Pareto normalization
+
+The full frontier merge is:
+
+#+begin_example
+authorize identical evaluation identity
+  -> union canonical candidates and provenance
+  -> apply deterministic duplicate policy
+  -> recompute strict Pareto normalization
+  -> canonicalize entry order
+  -> publish roots, counts, coverage, and bounded delta
+#+end_example
+
+Pairwise destructive insertion is not a substitute for this definition unless
+its implementation is proved extensionally equivalent to the normalized union.
+In particular, pruning an intermediate route may discard provenance needed to
+resolve a later duplicate.
+
+* Mathematical model
+
+#+name: deterministic-frontier-merge-algebra
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ F_1 union F_2 = F_2 union F_1 $
+
+$ (F_1 union F_2) union F_3 = F_1 union (F_2 union F_3) $
+
+$ F union F = F $
+
+$ "identity"(F_1) = "identity"(F_2) = I_"eval" $
+#+end_src
+
+The algebra applies to canonical candidate and provenance membership. Pareto
+normalization may be layered above it only when normalization is deterministic
+and extensionally depends on the complete union under the same evaluation
+identity.
+
+#+name: parallel-sequential-frontier-equivalence
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ forall x, x in "merge"("merge"(F_1, F_2), F_3)
+  quad "iff" quad x in "merge"(F_1, "merge"(F_2, F_3)) $
+
+$ "snapshot"(F_i) != "snapshot"(F_j)
+  quad "implies" quad not "authorized"(F_i, F_j) $
+
+$ "partial"(C_1, U) and "partial"(C_2, U)
+  quad "does not imply" quad "complete"(C_1 union C_2, U) $
+#+end_src
+
+* Coverage semantics
+
+Coverage is not inferred from the number of merged branches. Each branch MUST
+carry the committed candidate-universe identity and a coverage commitment.
+Merging two partial frontiers can still yield a partial frontier.
+
+The merged receipt MUST distinguish:
+
+- =candidateMembershipRoot=: canonical union before Pareto normalization;
+- =frontierRoot=: canonical frontier after normalization;
+- =coverageRoot=: union of covered candidate obligations;
+- =candidateUniverseRoot=: committed universe against which completeness is
+  interpreted;
+- =coverageComplete=: an explicit result, never inferred merely from fan-in.
+
+If branch coverage roots refer to different candidate-universe identities, the
+merge is not authorized.
+
+* Merge receipt
+
+The compact default receipt MUST contain:
+
+- evaluation identity;
+- ordered input frontier roots;
+- candidate-membership root;
+- merged provenance root;
+- normalized frontier root;
+- coverage root and candidate-universe root;
+- input, accepted, rejected, and output counts;
+- explicit =coverageComplete=;
+- merge-policy identifier;
+- optional inspect continuation for detailed additions, removals, and duplicate
+  resolutions.
+
+An explicit receipt that lists every input or removed entry is bounded only
+when both input frontier capacities are bounded. Its upper bound is:
+
+#+begin_example
+fixedBytes + bytesPerEntry * (leftCapacity + rightCapacity)
+#+end_example
+
+The compact root-and-count summary has size independent of the merged entry
+count. Detailed entries remain available through progressive inspect.
+
+* Proof-discovered design corrections
+
+Lean exposes four corrections to a naive fan-in design.
+
+1. Deterministic single-candidate insertion does not imply deterministic batch
+   merge. The duplicate policy itself must satisfy ACI.
+2. Last-writer-wins is not commutative and therefore makes parallel completion
+   order observable in the semantic result.
+3. Matching route cost or canonical route identity is not enough to authorize
+   merge. Snapshot, query, cost policy, and duplicate policy all belong to one
+   evaluation identity.
+4. Two partial coverage claims do not prove global completeness. Coverage must
+   be unioned against the same committed candidate universe and reported
+   explicitly.
+
+* Lean realization
+
+The executable proof model is:
+
+- =packages/proofs/ASPProof/SearchRouteDeterministicFrontierMergeFanoutFanin.lean=
+- =packages/proofs/ASPProof/Audit/SearchRouteDeterministicFrontierMergeFanoutFanin.lean=
+- =packages/proofs/audit/SearchRouteDeterministicFrontierMergeFanoutFaninAudit.lean=
+- =packages/proofs/receipts/searchroute-deterministic-frontier-merge-fanout-fanin-audit-v1.json=
+
+The audited theorem family covers pointwise ACI membership laws, parallel versus
+sequential equivalence, provenance-set union, evaluation-identity fences, a
+last-writer-wins counterexample, partial-coverage survival, explicit receipt
+bounds, the absence of a fixed uncapped explicit bound, and count-independent
+summary size.
+
+* Protocol requirements
+
+1. Fan-out/fan-in execution MUST be semantically equivalent to sequential
+   execution when all inputs share one evaluation identity.
+2. The duplicate/provenance policy MUST declare and satisfy associativity,
+   commutativity, and idempotence.
+3. Cross-snapshot or cross-policy merge MUST fail closed.
+4. Canonical serialization MUST remove branch-completion-order effects.
+5. Coverage completeness MUST be checked against one committed candidate
+   universe.
+6. Compact receipts MUST use roots and counts; detailed merge deltas MUST be
+   progressive and capacity-bounded.
+7. Client multi-agent and tool-parallel features MUST remain optional execution
+   accelerators, never provider protocol requirements.
+
+* Next proof boundary
+
+The next refinement should lift membership-level ACI into a finite
+cost-and-provenance normalization model. It should prove that normalized union
+is extensionally equivalent to sequential insertion under an ACI duplicate
+policy, and should construct a counterexample showing why premature destructive
+pruning can lose later duplicate provenance.

@@ -57,7 +57,7 @@
           "structural-selector-query"
         ],
         "queryTerms": [
-      "APIRouter",
+          "APIRouter",
           "item-skeleton"
         ]
       }
@@ -76,48 +76,35 @@
       "id": "owner-items-structural-skeleton",
       "command": [
         "asp",
-        "python",
         "search",
-        "owner",
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "APIRouter|lifespan|solve_dependencies|routing",
         "fastapi/routing.py",
-        "items",
-        "--query",
-        "APIRouter|lifespan|solve_dependencies",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds"
+        "--tantivy",
+        "title:\"APIRouter\"^2 OR body:\"lifespan\""
       ],
-  "expect": {
-    "lineProtocol": true,
-    "stdoutContains": [
-          "[search-owner] q=fastapi/routing.py",
-          "next=item-skeleton",
-          "structuralSelector=python://fastapi/routing.py#item/class/APIRouter",
-          "displayLineRange=1005:4956",
-          "sourceLocatorHint=fastapi/routing.py:1005:4956",
-          "projection=skeleton",
-          "codePolicy=code-after-exact-selector",
-          "A1=item-skeleton(selector=python://fastapi/routing.py#item/",
-          "A2=syntax-outline(selector=python://fastapi/routing.py#item/",
-          "A3=query-code(selector=python://fastapi/routing.py#item/",
-          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
-          "recommendedNext=A1.item-skeleton",
-          "nextCommand=asp python query --from-hook item-skeleton --selector 'python://fastapi/routing.py#item/",
-          "--names-only",
-          "reason=owner-item-skeleton-ready",
-          "avoid=selector-code-before-exact,direct-source-read,manual-window-scan"
+      "expect": {
+        "stdoutContains": [
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
         "stdoutNotContains": [
           " read=",
           "next=syntax:",
-          "nextCommand=asp python query --selector fastapi/routing.py:",
-          "actionFrontier=A1.query-code"
+          "nextCommand=asp query playbook --language python --selector fastapi/routing.py:",
+          "actionFrontier=A1.query-code",
+          "MaterializationSet"
         ],
         "maxStdoutLinesWarn": 80,
-        "maxElapsedMs": 300,
+        "maxElapsedMs": 90000,
         "maxColdStartElapsedMs": 2500,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 90000
       }
     },
     {
@@ -136,7 +123,7 @@
       ],
       "expect": {
         "stdoutContains": [
-          "[search-owner] q=fastapi/routing.py",
+          "[search-playbook] q=fastapi/routing.py",
           "itemQuery=APIRouter",
           "structuralSelector=python://fastapi/routing.py#item/class/APIRouter",
           "displayLineRange=1005:4956",

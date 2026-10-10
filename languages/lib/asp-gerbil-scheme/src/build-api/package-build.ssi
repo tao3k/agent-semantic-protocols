@@ -1,0 +1,47 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/src/build-api
+namespace: asp-gerbil-scheme/src/build-api/package-build
+
+(%#begin (%#import
+          (spec: (:std/srfi/13) (0 string-prefix? 0 string-prefix?))
+          :gerbil/gambit)
+         (%#export
+          (spec:
+           0
+           asp-gerbil-scheme-package-configure-build-root!
+           asp-gerbil-scheme-package-configure-build-root!)
+          (spec:
+           0
+           asp-gerbil-scheme-package-build-package-name
+           asp-gerbil-scheme-package-build-package-name)
+          (spec:
+           0
+           asp-gerbil-scheme-package-build-active-gerbil-path
+           asp-gerbil-scheme-package-build-active-gerbil-path)
+          (spec:
+           0
+           asp-gerbil-scheme-package-build-active-gerbil-lib-path
+           asp-gerbil-scheme-package-build-active-gerbil-lib-path))
+         (%#define-runtime
+          package-root
+          asp-gerbil-scheme/src/build-api/package-build#package-root)
+         (%#define-runtime
+          package-build-non-empty-string?
+          asp-gerbil-scheme/src/build-api/package-build#package-build-non-empty-string?)
+         (%#define-runtime
+          asp-gerbil-scheme-package-build-package-name
+          asp-gerbil-scheme/src/build-api/package-build#asp-gerbil-scheme-package-build-package-name)
+         (%#define-runtime
+          asp-gerbil-scheme-package-build-active-gerbil-path
+          asp-gerbil-scheme/src/build-api/package-build#asp-gerbil-scheme-package-build-active-gerbil-path)
+         (%#define-runtime
+          asp-gerbil-scheme-package-build-active-gerbil-lib-path
+          asp-gerbil-scheme/src/build-api/package-build#asp-gerbil-scheme-package-build-active-gerbil-lib-path)
+         (%#define-runtime
+          asp-gerbil-scheme-package-configure-build-root!
+          asp-gerbil-scheme/src/build-api/package-build#asp-gerbil-scheme-package-configure-build-root!)
+         (%#define-runtime
+          ensure-package-build-root!
+          asp-gerbil-scheme/src/build-api/package-build#ensure-package-build-root!))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/src/build-api/package-build~0"))

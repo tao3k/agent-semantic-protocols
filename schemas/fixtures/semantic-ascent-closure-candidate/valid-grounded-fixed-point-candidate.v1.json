@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-ascent-closure-candidate.v1",
+  "schemaVersion": "1",
+  "candidateKind": "ascent-closure",
+  "authority": "candidate",
+  "graphSessionIdentity": {
+    "workspaceDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "sessionId": "session:a",
+    "nodeId": "node:owner",
+    "snapshotDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "workspaceGenerationRootDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "projectionDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "routeDigest": "blake3-256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "rulesetDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+  "budget": {
+    "maxInputFacts": 8,
+    "maxRuleFirings": 16,
+    "maxDerivedFacts": 8,
+    "maxGraphHops": 4
+  },
+  "sourceFactIds": ["fact:model-declared"],
+  "derivedFactIds": ["fact:configuration-owner"],
+  "derivationTrace": [
+    {
+      "ruleId": "rule:model-to-configuration-owner",
+      "ruleDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+      "premiseFactIds": ["fact:model-declared"],
+      "conclusionFactId": "fact:configuration-owner"
+    }
+  ],
+  "accounting": {
+    "inputFactCount": 1,
+    "ruleFirings": 1,
+    "derivedFactCount": 1,
+    "maxDerivedGraphHops": 1
+  },
+  "canonicalFactOrderDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888"
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Fixtures for trace receipt tests."""
 
 from __future__ import annotations
@@ -59,7 +63,7 @@ def write_failure_frontier_dev_log_root(
     baseline_session: str = "baseline",
     candidate_session: str = "candidate",
 ) -> None:
-    command_dir = trace_root / "semantic_protocol" / "rust" / "rs-harness" / "commands"
+    command_dir = trace_root / "semantic_protocol" / "rust" / "asp-rust" / "commands"
     command_dir.mkdir(parents=True)
     command_lines = [
         *[
@@ -69,7 +73,6 @@ def write_failure_frontier_dev_log_root(
             )
             for index in range(1, 11)
         ],
-        _frontier_event(candidate_session),
         _session_event(
             candidate_session,
             trace_event("test", TEST_BLOCK, stdout_bytes=120),
@@ -93,22 +96,9 @@ def write_failure_frontier_dev_log_root(
     )
 
 
-def _frontier_event(session_id: str) -> dict[str, object]:
-    return _session_event(
-        session_id,
-        {
-            "id": "failure-frontier",
-            "kind": "check",
-            "argv": ["asp", "rust", "check", "changed", "--view", "seeds", "."],
-            "next": HOT_BLOCKS,
-            "metrics": {"elapsedMs": 5, "stdoutBytes": 180, "stderrBytes": 0},
-        },
-    )
-
-
 def _session_event(session_id: str, event: dict[str, object]) -> dict[str, object]:
     event = dict(event)
     event["sessionId"] = session_id
     event["languageId"] = "rust"
-    event["providerId"] = "rs-harness"
+    event["providerId"] = "asp-rust"
     return event

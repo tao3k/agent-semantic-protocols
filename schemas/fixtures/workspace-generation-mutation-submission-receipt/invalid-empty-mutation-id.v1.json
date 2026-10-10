@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-generation-mutation-submission-receipt",
+  "schemaVersion": "1",
+  "mutationId": "",
+  "workspaceIdentity": "workspace-root",
+  "changedPathCount": 2,
+  "state": "queued"
+}

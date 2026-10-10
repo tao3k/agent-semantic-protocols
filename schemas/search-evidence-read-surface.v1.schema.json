@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/search-evidence-read-surface.v1.schema.json",
+  "title": "Search evidence compact read surface V1",
+  "description": "Shape contract only. Selector strings do not prove admission. Binding, witness validity, unique aliases, edge references, ordered ranges and the merged context budget require semantic validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "binding", "contextBudgetLines", "nodes", "edges"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-evidence-read-surface"},
+    "schemaVersion": {"const": "1"},
+    "binding": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$(?![\\s\\S])"},
+    "contextBudgetLines": {"type": "integer", "minimum": 1, "maximum": 100, "default": 80},
+    "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/node"}},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+  },
+  "$defs": {
+    "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$(?![\\s\\S])"},
+    "witness": {"type": "string", "minLength": 1},
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))[^/]+(?:/[^/]+)*$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "witness"],
+      "properties": {
+        "id": {"$ref": "#/$defs/alias"},
+        "kind": {"enum": ["Function", "Method", "Impl", "Heading", "SourceHit"]},
+        "witness": {"$ref": "#/$defs/witness"},
+        "selector": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^\\s]+$(?![\\s\\S])"},
+        "path": {"$ref": "#/$defs/path"},
+        "jq": {"type": "string", "minLength": 1},
+        "lines": {"$ref": "https://schemas.agent-semantic-protocols.dev/semantic-search-definitions.v1.schema.json#/$defs/lineRanges"}
+      },
+      "oneOf": [
+        {"required": ["selector"], "not": {"anyOf": [{"required": ["path"]}, {"required": ["jq"]}, {"required": ["lines"]}]}},
+        {"required": ["path", "jq"], "properties": {"kind": {"const": "SourceHit"}}, "not": {"anyOf": [{"required": ["selector"]}, {"required": ["lines"]}]}},
+        {"required": ["path", "lines"], "properties": {"kind": {"const": "SourceHit"}}, "not": {"anyOf": [{"required": ["selector"]}, {"required": ["jq"]}]}}
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "relation", "witness"],
+      "properties": {
+        "from": {"$ref": "#/$defs/alias"},
+        "to": {"$ref": "#/$defs/alias"},
+        "relation": {"enum": ["CALLS", "DECLARES", "SUPPORTS"]},
+        "witness": {"$ref": "#/$defs/witness"}
+      }
+    }
+  }
+}

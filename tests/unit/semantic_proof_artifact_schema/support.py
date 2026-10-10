@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shared fixtures for formal proof artifact schema tests."""
 
 from __future__ import annotations
@@ -72,7 +76,7 @@ def assessment() -> dict:
 
 def schema_projection() -> dict:
     return {
-        "sourceSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "sourceSchema": "schemas/semantic-query-packet.v1.schema.json",
         "formalLeanPath": "schema-projection-formal.lean",
         "candidateLeanPath": "schema-projection-candidate.lean",
         "facts": [

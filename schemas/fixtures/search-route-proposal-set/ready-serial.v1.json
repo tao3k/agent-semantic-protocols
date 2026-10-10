@@ -1,0 +1,86 @@
+{
+  "schemaId": "agent.semantic-protocols.search-route-proposal-set",
+  "schemaVersion": "1",
+  "proposalSetId": "PS1",
+  "runId": "R1",
+  "basedOnRevision": 0,
+  "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plannerBackendId": "graph-turbo",
+  "plannerBackendDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "ready",
+  "proposals": [
+    {
+      "proposalId": "P1",
+      "runId": "R1",
+      "basedOnRevision": 0,
+      "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "proposedBy": "graph-turbo",
+        "agentReasoningReceiptRef": "reasoning.agent.serial",
+        "graphDerivationReceiptRef": "derivation.graph.serial",
+        "obligationIds": [
+        "O1"
+      ],
+      "nodes": [
+        {
+          "nodeId": "N1",
+          "actionClass": "provider-search",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "resolve-symbol.v1",
+          "inputTemplateDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "coversObligationIds": [
+            "O1"
+          ],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP1",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": [
+              "workspace-search-playbook-result.v1"
+            ],
+            "requiredFields": [
+              "canonicalItemSelector"
+            ],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 1
+          }
+        }
+      ],
+      "edges": [],
+      "executionGroups": [
+        {
+          "groupId": "G1",
+          "mode": "serial",
+          "nodeIds": [
+            "N1"
+            ],
+            "joinPolicy": "first-exact",
+            "maxParallel": 1,
+            "derivationReceiptRef": "derivation.group.serial"
+          }
+      ],
+      "joins": [],
+      "estimateReceiptRefs": [],
+      "budgetProposal": {
+        "maxCommands": 1,
+        "maxElapsedMs": 1000,
+        "maxPacketBytes": 10000,
+        "maxChoiceDepth": 1,
+        "maxParallel": 1,
+        "maxAggregateProviderLatencyMs": 1000,
+        "maxParentVisibleBytes": 2000
+      },
+      "proposalDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "recommendedProposalId": "P1",
+  "setDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

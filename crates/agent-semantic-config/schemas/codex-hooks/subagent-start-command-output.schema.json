@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-hooks/subagent-start-command-output.schema.json",
+  "x-agent-semantic-schema-version": 1,
+  "title": "subagent-start.command.output",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "continue": {"default": true, "type": "boolean"},
+    "hookSpecificOutput": {
+      "default": null,
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hookEventName"],
+      "properties": {
+        "hookEventName": {"type": "string", "const": "SubagentStart"},
+        "additionalContext": {"default": null, "type": "string"}
+      }
+    },
+    "stopReason": {"default": null, "type": "string"},
+    "suppressOutput": {"default": false, "type": "boolean"},
+    "systemMessage": {"default": null, "type": "string"}
+  }
+}

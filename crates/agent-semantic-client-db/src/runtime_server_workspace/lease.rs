@@ -1,0 +1,545 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Immutable read lease for one resident workspace generation and overlay snapshot.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use super::{
+    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSearchSeedSnapshot,
+    WorkspaceOwnerSearchSnapshot, WorkspaceOwnerSnapshot, WorkspaceProjectionLease,
+    WorkspaceTopologySourceSegment,
+};
+
+#[derive(Debug)]
+pub(crate) struct WorkspaceResidentActivity {
+    accepting: std::sync::atomic::AtomicBool,
+    in_flight_requests: std::sync::atomic::AtomicUsize,
+    live_leases: std::sync::atomic::AtomicUsize,
+    activity_origin: tokio::time::Instant,
+    last_activity_micros: std::sync::atomic::AtomicI64,
+}
+
+impl WorkspaceResidentActivity {
+    pub(crate) fn new() -> Self {
+        Self {
+            accepting: std::sync::atomic::AtomicBool::new(true),
+            in_flight_requests: std::sync::atomic::AtomicUsize::new(0),
+            live_leases: std::sync::atomic::AtomicUsize::new(0),
+            activity_origin: tokio::time::Instant::now(),
+            last_activity_micros: std::sync::atomic::AtomicI64::new(0),
+        }
+    }
+
+    fn touch(&self) {
+        self.last_activity_micros.store(
+            self.activity_elapsed_micros(),
+            std::sync::atomic::Ordering::Release,
+        );
+    }
+
+    fn activity_elapsed_micros(&self) -> i64 {
+        i64::try_from(self.activity_origin.elapsed().as_micros()).unwrap_or(i64::MAX)
+    }
+
+    pub(crate) fn begin_request(self: &Arc<Self>) -> Result<WorkspaceResidentRequestGuard, String> {
+        use std::sync::atomic::Ordering;
+
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("resident workspace admission is closed".to_owned());
+        }
+        self.in_flight_requests.fetch_add(1, Ordering::AcqRel);
+        if !self.accepting.load(Ordering::Acquire) {
+            self.in_flight_requests.fetch_sub(1, Ordering::AcqRel);
+            return Err("resident workspace admission closed during request entry".to_owned());
+        }
+        self.touch();
+        Ok(WorkspaceResidentRequestGuard {
+            activity: Arc::clone(self),
+        })
+    }
+
+    fn acquire_lease(self: &Arc<Self>) -> Result<(), String> {
+        use std::sync::atomic::Ordering;
+
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("resident workspace admission is closed".to_owned());
+        }
+        self.live_leases.fetch_add(1, Ordering::AcqRel);
+        if !self.accepting.load(Ordering::Acquire) {
+            self.live_leases.fetch_sub(1, Ordering::AcqRel);
+            return Err("resident workspace admission closed during lease acquisition".to_owned());
+        }
+        self.touch();
+        Ok(())
+    }
+
+    fn clone_lease(&self) {
+        self.live_leases
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.touch();
+    }
+
+    fn release_lease(&self) {
+        self.live_leases
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.touch();
+    }
+
+    pub(crate) fn try_close_for_retirement(
+        &self,
+        workspace_path_exists: bool,
+        idle_timeout: std::time::Duration,
+    ) -> bool {
+        use std::sync::atomic::Ordering;
+
+        let last_activity_micros = self.last_activity_micros.load(Ordering::Acquire);
+        let idle_elapsed = std::time::Duration::from_micros(
+            u64::try_from(
+                self.activity_elapsed_micros()
+                    .saturating_sub(last_activity_micros),
+            )
+            .unwrap_or(0),
+        );
+        if workspace_path_exists && idle_elapsed < idle_timeout {
+            return false;
+        }
+        if self.live_leases.load(Ordering::Acquire) != 0
+            || self.in_flight_requests.load(Ordering::Acquire) != 0
+        {
+            return false;
+        }
+        if self
+            .accepting
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+        if self.live_leases.load(Ordering::Acquire) == 0
+            && self.in_flight_requests.load(Ordering::Acquire) == 0
+        {
+            true
+        } else {
+            self.accepting.store(true, Ordering::Release);
+            false
+        }
+    }
+
+    pub(crate) fn reopen(&self) {
+        self.accepting
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.touch();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_idle_for_test(&self, idle_for: std::time::Duration) {
+        let idle_micros = i64::try_from(idle_for.as_micros()).unwrap_or(i64::MAX);
+        self.last_activity_micros.store(
+            self.activity_elapsed_micros().saturating_sub(idle_micros),
+            std::sync::atomic::Ordering::Release,
+        );
+    }
+
+    pub(crate) fn counts(&self) -> (usize, usize) {
+        use std::sync::atomic::Ordering;
+        (
+            self.live_leases.load(Ordering::Acquire),
+            self.in_flight_requests.load(Ordering::Acquire),
+        )
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkspaceResidentRequestGuard {
+    activity: Arc<WorkspaceResidentActivity>,
+}
+
+impl Drop for WorkspaceResidentRequestGuard {
+    fn drop(&mut self) {
+        self.activity
+            .in_flight_requests
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.activity.touch();
+    }
+}
+
+#[derive(Debug)]
+pub struct WorkspaceGenerationLease {
+    pub(super) backend: Arc<WorkspaceMemoryBackend>,
+    pub(super) overlay: super::resident_overlay::ResidentOverlaySnapshot,
+    pub(super) activity: Option<Arc<WorkspaceResidentActivity>>,
+}
+
+impl Clone for WorkspaceGenerationLease {
+    fn clone(&self) -> Self {
+        if let Some(activity) = &self.activity {
+            activity.clone_lease();
+        }
+        Self {
+            backend: Arc::clone(&self.backend),
+            overlay: self.overlay.clone(),
+            activity: self.activity.clone(),
+        }
+    }
+}
+
+impl Drop for WorkspaceGenerationLease {
+    fn drop(&mut self) {
+        if let Some(activity) = &self.activity {
+            activity.release_lease();
+        }
+    }
+}
+
+impl WorkspaceGenerationLease {
+    pub(crate) fn from_backend(backend: Arc<WorkspaceMemoryBackend>) -> Self {
+        let overlay = backend.base_overlay();
+        Self {
+            backend,
+            overlay,
+            activity: None,
+        }
+    }
+
+    pub(crate) fn from_resident(
+        backend: Arc<WorkspaceMemoryBackend>,
+        overlay: super::resident_overlay::ResidentOverlaySnapshot,
+        activity: Arc<WorkspaceResidentActivity>,
+    ) -> Result<Self, String> {
+        activity.acquire_lease()?;
+        Ok(Self {
+            backend,
+            overlay,
+            activity: Some(activity),
+        })
+    }
+
+    pub fn workspace_identity(&self) -> &str {
+        &self.backend.generation().workspace_identity
+    }
+
+    pub fn epoch(&self) -> u64 {
+        self.backend.generation().active_epoch
+    }
+
+    pub fn generation(&self) -> &WorkspaceMemoryGeneration {
+        self.backend.generation()
+    }
+
+    pub(crate) fn search_data_plane(&self) -> Arc<super::WorkspaceSearchGenerationDataPlaneClient> {
+        self.backend.search_data_plane()
+    }
+
+    pub fn project(&self, selector: &str) -> Option<WorkspaceProjectionLease> {
+        self.backend.projection(selector)
+    }
+
+    pub fn owner(&self, owner_path: &str) -> Option<Arc<[u8]>> {
+        self.overlay.owner_bytes(self.generation(), owner_path)
+    }
+
+    pub(crate) fn indexed_owner_paths(&self) -> Vec<String> {
+        self.overlay.indexed_owner_paths(self.generation())
+    }
+
+    pub(crate) fn resident_grep_candidate_owner_paths(
+        &self,
+        plan: &agent_semantic_search::ResidentGrepCandidatePlan,
+        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
+        limit: usize,
+    ) -> Result<
+        (
+            Vec<String>,
+            agent_semantic_search::ResidentByteCoverageQueryReceipt,
+        ),
+        String,
+    > {
+        let base_limit = self
+            .backend
+            .search_data_plane()
+            .indexed_owner_count()
+            .max(1);
+        let (base_candidates, mut receipt) = self
+            .backend
+            .search_data_plane()
+            .resident_grep_candidate_owner_paths(plan, base_limit)?;
+        let candidates =
+            self.overlay
+                .merge_grep_candidates(base_candidates, plan, authority, limit)?;
+        receipt.candidate_count = candidates.len();
+        Ok((candidates, receipt))
+    }
+
+    pub(crate) fn merge_tantivy_owner_paths(
+        &self,
+        base_owner_paths: Vec<String>,
+        expression: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        admitted_owner_paths: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        self.overlay.merge_tantivy_owner_paths(
+            base_owner_paths,
+            expression,
+            language_id,
+            admitted_owner_paths,
+            limit,
+        )
+    }
+
+    pub(crate) fn topology_hit_is_current(&self, hit: &super::WorkspaceTopologyHit) -> bool {
+        self.overlay
+            .owner_snapshot(self.generation(), &hit.owner_path)
+            .is_some_and(|owner| owner.content_digest == hit.owner_content_digest)
+            && self
+                .overlay
+                .semantic_owner_materialized(&self.backend, &hit.owner_path)
+    }
+
+    pub(crate) fn merge_topology_hits(
+        &self,
+        base_hits: Vec<super::WorkspaceTopologyHit>,
+        query: &str,
+        limit: usize,
+    ) -> Vec<super::WorkspaceTopologyHit> {
+        self.overlay.merge_topology_hits(base_hits, query, limit)
+    }
+
+    pub(crate) fn smallest_enclosing_topology_anchor(
+        &self,
+        owner_path: &str,
+        match_start: usize,
+        match_end: usize,
+    ) -> Result<Option<agent_semantic_topology::TopologyAnchorHitV1>, String> {
+        let owner_content_digest = self
+            .overlay
+            .owner_content_digest(self.generation(), owner_path)
+            .ok_or_else(|| format!("topology anchor owner is unavailable: {owner_path}"))?;
+        let base = self.backend.search_data_plane();
+        self.overlay.resolve_topology_anchor(
+            owner_path,
+            owner_content_digest,
+            match_start,
+            match_end,
+            || base.smallest_enclosing_topology_anchor(owner_path, match_start, match_end),
+        )
+    }
+
+    pub(crate) fn exact_topology_selector(
+        &self,
+        selector: &str,
+    ) -> Result<Option<super::WorkspaceTopologyHit>, String> {
+        let parsed =
+            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                selector.to_owned(),
+            )?;
+        let owner_path = parsed.owner_path()?;
+        let base = self.backend.search_data_plane();
+        let base_hit = base.exact_topology_selector(selector)?;
+        Ok(self
+            .overlay
+            .resolve_topology_selector(&owner_path, selector, || base_hit))
+    }
+
+    pub fn read_runtime_selector(
+        &self,
+        projection_kind: super::ExactProjectionKind,
+        structural_selector: &str,
+    ) -> Result<super::WorkspaceRuntimeSelectorRead, String> {
+        self.overlay
+            .read_selector(&self.backend, projection_kind, structural_selector)
+    }
+
+    pub fn runtime_owner_snapshot(
+        &self,
+        owner_path: &str,
+    ) -> Option<(String, WorkspaceOwnerSnapshot)> {
+        self.overlay
+            .owner_snapshot_indexed(&self.backend, owner_path)
+            .map(|owner| (self.overlay.generation_digest().to_owned(), owner))
+    }
+
+    pub fn auxiliary_owner_snapshots(&self) -> Vec<super::WorkspaceAuxiliaryOwnerSnapshot> {
+        self.generation().auxiliary_owners.clone()
+    }
+
+    pub fn semantic_owner_materialized(&self, owner_path: &str) -> bool {
+        self.overlay
+            .semantic_owner_materialized(&self.backend, owner_path)
+    }
+
+    pub fn topology_source_segments(&self) -> Vec<WorkspaceTopologySourceSegment> {
+        self.overlay.topology_source_segments(self.generation())
+    }
+
+    pub fn topology_source_segments_for_owner_scope(
+        &self,
+        owner_paths: &std::collections::BTreeSet<String>,
+    ) -> Vec<WorkspaceTopologySourceSegment> {
+        self.overlay
+            .topology_source_segments_for_owner_scope(self.generation(), owner_paths)
+    }
+
+    pub fn owner_paths_for_graph_entry_node_ids<'a>(
+        &self,
+        node_ids: impl IntoIterator<Item = &'a str>,
+    ) -> std::collections::BTreeSet<String> {
+        let node_ids = node_ids.into_iter().collect::<Vec<_>>();
+        let mut owners = self
+            .search_data_plane()
+            .owner_paths_for_graph_entry_node_ids(node_ids.iter().copied());
+        owners.extend(
+            self.overlay
+                .owner_paths_for_graph_entry_node_ids(self.generation(), node_ids.iter().copied()),
+        );
+        owners.retain(|owner| {
+            self.overlay
+                .owner_snapshot(self.generation(), owner)
+                .is_some_and(|snapshot| {
+                    node_ids.iter().any(|node_id| {
+                        **node_id
+                            == agent_semantic_search::stable_graph_node_id(
+                                "owner",
+                                &snapshot.owner_path,
+                            )
+                            || snapshot.selectors.iter().any(|selector| {
+                                **node_id
+                                    == agent_semantic_search::stable_graph_node_id(
+                                        "item",
+                                        &selector.selector,
+                                    )
+                            })
+                    })
+                })
+        });
+        owners
+    }
+
+    #[expect(
+        clippy::type_complexity,
+        reason = "the V1 projection returns its three typed evidence collections"
+    )]
+    pub fn native_syntax_playbook_projection(
+        &self,
+        owner_paths: &[String],
+    ) -> Result<
+        (
+            Vec<agent_semantic_search::NativeSyntaxProjection>,
+            Vec<agent_semantic_search::NativeSyntaxRelation>,
+            Vec<agent_semantic_search::NativeSyntaxDiagnostic>,
+        ),
+        String,
+    > {
+        self.overlay
+            .native_syntax_playbook_projection(self.generation(), owner_paths)
+    }
+
+    pub fn runtime_owner_search_snapshot(
+        &self,
+        owner_path: &str,
+        query_terms: &[String],
+        limit: usize,
+    ) -> Result<Option<WorkspaceOwnerSearchSnapshot>, String> {
+        let Some((_, owner)) = self.runtime_owner_snapshot(owner_path) else {
+            return Ok(None);
+        };
+        let matching = owner
+            .selectors
+            .iter()
+            .filter_map(|selector| {
+                match super::owner_search_admission::selector_is_admitted(
+                    super::ExactProjectionKind::Source,
+                    &selector.query_keys,
+                    query_terms,
+                ) {
+                    Ok(true) => Some(Ok(WorkspaceOwnerSearchSeedSnapshot {
+                        selector: selector.selector.clone(),
+                        byte_start: selector.byte_start,
+                        byte_end: selector.byte_end,
+                    })),
+                    Ok(false) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let (candidate_count, selectors) =
+            super::owner_search_admission::finish_owner_search(matching, limit)?;
+        Ok(Some(WorkspaceOwnerSearchSnapshot {
+            owner_path: owner.owner_path,
+            content_digest: owner.content_digest,
+            candidate_count,
+            selectors,
+        }))
+    }
+
+    pub fn runtime_generation_digest(&self) -> String {
+        self.overlay.generation_digest().to_owned()
+    }
+
+    pub fn relations_from(
+        &self,
+        endpoint_kind: &str,
+        endpoint_id: &str,
+    ) -> Vec<
+        &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    > {
+        self.backend.relations_from(endpoint_kind, endpoint_id)
+    }
+
+    pub fn read_source_index(
+        &self,
+        query: &str,
+        language_id: Option<&agent_semantic_client_core::LanguageId>,
+        limit: u32,
+    ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
+        let generation = self.backend.generation();
+        let positions = self
+            .backend
+            .source_index_owner_positions(query, limit as usize);
+        let candidates = positions
+            .into_iter()
+            .map(|position| {
+                let owner = &generation.owners[position];
+                let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
+                crate::ClientDbSourceIndexCandidate {
+                    path: owner.owner_path.clone().into(),
+                    language_id: language_id.cloned(),
+                    provider_id: None,
+                    source_kind: crate::ClientDbSourceIndexSourceKind::File,
+                    line_count: Some(text.lines().count().max(1).min(u32::MAX as usize) as u32),
+                    query_keys: crate::source_index::source_query_keys(&owner.owner_path, text)
+                        .into_iter()
+                        .map(Into::into)
+                        .collect(),
+                    selector_symbol: None,
+                    selector_kind: None,
+                    selector_projection: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let state = if candidates.is_empty()
+            && generation.workspace_generation.owner_count == 0
+            && generation.workspace_generation.leaf_count == 0
+        {
+            crate::ClientDbSourceIndexLookupState::ColdRequired
+        } else if candidates.is_empty() {
+            crate::ClientDbSourceIndexLookupState::Miss
+        } else {
+            crate::ClientDbSourceIndexLookupState::Hit
+        };
+        Ok(crate::ClientDbSourceIndexLookupResult {
+            db_path: PathBuf::new(),
+            state,
+            candidates,
+            source_snapshot: Some(generation.source_snapshot.clone()),
+            index_artifact_digest: Some(
+                agent_semantic_search_projection::source_index_artifact_digest(
+                    &generation.source_snapshot,
+                ),
+            ),
+        })
+    }
+}

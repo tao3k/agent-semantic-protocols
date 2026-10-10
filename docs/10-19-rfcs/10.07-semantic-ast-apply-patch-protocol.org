@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: RFC: Semantic AST Apply Patch Protocol
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-02
 #+RFC: 007
-#+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
+#+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
 #+SEE_ALSO: docs/30-39-research/31.13-ast-apply-patch-direction-report.org
 
 * One-sentence summary
 
-=agent-semantic-protocol= should expose an AST-backed patch verification
+=agent-semantic-client= should expose an AST-backed patch verification
 protocol for small structural edits.  Language providers own native AST
 adapters, while the shared binary owns schema validation, receipts, hook
 integration, and Codex-safe verification.
@@ -77,7 +81,7 @@ tell the agent one command shape instead of causing another broad search for
 The normal source-edit flow is:
 
 #+begin_src shell
-asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --projection source .
 asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> [--snippet '<exact source or inserted snippet>'] [--field <key=value> ...] > semantic-ast-patch.json
 asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
 # If the receipt says mutationSource=provider-native:
@@ -158,7 +162,7 @@ cargo test --features cli,search \
 The implementation root should be a new Rust crate:
 
 #+begin_example
-crates/agent-semantic-protocol
+crates/agent-semantic-client
 ├── command/hook.rs
 ├── command/ast_patch.rs
 ├── command/compact_verify.rs
@@ -166,27 +170,26 @@ crates/agent-semantic-protocol
 └── receipt/
 #+end_example
 
-=agent-semantic-hook= remains a first-class dependency of this crate.  It is
-not deleted or folded away.  The shared binary should route hook commands to
-the existing hook implementation:
+=agent-semantic-hook= remains a first-class package and owns the standalone
+=asp-hook= executable. The public Client owns only Hook administration:
 
 #+begin_src shell
 asp install plugin --codex .
-asp hook pre-tool ...
-asp hook stop ...
+asp hook doctor ...
+asp-hook pre-tool ...
+asp-hook stop ...
 #+end_src
 
 This keeps the current Codex adapter stable while letting the public binary grow
 into the broader semantic protocol surface.
 
-The new crate must self-apply the Rust language-project policy.  Do not copy
-Rust policy logic into =agent-semantic-protocol=.  Depend on the existing
-=rust-lang-project-harness= policy/check surface the same way this repository
-already treats language providers as policy owners.  The acceptance gate for
-this crate is therefore:
+The new crate must self-apply the Rust language-project policy. Do not copy
+Rust policy logic into =agent-semantic-client=. Build ownership invokes the
+ASP Rust dependency API directly; it is not exposed as a provider command. The
+acceptance gate for this crate is therefore:
 
 #+begin_src shell
-rs-harness check --changed crates/agent-semantic-protocol
+.devenv/devenv-profile-exec rtk cargo test -p agent-semantic-client
 #+end_src
 
 If the crate touches hook integration, also run the existing
@@ -297,7 +300,7 @@ manual hunks for supported AST operations.  The normal hook-guided source edit
 flow is:
 
 #+begin_src shell
-asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --projection source .
 asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --field <key=value> > semantic-ast-patch.json
 asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
 asp <language> ast-patch apply --packet semantic-ast-patch.json .
@@ -492,7 +495,7 @@ The dry-run and apply result should share one receipt shape:
     "file-reparsed",
     "symbol-resolved"
   ],
-  "next": "ts-harness check --changed ."
+  "next": "asp query playbook --language typescript --selector src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket --workspace . --projection source"
 }
 #+end_src
 
@@ -539,8 +542,8 @@ import organization, or semantic cleanups must be separate capabilities.
 ** Julia
 
 Julia AST patch support should use JuliaSyntax-derived facts and the same
-facade/provider contract as search and query.  The compiled =asp-julia-harness=
-owns provider identity; =julia-project-harness.jl= is only a source-provider
+facade/provider contract as search and query.  The compiled =asp-julia=
+owns provider identity; =asp-julia.jl= is only a source-provider
 development fallback.
 
 * Interaction with RFC 003 mutation boundary
@@ -615,15 +618,15 @@ patch dry-run and trusted AST patch apply.
 
 1. =asp install plugin --codex .= delegates to the
    existing =agent-semantic-hook= implementation.
-2. =rs-harness check --changed crates/agent-semantic-protocol= passes after the
-   new crate is introduced.
+2. The =agent-semantic-client= crate tests pass after the new crate is
+   introduced, including its build-owned ASP Rust policy gate.
 3. TypeScript dry-run can append one statement inside
    =renderSemanticSearchSeedPacket= from a compact query target without reading
    the full source file into the prompt.
 4. A malformed TypeScript snippet returns =snippet-parse-error= and leaves the
    worktree unchanged.
 5. A stale target hash returns =target-stale= and suggests a repair query.
-6. =asp hook pre-tool --client codex= denies source-file Codex =apply_patch=
+6. =asp-hook pre-tool --client codex= denies source-file Codex =apply_patch=
    payloads with =reasonKind=semantic-ast-patch-required=, prints an
    executable =asp ast-patch template= -> provider =ast-patch dry-run= command
    chain, and still allows non-source =README.md= patches.
@@ -635,7 +638,7 @@ patch dry-run and trusted AST patch apply.
 * Rollout order
 
 1. Add this RFC and the 31.13 research note.
-2. Introduce =crates/agent-semantic-protocol= as the shared binary crate.
+2. Introduce =crates/agent-semantic-client= as the shared binary crate.
 3. Add =agent-semantic-hook= as a dependency and expose hook subcommands through
    =asp hook ...= without changing hook behavior.
 4. Wire the crate into Rust language-project policy checks instead of copying

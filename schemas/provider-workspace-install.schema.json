@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-workspace-install.v1.schema.json",
+  "title": "Provider Workspace Install Descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaId",
+    "schemaVersion",
+    "schemaAuthority",
+    "languageId",
+    "providerId",
+    "binary",
+    "providerRegistration",
+    "schemaBundleReceipt",
+    "workspaceArtifact",
+    "workspaceBuild"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "../schemas/provider-workspace-install.schema.json"
+    },
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-workspace-install"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "schemaAuthority": {
+      "type": "string",
+      "format": "uri"
+    },
+    "languageId": {
+      "enum": [
+        "gerbil-scheme",
+        "julia",
+        "python",
+        "rust",
+        "typescript"
+      ]
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+    },
+    "binary": {
+      "type": "string",
+      "pattern": "^[^/]+$"
+    },
+    "providerRegistration": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "schemaBundleReceipt": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "workspaceArtifact": {
+      "$ref": "#/$defs/workspaceArtifact"
+    },
+    "dependencyMaterialization": {
+      "$ref": "#/$defs/command"
+    },
+    "workspaceBuild": {
+      "$ref": "#/$defs/workspaceBuild"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "gerbil-scheme"},
+        "providerId": {"const": "asp-gerbil-scheme"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "julia"},
+        "providerId": {"const": "asp-julia"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "python"},
+        "providerId": {"const": "asp-python"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "rust"},
+        "providerId": {"const": "asp-rust"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "typescript"},
+        "providerId": {"const": "asp-typescript"}
+      }
+    }
+  ],
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "workspaceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "entrypoint"],
+      "properties": {
+        "root": { "$ref": "#/$defs/relativePath" },
+        "entrypoint": { "$ref": "#/$defs/relativePath" },
+        "runtimeDependencies": {
+          "type": "array",
+          "description": "Files copied from the canonical launch program installation prefix into the immutable artifact before its digest is computed.",
+          "items": { "$ref": "#/$defs/runtimeDependency" }
+        },
+        "launch": { "$ref": "#/$defs/launch" }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "program",
+        "args",
+        "programRelativeToArtifact",
+        "argsRelativeToArtifact"
+      ],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "programRelativeToArtifact": { "type": "boolean" },
+        "argsRelativeToArtifact": { "type": "boolean" }
+      }
+    },
+    "runtimeDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A runtime file required by the artifact-relative launch program.",
+      "required": ["source", "target"],
+      "properties": {
+        "source": {
+          "description": "Path relative to the canonical launch program installation prefix.",
+          "$ref": "#/$defs/relativePath"
+        },
+        "target": {
+          "description": "Destination path relative to the immutable artifact root.",
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program", "args", "workingDirectory", "env"],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "workingDirectory": { "$ref": "#/$defs/relativePath" },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "removeEnv": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "removeEnvPrefixes": {
+          "$ref": "#/$defs/environmentPrefixes"
+        }
+      }
+    },
+    "workspaceBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "program",
+        "args",
+        "workingDirectory",
+        "sourceSnapshotAnchors",
+        "derivedPaths",
+        "env"
+      ],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "workingDirectory": { "$ref": "#/$defs/relativePath" },
+        "sourceSnapshotAnchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "derivedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "removeEnv": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "removeEnvPrefixes": {
+          "$ref": "#/$defs/environmentPrefixes"
+        }
+      }
+    },
+    "environmentNames": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    },
+    "environmentPrefixes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    }
+  }
+}

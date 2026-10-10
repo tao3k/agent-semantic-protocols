@@ -1,50 +1,134 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Append-only hook event state persisted by `asp hook`.
 
-use crate::command::{
-    AspLanguageCommandIntent, classify_asp_language_command_tokens, semantic_shell_tokens,
-};
-use fs2::FileExt;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::BTreeSet;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::fs::{self};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
 
 use agent_semantic_runtime::ensure_project_hook_state_dir;
-use serde_json::{Value, json};
+use fs2::FileExt;
+use serde_json::Value;
+use serde_json::json;
 
-use crate::event_replay::{
-    compact_source_access_deny_message, deny_replay_key, is_source_access_replay_key,
-    recovery_ref_for_replay_key, repeated_deny_message, should_compact_source_access_deny_message,
+use crate::ReaderProbeAccess;
+use crate::ReaderProbeObservation;
+use crate::event_replay::compact_source_access_deny_message;
+use crate::event_replay::deny_replay_key;
+use crate::event_replay::is_source_access_replay_key;
+use crate::event_replay::recovery_ref_for_replay_key;
+use crate::event_replay::repeated_deny_message;
+use crate::event_replay::should_compact_source_access_deny_message;
+use crate::protocol::HOOK_PROTOCOL_ID;
+use crate::protocol::HookDecision;
+
+#[path = "event_state_parts/replay_window.rs"]
+mod replay_window;
+pub(crate) use replay_window::read_hook_event_state_tail;
+use replay_window::{
+    event_matches_prompt_scope, has_recent_matching_deny, is_current_hook_event_state_line,
+    is_prompt_scope_boundary, is_recent_for_window, unix_time_ms,
 };
-use crate::protocol::{HOOK_PROTOCOL_ID, HookDecision};
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
+const PROMPT_SCOPE_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
 const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
-const SEARCH_PIPE_FEEDBACK_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
+const HOOK_EVENT_STATE_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 
-fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
-    decision.fields.contains_key("agentSessionAction")
-        && decision.fields.contains_key("agentSessionRoute")
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventSessionId(String);
+
+impl HookEventSessionId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventTranscriptPath(String);
+
+impl HookEventTranscriptPath {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventTranscriptPath {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventTranscriptPath {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventStateError(String);
+
+impl std::fmt::Display for HookEventStateError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HookEventStateError {}
+
+impl From<String> for HookEventStateError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+/// Policy selection recorded by a denied Hook event.
+///
+/// Resident identity is intentionally absent. `asp session` resolves the
+/// selected rule's stable Agent route key through the current managed config
+/// and agent registry, so a Hook receipt cannot become a second registry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookSessionAgentRoute {
+    pub command_digest: Option<String>,
+    pub config_rule_id: String,
+    pub deny_evidence_ref: Option<String>,
+    pub reason_kind: String,
+    pub root_session_id: String,
+    pub subject_command: Option<String>,
+}
+
+fn should_preserve_parser_route_message(decision: &HookDecision) -> bool {
+    !decision.routes.is_empty()
+        || decision.has_registered_agent_dispatch()
+        || decision.fields.contains_key("agentSessionAction")
+            && decision.fields.contains_key("agentSessionRoute")
 }
 const HOOK_EVENT_STATE_MAX_BYTES: u64 = HOOK_EVENT_STATE_TAIL_BYTES * 4;
-
-/// Recent search state for a prompt/session that needs `search pipe`.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct SearchPipeFeedback {
-    pub(crate) language_id: String,
-    pub(crate) saw_pipe: bool,
-    pub(crate) pipe_command_tokens: Vec<Vec<String>>,
-}
-
-/// ASP command stage that matters for prompt search-flow feedback.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum AspSearchCommandStage {
-    Prime(String),
-    Pipe(String),
-}
 
 /// Convert a repeated deny in the same source-access lane into a compact replay.
 pub fn apply_repeated_deny_replay(
@@ -64,11 +148,10 @@ pub fn apply_repeated_deny_replay(
         Value::String(recovery_ref.clone()),
     );
     let source_access_replay = is_source_access_replay_key(&replay_key);
-    if source_access_replay {
-        insert_asp_explore_recovery_action_fields(decision);
+    let preserve_parser_route_message = should_preserve_parser_route_message(decision);
+    if source_access_replay && !preserve_parser_route_message {
+        insert_collaboration_recovery_action_fields(decision);
     }
-    let preserve_agent_session_route_message =
-        should_preserve_agent_session_route_message(decision);
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
 
@@ -77,10 +160,10 @@ pub fn apply_repeated_deny_replay(
             "denyReplay".to_string(),
             Value::String("record".to_string()),
         );
-        if preserve_agent_session_route_message {
+        if preserve_parser_route_message {
             decision.fields.insert(
                 "denyReplayMessagePolicy".to_string(),
-                Value::String("preserve-agent-session-route".to_string()),
+                Value::String("preserve-parser-route".to_string()),
             );
         } else if compact_first_source_access_replay {
             decision.message = compact_source_access_deny_message(decision, &recovery_ref);
@@ -92,10 +175,10 @@ pub fn apply_repeated_deny_replay(
         "denyReplay".to_string(),
         Value::String("repeated".to_string()),
     );
-    if preserve_agent_session_route_message {
+    if preserve_parser_route_message {
         decision.fields.insert(
             "denyReplayMessagePolicy".to_string(),
-            Value::String("preserve-agent-session-route".to_string()),
+            Value::String("preserve-parser-route".to_string()),
         );
         return Ok(true);
     }
@@ -107,33 +190,15 @@ pub fn apply_repeated_deny_replay(
     Ok(true)
 }
 
-fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
+fn insert_collaboration_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("enter-asp-explore-choice-pane".to_string()));
+        .or_insert_with(|| Value::String("collaboration.spawn_agent".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
-        .or_insert_with(|| Value::String("choose-one-bootstrap-pane-option".to_string()));
-    decision
-        .fields
-        .entry("targetAgentName".to_string())
-        .or_insert_with(|| Value::String("asp_explorer".to_string()));
-    decision
-        .fields
-        .entry("targetAgentRole".to_string())
-        .or_insert_with(|| Value::String("asp_explorer".to_string()));
-    decision
-        .fields
-        .entry("targetAgentSelectionSource".to_string())
-        .or_insert_with(|| Value::String("hook-deny-intent".to_string()));
-    decision
-        .fields
-        .entry("targetAgentRegistrySource".to_string())
-        .or_insert_with(|| {
-            Value::String("~/.agent-semantic-protocols/agents/config.toml".to_string())
-        });
+        .or_insert_with(|| Value::String("spawn-configured-agent".to_string()));
     decision
         .fields
         .entry("forbiddenUntilResolved".to_string())
@@ -141,7 +206,122 @@ fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("completionReceipt".to_string())
-        .or_insert_with(|| Value::String("asp-explore-choice-pane-receipt".to_string()));
+        .or_insert_with(|| Value::String("host-agent-action-receipt".to_string()));
+    decision
+        .fields
+        .entry("collaborationNamespace".to_string())
+        .or_insert_with(|| Value::String("collaboration".to_string()));
+    decision
+        .fields
+        .entry("collaborationTool".to_string())
+        .or_insert_with(|| Value::String("spawn_agent".to_string()));
+}
+
+/// Return the newest denied Hook policy selection for this root session.
+pub fn latest_hook_session_agent_route(
+    project_root: &Path,
+) -> Result<Option<HookSessionAgentRoute>, String> {
+    latest_hook_session_agent_route_for_root(project_root, None)
+}
+
+pub fn latest_hook_session_agent_route_for_root(
+    project_root: &Path,
+    root_session_id: Option<&str>,
+) -> Result<Option<HookSessionAgentRoute>, String> {
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(None);
+    }
+    let lines = read_hook_event_state_tail(&state_path)?;
+    Ok(latest_hook_session_agent_route_from_lines(
+        &lines,
+        root_session_id,
+    ))
+}
+
+/// Read the newest route that still belongs to the current immutable Hook
+/// configuration. Events from older generations remain audit evidence, but
+/// cannot select a rule which the active configuration no longer declares.
+pub fn latest_hook_session_agent_route_for_root_matching_rules(
+    project_root: &Path,
+    root_session_id: Option<&str>,
+    current_rule_ids: &BTreeSet<String>,
+) -> Result<Option<HookSessionAgentRoute>, String> {
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(None);
+    }
+    let lines = read_hook_event_state_tail(&state_path)?;
+    Ok(latest_hook_session_agent_route_from_lines_matching(
+        &lines,
+        root_session_id,
+        |route| current_rule_ids.contains(&route.config_rule_id),
+    ))
+}
+
+fn latest_hook_session_agent_route_from_lines(
+    lines: &[String],
+    required_root_session_id: Option<&str>,
+) -> Option<HookSessionAgentRoute> {
+    latest_hook_session_agent_route_from_lines_matching(lines, required_root_session_id, |_| true)
+}
+
+fn latest_hook_session_agent_route_from_lines_matching(
+    lines: &[String],
+    required_root_session_id: Option<&str>,
+    accepts: impl Fn(&HookSessionAgentRoute) -> bool,
+) -> Option<HookSessionAgentRoute> {
+    lines.iter().rev().find_map(|line| {
+        let event = serde_json::from_str::<Value>(line).ok()?;
+        if !matches!(
+            event.get("decision").and_then(Value::as_str),
+            Some("deny" | "block")
+        ) || event
+            .pointer("/fields/collaborationTool")
+            .and_then(Value::as_str)
+            != Some("spawn_agent")
+            || event
+                .pointer("/fields/collaborationNamespace")
+                .and_then(Value::as_str)
+                != Some("collaboration")
+        {
+            return None;
+        }
+        let root_session_id = event
+            .pointer("/fields/hostRootSessionId")
+            .or_else(|| event.pointer("/fields/sessionId"))
+            .and_then(Value::as_str)?;
+        if required_root_session_id.is_some_and(|required| required != root_session_id) {
+            return None;
+        }
+        let route = HookSessionAgentRoute {
+            command_digest: event
+                .pointer("/fields/commandDigest")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            config_rule_id: required_event_string(&event, "/fields/configRuleId")?,
+            deny_evidence_ref: event
+                .pointer("/fields/recoveryRef")
+                .or_else(|| event.pointer("/fields/denyEvidenceRef"))
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            reason_kind: required_event_string(&event, "/reasonKind")?,
+            root_session_id: root_session_id.to_owned(),
+            subject_command: event
+                .pointer("/subject/command")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        };
+        accepts(&route).then_some(route)
+    })
+}
+
+fn required_event_string(event: &Value, pointer: &str) -> Option<String> {
+    event
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 /// Append one compact hook decision record to `events.jsonl`.
@@ -149,8 +329,120 @@ pub fn append_hook_event_state(
     project_root: &Path,
     decision: &HookDecision,
 ) -> Result<PathBuf, String> {
+    append_hook_event_state_with_lock_timeout(project_root, decision, HOOK_EVENT_STATE_LOCK_TIMEOUT)
+}
+
+/// Try to project a decision without putting the authoritative Hook response
+/// behind the diagnostic writer's normal contention budget.
+pub fn try_append_hook_event_state(
+    project_root: &Path,
+    decision: &HookDecision,
+) -> Result<PathBuf, String> {
+    append_hook_event_state_with_lock_timeout(project_root, decision, Duration::ZERO)
+}
+
+/// Persist a dynamic Reader observation beside Hook decisions without placing
+/// internal receipt fields on the Codex Host wire envelope.
+///
+/// A probe record deliberately uses the existing V1 Hook event identity: it
+/// has the same retention, locking, and project authority as a policy
+/// decision, while `fields.recordKind` keeps it out of route/replay selection.
+pub fn append_reader_probe_event_state(
+    project_root: &Path,
+    state_home: Option<&Path>,
+    host_matcher: &str,
+    payload: &Value,
+    observation: &ReaderProbeObservation,
+    decision: Option<&crate::aot_evaluator::AotHookDecision<'_>>,
+) -> Result<PathBuf, String> {
+    let state_dir = match state_home {
+        Some(state_home) => {
+            let paths = agent_semantic_runtime::project_state_paths_with_state_home(
+                project_root,
+                state_home,
+            )?;
+            fs::create_dir_all(&paths.hook_state_dir).map_err(|error| {
+                format!(
+                    "create Reader probe Hook state {}: {error}",
+                    paths.hook_state_dir.display()
+                )
+            })?;
+            paths.hook_state_dir
+        }
+        None => ensure_project_hook_state_dir(project_root)?,
+    };
+    let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
+    let writer_lock = acquire_event_state_writer(&state_dir, HOOK_EVENT_STATE_LOCK_TIMEOUT)?;
+    let reader_probe = json!({
+        "schemaId": "agent.semantic-protocols.reader-probe-observation",
+        "schemaVersion": 1,
+        "subject": observation.subject,
+        "access": match observation.access {
+            ReaderProbeAccess::Read => "read",
+            ReaderProbeAccess::Unknown => "unknown",
+        },
+        "accessMode": match observation.access {
+            ReaderProbeAccess::Read => "read-permission",
+            ReaderProbeAccess::Unknown => "unknown",
+        },
+        "backend": observation.backend,
+        "terminal": observation.terminal,
+        "elapsedMicros": observation.elapsed_micros,
+        "probeProcessLaunched": observation.probe_process_launched,
+        "cleanupVerified": observation.cleanup_verified,
+        "cacheHit": observation.cache_hit,
+        "behaviorKey": observation.behavior_key,
+    });
+    let policy = decision
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| format!("encode Reader probe policy decision: {error}"))?
+        .unwrap_or_else(|| json!({ "decision": "allow", "state": "no-matching-rule" }));
+    let event = json!({
+        "schemaId": HOOK_EVENT_SCHEMA_ID,
+        "schemaVersion": "1",
+        "protocolId": HOOK_PROTOCOL_ID,
+        "protocolVersion": crate::protocol::HOOK_PROTOCOL_VERSION,
+        "recordedAtUnixMs": unix_time_ms(),
+        "platform": "codex",
+        "event": "pre-tool",
+        "decision": decision.map_or("allow", |value| value.decision),
+        "reasonKind": decision.map_or("none", |value| value.reason_kind),
+        "languageIds": decision
+            .and_then(|value| value.language)
+            .map(|language| vec![language])
+            .unwrap_or_default(),
+        "subject": { "path": observation.subject },
+        "routeKinds": [],
+        "fields": {
+            "recordKind": "reader-probe-observation",
+            "hostMatcher": host_matcher,
+            "sessionId": payload.get("session_id").and_then(Value::as_str),
+            "toolUseId": payload.get("tool_use_id").and_then(Value::as_str),
+            "readerProbe": reader_probe,
+            "policyDecision": policy,
+        },
+    });
+    append_hook_event_value(&state_path, &event)?;
+    FileExt::unlock(&writer_lock)
+        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
+    Ok(state_path)
+}
+
+fn append_hook_event_state_with_lock_timeout(
+    project_root: &Path,
+    decision: &HookDecision,
+    lock_timeout: Duration,
+) -> Result<PathBuf, String> {
     let state_dir = ensure_project_hook_state_dir(project_root)?;
     let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
+    let writer_lock = acquire_event_state_writer(&state_dir, lock_timeout)?;
+    let mut fields = decision.fields.clone();
+    if decision.decision == crate::DecisionKind::Deny {
+        fields
+            .entry("denyEvidenceRef".to_owned())
+            .or_insert_with(|| Value::String(state_path.display().to_string()));
+    }
     let event = json!({
         "schemaId": HOOK_EVENT_SCHEMA_ID,
         "schemaVersion": "1",
@@ -164,91 +456,162 @@ pub fn append_hook_event_state(
         "languageIds": decision.language_ids,
         "subject": decision.subject,
         "routeKinds": decision.routes.iter().map(|route| route.kind).collect::<Vec<_>>(),
-        "fields": decision.fields,
+        "fields": fields,
         "denyReplayKey": decision.fields.get("denyReplayKey"),
     });
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .read(true)
-        .open(&state_path)
-        .map_err(|error| {
-            format!(
-                "failed to open hook state {}: {error}",
-                state_path.display()
-            )
-        })?;
-    file.lock_exclusive().map_err(|error| {
-        format!(
-            "failed to lock hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    if file
-        .metadata()
+    append_hook_event_value(&state_path, &event)?;
+    FileExt::unlock(&writer_lock)
+        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
+    Ok(state_path)
+}
+
+fn append_hook_event_value(state_path: &Path, event: &Value) -> Result<(), String> {
+    let mut line = event.to_string();
+    line.push('\n');
+    let state_len = fs::metadata(state_path)
+        .map(|metadata| metadata.len())
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(0)
+            } else {
+                Err(error)
+            }
+        })
         .map_err(|error| {
             format!(
                 "failed to stat hook state {}: {error}",
                 state_path.display()
             )
-        })?
-        .len()
-        > HOOK_EVENT_STATE_MAX_BYTES
-    {
-        file.set_len(0).map_err(|error| {
+        })?;
+    if state_len.saturating_add(line.len() as u64) > HOOK_EVENT_STATE_MAX_BYTES {
+        let mut compacted = read_hook_event_state_tail(state_path)?
+            .into_iter()
+            .filter(|retained| is_current_hook_event_state_line(retained))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !compacted.is_empty() {
+            compacted.push('\n');
+        }
+        compacted.push_str(&line);
+        replace_hook_event_state(state_path, compacted.as_bytes())?;
+    } else {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(state_path)
+            .map_err(|error| {
+                format!(
+                    "failed to open hook state {}: {error}",
+                    state_path.display()
+                )
+            })?;
+        file.write_all(line.as_bytes()).map_err(|error| {
             format!(
-                "failed to truncate hook state {}: {error}",
+                "failed to write hook state {}: {error}",
                 state_path.display()
             )
         })?;
-        file.seek(SeekFrom::Start(0)).map_err(|error| {
+        file.flush().map_err(|error| {
             format!(
-                "failed to seek hook state {}: {error}",
+                "failed to flush hook state {}: {error}",
                 state_path.display()
             )
         })?;
     }
-    let mut line = event.to_string();
-    line.push('\n');
-    file.write_all(line.as_bytes()).map_err(|error| {
-        format!(
-            "failed to write hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    file.flush().map_err(|error| {
-        format!(
-            "failed to flush hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    file.unlock().map_err(|error| {
-        format!(
-            "failed to unlock hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    Ok(state_path)
+    Ok(())
 }
 
-/// Return feedback when a prompt/session has run `search prime` but no pipe.
-pub(crate) fn missing_search_pipe_after_prime(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<Option<SearchPipeFeedback>, String> {
-    Ok(
-        prompt_search_flow_after_prime(project_root, session_id, transcript_path)?
-            .filter(|feedback| !feedback.saw_pipe),
-    )
+fn acquire_event_state_writer(state_dir: &Path, lock_timeout: Duration) -> Result<File, String> {
+    let lock_path = state_dir.join("events.jsonl.lock");
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "open Hook event writer lock {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    let started = Instant::now();
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(lock),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && started.elapsed() < lock_timeout =>
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                return Err(format!(
+                    "Hook event writer lock exceeded {}ms at {}",
+                    lock_timeout.as_millis(),
+                    lock_path.display()
+                ));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "lock Hook event writer {}: {error}",
+                    lock_path.display()
+                ));
+            }
+        }
+    }
+}
+
+fn replace_hook_event_state(state_path: &Path, content: &[u8]) -> Result<(), String> {
+    let file_name = state_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(HOOK_EVENT_STATE_FILE);
+    let temporary_path = state_path.with_file_name(format!(".{file_name}.tmp"));
+    let replace_result = (|| {
+        let mut temporary = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&temporary_path)
+            .map_err(|error| {
+                format!(
+                    "failed to open temporary hook state {}: {error}",
+                    temporary_path.display()
+                )
+            })?;
+        temporary.write_all(content).map_err(|error| {
+            format!(
+                "failed to write temporary hook state {}: {error}",
+                temporary_path.display()
+            )
+        })?;
+        temporary.sync_all().map_err(|error| {
+            format!(
+                "failed to sync temporary hook state {}: {error}",
+                temporary_path.display()
+            )
+        })?;
+        fs::rename(&temporary_path, state_path).map_err(|error| {
+            format!(
+                "failed to replace hook state {} from {}: {error}",
+                state_path.display(),
+                temporary_path.display()
+            )
+        })
+    })();
+    if replace_result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    replace_result
 }
 
 /// Return whether the current prompt/session already recorded subagent context.
 pub fn has_recorded_subagent_context(
     project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<bool, String> {
+    session_id: Option<HookEventSessionId>,
+    transcript_path: Option<HookEventTranscriptPath>,
+) -> Result<bool, HookEventStateError> {
     if session_id.is_none() && transcript_path.is_none() {
         return Ok(false);
     }
@@ -262,10 +625,16 @@ pub fn has_recorded_subagent_context(
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
+        if !is_recent_for_window(&event, now, PROMPT_SCOPE_WINDOW_MS) {
             break;
         }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
+        if !event_matches_prompt_scope(
+            &event,
+            session_id.as_ref().map(HookEventSessionId::as_str),
+            transcript_path
+                .as_ref()
+                .map(HookEventTranscriptPath::as_str),
+        ) {
             continue;
         }
         if is_prompt_scope_boundary(&event) {
@@ -285,102 +654,6 @@ pub fn has_recorded_subagent_context(
         }
     }
     Ok(false)
-}
-
-/// Return recent prompt/session search-flow state after prime or pipe has run.
-pub(crate) fn prompt_search_flow_after_prime(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<Option<SearchPipeFeedback>, String> {
-    if session_id.is_none() && transcript_path.is_none() {
-        return Ok(None);
-    }
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(None);
-    }
-    let now = unix_time_ms();
-    let lines = read_hook_event_state_tail(&state_path)?;
-    let mut prime_language_id = None;
-    let mut saw_pipe = false;
-    let mut pipe_command_tokens = Vec::new();
-    for line in lines.iter().rev() {
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
-            break;
-        }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
-            continue;
-        }
-        if is_prompt_scope_boundary(&event) {
-            break;
-        }
-        let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
-            continue;
-        };
-        match asp_search_stage(command) {
-            Some(AspSearchCommandStage::Pipe(language_id)) => {
-                saw_pipe = true;
-                pipe_command_tokens.push(semantic_shell_tokens(command));
-                prime_language_id.get_or_insert(language_id);
-            }
-            Some(AspSearchCommandStage::Prime(language_id)) => {
-                prime_language_id.get_or_insert(language_id);
-            }
-            None => {}
-        }
-    }
-    Ok(prime_language_id.map(|language_id| SearchPipeFeedback {
-        language_id,
-        saw_pipe,
-        pipe_command_tokens,
-    }))
-}
-
-/// Count ASP commands that completed in the current prompt/session.
-pub(crate) fn prompt_asp_command_count(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<usize, String> {
-    if session_id.is_none() && transcript_path.is_none() {
-        return Ok(0);
-    }
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(0);
-    }
-    let now = unix_time_ms();
-    let mut count = 0;
-    let lines = read_hook_event_state_tail(&state_path)?;
-    for event in lines
-        .iter()
-        .rev()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-    {
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
-            break;
-        }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
-            continue;
-        }
-        if is_prompt_scope_boundary(&event) {
-            break;
-        }
-        if event.get("event").and_then(Value::as_str) != Some("post-tool") {
-            continue;
-        }
-        let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
-            continue;
-        };
-        if asp_command(command) {
-            count += 1;
-        }
-    }
-    Ok(count)
 }
 
 /// Remove cached hook event state when it belongs to an older hook protocol.
@@ -429,221 +702,4 @@ fn remove_incompatible_hook_event_state_path(state_path: &Path) -> Result<Option
         )
     })?;
     Ok(Some(state_path.to_path_buf()))
-}
-
-fn is_current_hook_event_state_line(line: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-        return false;
-    };
-    value.get("schemaId").and_then(serde_json::Value::as_str) == Some(HOOK_EVENT_SCHEMA_ID)
-        && value.get("protocolId").and_then(serde_json::Value::as_str) == Some(HOOK_PROTOCOL_ID)
-}
-
-fn unix_time_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or_default()
-}
-
-fn has_recent_matching_deny(project_root: &Path, replay_key: &str) -> Result<bool, String> {
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(false);
-    }
-    let now = unix_time_ms();
-    let replay_key_json = serde_json::to_string(replay_key)
-        .map_err(|error| format!("failed to encode hook replay key: {error}"))?;
-    let lines = read_hook_event_state_tail(&state_path)?;
-    for line in lines.iter().rev() {
-        if !line.contains(&replay_key_json) {
-            continue;
-        }
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if !is_recent_event(&event, now) {
-            break;
-        }
-        if event.get("decision").and_then(Value::as_str) == Some("deny")
-            && event.get("denyReplayKey").and_then(Value::as_str) == Some(replay_key)
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-pub(crate) fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String>, String> {
-    let mut file = fs::File::open(state_path).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    let file_len = file
-        .metadata()
-        .map_err(|error| {
-            format!(
-                "failed to stat hook state {}: {error}",
-                state_path.display()
-            )
-        })?
-        .len();
-    let start = file_len.saturating_sub(HOOK_EVENT_STATE_TAIL_BYTES);
-    file.seek(SeekFrom::Start(start)).map_err(|error| {
-        format!(
-            "failed to seek hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-
-    let mut lines = content.lines().collect::<Vec<_>>();
-    if start > 0 && !lines.is_empty() {
-        lines.remove(0);
-    }
-    let first_line = lines.len().saturating_sub(HOOK_EVENT_STATE_TAIL_LINE_CAP);
-    Ok(lines[first_line..]
-        .iter()
-        .map(|line| (*line).to_string())
-        .collect())
-}
-
-fn is_recent_event(event: &Value, now: u128) -> bool {
-    is_recent_for_window(event, now, DENY_REPLAY_WINDOW_MS)
-}
-
-fn is_recent_for_window(event: &Value, now: u128, window_ms: u128) -> bool {
-    let Some(recorded_at) = event.get("recordedAtUnixMs").and_then(Value::as_u64) else {
-        return false;
-    };
-    now.saturating_sub(u128::from(recorded_at)) <= window_ms
-}
-
-fn event_matches_prompt_scope(
-    event: &Value,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> bool {
-    let fields = event.get("fields").unwrap_or(event);
-    let session_matches = session_id
-        .is_some_and(|expected| fields.get("sessionId").and_then(Value::as_str) == Some(expected));
-    let transcript_matches = transcript_path.is_some_and(|expected| {
-        fields.get("transcriptPath").and_then(Value::as_str) == Some(expected)
-    });
-    session_matches || transcript_matches
-}
-
-fn is_prompt_scope_boundary(event: &Value) -> bool {
-    event.get("event").and_then(Value::as_str) == Some("user-prompt")
-}
-
-/// Classify an ASP search command into prime/pipe stages.
-pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
-    let tokens = semantic_shell_tokens(command);
-    asp_search_stage_tokens(&tokens)
-}
-
-pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
-    let command = classify_asp_language_command_tokens(tokens)?;
-    if command.intent != AspLanguageCommandIntent::Reasoning {
-        return None;
-    }
-    match command.route.as_str() {
-        "search-prime" => Some(AspSearchCommandStage::Prime(command.language_id)),
-        "search-pipe" => Some(AspSearchCommandStage::Pipe(command.language_id)),
-        _ => None,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AspDirectSourceReadShape {
-    Bounded { line_span: usize },
-    Unbounded,
-}
-
-pub(crate) fn asp_query_direct_source_read_shape_tokens(
-    tokens: &[String],
-) -> Option<AspDirectSourceReadShape> {
-    let asp_index = asp_token_index(tokens)?;
-    let after_asp = &tokens[asp_index + 1..];
-    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
-        after_asp
-    } else if after_asp.get(1).map(String::as_str) == Some("query") {
-        &after_asp[1..]
-    } else {
-        return None;
-    };
-    if !query_tokens
-        .windows(2)
-        .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
-    {
-        return None;
-    }
-    let Some(selector) = option_value(query_tokens, "--selector") else {
-        return Some(AspDirectSourceReadShape::Unbounded);
-    };
-    selector_line_span(selector)
-        .map(|line_span| AspDirectSourceReadShape::Bounded { line_span })
-        .or(Some(AspDirectSourceReadShape::Unbounded))
-}
-
-fn selector_line_span(selector: &str) -> Option<usize> {
-    parse_colon_line_span(selector).or_else(|| parse_dash_line_span(selector))
-}
-
-fn parse_colon_line_span(selector: &str) -> Option<usize> {
-    let (path_or_start, end_text) = selector.rsplit_once(':')?;
-    let end = end_text.parse::<usize>().ok()?;
-    let Some((_, start_text)) = path_or_start.rsplit_once(':') else {
-        return (end > 0).then_some(1);
-    };
-    let start = start_text.parse::<usize>().ok()?;
-    valid_line_span(start, end)
-}
-
-fn parse_dash_line_span(selector: &str) -> Option<usize> {
-    let (_, range_text) = selector.rsplit_once(':')?;
-    let (start_text, end_text) = range_text.split_once('-')?;
-    let start = start_text.parse::<usize>().ok()?;
-    let end = end_text.parse::<usize>().ok()?;
-    valid_line_span(start, end)
-}
-
-fn valid_line_span(start: usize, end: usize) -> Option<usize> {
-    (start > 0 && end >= start).then_some(end - start + 1)
-}
-
-fn option_value<'a>(args: &'a [String], option: &str) -> Option<&'a str> {
-    args.windows(2).find_map(|window| {
-        if window[0] == option {
-            Some(window[1].as_str())
-        } else {
-            None
-        }
-    })
-}
-
-/// Return true when a shell command invokes ASP.
-pub(crate) fn asp_command(command: &str) -> bool {
-    let tokens = semantic_shell_tokens(command);
-    asp_command_tokens(&tokens)
-}
-
-pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
-    asp_token_index(tokens).is_some()
-}
-
-fn asp_token_index(tokens: &[String]) -> Option<usize> {
-    tokens
-        .iter()
-        .position(|token| token == "asp" || token.ends_with("/asp") || token.ends_with(".bin/asp"))
 }

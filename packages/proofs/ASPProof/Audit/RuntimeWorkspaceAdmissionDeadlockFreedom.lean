@@ -1,0 +1,21 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.RuntimeWorkspaceAdmissionDeadlockFreedom
+
+namespace ASPProof.Audit.RuntimeWorkspaceAdmissionDeadlockFreedom
+
+open ASPProof.RuntimeWorkspaceAdmissionDeadlockFreedom
+
+#check legacy_empty_catalog_is_stuck
+#check daemon_admission_is_enabled_without_catalog
+#check recovery_override_makes_empty_catalog_fixed_point_unreachable
+#check admitted_catalog_cannot_bypass_candidate_ensure
+#check admission_is_identity_parametric
+#check agent_control_plane_does_not_require_source_generation
+#check pre_lifecycle_execution_is_deferred_not_blocking
+#check durable_restore_does_not_wait_for_live_candidate
+#check background_reconciliation_converges_after_restore
+
+end ASPProof.Audit.RuntimeWorkspaceAdmissionDeadlockFreedom

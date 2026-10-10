@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.schema.json",
+  "title": "Provider Language Projection Batch Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "generationRootDigest",
+    "owners"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-language-projection-batch-response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationRootDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/projectedOwner"
+      }
+    }
+  },
+  "$defs": {
+    "projectedOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "sourceLeafDigest",
+        "projectionState",
+        "diagnostic",
+        "items",
+        "relations"
+      ],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLeafDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectionState": {
+          "enum": ["ready", "syntax-unavailable"]
+        },
+        "diagnostic": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/projectionDiagnostic" }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectedItem"
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relation"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "projectionState": { "const": "ready" } }
+          },
+          "then": {
+            "properties": { "diagnostic": { "type": "null" } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "projectionState": { "const": "syntax-unavailable" }
+            }
+          },
+          "then": {
+            "properties": {
+              "diagnostic": { "$ref": "#/$defs/projectionDiagnostic" },
+              "items": { "maxItems": 0 },
+              "relations": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "projectionDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion", "reasonKind", "message"],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.provider-language-projection-diagnostic"
+        },
+        "schemaVersion": { "const": "1" },
+        "reasonKind": { "const": "source-syntax-unavailable" },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "projectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "ownerId",
+        "kind",
+        "name",
+        "selector",
+        "sourceByteStart",
+        "sourceByteEnd",
+        "identity",
+        "projections"
+      ],
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceByteStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceByteEnd": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "identity": {
+          "$ref": "canonical-language-item-identity.schema.json"
+        },
+        "projections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/derivedProjection"
+          }
+        }
+      }
+    },
+    "derivedProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectionKind", "payload"],
+      "properties": {
+        "projectionKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    "relation": {
+      "$ref": "provider-definitions.v1.schema.json#/$defs/relation"
+    }
+  }
+}

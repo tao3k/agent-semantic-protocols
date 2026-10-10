@@ -1,0 +1,407 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Core Architecture and Authority
+#+OPTIONS: toc:3 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05.00-core-architecture
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Global architecture invariant
+
+ASP Server-First Agent Search Architecture.
+The public gRPC ClientFrame is the sole public search/query route; the command entry is a thin typed CLI adapter.
+
+Provider installation may advance the Runtime-owned Provider Register while the
+daemon remains healthy.  Search Playbook and syntax Query therefore resolve a
+fresh immutable register snapshot at request admission; a daemon-bootstrap
+snapshot is not provider-contract authority.  Each admitted request retains one
+snapshot for its complete execution, so refresh is visible to the next request
+without mixing generations or requiring a restart.
+Git history is the only historical architecture archive; this working tree describes only the current server-first design.
+
+* Status
+
+Search and Query result materialization is generation-bound single-flight.
+The first caller and concurrent joiners await a retained completion event under
+the request-phase ClientFrame deadline and cancellation boundary. Cache-ready
+resident reads keep 1ms; first computation uses a separate absolute diagnostic
+deadline pending measured qualification (RFC 10.20). Completion before
+subscription must not be lost.  Cancelling one waiter does not invalidate shared
+work or its terminal cache entry.  There is no client retry loop and no new V1
+request field; a real deadline still returns the existing typed failure.
+Cold generation misses join the daemon's retained publication event after one
+single-flight submission; neither a failed generation nor a timeout is retried.
+The V1 zero-work resident-read receipt applies only to the cache-ready phase.
+First-computation timing is a separate diagnostic, never a forged resident receipt.
+
+A generation-bound Search materialization hit is resolved before request-local
+provider planning, workspace-root cloning, parser grounding, graph evaluation,
+or topology settlement.  Its hot-path algorithm is one normalized request
+identity computation, one current-generation lookup, and one materialization
+map lookup.  The cached terminal already binds the provider/catalog and
+generation identities established by its first computation; replaying those
+expensive stages on a hit is neither additional validation nor admissible
+resident work.
+
+The lightweight Search-core Project Topology is a generation-scoped
+single-flight attachment built only from immutable Search projection segments.
+Its identity cannot depend on one request's candidate set: a zero-match and a
+positive Search over the same generation settle against the same base topology.
+Request-local parser/Relation enrichment remains an on-demand overlay and does
+not rebuild or rename that base closure.
+
+Topology owner membership is a locator-plane operation.  Exact path, path
+prefix, extension, and glob predicates MUST execute from the generation's
+already admitted owner directory and MUST NOT hydrate selector records,
+parser-native anchors, Relation rows, or source bytes.  Detailed Topology
+feature search may materialize its parser-owned postings separately; sharing
+the public =topology= route does not permit owner membership to inherit that
+cost.
+
+** Process-cold generation reuse is proof-bound
+
+A Runtime restart MUST NOT turn an unchanged workspace into an unconditional
+full source/parser rebuild.  The durable V1 generation is reusable only when a
+separate V1 admission binding proves the exact tuple
+=(WorkspaceId, canonical project root, repository candidate generation,
+policy overlay digest, source root digest, generation digest)=.  Provider
+Runtime bundle admission remains an independent conjunct.  Missing, malformed,
+non-Git-resident, stale, or cross-scope binding evidence fails closed to one
+normal generation build; it never weakens Query semantics.
+
+Source acquisition provenance is not a second content identity.  Recovery
+compares the canonical V1 content tuple
+=(schema, algorithm, source root, leaf count, provider/scope digest)=.  The
+=source kind= and overlay lineage prove how those bytes were obtained; they do
+not invalidate reuse when the complete content tuple is equal.  In particular,
+a Hook-published =DerivedOverlay= followed by a process-cold =Filesystem=
+observation of the same canonical root MUST be a content hit.  A changed root,
+membership, provider/scope digest, candidate binding, or Runtime execution
+binding still fails closed.  Comparing the serialized provenance records for
+structural equality is forbidden because it converts an unchanged restart into
+an O(workspace) rebuild.
+
+#+begin_src mermaid :exports code
+flowchart LR
+  C[Current Git candidate + policy] --> A{V1 admission binding exact?}
+  P[Durable generation pointer] --> A
+  B[Current provider bundle] --> A
+  A -->|yes| R[restore mmap + exact owner index]
+  A -->|no| F[one complete generation build]
+  R --> Q[direct generation-bound Query]
+  F --> Q
+#+end_src
+
+#+begin_src typst :exports code :file ../../.data/runtime-generation-admission-cost.pdf
+#set page(width: 210mm, height: auto, margin: 10mm)
+= Runtime generation admission cost
+$
+  "restore"_("cold") =
+    "pointer"_("exact") and "scope"_("exact") and "candidate"_("exact")
+    and "generation"_("exact") and "source"_("exact") and "provider"_("exact")
+$
+
+$
+  "ContentId"(s) =
+    (s."schema", s."algorithm", s."root", s."leaf-count", s."provider-scope"),
+  quad
+  "ContentId"(s_1) = "ContentId"(s_2)
+  \not\Rightarrow s_1."provenance" = s_2."provenance"
+$
+
+$
+  "cost"("query"_("resident")) = O(1),
+  quad "cost"("query"_("process-cold")) =
+    "cost"("candidate"_("git")) + "cost"("mmap"_("generation"))
+$
+#+end_src
+
+The admission binding is a generation-specific proof, not parser output and
+not a new public Search/Query schema.  Content-addressed parser artifacts remain
+reusable independently, while the binding is replaced atomically for each
+published generation.  Thus a process-cold exact Query pays candidate
+verification plus mmap restoration, not repository-wide parsing, when and only
+when all identities are unchanged.
+
+The workspace durability single writer MUST publish in this order: generation,
+exact-projection, and search segments; generation-specific admission binding;
+active-generation pointer.  The directory is synchronized before advancing the
+pointer.  Therefore a visible new pointer implies that its binding was already
+durable.  A crash before pointer publication leaves either the old pointer or a
+binding/pointer mismatch, both of which fail closed.  A writer lacking a current
+candidate proof MUST invalidate an older binding before publishing its pointer.
+Resident publication may acknowledge before its Source Index durability
+attachment completes, but a successor build for the same workspace MUST join
+that attachment before opening or deriving durable Source Index state.  The
+Runtime therefore owns one build-through-durability lane per workspace: the
+lane begins before restore/build reads and transfers to the asynchronous
+durability attachment after resident publication.  Different workspaces remain
+independent.  This prevents a targeted provider successor from racing the
+previous generation's Turso commit while preserving early resident visibility.
+
+** Delta materialization is proof reuse, not a full-byte rebuild
+
+A Hook mutation already supplies an exact changed-owner cut.  The successor
+generation MUST therefore derive its canonical workspace snapshot from the
+active generation's path-to-content-digest leaves plus the changed and removed
+leaf set.  It MUST NOT hash, decode, or re-read unchanged owner bytes merely to
+reconstruct the same Merkle leaves.  Provider projection, selector proof
+validation, and source-byte hashing are bounded by the delta; unchanged owners,
+selectors, relations, and auxiliary owners are immutable generation proofs.
+
+The canonical materialization may still emit a complete immutable successor,
+but completeness is an output property and does not authorize complete input
+work.  Its byte-work law is:
+
+#+begin_src typst :tangle no
+$
+  B_(successor) = sum_(p in Delta^+) |bytes(p)|,
+  quad B_(unchanged) = 0,
+  quad T_(root) = O(|Delta| log N)
+$
+#+end_src
+
+An implementation that constructs the successor root with
+=WorkspaceSnapshot::from_file_bytes(full_import)= violates this law even when
+the resulting digest is correct.  This prohibition applies at both resident
+publication and the later durability attachment: the Turso writer MUST persist
+the already validated complete materialization and MUST NOT independently
+reconstruct a second generation identity from all source blobs.  The admitted
+construction is an overlay over the active digest leaves, followed by equality
+checks against the changed owner's parser proof and a complete import-metadata
+digest check.  Until the persistent Merkle tree reaches the stated
+=O(|Delta| log N)= bound, an =O(N)= digest-only fold is an allowed intermediate
+implementation; an =O(total source bytes)= fold is not.
+
+The active source membership includes both searchable owners and provider
+auxiliary owners used to prove or parse them.  An owner-local successor MUST
+retain unchanged auxiliary leaves from the active canonical materialization;
+loading only searchable owner rows is not a complete base.  Before durability,
+the path sets of the canonical workspace snapshot, content-addressed source
+blobs, and non-scope import hash records MUST be equal.  A resident generation
+whose auxiliary leaves cannot be reproduced by its import is rejected before
+the durable pointer advances, because otherwise restart recovery would observe
+a different Merkle domain than the resident generation.
+
+Rejection of an active durable base removes only its reuse authority; it does
+not make current source unbuildable.  A refresh carrying complete provider
+authority and the provider's current owner inventory MUST construct a fresh
+baseline without consulting the rejected generation.  An owner-local delta
+MUST NOT do so, because its input cut cannot prove unchanged membership.  It
+fails with the active-base rejection and requires a complete provider refresh.
+Storage transport failures are not reuse rejections and MUST remain terminal.
+This distinction prevents damaged cache state from permanently blocking Search
+without silently treating an incomplete delta as a complete generation.
+
+** Byte-first topology settlement is total over the selected owner cut
+
+Regex truth may select a changed owner before its parser item projection is
+available.  Project Topology settlement MUST therefore cover every owner in the
+bounded selected owner cut.  Item selectors contribute detailed topology nodes;
+for every selected owner not covered by an admitted item selector, Runtime MUST
+use that owner's canonical owner-root selector.  An empty item-selector set is
+not an empty topology source when the selected owner cut is non-empty.
+
+Let =O= be the selected owner cut and =D= the owners represented by validated
+item selectors.  The owner-root fallback is exactly =O \\ D=, so the source
+coverage law is =D union (O \\ D) = O=.  Both =D= and any explicit owner-root
+selector MUST be subsets of =O=; a selector scope escape fails closed.  This is
+not a parser fallback and does not forge an item selector: it preserves byte
+Search truth while parser materialization independently enriches the same owner
+later.
+
+#+begin_src typst :tangle no
+$
+  R = O minus D,
+  quad D subset.eq O,
+  quad D union R = O,
+  quad D inter R = emptyset
+$
+#+end_src
+
+Normative architectural root for RFC 10.05.
+
+This file is intentionally a compact index.  Detailed state machines,
+algorithms, receipts, proofs, provider rules, and acceptance gates live in the
+linked child owners.  Git is the only archive; the working tree contains only
+the current server-first architecture.
+
+The governing principles are:
+
+- server-first;
+- agent-first;
+- graph-first; and
+- progressive-first.
+
+* Decision
+
+ASP exposes one SearchLoop data plane:
+
+#+begin_example
+typed request client
+  -> shared agent-semantic-client
+  -> ClientFrame gRPC/Tokio stream
+  -> Host-admitted transport binding
+  -> ASP Runtime Server admission
+  -> resident provider/generation/search authority
+  -> typed terminal receipt and client presentation
+#+end_example
+
+The CLI, Hook, Live Corpus, native integrations, and language clients are equal
+clients of this route.  They do not own provider execution, workspace
+generation, cache construction, projection truth, lifecycle recovery, or a
+semantic fast path.
+
+The Runtime daemon mounts the public =AspClientFrameService= through both the
+=AspClientGrpcService= gRPC adapter and the =serve_http_json= HTTP/JSON
+adapter.  Both adapters consume the same transport-neutral =ClientFrame=
+schema, method catalog, lifecycle admission, and dispatcher; neither adapter
+may parse a method into a second route or provide a fallback.  Runtime audits
+the existing =data_socket= before endpoint allocation; it does not create a
+fourth semantic authority.
+
+Host-native clients use the Runtime-published loopback HTTP/2 endpoint.
+Restricted clients receive an already-connected descriptor from the Host and
+never discover, bind, or connect a socket themselves.  A filesystem socket,
+client-local endpoint derivation, and retrying a denied connect in a broader
+permission domain are not admitted transports.  The endpoint record and an
+inherited descriptor are two bindings to the same =AspClientFrameService=,
+not two semantic dispatchers.  HTTP/JSON remains a debug adapter over that
+same service and therefore produces the same typed terminal semantics.
+
+** LSP lessons are negative requirements
+
+SearchLoop does not copy the request-time process composition of LSP.  The
+following historically common LSP failure modes are explicit countermodels:
+
+- initialization state scoped to a client process rather than an immutable
+  workspace generation;
+- capability discovery that advertises a method before its lifecycle and
+  terminal route exist;
+- request-time server spawning, socket discovery, reconnect, or client retry;
+- mutable text/document caches treated as semantic membership authority;
+- cancellation that drops a client future but leaves unowned background work;
+- dynamic registration or a compatibility command that creates a second
+  dispatcher; and
+- cross-process chaining of independent features on every interactive read.
+
+ASP improves on LSP by moving all expensive cross-language work to generation
+construction and mutation admission.  A Ready Search/Query is a single
+generation lease followed by bounded Rust reads over one fused immutable
+artifact.  Transports are ablatable, capabilities are generation-bound, and
+every request emits exactly one typed terminal without fallback.
+
+A selected-language demand carries only an internal provider work hint.  It
+cannot choose collection scope, generation membership, or publication shape.
+Generation construction inventories the workspace once, derives the complete
+current provider and owner membership, and publishes one complete successor.
+The hinted provider may be scheduled first, but publication cannot omit
+unhinted admitted owners.  Publishing a selected provider or changed-owner set
+as if it were a complete workspace generation is forbidden: a later demand
+would erase earlier membership and recreate LSP-style per-language state.  Cold
+and mutation admission use the same =CompleteGeneration= linearization point.
+
+Project isolation has one composite key authority.  State Core derives
+=ProjectId= from repository identity and =WorkspaceId= from the canonical
+checkout binding.  Admission, single-flight lanes, resident generations, and
+cache partitions MUST key on the indivisible =(ProjectId, WorkspaceId)= pair.
+The absolute project root is validated content used to locate source bytes; it
+is not a third partition key.  The same =WorkspaceId= may exist under distinct
+projects without aliasing, while a request presenting an existing pair with a
+different root is identity drift and fails closed.
+
+This decision deliberately starts from LSP's real trade-offs rather than a
+generic client/server analogy.  The official LSP architecture puts each
+language analysis tool in a separate process and negotiates client/server
+capabilities during =initialize=; the reference implementation also maintains
+an incrementally synchronized document mirror through open/change/close
+notifications.  Those mechanisms solve editor/tool M-by-N integration, but
+they are not admitted as ASP Search authority.  See the upstream
+[[https://code.visualstudio.com/api/language-extensions/language-server-extension-guide][Language Server Extension Guide]] and
+[[https://microsoft.github.io/language-server-protocol/specifications/specification-current][current LSP specification]].
+
+ASP retains LSP's useful separation of language-specific analysis from the
+client, then removes the request-time authority that causes lifecycle and
+freshness ambiguity:
+
+| LSP mechanism | ASP hard cut |
+|-
+| per-client =initialize= capability state | generation-bound server catalog |
+| client-maintained document synchronization | content-addressed source snapshot |
+| independent language-server process hop | lazy construction worker, absent from Ready reads |
+| dynamic registration | immutable admitted capability set |
+| request cancellation notification | server-owned attempt with exactly one terminal |
+| reconnect/restart recovery | Host-supervised binding plus typed unavailable terminal |
+
+The table is normative.  A Rust type, schema, CLI alias, adapter, or provider
+that reintroduces the left-hand authority is legacy and MUST be removed rather
+than hidden behind a compatibility feature.
+
+LSP also teaches a less visible lifecycle lesson: a client-visible
+=initialize/start accepted= acknowledgement is not service readiness.  ASP
+therefore does not admit =SpawnAccepted= or =Starting= as the terminal of a
+Search/Query request.  Bootstrap owns the spawned attempt until the Runtime
+publishes either the exact Healthy transaction identity or one typed Failed or
+Cancelled terminal.  A client never polls a guessed endpoint path, and it
+never derives a second endpoint location from State Home.  The endpoint path
+and transport identity are values published by the elected Runtime owner.
+
+Schema catalog publication follows the same rule.  Deleting a schema while a
+schema family still names that path is a torn publication and MUST fail before
+Runtime activation.  Removing a capability deletes its schema, family
+membership, method catalog entry, artifact member, and dispatcher route in one
+reviewed change.  Runtime startup is not a late garbage collector for stale
+schema membership.
+
+Schema Manager executes during the Rust artifact build/publication boundary,
+not during daemon bootstrap.  It emits one deterministic catalog that is
+embedded in the Runtime binary and therefore covered by the active bundle's
+content digest.  Runtime startup only decodes and validates those immutable
+bytes.  It MUST NOT locate =CARGO_MANIFEST_DIR=, read a checkout schema tree,
+materialize package copies, or repair registry membership.  This moves schema
+drift from a post-install availability failure to a pre-publication build
+failure.
+
+The build boundary itself is read-only.  It consumes Schema Manager's
+=resolve_bundles= value API, which returns canonical closure bytes, document
+digests, root-set identities, and the bundle digest without a destination
+path.  Calling =materialize= from =build.rs= is forbidden: Cargo would mutate
+downstream packages while compiling and then treat those mutable copies as its
+own input.  Materialization remains an explicit publication command for
+external language packages; embedded Rust consumers receive the same
+declarative closure directly from the manager.
+
+Cancellation has two orthogonal dimensions: terminal outcome and diagnostic
+payload.  The correlated request emits exactly one =Cancelled= response frame;
+that same frame MUST carry a typed =client-request-cancelled= diagnostic and
+MUST NOT carry a result or catalog.  The diagnostic is not a second terminal
+and does not change the outcome to =Error=.  Conversely, a client MUST reject a
+bare =Cancelled= frame, an =Error= frame labelled as cancellation, a mismatched
+request identity, or any cancellation response that also carries successful
+result data.  This separation avoids the LSP-era ambiguity where cancelling a
+local future, receiving a protocol error, and stopping server work could be
+mistaken for the same event.
+
+The package and route contract is owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
+Atomic resident activation is owned by
+[[file:10.05.03-runtime-state-authority-and-retention.org][10.05.03 Runtime State Authority and Retention]].
+
+* Naming
+
+The canonical short name is =SearchLoop=.
+
+=Interactive= means each agent turn observes a typed evidence state, chooses a
+bounded action, receives a compact receipt, and advances a session frontier.
+It does not mean a terminal prompt or human menu.
+
+=Graph-first= means semantic owners, items, dependencies, capabilities, and
+proof obligations are typed nodes and edges.  Commands transport graph
+operations; command strings are not the ontology.
+
+=Progressive= means each turn expands only the evidence needed for the next
+decision.  It never weakens fail-closed authority or permits best-effort source
+claims.

@@ -1,0 +1,125 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopCacheIdentity.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopCacheIdentity",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (key : SearchLoopCacheIdentity.SemanticKey),\n  SearchLoopCacheIdentity.decideSemanticReuse key key = SearchLoopCacheIdentity.CacheDecision.reuse",
+   "theoremFamily": "cache-identity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.stable_semantic_key_reuses",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (cached current : SearchLoopCacheIdentity.SemanticKey),\n  SearchLoopCacheIdentity.decideSemanticReuse cached current = SearchLoopCacheIdentity.CacheDecision.reuse ↔\n    cached = current",
+   "theoremFamily": "cache-identity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.semantic_reuse_iff_exact_key",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (cached current : SearchLoopCacheIdentity.SemanticKey),\n  cached ≠ current →\n    SearchLoopCacheIdentity.decideSemanticReuse cached current = SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "typed-invalidation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.semantic_key_drift_invalidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopCacheIdentity.omitProvider SearchLoopCacheIdentity.baseSemanticKey =\n    SearchLoopCacheIdentity.omitProvider SearchLoopCacheIdentity.providerDriftKey ∧\n  SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.baseSemanticKey\n      SearchLoopCacheIdentity.providerDriftKey =\n    SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "cache-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.omitting_provider_allows_false_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopCacheIdentity.omitProviderArtifact SearchLoopCacheIdentity.baseSemanticKey =\n    SearchLoopCacheIdentity.omitProviderArtifact SearchLoopCacheIdentity.providerArtifactDriftKey ∧\n  SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.baseSemanticKey\n      SearchLoopCacheIdentity.providerArtifactDriftKey =\n    SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "cache-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name":
+   "SearchLoopCacheIdentity.omitting_provider_artifact_allows_false_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopCacheIdentity.omitPolicy SearchLoopCacheIdentity.baseSemanticKey =\n    SearchLoopCacheIdentity.omitPolicy SearchLoopCacheIdentity.policyDriftKey ∧\n  SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.baseSemanticKey\n      SearchLoopCacheIdentity.policyDriftKey =\n    SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "cache-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.omitting_policy_allows_false_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopCacheIdentity.omitRfc SearchLoopCacheIdentity.baseSemanticKey =\n    SearchLoopCacheIdentity.omitRfc SearchLoopCacheIdentity.rfcDriftKey ∧\n  SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.baseSemanticKey\n      SearchLoopCacheIdentity.rfcDriftKey =\n    SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "cache-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.omitting_rfc_allows_false_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬SearchLoopCacheIdentity.generationCompatible SearchLoopCacheIdentity.baseCacheState\n      SearchLoopCacheIdentity.unrelatedGenerationChange ∧\n  SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.baseCacheState.semanticKey\n      SearchLoopCacheIdentity.unrelatedGenerationChange.semanticKey =\n    SearchLoopCacheIdentity.CacheDecision.reuse",
+   "theoremFamily": "cache-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.whole_generation_causes_false_invalidation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopCacheIdentity.decideSemanticReuse SearchLoopCacheIdentity.firstModelKey.toSemanticKey\n    SearchLoopCacheIdentity.secondModelKey.toSemanticKey =\n  SearchLoopCacheIdentity.CacheDecision.reuse",
+   "theoremFamily": "tier-scope",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY",
+    "ASP-RFC-10.05-SCI-TIER-SCOPE",
+    "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.model_drift_preserves_semantic_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopCacheIdentity.decideModelReuse SearchLoopCacheIdentity.firstModelKey SearchLoopCacheIdentity.secondModelKey =\n  SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "tier-scope",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY",
+    "ASP-RFC-10.05-SCI-TIER-SCOPE",
+    "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.model_drift_invalidates_l4",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (current : SearchLoopCacheIdentity.SemanticKey) (entry : SearchLoopCacheIdentity.CacheEntry),\n  entry.key ≠ current →\n    (SearchLoopCacheIdentity.reconcile current entry).state = SearchLoopCacheIdentity.EntryState.stale",
+   "theoremFamily": "cache-transition",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.reconcile_drift_is_stale",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (current : SearchLoopCacheIdentity.SemanticKey) (entry : SearchLoopCacheIdentity.CacheEntry),\n  (SearchLoopCacheIdentity.reconcile current entry).state = SearchLoopCacheIdentity.EntryState.valid →\n    entry.key = current",
+   "theoremFamily": "cache-transition",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheIdentity.reconciled_valid_implies_exact_key",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 12,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 6}

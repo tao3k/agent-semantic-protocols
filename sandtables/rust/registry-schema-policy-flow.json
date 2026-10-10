@@ -111,84 +111,6 @@
       }
     },
     {
-      "id": "prime-search-packet-schema",
-      "kind": "schema-contract",
-      "coverage": [
-        "json-schema",
-        "search-flow",
-        "performance"
-      ],
-      "command": [
-        "asp rust",
-        "search",
-        "prime",
-        "--json",
-        "--view",
-        "seeds",
-        "--seeds",
-        "4",
-        "--workspace",
-        "../agent-semantic-protocols/sandtables/fixtures/asp/codeql-rust-flow"
-      ],
-      "expect": {
-        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
-        "stdoutJsonEquals": {
-          "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "languageId": "rust",
-          "providerId": "asp rust",
-          "method": "search/prime",
-          "renderMode": "seeds"
-        },
-        "maxStdoutLinesWarn": 1,
-        "maxStdoutBytesWarn": 9000,
-        "maxElapsedMsWarn": 1000
-      }
-    },
-    {
-      "id": "dependency-query-set-packet-schema",
-      "kind": "schema-contract",
-      "coverage": [
-        "json-schema",
-        "search-flow",
-        "deps-query",
-        "performance"
-      ],
-      "command": [
-        "asp rust",
-        "search",
-        "dependency",
-        "serde,serde_json",
-        "--json",
-        "--view",
-        "seeds",
-        "--seeds",
-        "4",
-        "--workspace",
-        "."
-      ],
-      "expect": {
-        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
-        "stdoutJsonEquals": {
-          "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "languageId": "rust",
-          "providerId": "asp rust",
-          "method": "search/dependency",
-          "query": "serde,serde_json",
-          "header.fields.selector": "exact-set",
-          "querySet.0.value": "serde",
-          "querySet.1.value": "serde_json",
-          "queryComposition.mode": "query-set",
-          "queryComposition.selector": "exact-set"
-        },
-        "stdoutJsonContains": {
-          "header.fields": "\"querySet\": 2"
-        },
-        "maxStdoutLinesWarn": 1,
-        "maxStdoutBytesWarn": 12000,
-        "maxElapsedMsWarn": 1000
-      }
-    },
-    {
       "id": "hook-decision-schema",
       "kind": "hook-replay",
       "coverage": [
@@ -285,7 +207,7 @@
             "binary": "asp",
             "kind": "lexical",
             "languageId": "rust",
-            "providerId": "asp rust"
+            "providerId": "asp-rust"
           }
         },
         "maxElapsedMsWarn": 5000

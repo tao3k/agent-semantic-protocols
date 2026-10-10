@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Structural-index schema contract tests."""
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ def structural_index_packet() -> dict[str, Any]:
         "protocolVersion": "1",
         "generationId": "rust-main-1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "providerVersion": "0.1.0",
         "exportMethod": "index/structural",
         "projectRoot": "/tmp/example",

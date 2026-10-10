@@ -1,0 +1,83 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-project-topology-attachment",
+  "schemaVersion": "1",
+  "runtimeExecutionBinding": {
+    "schemaId": "agent.semantic-protocols.runtime-execution-binding",
+    "schemaVersion": "2",
+    "projectWorkspace": {
+      "schemaId": "agent.semantic-protocols.project-workspace-binding",
+      "schemaVersion": "1",
+      "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+      "workspaceRootPath": ".",
+      "portability": "cross-machine",
+      "repositoryAliases": []
+    },
+    "worktreeInstanceId": "workspace-23cc5ba784c605ae",
+    "publicationNonce": "publication-topology-1",
+    "contentBinding": {
+      "schemaId": "asp.content-binding",
+      "schemaVersion": "1",
+      "runtimeArtifactDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workspaceSnapshotDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+      "sourceIndexDigest": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "schemaDigest": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+      "authorityStamp": {
+        "keyId": "runtime-authority",
+        "canonicalDigest": "blake3-256:f2ef5bc70e5be048d1bf10d4f2ec9ca684afb47a5179065445143847f246629e",
+        "signature": "test-signature"
+      }
+    },
+    "runtimeArtifactDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evaluatorPolicyDigest": "blake3-256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "activeArtifactReceiptDigest": "blake3-256:1212121212121212121212121212121212121212121212121212121212121212",
+    "evaluatorAbiDigest": "blake3-256:1313131313131313131313131313131313131313131313131313131313131313"
+  },
+  "runtimeGenerationDigest": "blake3-256:1414141414141414141414141414141414141414141414141414141414141414",
+  "topologyLibraryBinding": {
+    "projectWorkspace": {
+      "schemaId": "agent.semantic-protocols.project-workspace-binding",
+      "schemaVersion": "1",
+      "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+      "workspaceRootPath": ".",
+      "portability": "cross-machine",
+      "repositoryAliases": []
+    },
+    "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "parserCatalogDigest": "blake3-256:1515151515151515151515151515151515151515151515151515151515151515",
+    "libraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "topologyGenerationDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "structuralTopologyDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+    "semanticTopologyDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "inferenceProgramDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "closureDigest": "blake3-256:1717171717171717171717171717171717171717171717171717171717171717"
+  },
+  "inferenceReceipt": {
+    "receiptDigest": "blake3-256:1616161616161616161616161616161616161616161616161616161616161616",
+    "state": "admitted",
+    "projectWorkspace": {
+      "schemaId": "agent.semantic-protocols.project-workspace-binding",
+      "schemaVersion": "1",
+      "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+      "workspaceRootPath": ".",
+      "portability": "cross-machine",
+      "repositoryAliases": []
+    },
+    "runtimeGenerationDigest": "blake3-256:1414141414141414141414141414141414141414141414141414141414141414",
+    "runtimeArtifactDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "parserCatalogDigest": "blake3-256:1515151515151515151515151515151515151515151515151515151515151515",
+    "libraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "topologyGenerationDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "inferenceProgramDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "closureDigest": "blake3-256:1717171717171717171717171717171717171717171717171717171717171717"
+  },
+  "terminal": {
+    "state": "admitted",
+    "terminalCount": 1,
+    "reasonKind": null
+  }
+}

@@ -1,0 +1,217 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+namespace ASPProof.ASPWorkspaceGenerationReadiness
+
+inductive ProjectionMode where
+  | source
+  | callableSkeleton
+  | seeds
+  deriving DecidableEq, Repr
+
+inductive CollectionScope where
+  | completeGeneration
+  | targeted
+  deriving DecidableEq, Repr
+
+inductive AdmissionPhase where
+  | queued
+  | building
+  | ready
+  | failed
+  | cancelled
+  deriving DecidableEq, Repr
+
+structure AdmissionReceipt where
+  attempt : Nat
+  phase : AdmissionPhase
+  scope : CollectionScope
+  commitGeneration : Option Nat
+  enqueueAccepted : Bool
+  deriving DecidableEq, Repr
+
+structure RuntimeServer where
+  healthy : Bool
+  runtimeGeneration : Nat
+  deriving DecidableEq, Repr
+
+structure WorkspacePublication where
+  workspaceIdentity : Nat
+  registered : Bool
+  currentRootDigest : Nat
+  activeGeneration : Option Nat
+  activeRootDigest : Option Nat
+  sourceProjection : Bool
+  callableSkeletonProjection : Bool
+  seedsProjection : Bool
+  deriving DecidableEq, Repr
+
+structure AgentAuthority where
+  canonicalPath : Nat
+  physicalGeneration : Nat
+  bindingDelivered : Bool
+  pathReleased : Bool
+  deriving DecidableEq, Repr
+
+structure SystemState where
+  server : RuntimeServer
+  workspace : WorkspacePublication
+  agent : AgentAuthority
+  deriving DecidableEq, Repr
+
+def projectionAvailable
+    (workspace : WorkspacePublication) (mode : ProjectionMode) : Bool :=
+  match mode with
+  | .source => workspace.sourceProjection
+  | .callableSkeleton => workspace.callableSkeletonProjection
+  | .seeds => workspace.seedsProjection
+
+def exactQueryAdmitted
+    (workspace : WorkspacePublication) (mode : ProjectionMode) : Prop :=
+  ∃ generation,
+    workspace.activeGeneration = some generation ∧
+    workspace.activeRootDigest = some workspace.currentRootDigest ∧
+    projectionAvailable workspace mode = true
+
+def attemptTerminalFor (receipt : AdmissionReceipt) (expectedAttempt : Nat) : Prop :=
+  receipt.attempt = expectedAttempt ∧
+    (receipt.phase = .ready ∨ receipt.phase = .failed ∨ receipt.phase = .cancelled)
+
+def queryAttemptAdmitted
+    (workspace : WorkspacePublication)
+    (mode : ProjectionMode)
+    (expectedAttempt : Nat)
+    (receipt : AdmissionReceipt) : Prop :=
+  attemptTerminalFor receipt expectedAttempt ∧
+    receipt.phase = .ready ∧
+    receipt.scope = .completeGeneration ∧
+    receipt.commitGeneration = workspace.activeGeneration ∧
+    exactQueryAdmitted workspace mode
+
+def publishCanonicalGeneration
+    (workspace : WorkspacePublication) (generation : Nat) : WorkspacePublication :=
+  { workspace with
+    registered := true
+    activeGeneration := some generation
+    activeRootDigest := some workspace.currentRootDigest
+    sourceProjection := true
+    callableSkeletonProjection := true
+    seedsProjection := true }
+
+def reportServerHealthy (state : SystemState) : SystemState :=
+  { state with server := { state.server with healthy := true } }
+
+def repairWorkspace
+    (state : SystemState) (generation : Nat) : SystemState :=
+  { state with workspace := publishCanonicalGeneration state.workspace generation }
+
+def publishParentWorkspace
+    (parent child : WorkspacePublication) (generation : Nat) :
+    WorkspacePublication × WorkspacePublication :=
+  (publishCanonicalGeneration parent generation, child)
+
+theorem serverHealthPreservesMissingGeneration
+    (state : SystemState)
+    (hMissing : state.workspace.activeGeneration = none) :
+    (reportServerHealthy state).workspace.activeGeneration = none := by
+  exact hMissing
+
+theorem registrationDoesNotCreateGeneration
+    (workspace : WorkspacePublication)
+    (hMissing : workspace.activeGeneration = none) :
+    ({ workspace with registered := true }).activeGeneration = none := by
+  exact hMissing
+
+theorem parentPublicationLeavesNestedWorkspaceUnchanged
+    (parent child : WorkspacePublication) (generation : Nat) :
+    (publishParentWorkspace parent child generation).2 = child := by
+  rfl
+
+theorem missingGenerationRejectsExactProjection
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (hMissing : workspace.activeGeneration = none) :
+    ¬exactQueryAdmitted workspace mode := by
+  intro hAdmitted
+  obtain ⟨generation, hGeneration, _, _⟩ := hAdmitted
+  have hImpossible : (none : Option Nat) = some generation :=
+    hMissing.symm.trans hGeneration
+  cases hImpossible
+
+theorem digestMismatchRejectsExactProjection
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (generation activeDigest : Nat)
+    (_hGeneration : workspace.activeGeneration = some generation)
+    (hActive : workspace.activeRootDigest = some activeDigest)
+    (hMismatch : activeDigest ≠ workspace.currentRootDigest) :
+    ¬exactQueryAdmitted workspace mode := by
+  intro hAdmitted
+  obtain ⟨_, _, hReceiptDigest, _⟩ := hAdmitted
+  have hSome : some activeDigest = some workspace.currentRootDigest :=
+    hActive.symm.trans hReceiptDigest
+  exact hMismatch (Option.some.inj hSome)
+
+theorem missingProjectionRejectsExactQuery
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (hProjection : projectionAvailable workspace mode = false) :
+    ¬exactQueryAdmitted workspace mode := by
+  intro hAdmitted
+  obtain ⟨_, _, _, hProjectionReceipt⟩ := hAdmitted
+  exact Bool.noConfusion (hProjection.symm.trans hProjectionReceipt)
+
+theorem canonicalPublicationAdmitsEveryProjection
+    (workspace : WorkspacePublication) (generation : Nat)
+    (mode : ProjectionMode) :
+    exactQueryAdmitted (publishCanonicalGeneration workspace generation) mode := by
+  refine ⟨generation, rfl, rfl, ?_⟩
+  cases mode <;> rfl
+
+theorem queuedSnapshotIsNotReadBarrier
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt : Nat) (accepted : Bool) :
+    ¬ queryAttemptAdmitted workspace mode attempt {
+      attempt := attempt
+      phase := .queued
+      scope := .completeGeneration
+      commitGeneration := none
+      enqueueAccepted := accepted
+    } := by
+  intro admitted
+  exact AdmissionPhase.noConfusion admitted.2.1
+
+theorem targetedPublicationCannotAdmitRead
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt generation : Nat) (accepted : Bool) :
+    ¬ queryAttemptAdmitted workspace mode attempt {
+      attempt := attempt
+      phase := .ready
+      scope := .targeted
+      commitGeneration := some generation
+      enqueueAccepted := accepted
+    } := by
+  intro admitted
+  exact CollectionScope.noConfusion admitted.2.2.1
+
+theorem replayedReadyTerminalDoesNotRequireEnqueueAccepted
+    (workspace : WorkspacePublication) (mode : ProjectionMode)
+    (attempt generation : Nat) :
+    queryAttemptAdmitted
+      (publishCanonicalGeneration workspace generation)
+      mode
+      attempt
+      {
+        attempt := attempt
+        phase := .ready
+        scope := .completeGeneration
+        commitGeneration := some generation
+        enqueueAccepted := false
+      } := by
+  refine ⟨⟨rfl, Or.inl rfl⟩, rfl, rfl, rfl, ?_⟩
+  exact canonicalPublicationAdmitsEveryProjection workspace generation mode
+
+theorem workspaceRepairPreservesAgentAuthority
+    (state : SystemState) (generation : Nat) :
+    (repairWorkspace state generation).agent = state.agent := by
+  rfl
+
+end ASPProof.ASPWorkspaceGenerationReadiness

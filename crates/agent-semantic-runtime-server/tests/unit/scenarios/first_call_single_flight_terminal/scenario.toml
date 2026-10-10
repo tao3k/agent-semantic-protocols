@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "first-call-single-flight-terminal"
+title = "First caller receives one retained single-flight terminal"
+package = "agent-semantic-runtime-server"
+phase = "first-computation"
+intent = "one generation-owned computation serves the claimant and identical concurrent callers without a second invocation"
+
+[gate]
+search_computation_claim_count = 1
+query_computation_claim_count = 1
+terminal_waiter_count = 64
+generation_owned_task_count = 2
+caller_retry_count = 0
+public_building_terminal_count = 0
+waiter_cancellation_cancels_shared_computation = false

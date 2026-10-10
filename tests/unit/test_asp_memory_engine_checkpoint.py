@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Checkpoint persistence behavior for the ASP memory engine."""
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ def test_json_backend_round_trips_checkpoint_snapshot(tmp_path) -> None:
                 "title": "resume durable checkpoint",
                 "status": "open",
                 "sourceLocator": "plans/current.org:12:12",
-                "resumeCommand": "asp org query --selector plans/current.org:12:12",
+                "resumeCommand": "asp search playbook --documents org --rg -n -e plan-a -e recovery -e evidence -e next-action . --tantivy 'title:recovery^2 OR body:next-action'",
             }
         )
     )

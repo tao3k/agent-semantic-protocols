@@ -1,0 +1,297 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Hook Decision Single-Writer Transaction
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Proposed executable contract.  This RFC refines the server-resident hook
+evaluator and the provider-language match projection.  It removes the hook
+process as an event-journal writer.
+
+* Problem
+
+A pre-tool hook currently can couple policy evaluation to acquisition of an
+=events.jsonl.lock=.  Lock permission, stale ownership, or concurrent writers
+can therefore turn a deterministic deny into an empty allow decision.  Path
+classification also conflates two independent facts: the provider language of
+a path and whether that path is inside the active workspace.  Consequently an
+absolute =~/.codex/RTK.md= or an external =ASP_ORG_SKILL.org= can escape rules
+that correctly match an in-workspace =*.rs= path.
+
+Neither failure is recoverable by fail-open or by recomputing the same policy
+inside the hook.  Those approaches retain two decision authorities.
+
+* Normative architecture
+
+** One decision authority
+
+The ASP Runtime Server MUST own a bounded =HookDecisionQueue=.  A hook client
+normalizes the host envelope and submits one =HookDecisionRequest=.  The
+resident evaluator performs, in order:
+
+1. borrow one already-published immutable policy and provider-registry snapshot;
+2. classify every action subject;
+3. match the policy;
+4. atomically assign one in-memory transaction id and monotonic sequence;
+5. enqueue the normalized event and decision receipt to the workspace writer;
+6. reply without waiting for filesystem or database persistence.
+
+Snapshot load, classification, sequence assignment, queue admission, and reply
+are the complete response dependency graph.  Activation refresh, configuration
+materialization, generation admission, session-registry access, telemetry
+persistence, event export, filesystem canonicalization, and every Turso
+operation MUST NOT occur in that graph.  They publish new immutable snapshots
+or consume committed receipts on independent control/writer lanes.
+
+The queue is bounded and uses non-waiting admission.  A full persistence queue
+increments a typed dropped-persistence counter and schedules snapshot
+reconciliation; it cannot retain the evaluator, a workspace lease, or the hook
+client.  Policy enforcement is authoritative at the in-memory decision commit.
+Durable audit persistence is an idempotent refinement of that commit, not a
+precondition for returning the decision.
+
+The hook process MUST NOT acquire an event JSON lock and MUST NOT append the
+event independently.  =events.jsonl= is an export projection of committed
+transactions, never an admission dependency or source of decision authority.
+
+** Language identity is independent of path scope
+
+For every syntactically valid relative or absolute path, including a path that
+does not yet exist, the evaluator derives =languageIds= lexically from the
+provider-registry snapshot's declared extensions.  The evaluator separately
+derives a =pathScope= such as =workspace=, =state-home=, =external=, or
+=unknown=.  Workspace membership MUST NOT be a precondition for provider
+language identity.
+
+The registry snapshot is the only extension-set authority.  The matcher MUST
+NOT contain a second hard-coded Markdown, Org, Rust, or other language list.
+A registry generation change atomically replaces the snapshot used by later
+transactions; an in-flight transaction retains its original snapshot digest.
+
+** Failure and recovery
+
+Decision-queue admission or evaluator unavailability returns a typed
+unavailable decision.  Persistence backpressure is reported independently and
+MUST NOT be represented by ={}= or converted into a second policy decision.
+Recovery uses a parser-independent control plane and cannot depend on search
+generation admission, Turso availability, or event export.
+
+The hook evaluation hot path MUST NOT invoke supervisor start, restart,
+installation, or artifact repair.  Those lifecycle transitions are owned by
+the supervisor/checkpoint path before evaluation admission.  A minimal,
+configuration-independent bootstrap kernel MUST recognize only the exact
+=asp server status|start|restart= control commands (including the canonical
+installed absolute binary and the =direnv exec .= wrapper) and admit them
+without consulting the Runtime Server.  Chained commands, extra arguments, and
+other ASP commands are not recovery edges.  Therefore failure of the resident
+matcher cannot prevent execution of the command that repairs that matcher.
+Each recovery/control command is itself executed by the Tokio supervisor
+runtime under the supervisor wall deadline; bootstrap admissibility MUST NOT
+open a second unbounded wait through =server status=, =start=, or =restart=.
+Server start is idempotent availability admission, while restart is an explicit
+generation transition.  Neither synchronously waits for provider generation
+publication inside =install=.  Readiness is observed by the separate
+healthcheck transition under its own bounded phase.
+
+Hook enablement is the typed =[hook-engine] enabled= value in State Home
+=control/config/asp.toml=. The Hook process reads one immutable configuration
+generation before payload or policy evaluation. Disabled returns the Host
+pass-through terminal; enabled evaluates policy. Environment assignments and
+protected-command text are never enablement authority. The plugin launcher
+MUST NOT inspect commands or implement a second bypass policy.
+
+An operator-approved =asp hook break-glass mint= operation creates one pending
+=hook-break-glass-capability.v1= receipt under State Home. It binds the canonical
+workspace root, Hook root session, exact protected-command digest, latest denied
+Hook evidence reference, a restricted invariant-defect kind, issue/expiry time,
+and nonce. Minting requires the newest denied Hook command to equal the protected
+command. TTL is bounded to sixty seconds. In Codex, writing this State Home
+authority crosses the workspace sandbox and therefore requires explicit user
+approval.
+
+The bootstrap inspects the raw leading request before semantic normalization,
+loads only =pending/<nonce>.json= from its canonical State Home directory, and
+validates every binding. Authorization atomically renames that receipt into the
+consumed directory before returning empty platform passthrough. The same nonce
+cannot race or replay; command, workspace, session, TTL, or evidence drift fails
+closed. Consumption appends an audit record. The capability is evaluated before
+endpoint discovery or activation loading so it can repair an absolute bootstrap
+defect, but it is never an evaluator fallback or an Org lifecycle choice.
+
+When the runtime authority is unavailable, the same bootstrap kernel also
+admits the exact =asp install binary= shape, with no positional argument,
+=--target=, or chained stage. Runtime configuration resolves the State Home
+=runtime/bin/asp= slot. The install command remains responsible for
+content-digest verification and atomic publication; target selection is not a
+caller capability or recovery edge.
+
+The bootstrap MUST NOT evaluate a second local matcher when the resident
+evaluator is unavailable or returns =activation-unavailable=.  The resident
+decision remains authoritative; observational lifecycle events may use their
+explicit liveness policy, while enforcement events return typed unavailable.
+
+On shutdown the server closes admission, drains the queue until a bounded
+deadline, persists uncommitted request identities for bootstrap replay, and
+terminates.  Bootstrap replays those identities idempotently before accepting
+new work.  Event export failure is retried asynchronously and never changes an
+already committed decision.
+
+The connection-task drain is also bounded.  After broadcasting drain, the
+server MUST abort connection tasks that have not observed the drain deadline;
+it MUST NOT wait indefinitely for a blocking evaluator worker or an incomplete
+client frame.  Process termination is the cancellation boundary for any
+detached blocking worker.  This keeps restart strictly inside the supervisor
+wall budget and prevents a =draining= generation from retaining the singleton
+socket forever.
+
+Persistent Runtime control lanes are generation-scoped capabilities, not
+ordinary reusable byte streams.  Before writing a new control request, the
+Tokio connection pool MUST reject EOF, transport errors, or unread residual
+bytes from the previous generation.  The complete write/read-frame exchange
+MUST have its own 650ms execution boundary inside the 900ms supervisor
+boundary.  Timeout or protocol failure atomically discards the lane and
+releases its reservation; a stale stream MUST NOT remain pooled and a stalled
+peer MUST NOT retain a lane forever.  Status memory remains a read-only fast
+path and does not establish that a previously pooled control stream belongs to
+the current generation.
+
+Runtime task ownership is concurrent and daemon-scoped.  The client sync
+bridge uses a bounded multi-worker Tokio executor; it MUST NOT use a
+current-thread runtime that can turn one blocking future into control-plane
+head-of-line blocking.  Workspace generation repair MUST be spawned onto the
+already-running ASP Server Tokio runtime.  It MUST NOT create a private Runtime
+or a one-worker repair scheduler.  Deduplication remains keyed by workspace and
+generation, while cancellation and process lifetime remain owned by the one
+workspace server generation.
+
+Resident evaluation itself has a smaller deadline than the client and
+supervisor deadlines.  Exceeding it publishes a typed wall-failure without
+shutting down the Runtime Server.  The evaluation future MUST be cancellable:
+after the deadline there is no evaluator task, blocking worker, workspace
+guard, database lease, or persistence permit owned by that request.  The hot
+path MUST NOT use =spawn_blocking= and MUST NOT serialize requests behind a
+mutex that is held while performing IO.  Ordering is minted by the resident
+actor's in-memory sequence assignment; durable side effects are separately
+serialized by the workspace writer lane.
+
+Every policy source, including configuration rules and invariant runtime-binary
+rules, MUST emit a =HookPolicyCandidate= containing one priority and one typed
+decision.  One arbiter selects the highest-priority candidate.  A policy source
+MUST NOT return a final decision before this arbitration, because an early
+return creates a second implicit match engine and makes TOML priority unable to
+override the invariant source.  Equal-priority ordering is stable and explicit.
+
+Timeouts are nested budgets, not equal clocks.  Resident Hook execution uses a
+650ms slice inside its 700ms resident boundary and the 800ms agent-facing
+boundary.  Supervisor commands and readiness observation use an 800ms slice
+inside the 900ms supervisor boundary.  The reserve owns error encoding, IPC
+reply, connection drain, singleton release, and supervisor handoff.
+
+The resident call graph is acyclic: Tokio owns admission, snapshot borrowing,
+deadlines, in-memory commit, reply, and shutdown.  Policy/config compilation
+and atomic publication occur outside the request transaction; the transaction
+reads one immutable snapshot.  No blocking worker participates in hook
+evaluation.  Runtime Server IPC, supervisor control, install, config
+materialization, generation admission, session-registry access, and event or
+telemetry persistence are forbidden descendants of the evaluator.
+In particular, resident evaluation enters the Hook runtime directly.  It MUST
+NOT re-enter top-level CLI dispatch, because the public =hook= adapter routes
+back to Runtime Server and would create the cycle
+=server evaluator -> CLI hook adapter -> server evaluator=.
+
+* Long-running snapshot authority
+
+Runtime Server owns one supervised Tokio snapshot authority for its complete
+lifetime.  A new workspace identity publishes one immutable Hook snapshot on
+the control plane; a Hook request never discovers, loads, repairs, or compiles
+a snapshot.  Re-admitting the same identity and canonical root is a pure
+in-memory no-op: it publishes no watch event, probes no locator, and cannot
+trigger activation, configuration, or source-generation materialization.
+Identity admission, content-generation refresh, and derived-locator repair are
+three distinct authorities and MUST NOT share an invalidation event.
+Publication is generation-monotonic: an in-flight request retains
+its borrowed generation, while a later request observes the newly published
+generation.  A failed workspace materialization is isolated to that workspace
+and MUST NOT replace or invalidate snapshots for unrelated workspaces.
+
+An actual identity-set change is applied as a per-workspace delta.  Adding one
+workspace may materialize at most that workspace; it MUST NOT reload every
+previously admitted activation/config snapshot.  Activation and configuration
+changes use their own content-generation publication, while a missing derived
+catalog locator is rebuilt only by the repair control plane.
+
+The snapshot authority is structured concurrency, not a detached watcher.  It
+owns its admission subscription and every materialization task, observes daemon
+shutdown, stops accepting publications, and is joined before singleton release.
+Restart is therefore lifecycle maintenance, never a cache-consistency mechanism.
+
+Long-run resource use MUST be bounded by the number of admitted workspace
+snapshots, not by completed request count.  Once a request reply is emitted it
+retains no snapshot borrow, task, guard, permit, database lease, file descriptor,
+or persistence record.  Pure Hook traffic performs zero filesystem opens, zero
+database writes, and zero WAL growth.  A soak receipt MUST compare early and late
+latency quantiles, snapshot count, live task count, file-descriptor count, RSS,
+database/WAL size, PID, and runtime/transport digests; increasing request ordinal
+alone MUST NOT increase any owned-resource count or trigger a restart.
+
+* Required evidence
+
+- concurrent requests produce one ordered event-decision transaction each;
+- a held or unwritable legacy =events.jsonl.lock= cannot affect a decision;
+- external absolute =*.md= and =*.org= reads match provider-derived rules;
+- workspace =*.rs= remains a control case;
+- nonexistent registered-extension paths are still classified lexically;
+- changing the provider registry changes matching without matcher code edits;
+- shutdown is bounded and bootstrap replay is idempotent;
+- a connection that never completes a frame cannot delay server exit beyond
+  the connection-drain deadline;
+- a closed previous-generation control lane is discarded before the next
+  request write, and a peer that never returns a frame yields a typed failure
+  within the control-exchange boundary while releasing the lane;
+- an evaluator that misses its resident deadline leaves the Server endpoint
+  live and owns no task, guard, lease, or permit after the deadline;
+- 10,000 concurrent and sequential hook decisions perform zero filesystem
+  opens, database operations, activation repairs, generation admissions, and
+  blocking-pool submissions on the response path;
+- a saturated or locked persistence lane cannot increase hook decision p99 or
+  prevent an unrelated workspace from completing;
+- a higher-priority candidate wins across configuration and invariant policy
+  sources, with no source-specific early return;
+- resident and supervisor execution budgets are strictly smaller than their
+  externally reported boundaries;
+- the client executor has more than one Tokio worker, and generation repair
+  owns no private or single-worker Runtime;
+- canonical binary installation remains executable while runtime authority is
+  absent, but alternate targets and chained commands remain rejected;
+- resident Hook source contains no edge back to top-level protocol dispatch;
+- the Hook call graph contains no synchronous edge to supervisor reconcile;
+- exact Runtime Server recovery commands remain admissible while the Runtime
+  Server endpoint is absent, and chained lookalikes remain rejected;
+- the resident warm path stays within the hook latency budget.
+- admitting a workspace while the daemon remains live publishes its Hook
+  snapshot without a request-path load or daemon restart;
+- after a concurrent multi-workspace soak, every per-request snapshot borrow is
+  released and task, descriptor, database/WAL, and restart counts do not grow
+  with completed request count;
+- one workspace snapshot materialization failure does not change another
+  workspace's published generation or decision latency.
+- 10,000 repeated admissions of one unchanged workspace produce zero watch
+  publications, zero filesystem metadata probes, zero locator writes, and zero
+  snapshot materializations;
+- adding one workspace produces at most one workspace snapshot materialization
+  and leaves existing workspace snapshot generations unchanged;
+- OpenTelemetry exposes admission no-op/publication counts, snapshot
+  materialization fanout, blocking-queue wait and task age, filesystem
+  open/read bytes/latency, event-loop scheduling lag, in-flight/coalesced
+  refresh counts, process disk bytes, page faults, RSS, descriptors, and
+  runtime/transport digests through the Runtime Server Turso query surface.
+
+* Migration
+
+The first Runtime Server version implementing this RFC stops creating the
+legacy event lock.  Existing lock files may remain as inert compatibility
+artifacts and are ignored.  Existing JSONL events may be imported once as
+historical observations, but they cannot mint or override decision receipts.

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/agent-org-topology-scenario-suite.v1.schema.json",
+  "title": "Agent Org Topology Scenario Suite V1",
+  "description": "Per-corpus executable composed Scheme Search/Query intents plus downstream reasoning requirements for Agent-generated Org topology overlays.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "prompt_contract", "cases"],
+  "properties": {
+    "schema_id": {"const": "agent.semantic-protocols.live-corpus-agent-org-topology-scenario-suite"},
+    "schema_version": {"const": "1"},
+    "prompt_contract": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id", "resource_id", "reasoning_focus", "required_relation_kinds",
+          "composed_search", "multi_source_query", "multi_callable_skeleton_query",
+          "minimum_composed_candidates"
+        ],
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1},
+          "resource_id": {"type": "string", "minLength": 1},
+          "reasoning_focus": {"type": "string", "minLength": 1},
+          "composed_search": {
+            "type": "string",
+            "pattern": "^\\s*\\(search\\s",
+            "allOf": [
+              {"pattern": "\\(chain\\s"},
+              {"pattern": "\\(intersect\\s"},
+              {"pattern": "\\(rg\\s"},
+              {"pattern": "\\(tantivy\\s"}
+            ]
+          },
+          "multi_source_query": {
+            "type": "string",
+            "pattern": "^\\s*\\(query\\s.*\\{\\{selectors\\}\\}.*\\(projection source\\)"
+          },
+          "multi_callable_skeleton_query": {
+            "type": "string",
+            "pattern": "^\\s*\\(query\\s.*\\{\\{selectors\\}\\}.*\\(projection callable-skeleton\\)"
+          },
+          "minimum_composed_candidates": {"type": "integer", "minimum": 2},
+          "required_relation_kinds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+          }
+        }
+      }
+    }
+  }
+}

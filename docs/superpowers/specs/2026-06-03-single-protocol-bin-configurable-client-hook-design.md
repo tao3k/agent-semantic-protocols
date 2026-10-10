@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+-->
+
 # Single Protocol Bin And Configurable Client Hook Design
 
 ## Context
@@ -93,7 +98,7 @@ commandAny = ["rg", "grep", "fd", "find"]
 pathGlobAny = ["**/*.rs"]
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 languageId = "rust"
 binary = "asp"
 kind = "ingest"
@@ -176,7 +181,7 @@ Config tests:
 Validation commands should stay crate-scoped first:
 
 ```sh
-direnv exec . rtk --ultra-compact cargo test -p agent-semantic-protocol
+direnv exec . rtk --ultra-compact cargo test -p agent-semantic-client
 direnv exec . rtk --ultra-compact cargo test -p agent-semantic-hook
 ```
 

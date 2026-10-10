@@ -1,12 +1,23 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::state_core::DEFAULT_STATE_HOME_DIR;
 use crate::state_core::ResolvedState;
-use crate::state_core::{
-    DEFAULT_STATE_HOME_DIR, STATE_LAYOUT_VERSION, TURSO_BACKEND, resolve_state_home_from,
-};
+use crate::state_core::STATE_LAYOUT_VERSION;
+use crate::state_core::TURSO_BACKEND;
+use crate::state_core::resolve_state_home_from;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 #[test]
 fn state_home_prefers_asp_state_home() {
@@ -63,51 +74,42 @@ fn same_display_name_does_not_collide() {
 }
 
 #[test]
-fn minimal_layout_writes_manifest_without_project_cache() {
-    let root = temp_root("manifest");
+fn canonical_layout_writes_binding_without_project_id_tree() {
+    let root = durable_root("manifest");
     let work = root.join("work");
     let state_home = root.join("state");
     fs::create_dir_all(&work).unwrap();
+    git(&work, &["init"]);
+    git(
+        &work,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/minimal-layout.git",
+        ],
+    );
 
     let state = ResolvedState::resolve_with_state_home(&work, &state_home).unwrap();
-    state.ensure_minimal_layout().unwrap();
+    let workspace = state.ensure_workspace_state_layout().unwrap();
 
-    assert!(state.paths.version_file.exists());
-    assert!(state.paths.state_json.exists());
-    assert!(state.paths.registry_events_jsonl.exists());
-    assert!(state.paths.project_json.exists());
-    assert!(state.paths.workspace_json.exists());
-    assert!(state.paths.client_manifest_json.exists());
-    assert!(state.paths.artifacts_dir.is_dir());
+    assert!(workspace.binding_path().exists());
+    assert!(workspace.artifacts.is_dir());
+    assert!(workspace.observations.is_dir());
+    assert!(!state_home.join("projects").exists());
     assert!(!work.join(".cache").join("agent-semantic-protocol").exists());
 
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(&state.paths.client_manifest_json).unwrap()).unwrap();
-    assert_eq!(manifest["stateLayoutVersion"], STATE_LAYOUT_VERSION);
-    assert_eq!(manifest["backend"], TURSO_BACKEND);
-    assert_eq!(
-        manifest["repoId"].as_str(),
-        Some(state.repo.repo_id.as_str())
-    );
-    assert_eq!(
-        manifest["workspaceId"].as_str(),
-        Some(state.workspace.workspace_id.as_str())
-    );
-    assert_eq!(
-        manifest["dbPath"].as_str(),
-        Some(state.paths.client_db_path.to_str().unwrap())
-    );
-    assert_eq!(
-        manifest["artifactPath"].as_str(),
-        Some(state.paths.artifacts_dir.to_str().unwrap())
-    );
+    let binding: agent_semantic_artifacts::ProjectBinding =
+        serde_json::from_slice(&fs::read(workspace.binding_path()).unwrap()).unwrap();
+    binding.validate().unwrap();
+    assert_eq!(binding, state.project_binding().unwrap());
 
     let report = state.locate_report();
     assert_eq!(report.state_layout_version, STATE_LAYOUT_VERSION);
     assert_eq!(report.backend, TURSO_BACKEND);
-    assert_eq!(report.db_path, state.paths.client_db_path);
-    assert_eq!(report.artifact_path, state.paths.artifacts_dir);
-    assert_eq!(report.manifest_path, state.paths.client_manifest_json);
+    assert_eq!(report.db_path, workspace.facts);
+    assert_eq!(report.artifact_path, workspace.artifacts);
+    assert_eq!(report.manifest_path, workspace.db_manifest_path());
 }
 
 #[test]
@@ -115,7 +117,7 @@ fn state_locate_schema_declares_report_contract_fields() {
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("schemas")
-        .join("semantic-state-locate-report.v2.schema.json");
+        .join("semantic-state-locate-report.v1.schema.json");
     let schema: serde_json::Value =
         serde_json::from_slice(&fs::read(schema_path).unwrap()).unwrap();
     let required = schema["required"].as_array().expect("required array");
@@ -155,6 +157,15 @@ fn git_worktree_shares_repo_identity_but_not_workspace_identity() {
     fs::create_dir_all(&main).unwrap();
 
     git(&main, &["init"]);
+    git(
+        &main,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/git-worktree.git",
+        ],
+    );
     fs::write(main.join("README.md"), "state core\n").unwrap();
     git(&main, &["add", "README.md"]);
     git(
@@ -178,6 +189,17 @@ fn git_worktree_shares_repo_identity_but_not_workspace_identity() {
     assert_ne!(
         main_state.workspace.workspace_id,
         worktree_state.workspace.workspace_id
+    );
+    let main_binding = main_state.project_binding().unwrap();
+    let worktree_binding = worktree_state.project_binding().unwrap();
+    assert_eq!(main_binding.repo.digest, worktree_binding.repo.digest);
+    assert_ne!(
+        main_binding.workspace.digest,
+        worktree_binding.workspace.digest
+    );
+    assert_ne!(
+        main_binding.workspace.private_git_dir,
+        worktree_binding.workspace.private_git_dir
     );
 }
 
@@ -206,7 +228,7 @@ fn git_remote_url_change_does_not_change_repo_identity() {
             "remote",
             "set-url",
             "origin",
-            "https://github.com/tao3k/agent-semantic-protocols.git",
+            "https://mirror.example.invalid/fork/renamed-repository.git",
         ],
     );
     let https_state = ResolvedState::resolve_with_state_home(&repo, &state_home).unwrap();
@@ -223,6 +245,48 @@ fn git_remote_url_change_does_not_change_repo_identity() {
             .identity_basis
             .starts_with("git-common-dir:")
     );
+}
+
+#[test]
+fn independent_clones_with_the_same_remote_do_not_share_mutable_state_identity() {
+    let root = temp_root("independent-clones-same-remote");
+    let state_home = root.join("state");
+    let first = root.join("first-clone");
+    let second = root.join("second-clone");
+    for checkout in [&first, &second] {
+        fs::create_dir_all(checkout).unwrap();
+        git(checkout, &["init"]);
+        git(
+            checkout,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://example.invalid/asp/shared-upstream.git",
+            ],
+        );
+    }
+
+    let first_state = ResolvedState::resolve_with_state_home(&first, &state_home).unwrap();
+    let second_state = ResolvedState::resolve_with_state_home(&second, &state_home).unwrap();
+
+    assert_ne!(first_state.repo.repo_id, second_state.repo.repo_id);
+    assert_ne!(
+        first_state.workspace.workspace_id,
+        second_state.workspace.workspace_id
+    );
+}
+
+fn durable_root(label: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/state-core-fixtures")
+        .join(format!("{label}-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&path).unwrap();
+    path
 }
 
 fn temp_root(label: &str) -> PathBuf {

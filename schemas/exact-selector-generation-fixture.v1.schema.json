@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-selector-generation-fixture.v1.schema.json",
+  "title": "Exact Selector Generation Fixture V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "workspaceIdentityDigest",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "workspaceRootDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "generationDigest",
+    "fixtureDigest",
+    "recordCount",
+    "selectorCount",
+    "ownerCount",
+    "leafCount",
+    "records"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.exact-selector-generation-fixture"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "providerId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "workspaceIdentityDigest": { "$ref": "#/$defs/digest" },
+    "workspaceRootDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "parserIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "queryPackDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "fixtureDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "recordCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must equal selectorCount."
+    },
+    "selectorCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Must equal recordCount."
+    },
+    "ownerCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "leafCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "projectionMode": {
+      "enum": [
+        "code",
+        "names",
+        "verbatim"
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structuralSelector",
+        "ownerPath",
+        "ownerSubtreeDigest",
+        "sourceBlobDigest",
+        "normalizedParserFactsDigest",
+        "projectionMode",
+        "sourceByteStart",
+        "sourceByteEnd"
+      ],
+      "properties": {
+        "structuralSelector": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "ownerSubtreeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceBlobDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "normalizedParserFactsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectionMode": {
+          "$ref": "#/$defs/projectionMode"
+        },
+        "sourceByteStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceByteEnd": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

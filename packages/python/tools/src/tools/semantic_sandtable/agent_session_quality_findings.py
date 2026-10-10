@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build quality findings and graph-turbo candidates for agent sessions."""
 
 from __future__ import annotations
@@ -39,16 +43,16 @@ def quality_findings(
             )
         )
     if optional_int(summary.get("searchCommands")) and not optional_int(
-        summary.get("searchPrimeCommands")
+        summary.get("searchPlaybookCommands")
     ):
         findings.append(
             _finding(
-                "search.missing-prime",
+                "search.missing-playbook",
                 "search-flow",
                 "warning",
-                "Search commands ran without a recorded search prime command.",
-                "Run search prime before pipe/follow-up searches in live sandtables.",
-                graph_turbo_feedback="Prime output may need clearer first-command guidance.",
+                "Search commands ran without a recorded Search Playbook command.",
+                "Run one Search Playbook before selector-based follow-up queries.",
+                graph_turbo_feedback="Search Playbook output may need clearer first-command guidance.",
             )
         )
     if optional_int(summary.get("directReadRiskCommands")):

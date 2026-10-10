@@ -1,0 +1,60 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryCacheReplicaRejoin.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Replica : Type u} {state : ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.RejoinState Replica}\n  {milestones : ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.RejoinMilestones},\n  ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.SafeRejoinRead state milestones →\n    state.targetCacheGeneration ≤ state.installedCacheGeneration ∧\n      ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe state.fenceAuthority state.servingToken ∧\n        state.membershipPublished = true ∧\n          state.readsEnabled = true ∧ ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.ProperRejoinOrder milestones",
+   "theoremFamily": "safe-rejoin certificate",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRO-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.safe_rejoin_read_carries_state_token_membership_and_order",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.SafeRejoinRead\n  ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState\n  ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.properMilestones",
+   "theoremFamily": "ordered rejoin",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRO-READ"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caught_up_replica_with_ordered_receipt_may_read",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenBeforeCatchupState.fenceAuthority\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenBeforeCatchupState.servingToken ∧\n  ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenBeforeCatchupState.membershipPublished = true ∧\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenBeforeCatchupState.readsEnabled = true ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.SafeRejoinRead\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenBeforeCatchupState\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.properMilestones",
+   "theoremFamily": "pre-catchup counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRO-NONIMPLICATION", "ASP-RFC-10.05-CRRO-STATE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.current_token_and_membership_before_state_catchup_are_unsafe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.targetCacheGeneration ≤\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.installedCacheGeneration ∧\n  ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n      ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.fenceAuthority\n      ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.servingToken ∧\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.membershipPublished = true ∧\n      ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState.readsEnabled = true ∧\n        ¬ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.ProperRejoinOrder\n              ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenIssuedFirstMilestones ∧\n          ¬ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.SafeRejoinRead\n              ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpRejoinState\n              ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.tokenIssuedFirstMilestones",
+   "theoremFamily": "final-state counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRO-NONIMPLICATION", "ASP-RFC-10.05-CRRO-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.final_current_state_without_order_receipt_does_not_prove_safe_rejoin",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpWithForgedTokenState.targetCacheGeneration ≤\n    ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpWithForgedTokenState.installedCacheGeneration ∧\n  ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.ProperRejoinOrder\n      ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.properMilestones ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheFencingToken.CanServe\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpWithForgedTokenState.fenceAuthority\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpWithForgedTokenState.servingToken ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.SafeRejoinRead\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.caughtUpWithForgedTokenState\n          ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.properMilestones",
+   "theoremFamily": "forged-token counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRO-NONIMPLICATION", "ASP-RFC-10.05-CRRO-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheReplicaRejoin.state_catchup_and_order_do_not_authorize_forged_token",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 5,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 4}

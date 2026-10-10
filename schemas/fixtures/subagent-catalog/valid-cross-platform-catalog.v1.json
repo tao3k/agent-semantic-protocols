@@ -1,0 +1,29 @@
+{
+  "schema_id": "asp.subagent-catalog.v1",
+  "schema_version": 1,
+  "agents": {
+    "asp_explorer": {
+      "session_name": "asp-explore",
+      "session_lifetime": "resident",
+      "model_policy": "low-cost-reasoning",
+      "reasoning_policy": "low",
+      "permission_policy": "read-only",
+      "sandbox_policy": "read-only",
+      "roles": ["subagent", "search"],
+      "capabilities": ["search", "query", "evidence-exploration"],
+      "platforms": {
+        "codex": {
+          "host_agent_name": "asp_explorer",
+          "profile": "asp-explorer_codex.toml",
+          "projection": "asp-explorer.toml",
+          "model": "gpt-5.6-luna"
+        },
+        "claude": {
+          "host_agent_name": "asp-explorer",
+          "profile": "asp-explorer_claude.md",
+          "projection": "asp-explorer.md"
+        }
+      }
+    }
+  }
+}

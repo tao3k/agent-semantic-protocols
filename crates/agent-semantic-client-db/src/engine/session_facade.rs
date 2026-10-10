@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! DB Engine read and write session facade methods.
 
 use std::path::Path;
@@ -7,11 +11,7 @@ use agent_semantic_client_core::{
     SemanticSchemaId, SemanticSchemaVersion,
 };
 
-use crate::source_index::{
-    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats,
-};
-use crate::structural_index::parse_structural_index_packet_import;
+use crate::source_index::{ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats};
 use crate::types::{
     ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbProviderCommandSelection,
     ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay,
@@ -20,13 +20,11 @@ use crate::types::{
 use super::facade::{
     ClientDbEngineReadSession, ClientDbEngineWriteSession, block_on_db_engine_async,
 };
-use super::source_index_facade::persist_structural_index_read_model_at_path;
 use super::turso_artifact::{lookup_turso_artifact_events, upsert_turso_artifact_events};
 use super::turso_bootstrap::bootstrap_turso_client_db;
 use super::turso_cache::{
-    clear_turso_cache_generations, invalidate_turso_cache_generations_for_project,
-    lookup_recent_turso_cache_generations, prune_turso_cache_generations_to_manifest,
-    upsert_turso_cache_generations,
+    clear_turso_cache_generations, lookup_recent_turso_cache_generations,
+    prune_turso_cache_generations_to_manifest,
 };
 use super::turso_provider_command::{
     lookup_turso_provider_command_selections, replace_turso_provider_command_selections,
@@ -34,7 +32,6 @@ use super::turso_provider_command::{
 use super::turso_source_index::{
     latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,
     latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
-    refresh_turso_source_index_import,
 };
 use super::turso_syntax::{
     flush_turso_syntax_query_replay, lookup_turso_syntax_query_replay,
@@ -44,7 +41,9 @@ use super::turso_syntax::{
 impl ClientDbEngineReadSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Return matching generation metadata using this already opened DB Engine session.
@@ -56,14 +55,14 @@ impl ClientDbEngineReadSession {
         export_method: &CacheExportMethod,
         request_fingerprint: Option<String>,
     ) -> Result<Option<ClientDbGenerationHit>, String> {
-        let turso_db_path = self.turso_db_path.clone();
+        let turso_connection = self.turso_connection.clone();
         let language_id = language_id.clone();
         let provider_id = provider_id.clone();
         let project_root = project_root.to_path_buf();
         let export_method = export_method.clone();
         let turso_hits = block_on_db_engine_async(async move {
-            lookup_recent_turso_cache_generations(
-                &turso_db_path,
+            super::turso_cache::lookup_recent_turso_cache_generations_with_connection(
+                turso_connection.as_ref(),
                 &language_id,
                 &provider_id,
                 &project_root,
@@ -158,7 +157,9 @@ impl ClientDbEngineReadSession {
 impl ClientDbEngineWriteSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Import one cache manifest through the DB Engine control adapter.
@@ -169,9 +170,13 @@ impl ClientDbEngineWriteSession {
         let turso_db_path = self.turso_db_path.clone();
         let manifest = manifest.clone();
         block_on_db_engine_async(async move {
-            upsert_turso_cache_generations(&turso_db_path, &manifest)
-                .await
-                .map(|_| ())
+            let turso_connection = super::turso::connect_turso_client_db(&turso_db_path).await?;
+            super::turso_cache::upsert_turso_cache_generations_with_connection(
+                &turso_connection,
+                &manifest,
+            )
+            .await
+            .map(|_| ())
         })
     }
 
@@ -324,17 +329,6 @@ impl ClientDbEngineWriteSession {
         })
     }
 
-    /// Apply a source-index import through this DB Engine session.
-    pub fn refresh_source_index_import(
-        &mut self,
-        request: ClientDbSourceIndexRefreshRequest,
-    ) -> Result<ClientDbSourceIndexRefreshReport, String> {
-        let db_path = self.turso_db_path.clone();
-        block_on_db_engine_async(async move {
-            refresh_turso_source_index_import(&db_path, request).await
-        })
-    }
-
     /// Import one semantic tree-sitter query packet through the DB Engine control adapter.
     pub fn import_semantic_tree_sitter_query_packet(
         &mut self,
@@ -347,21 +341,6 @@ impl ClientDbEngineWriteSession {
         block_on_db_engine_async(async move {
             bootstrap_turso_client_db(&turso_db_path).await?;
             upsert_turso_syntax_query_replay(&turso_db_path, &generation, &packet_bytes).await
-        })
-    }
-
-    /// Import one structural-index refresh artifact through the DB Engine control adapter.
-    pub fn import_semantic_structural_index_refresh_packet(
-        &mut self,
-        generation: &ClientCacheGeneration,
-        packet_bytes: &[u8],
-    ) -> Result<(), String> {
-        let import = parse_structural_index_packet_import(generation, packet_bytes)?;
-        let db_path = self.turso_db_path.clone();
-        block_on_db_engine_async(async move {
-            persist_structural_index_read_model_at_path(&db_path, &import)
-                .await
-                .map(|_| ())
         })
     }
 
@@ -382,8 +361,12 @@ impl ClientDbEngineWriteSession {
         let project_root = project_root.as_ref().to_path_buf();
         let turso_db_path = self.turso_db_path.clone();
         block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&turso_db_path).await?;
-            invalidate_turso_cache_generations_for_project(&turso_db_path, &project_root).await
+            let turso_connection = super::turso::connect_turso_client_db(&turso_db_path).await?;
+            super::turso_cache::invalidate_turso_cache_generations_for_project_with_connection(
+                &turso_connection,
+                &project_root,
+            )
+            .await
         })
     }
 }

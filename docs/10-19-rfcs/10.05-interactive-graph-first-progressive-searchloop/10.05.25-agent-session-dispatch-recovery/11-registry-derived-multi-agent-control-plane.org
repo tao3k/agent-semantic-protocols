@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Registry-derived Multiple Agent V2 control-plane materialization
+#+property: schemaVersion 1
+
+* Status
+
+This document defines the Runtime Server refinement from the durable
+AgentSession Registry into ASP's downstream Codex Multiple Agent V2
+control-plane projection.
+
+* Execution-plane boundary
+
+Codex remains the execution plane. ASP does not implement Codex spawning,
+scheduling, queues, turn execution, interruption, or archival. The Runtime
+Server consumes durable host and registry evidence and publishes a queryable
+control-plane observation.
+
+* Server-owned refresh
+
+The Runtime Server owns refresh. A client supplies only the project identity
+and root session identity. The server queries its local asynchronous
+AgentSession Registry owner, computes the source digest and materialization
+generation, validates the shared projection, and publishes it through the
+existing control-plane admission owner.
+
+The server-local registry query must not use the synchronous client adapter.
+That adapter may proxy through the Runtime Server and would recursively enter
+the same IPC owner.
+
+* Evidence floor
+
+An AgentSession Registry snapshot is durable evidence for agent identities,
+physical generations, parent relations, configured agent types, resident
+names, roles, and trusted live message-target bindings.
+
+The root session identifier alone is not root-task evidence. A current
+registry-derived projection requires a non-empty, completely scoped snapshot
+whose durable child rows attest the requested root identity and topology. The
+materializer records that snapshot reference on a separate =CodexRootTask= and
+must not invent a root-agent name, role, physical generation, binding, or
+lifecycle state. An =AgentSession= row that impersonates the root task is
+rejected rather than treated as a managed agent.
+
+Registry status is not a Codex dispatch claim and is not a Codex turn receipt.
+Consequently registry-derived lifecycle nodes carry an unobserved dispatch
+generation and cannot authorize durable dispatch by themselves.
+
+* No inferred turns or delegations
+
+The AgentSession Registry does not own durable Codex turn identifiers or
+delegation delivery receipts. Registry-only materialization therefore emits
+an empty turn set and an empty delegation set. A parent session relation may
+remain on the agent node, but it must not be upgraded into a delegation edge.
+
+Turn nodes and delegation edges may be added only by a later evidence owner
+whose receipt schema names those facts. Delivered or completed delegations
+continue to require their indexed delivery receipt.
+
+* Public adapter
+
+The Agent-facing lifecycle surface is the singleton
+=asp session --agents choice-plane=. It accepts neither a session identifier,
+an agent name, a task payload, nor a platform selector. The root identity and
+platform come from the active Host environment; the Hook rule selects a
+semantic role; =agents/config.toml= resolves that role to the platform profile
+and its exact =name= and =sandbox_mode= values.
+
+Runtime refresh and projection reads are internal typed operations, not public
+Agent lifecycle commands. The Session adapter first performs a healthy-state
+read. Only an unavailable or unhealthy Runtime enters the bounded supervisor
+reconcile path. It then reads the current root-scoped status-memory projection;
+it never opens the registry database directly.
+
+The resulting Org ChoicePlane discloses only actions admitted by the current
+state:
+
+- =registered=: natural-language =Call/resume @name= action;
+- =registration-required=: create and register the configured profile;
+- =archive-required=: archive the identified stale generation;
+- =archived=: create a distinct later generation;
+- unavailable authority: a typed blocked choice with no lifecycle mutation.
+
+Every disclosed action includes the configured sandbox mode. Internal Org row
+numbers are ordering metadata and must not be rendered as choices. The Host,
+not ASP, executes create, resume, and archive. Re-entry reads the latest state
+and history is only a cursor; it does not replay the lifecycle loop.
+
+A client-side sequence that classifies model guidance, child-message attempts,
+receipts, and archival as an ASP execution-plane lifecycle is legacy duplication
+and must not be retained.
+
+* Freshness and generation
+
+Records are sorted by session identity before canonical serialization. The
+source digest covers the complete scoped registry snapshot. An unchanged
+current snapshot is idempotent and reuses its generation. Changed evidence,
+stale materialization, or changed Workspace Server observation advances the
+generation before publication. Lower generations and same-generation content
+conflicts remain rejected by the shared publication owner.
+
+* Performance and failure contract
+
+Digesting and graph construction execute inside the resident Runtime Server,
+not in the CLI. Refresh returns a typed publication receipt. Registry owner
+absence, scope leakage, invalid physical generation, missing root evidence,
+projection validation failure, and publication conflict return typed failures;
+none authorizes a client-side fallback or a synthesized graph.

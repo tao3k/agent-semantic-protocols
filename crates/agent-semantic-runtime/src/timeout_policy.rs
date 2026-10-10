@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Runtime-owned timeout and cancellation receipt policy.
 
 /// Timeout policy for one runtime operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeOperationTimeoutPolicy {
-    pub(crate) operation: String,
+    pub operation: String,
     pub(crate) max_elapsed_ms: u128,
     pub(crate) cancel_after_ms: u128,
 }
@@ -25,8 +29,8 @@ impl RuntimeOperationTimeoutPolicy {
 pub struct RuntimeOperationTimeoutReceipt {
     pub operation: String,
     pub elapsed_ms: u128,
-    pub max_elapsed_ms: u128,
-    pub cancel_after_ms: u128,
+    max_elapsed_ms: u128,
+    cancel_after_ms: u128,
     pub timed_out: bool,
     pub cancellation_required: bool,
 }

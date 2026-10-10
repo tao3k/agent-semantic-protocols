@@ -1,40 +1,135 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Shared search candidate contract for router and DB/search adapters.
 
 use std::cmp::Ordering;
 
 use crate::dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE;
-use crate::structural_index_search::TursoStructuralIndexSearchHit;
-use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
 
-/// Search candidate shared by source-index, overlay, Turso FTS, and graph routes.
+/// Immutable structural-index hit returned by the resident Search generation.
+///
+/// Storage adapters materialize this contract before publication. Warm search
+/// never exposes or opens a database engine.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructuralIndexSearchHit {
+    pub document_id: String,
+    pub generation: String,
+    pub selector: Option<String>,
+    pub document: String,
+}
+use crate::LexicalOverlaySearchHit;
+use crate::SourceIndexRankCandidate;
+
+macro_rules! search_candidate_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+        #[derive(serde::Serialize)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                self.0 == *other
+            }
+        }
+
+impl From<&str> for $name {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl std::ops::Deref for $name {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_str()
+    }
+}
+
+impl AsRef<str> for $name {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl std::borrow::Borrow<str> for $name {
+    fn borrow(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl std::fmt::Display for $name {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.0.as_str())
+    }
+}
+
+impl PartialEq<str> for $name {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+    };
+}
+
+search_candidate_text!(SearchCandidateRouteSource);
+search_candidate_text!(SearchCandidateFallbackReason);
+search_candidate_text!(SearchCandidateId);
+search_candidate_text!(SearchCandidateIdentityKind);
+search_candidate_text!(SearchCandidateSelector);
+search_candidate_text!(SearchCandidateOwnerPath);
+search_candidate_text!(SearchCandidateGeneration);
+search_candidate_text!(SearchCandidateOverlayNamespace);
+search_candidate_text!(SearchCandidateProofSource);
+search_candidate_text!(SearchCandidateFieldName);
+search_candidate_text!(SearchCandidateFieldValue);
+search_candidate_text!(SearchCandidateMatchedTerm);
+search_candidate_text!(SearchCandidateRankFeatureName);
+
+/// Search candidate shared by source-index, overlay, resident structural index, and graph routes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidate {
-    pub route_source: String,
-    pub fallback_reason: String,
-    pub candidate_id: String,
-    pub identity_kind: String,
-    pub selector: Option<String>,
-    pub owner_path: Option<String>,
-    pub generation: Option<String>,
-    pub overlay_namespace: Option<String>,
+    pub route_source: SearchCandidateRouteSource,
+    pub fallback_reason: SearchCandidateFallbackReason,
+    pub candidate_id: SearchCandidateId,
+    pub identity_kind: SearchCandidateIdentityKind,
+    pub selector: Option<SearchCandidateSelector>,
+    pub owner_path: Option<SearchCandidateOwnerPath>,
+    pub generation: Option<SearchCandidateGeneration>,
+    pub overlay_namespace: Option<SearchCandidateOverlayNamespace>,
     pub score: f32,
     pub field_hits: Vec<FieldHit>,
     pub rank_features: Vec<RankFeature>,
-    pub proof_source: String,
+    pub proof_source: SearchCandidateProofSource,
 }
 
 /// Matched field evidence that contributed to a search candidate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FieldHit {
-    pub field: String,
-    pub value: String,
-    pub matched_terms: Vec<String>,
+    pub field: SearchCandidateFieldName,
+    pub value: SearchCandidateFieldValue,
+    pub matched_terms: Vec<SearchCandidateMatchedTerm>,
 }
 
-/// Named score component used by router and analyzer replay.
+/// Named score component used by router and analyzer projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RankFeature {
-    pub name: String,
+    pub name: SearchCandidateRankFeatureName,
     pub value: f32,
 }
 
@@ -59,7 +154,7 @@ pub struct SearchStageReceipt {
     pub fallback_reason: String,
 }
 
-/// Search candidates plus the receipt needed by graph-route replay.
+/// Search candidates plus the receipt needed by graph-route admission.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidateMergeReceipt {
     pub ranked: Vec<RankedSearchCandidate>,
@@ -78,25 +173,25 @@ pub fn source_index_candidate_to_search_candidate(
         .cloned()
         .collect::<Vec<_>>();
     SearchCandidate {
-        route_source: "source-index".to_string(),
-        fallback_reason: "none".to_string(),
-        candidate_id: format!("source-index:{}", candidate.path),
-        identity_kind: "owner-path".to_string(),
+        route_source: ("source-index".to_string()).into(),
+        fallback_reason: ("none".to_string()).into(),
+        candidate_id: format!("source-index:{}", candidate.path).into(),
+        identity_kind: ("owner-path".to_string()).into(),
         selector: None,
-        owner_path: Some(candidate.path.clone()),
+        owner_path: Some((candidate.path.clone()).into()),
         generation: None,
         overlay_namespace: None,
         score: matched_terms.len() as f32,
         field_hits: vec![FieldHit {
-            field: "query_keys".to_string(),
-            value: candidate.query_keys.join(" "),
-            matched_terms,
+            field: ("query_keys".to_string()).into(),
+            value: (candidate.query_keys.join(" ")).into(),
+            matched_terms: matched_terms.into_iter().map(Into::into).collect(),
         }],
         rank_features: vec![RankFeature {
-            name: "query-axis-coverage".to_string(),
+            name: ("query-axis-coverage".to_string()).into(),
             value: candidate.query_keys.len() as f32,
         }],
-        proof_source: "agent-semantic-search/source-index".to_string(),
+        proof_source: ("agent-semantic-search/source-index".to_string()).into(),
     }
 }
 
@@ -107,39 +202,45 @@ pub fn lexical_overlay_hit_to_search_candidate(
     overlay_namespace: impl Into<String>,
 ) -> SearchCandidate {
     SearchCandidate {
-        route_source: SEARCH_OVERLAY_ROUTE_SOURCE.to_string(),
-        fallback_reason: "none".to_string(),
-        candidate_id: format!("{}:{}", SEARCH_OVERLAY_ROUTE_SOURCE, hit.selector()),
-        identity_kind: "selector".to_string(),
-        selector: Some(hit.selector().to_string()),
-        owner_path: Some(hit.owner_path().to_string()),
+        route_source: (SEARCH_OVERLAY_ROUTE_SOURCE.to_string()).into(),
+        fallback_reason: ("none".to_string()).into(),
+        candidate_id: format!("{}:{}", SEARCH_OVERLAY_ROUTE_SOURCE, hit.selector()).into(),
+        identity_kind: ("selector".to_string()).into(),
+        selector: Some((hit.selector().to_string()).into()),
+        owner_path: Some((hit.owner_path().to_string()).into()),
         generation: None,
-        overlay_namespace: Some(overlay_namespace.into()),
+        overlay_namespace: Some((overlay_namespace.into()).into()),
         score: hit.score(),
         field_hits: vec![
             FieldHit {
-                field: "name".to_string(),
-                value: hit.name().to_string(),
-                matched_terms: hit.matched_terms().to_vec(),
+                field: ("name".to_string()).into(),
+                value: (hit.name().to_string()).into(),
+                matched_terms: (hit.matched_terms().to_vec())
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
             },
             FieldHit {
-                field: "search_text".to_string(),
-                value: hit.search_text().to_string(),
-                matched_terms: hit.matched_terms().to_vec(),
+                field: ("search_text".to_string()).into(),
+                value: (hit.search_text().to_string()).into(),
+                matched_terms: (hit.matched_terms().to_vec())
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
             },
         ],
         rank_features: vec![RankFeature {
-            name: "search-overlay-score".to_string(),
+            name: ("search-overlay-score".to_string()).into(),
             value: hit.score(),
         }],
-        proof_source: "agent-semantic-search/search-overlay".to_string(),
+        proof_source: ("agent-semantic-search/search-overlay".to_string()).into(),
     }
 }
 
-/// Project a Turso structural-index hit into the shared search candidate shape.
+/// Project a resident structural-index hit into the shared search candidate shape.
 #[must_use]
 pub fn structural_index_hit_to_search_candidate(
-    hit: &TursoStructuralIndexSearchHit,
+    hit: &StructuralIndexSearchHit,
     query_terms: &[String],
 ) -> SearchCandidate {
     let matched_terms = query_terms
@@ -148,29 +249,29 @@ pub fn structural_index_hit_to_search_candidate(
         .cloned()
         .collect::<Vec<_>>();
     SearchCandidate {
-        route_source: "turso-fts".to_string(),
-        fallback_reason: "none".to_string(),
-        candidate_id: hit.document_id.clone(),
+        route_source: ("resident-structural-index".to_string()).into(),
+        fallback_reason: ("none".to_string()).into(),
+        candidate_id: (hit.document_id.clone()).into(),
         identity_kind: if hit.selector.is_some() {
-            "selector".to_string()
+            ("selector".to_string()).into()
         } else {
-            "entity-id".to_string()
+            ("entity-id".to_string()).into()
         },
-        selector: hit.selector.clone(),
+        selector: (hit.selector.clone()).map(Into::into),
         owner_path: None,
-        generation: structural_index_generation(hit.document_id.as_str()),
+        generation: Some((hit.generation.clone()).into()),
         overlay_namespace: None,
         score: matched_terms.len() as f32,
         field_hits: vec![FieldHit {
-            field: "structural_index_document".to_string(),
-            value: hit.document.clone(),
-            matched_terms,
+            field: ("structural_index_document".to_string()).into(),
+            value: (hit.document.clone()).into(),
+            matched_terms: matched_terms.into_iter().map(Into::into).collect(),
         }],
         rank_features: vec![RankFeature {
-            name: "stable-structural-fts".to_string(),
+            name: ("stable-structural-fts".to_string()).into(),
             value: 1.0,
         }],
-        proof_source: "agent-semantic-search/structural-index-turso".to_string(),
+        proof_source: ("agent-semantic-search/resident-structural-index".to_string()).into(),
     }
 }
 
@@ -190,7 +291,7 @@ pub fn merge_search_candidates(candidates: Vec<SearchCandidate>) -> Vec<RankedSe
     merge_search_candidates_with_receipt(candidates).ranked
 }
 
-/// Merge heterogeneous search candidates and retain a replayable stage receipt.
+/// Merge heterogeneous search candidates and retain an immutable stage receipt.
 #[must_use]
 pub fn merge_search_candidates_with_receipt(
     candidates: Vec<SearchCandidate>,
@@ -255,7 +356,7 @@ fn search_candidate_route_priority(route_source: &str) -> usize {
         "receipt-anchor" => 0,
         SEARCH_OVERLAY_ROUTE_SOURCE => 1,
         "provider-delta" => 2,
-        "turso-fts" => 3,
+        "resident-structural-index" => 3,
         "source-index" => 4,
         "semantic-vector" => 5,
         "evidence-graph-rank" => 6,
@@ -270,7 +371,10 @@ fn search_candidate_route_sources(candidates: &[SearchCandidate]) -> Vec<String>
         .collect::<Vec<_>>();
     sources.sort();
     sources.dedup();
-    sources
+    (sources)
+        .into_iter()
+        .map(|source| source.to_string())
+        .collect()
 }
 
 fn search_candidate_merge_fallback_reason(candidate_count: usize, returned_count: usize) -> String {
@@ -292,7 +396,7 @@ fn source_index_candidate_matches_term(candidate: &SourceIndexRankCandidate, ter
                 .any(|key| key.contains(normalized_term.as_str())))
 }
 
-fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: &str) -> bool {
+fn structural_index_hit_matches_term(hit: &StructuralIndexSearchHit, term: &str) -> bool {
     let normalized_term = term.to_ascii_lowercase();
     !normalized_term.is_empty()
         && (hit
@@ -304,16 +408,6 @@ fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: 
                     .to_ascii_lowercase()
                     .contains(normalized_term.as_str())
             }))
-}
-
-fn structural_index_generation(document_id: &str) -> Option<String> {
-    let mut parts = document_id.splitn(3, ':');
-    match (parts.next(), parts.next()) {
-        (Some("structural-index"), Some(generation)) if !generation.is_empty() => {
-            Some(generation.to_string())
-        }
-        _ => None,
-    }
 }
 
 fn contains_executable_line_identity(value: &str) -> bool {

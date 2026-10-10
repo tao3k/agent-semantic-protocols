@@ -1,0 +1,401 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/searchloop-triad-handoff.v1.schema.json",
+  "title": "SearchLoop Triad Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "handoffId",
+    "receiptChainId",
+    "receiptChainCanonicalization",
+    "selectorGate",
+    "pythonGate",
+    "leanGate",
+    "goldenEncodings",
+    "auditCoverageMode",
+    "auditGates",
+    "relationshipContract",
+    "preflightGates",
+    "executionAuthority"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.searchloop-triad-handoff"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "handoffId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "receiptChainId": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "receiptChainCanonicalization": {
+      "const": "json-sort-keys-compact-utf8-omit-receipt-chain-id-v1"
+    },
+    "selectorGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "ownerPath", "structuralSelector"],
+      "properties": {
+        "languageId": {"const": "python"},
+        "ownerPath": {"$ref": "#/$defs/workspaceRelativePath"},
+        "structuralSelector": {"type": "string", "minLength": 1}
+      }
+    },
+    "pythonGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectPath",
+        "testPath",
+        "conformanceModule",
+        "resultSchemaId",
+        "expectedCases",
+        "expectedPassed"
+      ],
+      "properties": {
+        "projectPath": {"$ref": "#/$defs/workspaceRelativePath"},
+        "testPath": {"$ref": "#/$defs/workspaceRelativePath"},
+        "conformanceModule": {"type": "string", "minLength": 1},
+        "resultSchemaId": {"type": "string", "minLength": 1},
+        "expectedCases": {"type": "integer", "minimum": 1},
+        "expectedPassed": {"type": "integer", "minimum": 1}
+      }
+    },
+    "leanGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectPath",
+        "buildModules",
+        "auditSources",
+        "generatorSources"
+      ],
+      "properties": {
+        "projectPath": {"$ref": "#/$defs/workspaceRelativePath"},
+        "buildModules": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "auditSources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/workspaceRelativePath"}
+        },
+        "generatorSources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/workspaceRelativePath"}
+        }
+      }
+    },
+    "goldenEncodings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "winner", "alternative"],
+        "properties": {
+          "caseId": {"type": "string", "minLength": 1},
+          "winner": {"type": "integer", "minimum": 0},
+          "alternative": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "auditCoverageMode": {
+      "const": "exact-set-equality"
+    },
+    "auditGates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "generatorSource",
+          "receiptPath",
+          "declarationCount",
+          "axiomDependentDeclarationCount",
+          "theoremFamilies",
+          "rfcClauseIds",
+          "auditSha256"
+        ],
+        "properties": {
+          "generatorSource": {"$ref": "#/$defs/workspaceRelativePath"},
+          "receiptPath": {"$ref": "#/$defs/workspaceRelativePath"},
+          "declarationCount": {"type": "integer", "minimum": 1},
+          "axiomDependentDeclarationCount": {"const": 0},
+          "theoremFamilies": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "rfcClauseIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/rfcClauseId"}
+          },
+          "auditSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "relationshipContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "artifacts",
+        "relationships",
+        "evidenceGates",
+        "applicationProfiles"
+      ],
+      "properties": {
+        "authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourcePath",
+            "contractPath",
+            "contractId",
+            "relationshipContractId",
+            "canonicalization",
+            "sourceSha256"
+          ],
+          "properties": {
+            "sourcePath": {"$ref": "#/$defs/workspaceRelativePath"},
+            "contractPath": {"$ref": "#/$defs/workspaceRelativePath"},
+            "contractId": {"const": "relationship.document.v1"},
+            "relationshipContractId": {"type": "string", "minLength": 1},
+            "canonicalization": {
+              "const": "org-contract-source-raw-lf-utf8-v1"
+            },
+            "sourceSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "artifactId",
+              "artifactKind",
+              "artifactPath",
+              "canonicalization",
+              "expectedSha256"
+            ],
+            "properties": {
+              "artifactId": {"type": "string", "minLength": 1},
+              "artifactKind": {
+                "enum": [
+                  "org-document",
+                  "org-section",
+                  "source-file",
+                  "proof-module",
+                  "schema",
+                  "receipt",
+                  "org-contract"
+                ]
+              },
+              "artifactPath": {"$ref": "#/$defs/workspaceRelativePath"},
+              "artifactSelector": {"type": "string", "minLength": 1},
+              "canonicalization": {"type": "string", "minLength": 1},
+              "expectedSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "relationships": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "relationshipId",
+              "subject",
+              "predicate",
+              "object",
+              "impact",
+              "evidenceGates"
+            ],
+            "properties": {
+              "relationshipId": {"type": "string", "minLength": 1},
+              "subject": {"type": "string", "minLength": 1},
+              "predicate": {
+                "enum": [
+                  "governed-by",
+                  "depends-on",
+                  "references",
+                  "realizes",
+                  "proves",
+                  "audits",
+                  "conforms-to",
+                  "renders"
+                ]
+              },
+              "object": {"type": "string", "minLength": 1},
+              "impact": {
+                "enum": [
+                  "invalidates-subject",
+                  "invalidates-object",
+                  "informational"
+                ]
+              },
+              "evidenceGates": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        },
+        "evidenceGates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "applicationProfiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sectionCommitments"],
+          "properties": {
+            "sectionCommitments": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["canonicalization", "orgContract", "commitments"],
+              "properties": {
+                "canonicalization": {
+                  "const": "orgize-section-source-raw-lf-utf8-v1"
+                },
+                "orgContract": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "targetPath",
+                    "contractId",
+                    "contractPath",
+                    "canonicalization",
+                    "contractSha256",
+                    "assertionCount"
+                  ],
+                  "properties": {
+                    "targetPath": {"$ref": "#/$defs/workspaceRelativePath"},
+                    "contractId": {"type": "string", "minLength": 1},
+                    "contractPath": {"$ref": "#/$defs/workspaceRelativePath"},
+                    "canonicalization": {
+                      "const": "org-contract-source-raw-lf-utf8-v1"
+                    },
+                    "contractSha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "assertionCount": {"type": "integer", "minimum": 1}
+                  }
+                },
+                "commitments": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "clauseId",
+              "sourcePath",
+              "outlinePath",
+              "sourceSha256",
+              "dependsOn",
+              "dependencySetSha256"
+            ],
+            "properties": {
+              "clauseId": {"$ref": "#/$defs/rfcClauseId"},
+              "sourcePath": {"$ref": "#/$defs/workspaceRelativePath"},
+              "outlinePath": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "sourceSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "dependsOn": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {"$ref": "#/$defs/rfcClauseId"}
+              },
+              "dependencySetSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "preflightGates": {
+      "type": "array",
+      "minItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "hook-config-valid",
+          "python-project-resolved",
+          "lean-project-resolved",
+          "lean-json-generators-resolved",
+          "lean-audit-normalizer-resolved",
+          "org-contract-trace-verified",
+          "relationship-contract-verified"
+        ]
+      }
+    },
+    "executionAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["explorerRole", "testingRole", "delegationRequired"],
+      "properties": {
+        "explorerRole": {"const": "asp_explorer"},
+        "testingRole": {"const": "asp_testing"},
+        "delegationRequired": {"const": true}
+      }
+    }
+  },
+  "$defs": {
+    "rfcClauseId": {
+      "type": "string",
+      "pattern": "^ASP-RFC-[A-Za-z0-9._-]+$"
+    },
+    "workspaceRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

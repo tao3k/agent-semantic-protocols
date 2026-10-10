@@ -1,0 +1,291 @@
+{"sourcePath": "ASPProof/GQLCoreSciPyResidentGraphTurbo.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.GQLCoreSciPyResidentGraphTurbo",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (status : ASPProof.GQLCoreSciPyResidentGraphTurbo.PythonProposalStatus),\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.pythonProposalAuthority status =\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.EvidenceAuthority.candidate",
+   "theoremFamily": "python-proposal-nonauthority",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-AUTHORITY", "ASP-RFC-GSRGT-PYTHON"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.python_proposal_cannot_mint_evidence_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.sameGraphSession ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA =\n  true",
+   "theoremFamily": "exact-session-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CONTINUATION", "ASP-RFC-GSRGT-SESSION"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.exact_graph_session_identity_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.sameGraphSession ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionB =\n  false",
+   "theoremFamily": "cross-session-rejection",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CONTINUATION", "ASP-RFC-GSRGT-SESSION"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.cross_session_substitution_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.validateDecodedHopAccounting\n    { semanticGraphHops := 3, executedGraphHops := 1 } =\n  some { semanticGraphHops := 3, executedGraphHops := 1 }",
+   "theoremFamily": "decoded-hop-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-DESERIALIZATION", "ASP-RFC-GSRGT-HOPS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.valid_deserialized_hop_accounting_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.validateDecodedHopAccounting\n    { semanticGraphHops := 1, executedGraphHops := 2 } =\n  none",
+   "theoremFamily": "decoded-hop-invariant",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-DESERIALIZATION", "ASP-RFC-GSRGT-HOPS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.executed_hops_above_semantic_hops_are_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.cacheResumeAdmitted ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA ASPProof.GQLCoreSciPyResidentGraphTurbo.coldAccounting\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.cachedAccounting =\n  true",
+   "theoremFamily": "cache-resume-semantic-invariance",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CACHE", "ASP-RFC-GSRGT-CONTINUATION"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.cache_resume_preserves_semantic_route_and_may_reduce_realization",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.cacheResumeAdmitted ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA ASPProof.GQLCoreSciPyResidentGraphTurbo.coldAccounting\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.forgedSemanticAccounting =\n  false",
+   "theoremFamily": "cache-semantic-hop-counterexample",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CACHE", "ASP-RFC-GSRGT-HOPS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.cache_resume_cannot_rewrite_semantic_hops",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.combinedCacheMisses\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.searchCacheOnlyAccounting =\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.combinedCacheMisses\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.modelCacheOnlyAccounting",
+   "theoremFamily": "cache-aggregate-counterexample",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-MODEL-CACHE", "ASP-RFC-GSRGT-SEARCH-CACHE"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.equal_combined_cache_work_can_hide_orthogonal_cache_lanes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.searchCacheOnlyAccounting.searchExecutions = 0 ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.searchCacheOnlyAccounting.modelPrefixRecomputations = 1",
+   "theoremFamily": "search-cache-orthogonality",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-MODEL-CACHE", "ASP-RFC-GSRGT-SEARCH-CACHE"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.search_cache_reuse_does_not_imply_model_prefix_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.modelCacheOnlyAccounting.modelPrefixRecomputations = 0 ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.modelCacheOnlyAccounting.searchExecutions = 1",
+   "theoremFamily": "model-cache-orthogonality",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-MODEL-CACHE", "ASP-RFC-GSRGT-SEARCH-CACHE"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.model_prefix_reuse_does_not_imply_search_cache_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedAscentReceipt =\n  true",
+   "theoremFamily": "bounded-ascent-admission",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-SNAPSHOT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.bounded_ascent_receipt_is_snapshot_scoped_and_grounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureVerifiedAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget \"facts:canonical:1\"\n    [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerRule] [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerDerivationStep]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.traceGroundedAscentReceipt =\n  true",
+   "theoremFamily": "verified-fixed-point-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-FIXED-POINT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.recomputed_ascent_closure_is_grounded_complete_and_canonical",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.incompleteAscentReceipt =\n    true ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.receiptIsFixedPoint [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerRule]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.incompleteAscentReceipt =\n    false",
+   "theoremFamily": "budget-only-fixed-point-counterexample",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-FIXED-POINT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.budget_only_admission_can_accept_a_non_fixed_point_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureVerifiedAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget \"facts:canonical:1\"\n    [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerRule] []\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.incompleteAscentReceipt =\n  false",
+   "theoremFamily": "verified-fixed-point-rejection",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-FIXED-POINT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.verified_admission_rejects_a_non_fixed_point_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.forgedCanonicalDigestReceipt =\n    true ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureVerifiedAdmitted\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget \"facts:canonical:1\"\n      [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerRule] [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerDerivationStep]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.forgedCanonicalDigestReceipt =\n    false",
+   "theoremFamily": "canonical-digest-counterexample",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-DETERMINISM"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.nonempty_digest_check_does_not_establish_canonical_order",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedAscentReceipt =\n    true ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.derivationTraceGrounded [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerRule]\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedAscentReceipt\n      [ASPProof.GQLCoreSciPyResidentGraphTurbo.ownerDerivationStep] =\n    false",
+   "theoremFamily": "scalar-rule-count-counterexample",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-DERIVATION"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.scalar_rule_firing_count_does_not_ground_a_derivation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.untrustedRulesetReceipt =\n  false",
+   "theoremFamily": "trusted-ruleset-rejection",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-RULESET"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.model_injected_ascent_ruleset_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget ASPProof.GQLCoreSciPyResidentGraphTurbo.overRuleBudgetReceipt =\n  false",
+   "theoremFamily": "rule-firing-budget",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-BUDGET"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascent_rule_firing_budget_is_independent_and_fail_closed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentClosureReceiptAdmitted\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA [\"fact:model-declared\"] [\"ruleset:owner-v1\"]\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.ascentBudget\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.overDerivedFactBudgetReceipt =\n  false",
+   "theoremFamily": "derived-fact-budget",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-BUDGET"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascent_derived_fact_budget_is_independent_and_fail_closed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.graphDeltaAdmissionValid ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedAscentReceipt\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedGraphDelta =\n  true",
+   "theoremFamily": "graph-delta-refinement",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-GRAPH-DELTA"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.verified_graph_delta_can_admit_bounded_closure_output",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.closureReceiptAloneAuthorizesMutation\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.admittedAscentReceipt =\n  false",
+   "theoremFamily": "closure-nonauthority",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-ASCENT", "ASP-RFC-GSRGT-AUTHORITY"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.ascent_receipt_alone_cannot_mutate_evidence_graph",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (status : ASPProof.GQLCoreSciPyResidentGraphTurbo.PythonProposalStatus),\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.pythonProposalAloneAuthorizesMutation status = false",
+   "theoremFamily": "proposal-nonauthority",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-AUTHORITY", "ASP-RFC-GSRGT-PYTHON"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.python_proposal_alone_cannot_mutate_evidence_graph",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.gqlPathAdmitted 4\n    (ASPProof.GQLCoreSciPyResidentGraphTurbo.GqlPathBound.routerSupplied 3) =\n  true",
+   "theoremFamily": "bounded-gql-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-GQL", "ASP-RFC-GSRGT-HOPS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.router_bounded_gql_path_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.gqlPathAdmitted 4\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.GqlPathBound.unbounded =\n  false",
+   "theoremFamily": "unbounded-gql-rejection",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-GQL", "ASP-RFC-GSRGT-HOPS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.unbounded_gql_path_is_fail_closed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (better worse caps : ASPProof.GQLCoreSciPyResidentGraphTurbo.RouteCost),\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.routeNoWorse better worse →\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.routeFeasible worse caps →\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.routeFeasible better caps",
+   "theoremFamily": "pareto-feasibility",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-BUDGET", "ASP-RFC-GSRGT-PARETO"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.pareto_improvement_preserves_hard_budget_feasibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (tokenCap : Nat),\n  have unsafeRoute :=\n    { graphHops := 0, interactionRounds := 0, projectedTokens := tokenCap + 1, verificationOps := 0,\n      searchExecutions := 0, modelPrefixRecomputations := 0 };\n  have alternativeRoute :=\n    { graphHops := 1, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n      modelPrefixRecomputations := 0 };\n  have caps :=\n    { graphHops := 1, interactionRounds := 0, projectedTokens := tokenCap, verificationOps := 0, searchExecutions := 0,\n      modelPrefixRecomputations := 0 };\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.HopFirstLexBetter unsafeRoute alternativeRoute ∧\n    ¬ASPProof.GQLCoreSciPyResidentGraphTurbo.routeFeasible unsafeRoute caps",
+   "theoremFamily": "hop-first-needs-feasibility",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-PARETO", "ASP-RFC-GSRGT-TOKENS"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.shortest_hop_order_requires_prior_token_and_round_feasibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.processCanServe ASPProof.GQLCoreSciPyResidentGraphTurbo.residentProcess\n      ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA =\n    true ∧\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.processCanServe ASPProof.GQLCoreSciPyResidentGraphTurbo.residentProcess\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionB =\n      true ∧\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.sameGraphSession ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionA\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.graphSessionB =\n      false",
+   "theoremFamily": "process-session-separation",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-PROCESS", "ASP-RFC-GSRGT-SESSION"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.one_process_can_serve_distinct_isolated_graph_sessions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheReusable\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheIdentity\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheIdentity =\n  true",
+   "theoremFamily": "projection-cache-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-SEARCH-CACHE", "ASP-RFC-GSRGT-SNAPSHOT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.search_projection_cache_identity_is_exact",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheReusable\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheIdentity\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheIdentity =\n  true",
+   "theoremFamily": "model-cache-positive",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CACHE", "ASP-RFC-GSRGT-MODEL-CACHE"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.model_prefix_cache_identity_is_exact",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheReusable\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheIdentity\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.changedSnapshotProjectionCacheIdentity =\n  false",
+   "theoremFamily": "projection-cache-snapshot-fence",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-SEARCH-CACHE", "ASP-RFC-GSRGT-SNAPSHOT"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.stale_snapshot_invalidates_search_projection_cache",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (_mermaid _dot : String),\n  ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheReusable\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheIdentity\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.projectionCacheIdentity =\n      true ∧\n    ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheReusable\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheIdentity\n        ASPProof.GQLCoreSciPyResidentGraphTurbo.modelPrefixCacheIdentity =\n      true",
+   "theoremFamily": "renderer-identity-noninterference",
+   "rfcClauseIds": ["ASP-RFC-GSRGT-CACHE", "ASP-RFC-GSRGT-RENDERER"],
+   "name":
+   "ASPProof.GQLCoreSciPyResidentGraphTurbo.renderer_bytes_are_outside_search_and_model_cache_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 31,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 31,
+ "axiomDependentDeclarationCount": 0}

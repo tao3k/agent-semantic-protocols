@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 10.15.50 Agent Categories and Command Profiles
+#+startup: overview
+
+* Status
+
+This document refines the v1 hook configuration contract. It does not create a
+new protocol version.
+
+* Problem
+
+Hook rules currently repeat concrete resident names and package-manager command
+prefixes. That couples policy to one installed agent identity, mixes language
+toolchains in one rule, and makes every new language or responsibility require
+copying matcher arrays. Missing copies silently become routing gaps.
+
+* Agent placeholders
+
+=agents.placeholders= is a map from a stable responsibility key to one
+=agents.residentAgents[].name=. Rule dispatch stores the responsibility key in
+=dispatch.agent=; it does not store the concrete resident name.
+
+The config compiler MUST resolve every enabled dispatch through this map and
+MUST reject:
+
+- an empty or duplicate responsibility key,
+- a placeholder whose resident does not exist,
+- a placeholder whose resident is disabled,
+- an enabled rule whose dispatch references an unknown placeholder.
+
+This keeps =testing=, =explore=, and future categories such as =review= stable
+while allowing the installed resident identity and linked Codex agent file to
+change independently.
+
+* Command profiles
+
+A command profile owns one language or toolchain family. It contains:
+
+- a stable =id=,
+- one or more registered =languageIds=,
+- a map of responsibility category to Bash-AST argv prefixes.
+
+For example, =rust-cargo= may expose =testing= prefixes such as =cargo test=
+and =cargo check=, while =typescript-node= owns npm, pnpm, yarn, or bun test
+prefixes. Package-manager knowledge lives in config data, not Rust branches.
+
+Rules reference profiles through typed objects:
+
+#+begin_src toml
+[[rules.match.commandProfileAny]]
+profile = "rust-cargo"
+category = "testing"
+#+end_src
+
+The config compiler expands these references into the same bounded
+=argvPrefixAny= matcher used by =wrapper_match = "enable"=. The matcher does
+not learn language names, package managers, or agent identities.
+
+The compiler MUST reject duplicate profile ids, empty language ids, empty
+categories, empty argv prefixes, duplicate profile references, and references
+to missing profiles or categories. Expansion MUST be deterministic and
+deduplicate identical prefixes while preserving declaration order.
+
+* Language registry boundary
+
+=languageIds= are declarative provider identities. Activation may use them for
+lazy provider discovery, but a missing provider binary MUST NOT change command
+matching into an allow result. The resident dispatch remains fail-closed; lazy
+provider loading is an optimization after the policy decision.
+
+The set of supported languages therefore grows by adding registry/schema data
+and command profiles, without adding package-manager branches to the hook
+binary.
+
+* Stability and performance
+
+Profile expansion occurs once while compiling config. Per-command matching
+continues to use the parser-owned bounded argv matcher. Scenario tests MUST use
+the installed template as their source of commands, cover multiple profiles and
+categories, and record:
+
+- config compile latency,
+- hot matcher latency,
+- missing placeholder/profile/category failures,
+- deterministic expansion order,
+- exact selected resident and receipt kind.
+
+No runtime fallback may reinterpret an unresolved placeholder or profile as a
+literal executable, resident name, or allow decision.
+
+* Codex plugin hook installation gate
+
+The Codex plugin hook manifest is a schema-owned installed artifact.  JSON
+syntax alone is not sufficient evidence that it can be installed.
+
+- Codex production transport is one enabled plugin Hook bundle. The plugin owns
+  =hooks/hooks.json= and its manifest =hooks= entry. Native inline =config.toml=
+  injection is a separate explicit debug/test mode and MUST NOT be active with
+  the production plugin. Canonical event names and matcher semantics follow the
+  Codex host contract; ASP owns typed action classification after delivery.
+- The installer MUST validate the rendered hook manifest against that schema
+  before any installed artifact is replaced.
+- Hook commands MUST use the fixed Plugin launcher contract. In particular,
+  =PreToolUse= invokes ="$PLUGIN_ROOT/bin/asp-hook-exec" pre-tool --client codex=
+  and that script directly =exec=s
+  =ASP_STATE_HOME/runtime/bin/asp-hook=. A user-specific path, content-addressed
+  path, Client =asp hook pre-tool= command, or repeated =asp-hook hook=
+  namespace is invalid.
+- Unknown events, handler fields, hook kinds, and commands fail closed.
+- The active source and installed hook manifests MUST have the same content
+  identity after installation.
+
+The bare command contract requires =asp= to be resolvable from the effective
+Codex App =$PATH=.  Codex doctor therefore owns a bounded executable-resolution
+check with these states:
+
+- =current=: =asp= resolves from =$PATH= and points to the active installed
+  artifact;
+- =stale=: =asp= resolves, but its content identity differs from the active
+  artifact;
+- =missing=: no executable =asp= is visible from the effective =$PATH=.
+
+=stale= and =missing= are health failures.  The check is filesystem metadata
+and content-identity only; it MUST NOT bootstrap a provider, build a project, or
+start an agent session.  Its warm-path latency budget is measured in
+milliseconds.

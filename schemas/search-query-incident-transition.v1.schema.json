@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-query-incident-transition.v1.schema.json",
+  "title": "ASP Search Query Incident Transition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "transitionId",
+    "transitionSequence",
+    "incidentId",
+    "workspaceIdentity",
+    "fromState",
+    "toState",
+    "cause",
+    "observedAtUnixMicros"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-query-incident-transition"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "transitionId": {
+      "$ref": "#/$defs/digest"
+    },
+    "transitionSequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "incidentId": {
+      "$ref": "#/$defs/digest"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fromState": {
+      "$ref": "#/$defs/state"
+    },
+    "toState": {
+      "$ref": "#/$defs/state"
+    },
+    "cause": {
+      "enum": [
+        "failure-observed",
+        "repeated-failure",
+        "repair-started",
+        "verification-requested",
+        "verification-failed",
+        "verification-succeeded",
+        "generation-superseded",
+        "retention-compacted"
+      ]
+    },
+    "observedAtUnixMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtimeArtifactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "verificationReceiptDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "occurrenceCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "retentionDeadlineUnixMicros": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 160
+    },
+    "state": {
+      "enum": [
+        "open",
+        "repairing",
+        "verification-pending",
+        "failed-verification",
+        "resolved",
+        "superseded",
+        "compacted"
+      ]
+    }
+  }
+}

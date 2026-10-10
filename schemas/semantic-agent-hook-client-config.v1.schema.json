@@ -18,14 +18,57 @@
     "protocolVersion": {
       "const": "1"
     },
+    "readerBehaviorPatterns": {
+      "description": "Deterministic Reader behavior argv-pattern prefixes compiled into the standalone Hook policy bundle. Executables match by basename, ordinary tokens use globset, and a token equal to * or ** consumes zero or more argv tokens; undeclared trailing argv are allowed.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "commandProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commandProfile"
+      }
+    },
+    "commandSets": {
+      "description": "Repository-wide command families that are independent of language provider profiles.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commandSet"
+      }
+    },
+    "profiles": {
+      "description": "Provider-owned source-extension policy projections used for registered-source classification.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/sourceProfile"
+      }
+    },
+    "providerRoutes": {
+      "description": "Build-generated provider facade identities derived from the canonical Provider Register. These identities admit parser-owned search/query routing without duplicating provider source policy.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "provider-definitions.v1.schema.json#/$defs/providerReference"
+      }
+    },
+    "capabilityPolicies": {
+      "description": "Reusable predicates over SemanticCapability and subject facts. Rules compose predicates while retaining ownership of decisions and dispatch.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capabilityPolicy"
+      }
+    },
     "agentOrgArtifacts": {
       "$ref": "#/$defs/agentOrgArtifacts"
     },
-    "aspCommandIntentPolicy": {
-      "$ref": "#/$defs/aspCommandIntentPolicy"
-    },
-    "executionLanes": {
-      "$ref": "#/$defs/executionLanes"
+    "agentCalling": {
+      "$ref": "#/$defs/agentCalling"
     },
     "rules": {
       "description": "Typed client-hook rules. Rule ids are runtime-validated as unique because config-derived decisions use fields.configRuleId as the machine receipt.",
@@ -34,14 +77,156 @@
         "$ref": "#/$defs/rule"
       }
     },
+    "contractFingerprint": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
     "experimental": {
       "$ref": "#/$defs/experimental"
     }
   },
   "$defs": {
+    "matcherPolicy": {
+      "type": "string",
+      "enum": ["wrapped_command"]
+    },
+    "agentCalling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultPattern": {
+          "$ref": "#/$defs/agentCallingPattern"
+        },
+        "platformPatterns": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": { "$ref": "#/$defs/agentCallingPattern" }
+        }
+      }
+    },
+    "agentCallingPattern": {
+      "type": "string",
+      "pattern": "^[^{}]*\\{name(-kebab)?\\}[^{}]*$"
+    },
     "identifier": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "typedActionKind": {
+      "enum": ["read", "edit", "search", "enumerate", "execute", "mcp", "spawn-agent", "unknown"]
+    },
+    "capabilityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "hostInvocationAny": { "type": "array", "items": { "$ref": "#/$defs/hostInvocationKind" } },
+        "semanticCapabilityAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
+        "subjectKindAny": { "$ref": "semantic-agent-definitions.schema.json#/$defs/subjectKindArray" }
+      }
+    },
+    "commandProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "languageIds", "categories"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "languageIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "categories": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "commandSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "argvPrefixAny"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "argvPrefixAny": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "sourceProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "extensionAny"],
+      "properties": {
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "extensionAny": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9]+$" }
+        }
+      }
+    },
+    "commandProfileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "category"],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/identifier"
+        },
+        "category": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+  "required": ["transport", "agent", "receiptKind"],
+      "properties": {
+        "transport": {
+      "const": "host-agent"
+        },
+    "agent": {
+          "$ref": "#/$defs/identifier"
+        },
+        "receiptKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lazyProvider": {
+          "enum": ["matched-language"]
+        }
+      }
     },
     "event": {
       "enum": [
@@ -74,147 +259,24 @@
         }
       }
     },
-    "aspCommandIntentPolicy": {
-      "description": "Parser-owned classification policy for public asp language commands.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "controlPlane": {
-          "$ref": "#/$defs/aspControlPlaneIntent"
-        },
-        "reasoning": {
-          "$ref": "#/$defs/aspReasoningIntent"
-        },
-        "exactEvidence": {
-          "$ref": "#/$defs/aspExactEvidenceIntent"
-        },
-        "directReadFallback": {
-          "$ref": "#/$defs/aspDirectReadFallbackIntent"
-        },
-        "invalidEvidence": {
-          "$ref": "#/$defs/aspInvalidEvidenceIntent"
-        }
-      }
-    },
-    "executionLanes": {
-      "description": "Deterministic command execution lanes that do not require a reasoning agent.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "testing": {"$ref": "#/$defs/executionLane"}
-      }
-    },
-    "executionLane": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {"type": "boolean"},
-        "transport": {"const": "current-session"},
-        "commandPrefixes": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "receiptKind": {"type": "string", "minLength": 1}
-      }
-    },
-    "aspControlPlaneIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"}
-      }
-    },
-    "aspReasoningIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "guideCommand": {"type": "boolean"},
-        "searchRoutes": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "queryFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "unprojectedQuery": {"type": "boolean"}
-      }
-    },
-    "aspExactEvidenceIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "queryProjectionFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "queryProjectionViews": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "selectorKinds": {"$ref": "#/$defs/nonEmptyStringArray"},
-        "requireSameLanguage": {"type": "boolean"}
-      }
-    },
-    "aspDirectReadFallbackIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "fromHookValues": {"$ref": "#/$defs/nonEmptyStringArray"}
-      }
-    },
-    "aspInvalidEvidenceIntent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "rejectProjectedQueryWithoutExactSelector": {"type": "boolean"},
-        "rejectCrossLanguageSelector": {"type": "boolean"}
-      }
-    },
-    "nonEmptyStringArray": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
     "agentOrgArtifacts": {
-      "description": "Agent Org artifact entry guard. When enabled, hook decisions can direct the agent back to ASP_ORG.org if no Org artifact write has occurred recently and warn when DONE Org records should be archived.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "inactiveAfterMinutes": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "artifactsPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "entrySkillPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "archiveWarning": {
-          "$ref": "#/$defs/agentOrgArtifactsArchiveWarning"
-        }
-      }
-    },
-    "agentOrgArtifactsArchiveWarning": {
-      "description": "Warning gate for active Org artifact directories that contain DONE records not yet moved under archives.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "activeOrgFileThreshold": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "archivesDir": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxReportedFiles": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
+      "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentOrgArtifacts"
     },
     "rule": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "decision"],
+      "allOf": [
+        {
+          "if": {
+            "required": ["terminal"],
+            "properties": { "terminal": { "const": true } }
+          },
+          "then": {
+            "properties": { "decision": { "const": "allow" } }
+          }
+        }
+      ],
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier"
@@ -225,18 +287,37 @@
         "priority": {
           "type": "integer"
         },
+        "terminal": {
+          "description": "When true, a winning allow rule terminates Hook policy evaluation.",
+          "type": "boolean"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch": {
+          "$ref": "#/$defs/dispatch"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "decision": {
-          "enum": ["deny", "block"]
+          "enum": ["allow", "deny", "block"]
         },
         "reasonKind": {
           "enum": [
             "none",
-            "direct-source-read",
+        "direct-source-read",
+        "registered-source-route-required",
+        "structured-source-read",
             "bulk-source-dump",
             "raw-broad-search",
             "asp-reasoning-routed",
             "agent-search-json",
-            "subagent-receipt-required"
+            "agent-choice-required"
           ]
         },
         "message": {
@@ -257,6 +338,24 @@
         "platform": {
           "enum": ["codex", "claude", "unknown"]
         },
+        "matcher": {
+          "type": ["string", "null"],
+          "pattern": "^[^|\\s]+(?:\\|[^|\\s]+)*$"
+        },
+        "profilesList": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "matcherPolicies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/matcherPolicy"
+          }
+        },
         "match": {
           "$ref": "#/$defs/ruleMatch"
         },
@@ -268,10 +367,36 @@
         }
       }
     },
+    "hostInvocationKind": {
+      "enum": [
+        "read",
+        "edit",
+        "execute",
+        "mcp",
+        "spawn-agent",
+        "unknown"
+      ]
+    },
     "ruleMatch": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "capabilityPolicyAll": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "capabilityPolicyAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "capabilityPolicyNone": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "subjectKindAny": { "$ref": "semantic-agent-definitions.schema.json#/$defs/subjectKindArray" },
         "tool": {
           "type": "string",
           "minLength": 1
@@ -288,6 +413,44 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "commandProfileAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/commandProfileRef"
+          }
+        },
+        "commandSetAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "argvPrefixAny": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "argvTokenAll": {
+          "description": "Exact argv tokens that must coexist in one parser-owned shell stage.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "processEnvironmentAssignmentAny": {
+          "description": "Exact NAME=VALUE assignments matched only in the leading assignment block of the first parsed shell stage.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*=.*$"
           }
         },
         "commandContainsAny": {
@@ -330,15 +493,9 @@
         },
         "kind": {
           "enum": [
-            "prime",
-            "owner",
+            "playbook",
             "query",
-            "lexical",
             "read",
-            "deps",
-            "api",
-            "ingest",
-            "tests",
             "check-changed"
           ]
         },

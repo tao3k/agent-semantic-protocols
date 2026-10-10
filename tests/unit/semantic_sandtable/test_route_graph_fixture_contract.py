@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
 import json
@@ -5,7 +9,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, RefResolver
+from jsonschema import Draft202012Validator
+
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -25,16 +31,9 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _scenario_validator() -> Draft202012Validator:
-    schema = _load_json(_SCHEMA_DIR / "semantic-sandtable-scenario.v1.schema.json")
-    route_trace_schema = _load_json(_SCHEMA_DIR / "semantic-route-verification-trace.v1.schema.json")
-    resolver = RefResolver.from_schema(
-        schema,
-        store={
-            route_trace_schema["$id"]: route_trace_schema,
-            "semantic-route-verification-trace.v1.schema.json": route_trace_schema,
-        },
+    return schema_validator_for(
+        _SCHEMA_DIR / "semantic-sandtable-scenario.v1.schema.json"
     )
-    return Draft202012Validator(schema, resolver=resolver)
 
 
 def _absolute_string_values(value: Any, path: str = "$") -> list[str]:

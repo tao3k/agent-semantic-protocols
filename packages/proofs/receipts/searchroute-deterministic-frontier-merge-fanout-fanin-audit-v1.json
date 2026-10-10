@@ -1,0 +1,129 @@
+{"sourcePath": "ASPProof/SearchRouteDeterministicFrontierMergeFanoutFanin.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership) (canonicalId : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership left right canonicalId =\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership right left canonicalId",
+   "theoremFamily": "canonical-membership-merge-commutative",
+   "rfcClauseIds": ["DFM-ACI", "DFM-MEMBERSHIP"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership)\n  (canonicalId : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first second) third canonicalId =\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership second third) canonicalId",
+   "theoremFamily": "canonical-membership-merge-associative",
+   "rfcClauseIds": ["DFM-ACI", "DFM-MEMBERSHIP"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership_associative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (frontier : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership) (canonicalId : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership frontier frontier canonicalId =\n    frontier canonicalId",
+   "theoremFamily": "canonical-membership-merge-idempotent",
+   "rfcClauseIds": ["DFM-ACI", "DFM-MEMBERSHIP"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (first second third : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership)\n  (canonicalId : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first second) third canonicalId =\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership second third) canonicalId",
+   "theoremFamily": "parallel-fanin-sequential-equivalence",
+   "rfcClauseIds": ["DFM-ACI", "DFM-PARALLEL"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.parallel_fanin_equals_sequential_fold",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.ProvenanceMembership) (evidenceId : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeProvenance left right evidenceId =\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeProvenance right left evidenceId",
+   "theoremFamily": "equal-route-provenance-set-union",
+   "rfcClauseIds": ["DFM-ACI", "DFM-PROVENANCE"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.equal_route_provenance_union_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.EvaluationIdentity),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.MergeAuthorized identity identity",
+   "theoremFamily": "same-evaluation-identity-authorizes-merge",
+   "rfcClauseIds": ["DFM-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.reflexive_evaluation_identity_authorizes_merge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.EvaluationIdentity),\n  left.snapshotDigest ≠ right.snapshotDigest →\n    ¬ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.MergeAuthorized left right",
+   "theoremFamily": "changed-snapshot-rejects-merge",
+   "rfcClauseIds": ["DFM-IDENTITY", "DFM-STALE"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.changed_snapshot_rejects_merge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.EvaluationIdentity),\n  left.duplicatePolicyDigest ≠ right.duplicatePolicyDigest →\n    ¬ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.MergeAuthorized left right",
+   "theoremFamily": "changed-duplicate-policy-rejects-merge",
+   "rfcClauseIds": ["DFM-IDENTITY", "DFM-POLICY"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.changed_duplicate_policy_rejects_merge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.lastWriterWins 1 2 ≠\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.lastWriterWins 2 1",
+   "theoremFamily": "last-writer-wins-counterexample",
+   "rfcClauseIds": ["DFM-COUNTEREXAMPLE", "DFM-PROVENANCE"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.last_writer_wins_is_not_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.PartialCoverage 1 3 →\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.PartialCoverage 1 3 →\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.PartialCoverage (1 + 1) 3",
+   "theoremFamily": "partial-fanin-does-not-imply-completeness",
+   "rfcClauseIds": ["DFM-COVERAGE"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.two_partial_frontiers_can_remain_partial",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.MergeReceiptBudget) (observedBytes : Nat),\n  observedBytes ≤ ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.explicitMergeReceiptUpperBound budget →\n    observedBytes ≤ ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.explicitMergeReceiptUpperBound budget",
+   "theoremFamily": "explicit-merge-receipt-capacity-bound",
+   "rfcClauseIds": ["DFM-CAPACITY", "DFM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.explicit_merge_receipt_is_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedBound : Nat),\n  fixedBound < ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.uncappedExplicitMergeBytes (fixedBound + 1)",
+   "theoremFamily": "uncapped-explicit-merge-has-no-fixed-bound",
+   "rfcClauseIds": ["DFM-CAPACITY", "DFM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.uncapped_explicit_merge_exceeds_every_fixed_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedSummaryBytes firstCount secondCount : Nat),\n  ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.summarizedMergeReceiptBytes fixedSummaryBytes firstCount =\n    ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.summarizedMergeReceiptBytes fixedSummaryBytes secondCount",
+   "theoremFamily": "summary-merge-receipt-constant-size",
+   "rfcClauseIds": ["DFM-RECEIPT", "DFM-SUMMARY"],
+   "name":
+   "ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.summarized_merge_receipt_is_entry_count_independent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

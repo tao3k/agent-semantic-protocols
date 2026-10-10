@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-project-topology-attachment.v1.schema.json",
+  "title": "Runtime Project Topology Attachment V1",
+  "description": "Immutable admission receipt binding one Project Topology library to one Runtime Search generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "runtimeExecutionBinding",
+    "runtimeGenerationDigest",
+    "topologyLibraryBinding",
+    "inferenceReceipt",
+    "terminal"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-project-topology-attachment"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "runtimeExecutionBinding": {
+      "$ref": "runtime-execution-binding.v2.schema.json"
+    },
+    "runtimeGenerationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "topologyLibraryBinding": {
+      "$ref": "#/$defs/topologyLibraryBinding"
+    },
+    "inferenceReceipt": {
+      "$ref": "#/$defs/inferenceReceipt"
+    },
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "topologyLibraryBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectWorkspace",
+        "sourceGenerationDigest",
+        "providerCatalogDigest",
+        "parserCatalogDigest",
+        "libraryDigest",
+        "topologyGenerationDigest",
+        "structuralTopologyDigest",
+        "semanticTopologyDigest",
+        "inferenceProgramDigest",
+        "closureDigest"
+      ],
+      "properties": {
+        "projectWorkspace": {
+          "$ref": "project-workspace-binding.v1.schema.json"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parserCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "libraryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "structuralTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "semanticTopologyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "closureDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "inferenceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptDigest",
+        "state",
+        "projectWorkspace",
+        "runtimeGenerationDigest",
+        "runtimeArtifactDigest",
+        "sourceGenerationDigest",
+        "providerCatalogDigest",
+        "parserCatalogDigest",
+        "libraryDigest",
+        "topologyGenerationDigest",
+        "inferenceProgramDigest",
+        "closureDigest"
+      ],
+      "properties": {
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "state": {
+          "const": "admitted"
+        },
+        "projectWorkspace": {
+          "$ref": "project-workspace-binding.v1.schema.json"
+        },
+        "runtimeGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "runtimeArtifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parserCatalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "libraryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "topologyGenerationDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inferenceProgramDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "closureDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "terminalCount",
+        "reasonKind"
+      ],
+      "properties": {
+        "state": {
+          "const": "admitted"
+        },
+        "terminalCount": {
+          "const": 1
+        },
+        "reasonKind": {
+          "type": "null"
+        }
+      }
+    }
+  },
+  "$comment": "Semantic admission additionally requires every repeated Project Workspace, Runtime artifact, Runtime generation, source, provider, parser, library, topology-generation, inference-program, and closure identity to match exactly. The complete inference receipt must occur in the independently admitted receipt set. activationGeneration is intentionally absent."
+}

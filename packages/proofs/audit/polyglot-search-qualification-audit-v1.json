@@ -1,0 +1,69 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "leanVersion": "4.32.2",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.PolyglotSearchQualification",
+  "sourcePath": "packages/proofs/ASPProof/PolyglotSearchQualification.lean",
+  "declarationCount": 6,
+  "axiomFreeDeclarationCount": 6,
+  "axiomDependentDeclarationCount": 0,
+  "declarations": [
+    {
+      "name": "ASPProof.PolyglotSearchQualification.reference_qualification_is_admitted",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "qualificationAdmitted referenceThresholds referenceScenarios",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchQualification.qualification_exposes_every_scenario_gate",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "qualification admission exposes the all-scenario gate",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchQualification.aggregate_token_improvement_does_not_imply_scenario_admission",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "aggregate token improvement and failed per-scenario admission coexist",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchQualification.quality_regression_is_rejected",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "quality regression is not scenario-admitted",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchQualification.state_mutation_is_rejected",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "state mutation is not scenario-admitted",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchQualification.cold_and_warm_coverage_are_both_required",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-qualification",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.36-QUALIFICATION"],
+      "type": "qualification admission requires cold and warm cache coverage",
+      "axioms": [],
+      "hasSorryAx": false
+    }
+  ],
+  "axiomInventory": [],
+  "hasSorryAx": false
+}

@@ -36,7 +36,7 @@
       "pattern": "^[a-z][a-z0-9_.:-]*$"
     },
     "producer": {
-      "$ref": "#/$defs/producer"
+      "$ref": "semantic-assurance-definitions.v1.schema.json#/$defs/producer"
     },
     "target": {
       "$ref": "#/$defs/target"
@@ -73,25 +73,6 @@
     }
   },
   "$defs": {
-    "producer": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["languageId", "providerId", "namespace"],
-      "properties": {
-        "languageId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "providerId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "namespace": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
-        }
-      }
-    },
     "target": {
       "type": "object",
       "additionalProperties": false,

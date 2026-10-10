@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-workspace-publication-performance.v1.schema.json",
+  "title": "Runtime Server Workspace Publication Performance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "residentPublicationServiceElapsedMicros",
+    "observedElapsedMicros"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-publication-performance.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "residentPublicationServiceElapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observedElapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

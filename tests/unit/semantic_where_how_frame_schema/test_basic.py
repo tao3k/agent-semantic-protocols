@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Semantic WhereFrame, DynamicTopology, and HowFrame schema tests."""
 
 from __future__ import annotations
@@ -197,7 +201,7 @@ def _how_frame() -> dict[str, Any]:
         ],
         "evidence": [
             {
-                "id": "benchmark:source-index-search-pipe.warm-path",
+                "id": "benchmark:source-index-search-playbook.warm-path",
                 "kind": "benchmark",
             }
         ],

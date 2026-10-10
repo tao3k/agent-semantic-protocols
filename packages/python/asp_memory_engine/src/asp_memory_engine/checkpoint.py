@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Durable task checkpoint records for session-scoped agent memory."""
 
 from __future__ import annotations
@@ -7,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .episode import (
-    GLOBAL_PROJECT_SCOPE,
+    GLOBAL_PROJECT_RESOLUTION,
     normalize_optional_plan_token,
     normalize_plan_token,
     now_ms,
@@ -69,7 +73,7 @@ class Checkpoint:
     title: str
     status: str = "open"
     kind: str = "task"
-    project_id: str = GLOBAL_PROJECT_SCOPE
+    project_id: str = GLOBAL_PROJECT_RESOLUTION
     plan_id: str | None = None
     branch_id: str | None = None
     source_locator: str | None = None
@@ -87,8 +91,8 @@ class Checkpoint:
         if not title:
             raise ValueError("checkpoint title must not be empty")
         project_id = normalize_plan_token(
-            _text(_first_mapping_value(value, "project_id", "projectId", "project"), GLOBAL_PROJECT_SCOPE),
-            GLOBAL_PROJECT_SCOPE,
+            _text(_first_mapping_value(value, "project_id", "projectId", "project"), GLOBAL_PROJECT_RESOLUTION),
+            GLOBAL_PROJECT_RESOLUTION,
         )
         plan_id = normalize_optional_plan_token(_first_mapping_value(value, "plan_id", "planId", "plan"))
         branch_id = normalize_optional_plan_token(
@@ -152,7 +156,7 @@ class Checkpoint:
                 title=self.title,
             )
         self.session_id = normalize_plan_token(self.session_id, "")
-        self.project_id = normalize_plan_token(self.project_id, GLOBAL_PROJECT_SCOPE)
+        self.project_id = normalize_plan_token(self.project_id, GLOBAL_PROJECT_RESOLUTION)
         self.plan_id = normalize_optional_plan_token(self.plan_id)
         self.branch_id = normalize_optional_plan_token(self.branch_id)
         self.status = self.status.strip() or "open"
@@ -170,7 +174,7 @@ class Checkpoint:
         branch_id: str | None = None,
         status: str | None = None,
     ) -> bool:
-        if project_id is not None and self.project_id != normalize_plan_token(project_id, GLOBAL_PROJECT_SCOPE):
+        if project_id is not None and self.project_id != normalize_plan_token(project_id, GLOBAL_PROJECT_RESOLUTION):
             return False
         if session_id is not None and self.session_id != normalize_plan_token(session_id, ""):
             return False

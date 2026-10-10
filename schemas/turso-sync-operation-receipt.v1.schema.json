@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.client-db.turso-sync-operation-receipt.v1",
+  "title": "Turso Sync Operation Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "operation",
+    "outcome",
+    "elapsedMs",
+    "pulledChanges",
+    "stats",
+    "errorKind",
+    "errorDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-db.turso-sync-operation-receipt.v1"
+    },
+    "operation": {
+      "enum": ["push", "pull", "checkpoint", "stats"]
+    },
+    "outcome": {
+      "enum": ["applied", "no-remote-changes", "observed", "failed"]
+    },
+    "elapsedMs": { "type": "integer", "minimum": 0 },
+    "pulledChanges": { "type": ["boolean", "null"] },
+    "stats": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cdcOperations",
+            "mainWalSize",
+            "revertWalSize",
+            "networkReceivedBytes",
+            "networkSentBytes",
+            "lastPullUnixTime",
+            "lastPushUnixTime",
+            "revision"
+          ],
+          "properties": {
+            "cdcOperations": { "type": "integer", "minimum": 0 },
+            "mainWalSize": { "type": "integer", "minimum": 0 },
+            "revertWalSize": { "type": "integer", "minimum": 0 },
+            "networkReceivedBytes": { "type": "integer", "minimum": 0 },
+            "networkSentBytes": { "type": "integer", "minimum": 0 },
+            "lastPullUnixTime": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "lastPushUnixTime": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "revision": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "errorKind": { "type": ["string", "null"] },
+    "errorDigest": { "type": ["string", "null"] }
+  }
+}

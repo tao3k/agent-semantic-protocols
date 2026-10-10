@@ -126,16 +126,13 @@
           "items": {"$ref": "#/$defs/variantRun"}
         },
         "missingVariantRuns": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/collectionRun"}
+          "$ref": "#/$defs/collectionRunList"
         },
         "collectionRuns": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/collectionRun"}
+          "$ref": "#/$defs/collectionRunList"
         },
         "runsNeedingVariantReceipt": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/collectionRun"}
+          "$ref": "#/$defs/collectionRunList"
         },
         "collectionStatus": {
           "enum": ["collecting", "collected"]
@@ -168,6 +165,10 @@
     }
   },
   "$defs": {
+    "collectionRunList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/collectionRun" }
+    },
     "costSummary": {
       "type": "object",
       "additionalProperties": false,

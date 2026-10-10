@@ -17,7 +17,7 @@
     "desktop-hooks"
   ],
   "workdir": {
-    "relative": "languages/rust-lang-project-harness"
+    "relative": "languages/asp-rust"
   },
   "budgets": {
     "maxCommands": 8,

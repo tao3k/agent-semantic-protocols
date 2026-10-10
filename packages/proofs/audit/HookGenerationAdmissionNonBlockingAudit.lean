@@ -1,0 +1,28 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.Audit.HookGenerationAdmissionNonBlocking
+
+open ASPProof.HookGenerationAdmissionNonBlocking
+open ASPProof.Audit.HookGenerationAdmissionNonBlocking
+
+#check failed_admission_preserves_generic_commands
+#check failed_admission_preserves_control_plane_recovery
+#check failed_admission_does_not_release_direct_source_read
+#check failed_generation_query_remains_data_plane_fail_closed
+#check failed_admission_cannot_globally_deadlock_the_hook
+#check hook_allow_does_not_imply_generation_query_execution
+#check runtime_server_submission_does_not_wait_for_candidate
+#check runtime_server_submission_survives_hook_exit
+#check client_candidate_discovery_violates_nonblocking_submission
+
+#print axioms failed_admission_preserves_generic_commands
+#print axioms failed_admission_preserves_control_plane_recovery
+#print axioms failed_admission_does_not_release_direct_source_read
+#print axioms failed_generation_query_remains_data_plane_fail_closed
+#print axioms failed_admission_cannot_globally_deadlock_the_hook
+#print axioms hook_allow_does_not_imply_generation_query_execution
+#print axioms runtime_server_submission_does_not_wait_for_candidate
+#print axioms runtime_server_submission_survives_hook_exit
+#print axioms client_candidate_discovery_violates_nonblocking_submission

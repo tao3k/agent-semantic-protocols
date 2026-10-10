@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Query corpus gates for tree-sitter rollout."""
 
 from __future__ import annotations
@@ -44,19 +48,6 @@ QUERY_CORPUS_COMMANDS = (
         "tree-sitter",
         "validate",
         "python-query-corpus",
-    ],
-    [
-        "uv",
-        "run",
-        "--project",
-        "packages/python",
-        "--frozen",
-        "python",
-        "-m",
-        "tools",
-        "tree-sitter",
-        "validate",
-        "json-abi-corpus",
     ],
 )
 

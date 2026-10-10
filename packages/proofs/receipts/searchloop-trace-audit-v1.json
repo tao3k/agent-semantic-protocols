@@ -1,0 +1,120 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopTrace.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopTrace",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {before after : SearchLoopTrace.LoopState}, SearchLoopTrace.Step before after → after.domain = before.domain",
+   "theoremFamily": "trace-safety",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CFR-GOD-DECISION", "ASP-RFC-10.05-RPGE-CLOSED-WORLD"],
+   "name": "SearchLoopTrace.step_preserves_domain",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {initial final : SearchLoopTrace.LoopState} {length : Nat},\n  SearchLoopTrace.Trace initial final length → final.domain = initial.domain",
+   "theoremFamily": "trace-safety",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CFR-GOD-DECISION", "ASP-RFC-10.05-RPGE-CLOSED-WORLD"],
+   "name": "SearchLoopTrace.trace_preserves_domain",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {before after : SearchLoopTrace.LoopState},\n  SearchLoopTrace.ClosureSafe before → SearchLoopTrace.Step before after → SearchLoopTrace.ClosureSafe after",
+   "theoremFamily": "trace-safety",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CFR-GOD-DECISION", "ASP-RFC-10.05-RPGE-CLOSED-WORLD"],
+   "name": "SearchLoopTrace.step_preserves_closure_safety",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {initial final : SearchLoopTrace.LoopState} {length : Nat},\n  SearchLoopTrace.ClosureSafe initial → SearchLoopTrace.Trace initial final length → SearchLoopTrace.ClosureSafe final",
+   "theoremFamily": "trace-safety",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CFR-GOD-DECISION", "ASP-RFC-10.05-RPGE-CLOSED-WORLD"],
+   "name": "SearchLoopTrace.trace_preserves_closure_safety",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {before after : SearchLoopTrace.LoopState},\n  SearchLoopTrace.ProductiveStep before after →\n    SearchLoopTrace.remainingWork after + 1 = SearchLoopTrace.remainingWork before",
+   "theoremFamily": "bounded-progress",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.productive_step_exactly_reduces_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {before after : SearchLoopTrace.LoopState},\n  SearchLoopTrace.ProductiveStep before after →\n    SearchLoopTrace.remainingWork after < SearchLoopTrace.remainingWork before",
+   "theoremFamily": "bounded-progress",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.productive_step_decreases_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {initial final : SearchLoopTrace.LoopState} {length : Nat},\n  SearchLoopTrace.ProductiveTrace initial final length →\n    length + SearchLoopTrace.remainingWork final = SearchLoopTrace.remainingWork initial",
+   "theoremFamily": "bounded-progress",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.productive_trace_conserves_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {initial final : SearchLoopTrace.LoopState} {length : Nat},\n  SearchLoopTrace.ProductiveTrace initial final length → length ≤ SearchLoopTrace.remainingWork initial",
+   "theoremFamily": "bounded-progress",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.productive_trace_is_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {before after : SearchLoopTrace.LoopState},\n  SearchLoopTrace.Step before after →\n    SearchLoopTrace.remainingWork after < SearchLoopTrace.remainingWork before ∨ SearchLoopTrace.TypedTerminal after",
+   "theoremFamily": "typed-progress",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.step_decreases_work_or_typed_terminal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopTrace.zeroMandatoryInvalidEvidenceState.remainingMandatory = 0 ∧\n  ¬SearchLoopTrace.SafeToClose SearchLoopTrace.zeroMandatoryInvalidEvidenceState",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CFR-GOD-DECISION", "ASP-RFC-10.05-RPGE-CLOSED-WORLD"],
+   "name": "SearchLoopTrace.zero_mandatory_does_not_imply_safe_closure",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopTrace.mandatoryOnlyBudgetState.remainingMandatory ≤ SearchLoopTrace.mandatoryOnlyBudgetState.budget ∧\n  SearchLoopTrace.mandatoryOnlyBudgetState.budget <\n    SearchLoopTrace.remainingWork SearchLoopTrace.mandatoryOnlyBudgetState",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.mandatory_only_budget_undercounts_unresolved_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopTrace.Step SearchLoopTrace.blockedState SearchLoopTrace.blockedTerminal ∧\n  SearchLoopTrace.remainingWork SearchLoopTrace.blockedTerminal =\n    SearchLoopTrace.remainingWork SearchLoopTrace.blockedState",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-BECA-STATES", "ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET"],
+   "name": "SearchLoopTrace.typed_terminalization_need_not_decrease_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 12,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 6}

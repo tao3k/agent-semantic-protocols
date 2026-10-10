@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-client-server-bootstrap",
+  "schemaVersion": "1",
+  "providerId": "asp-julia",
+  "transport": "http-json",
+  "state": "ready",
+  "endpoint": "http://127.0.0.1:49152"
+}

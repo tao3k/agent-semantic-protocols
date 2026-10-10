@@ -1,0 +1,61 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-client-server-scenario",
+  "schemaVersion": "1",
+  "scenarioId": "live-corpus.rust.tokio",
+  "qualificationMode": "live-corpus",
+  "authority": {
+    "workspaceIdentity": "workspace-tokio-fixture",
+    "generationDigest": "generation-tokio-fixture",
+    "rootDigest": "root-tokio-fixture",
+    "providerCatalogDigest": "catalog-tokio-fixture",
+    "languageId": "rust",
+    "providerId": "asp-rust"
+  },
+  "transport": "runtime-ipc",
+  "steps": [
+    {
+      "ordinal": 0,
+      "eventKind": "lease-acquired",
+      "operationId": "operation-tokio",
+      "leaseId": "lease-tokio",
+      "budgetMicros": 1000
+    },
+    {
+      "ordinal": 1,
+      "eventKind": "request-terminal",
+      "operationId": "operation-tokio",
+      "leaseId": "lease-tokio",
+      "terminalStatus": "ready",
+      "budgetMicros": 1000
+    },
+    {
+      "ordinal": 2,
+      "eventKind": "lease-released",
+      "operationId": "operation-tokio",
+      "leaseId": "lease-tokio",
+      "budgetMicros": 1000
+    }
+  ],
+  "invariants": [
+    "unique-operation-authority",
+    "terminal-receipt-immutable",
+    "single-flight-by-authority",
+    "ready-query-does-not-launch-provider"
+  ],
+  "expectedTerminalState": "ready",
+  "otel": {
+    "traceId": "trace-tokio-fixture",
+    "requiredEventKinds": ["lease-acquired", "request-terminal", "lease-released"],
+    "terminalEventObserved": true
+  },
+  "liveCorpusEvidence": {
+    "resourceId": "rust.tokio",
+    "revision": "revision-fixture",
+    "generationDigest": "generation-tokio-fixture",
+    "rootDigest": "root-tokio-fixture",
+    "positiveCandidateCount": 1,
+    "exactQueryStatus": "hit",
+    "zeroMatchCount": 0,
+    "terminalTelemetryDigest": "telemetry-tokio-fixture"
+  }
+}

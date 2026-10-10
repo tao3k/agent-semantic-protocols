@@ -175,27 +175,7 @@
   }
 },
                 "failures": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                            "field",
-                            "actual",
-                            "expected"
-                        ],
-                        "properties": {
-                            "field": {
-                                "type": "string",
-                                "minLength": 1
-                            },
-                            "actual": true,
-                            "expected": {
-                                "type": "string",
-                                "minLength": 1
-                            }
-                        }
-                    }
+                    "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/qualityFailureList"
                 }
             }
         },
@@ -216,20 +196,8 @@
                 ],
                 "properties": {
                     "variant": {
-                        "enum": [
-                            "full",
-                            "no-receipt",
-                            "no-read-memory",
-                            "no-quality-fields",
-                            "no-provider-facts",
-                            "relation-weight-flat",
-          "no-query-seed-prior",
-          "no-package-cohesion",
-          "no-query-clause-coverage",
-          "no-local-evidence",
-          "no-topology-membership"
-        ]
-      },
+                      "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/variant"
+                    },
                     "changes": {
                         "type": "object"
                     },

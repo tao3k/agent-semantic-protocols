@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "repository-candidate-current-snapshot"
+title = "Git current snapshot has one authority per state layer"
+package = "agent-semantic-runtime"
+phase = "process-cold-generation-admission"
+intent = "bind HEAD, staged index state, and worktree overlay without duplicate full-tree passes"
+
+[identity]
+committed_authority = "head-id"
+staged_authority = "stage-zero-index-digest"
+worktree_authority = "index-to-worktree-status"
+continuity_fallback = "current-snapshot"
+
+[gate]
+tracked_metadata_prepass_count = 0
+head_index_diff_count = 0
+index_worktree_status_count = 1
+full_workspace_content_read_count = 0
+changed_content_reads_only = true
+staged_same_path_edit_advances_generation = true
+tracked_deletion_advances_generation = true

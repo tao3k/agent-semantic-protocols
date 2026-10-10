@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/axle-proof-bundle-audit-receipt.v1.schema.json",
+  "title": "AXLE Proof Bundle Audit Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "admissionLevel", "orgizeLifecycleState",
+    "indexSha256", "bundleCount", "coveredLeanCount", "bundles"
+  ],
+  "properties": {
+    "schemaId": {"const": "asp.axle-proof-bundle-audit-receipt.v1"},
+    "schemaVersion": {"const": "1"},
+    "admissionLevel": {"const": "structural"},
+    "orgizeLifecycleState": {"const": "command-executor-unavailable"},
+    "indexSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bundleCount": {"type": "integer", "minimum": 1},
+    "coveredLeanCount": {"type": "integer", "minimum": 1},
+    "bundles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bundleId", "leanPath", "orgPath", "leanSha256", "orgSha256",
+          "typstBlockCount"
+        ],
+        "properties": {
+          "bundleId": {"type": "string"},
+          "leanPath": {"type": "string"},
+          "orgPath": {"type": "string"},
+          "leanSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "orgSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "typstBlockCount": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}

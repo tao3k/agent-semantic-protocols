@@ -1,23 +1,158 @@
-use crate::protocol::{normalize_source_route_selector, normalize_source_selector};
-use crate::protocol_activation::{ActivatedProvider, HookRuntime, SourceSelectorKind};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-pub(crate) struct SourceSelectorMatch<'provider> {
+use crate::protocol::normalize_source_route_selector;
+use crate::protocol::normalize_source_selector;
+use crate::provider_projection::HookProviderProjection;
+use crate::provider_projection::HookRuntime;
+use crate::provider_projection::ProviderSelectorMatch;
+use crate::provider_projection::SourceSelectorKind;
+
+pub(crate) struct SourceSelectorMatch {
     pub(crate) route_selector: String,
-    pub(crate) provider: &'provider ActivatedProvider,
+    pub(crate) provider: HookProviderProjection,
     pub(crate) kind: SourceSelectorKind,
 }
 
-pub(crate) fn collect_source_selector_matches<'provider, I, S, F>(
-    registry: &'provider HookRuntime,
+pub(crate) fn derive_agent_action_subjects(
+    registry: &HookRuntime,
+    paths: &[String],
+) -> Vec<crate::tool_action::AgentActionSubject> {
+    let (mut semantic_subjects, other_subjects): (Vec<_>, Vec<_>) = paths
+        .iter()
+        .map(|path| crate::tool_action::AgentActionSubject {
+            value: path.clone(),
+            kind: infer_agent_action_subject_kind(registry, path),
+        })
+        .partition(|subject| {
+            !matches!(
+                &subject.kind,
+                crate::tool_action::AgentActionSubjectKind::Other
+            )
+        });
+    semantic_subjects.extend(other_subjects);
+    semantic_subjects
+}
+
+pub(crate) fn project_shell_subject_paths(registry: &HookRuntime, paths: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut projected = Vec::new();
+    for path in paths {
+        if path.starts_with('-') || !is_path_operand(registry, path) {
+            continue;
+        }
+        if seen.insert(path.clone()) {
+            projected.push(path.clone());
+        }
+    }
+    projected
+}
+
+fn is_path_operand(registry: &HookRuntime, value: &str) -> bool {
+    if !matches!(
+        infer_agent_action_subject_kind(registry, value),
+        crate::tool_action::AgentActionSubjectKind::Other
+    ) {
+        return true;
+    }
+
+    let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let Some((stem, suffix)) = leaf.rsplit_once('.') else {
+        return false;
+    };
+    !stem.is_empty()
+        && !suffix.is_empty()
+        && suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
+}
+
+fn infer_agent_action_subject_kind(
+    registry: &HookRuntime,
+    value: &str,
+) -> crate::tool_action::AgentActionSubjectKind {
+    use crate::tool_action::AgentActionSubjectKind;
+
+    if value.contains("://") || value.contains("#item/") {
+        return AgentActionSubjectKind::StructuralSelector;
+    }
+    if value == "." || value == ".." {
+        return AgentActionSubjectKind::Directory;
+    }
+
+    let normalized = normalize_source_selector(value);
+    let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let is_path_shaped = value.contains(['/', '\\']) && !value.chars().any(char::is_whitespace);
+    let registered_source_scope = registry.policy_providers.iter().any(|provider| {
+        let ignored = std::iter::empty::<&String>().any(|prefix| {
+            normalized == prefix
+                || normalized
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        });
+        !ignored
+            && provider.package_roots.iter().any(|root| {
+                root == "."
+                    || normalized == root
+                    || normalized
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                    || contains_path_component_sequence(normalized, root)
+            })
+    });
+    let registered_root_alias = !normalized.contains('/')
+        && registry.policy_providers.iter().any(|provider| {
+            provider.package_roots.iter().any(|root| {
+                root != "."
+                    && root
+                        .trim_end_matches(['/', '\\'])
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .is_some_and(|root_leaf| root_leaf == normalized)
+            })
+        });
+
+    if (registered_root_alias || registered_source_scope && is_path_shaped)
+        && (value.ends_with(['/', '\\']) || !leaf.contains('.'))
+    {
+        return AgentActionSubjectKind::RegisteredLanguageSourcePattern;
+    }
+    if value.ends_with(['/', '\\']) {
+        return AgentActionSubjectKind::Directory;
+    }
+
+    let registered =
+        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
+    if !registered {
+        return AgentActionSubjectKind::Other;
+    }
+    if leaf.chars().any(|ch| matches!(ch, '*' | '?' | '[' | ']')) {
+        AgentActionSubjectKind::RegisteredLanguageSourcePattern
+    } else {
+        AgentActionSubjectKind::RegisteredLanguageSource
+    }
+}
+
+fn contains_path_component_sequence(path: &str, sequence: &str) -> bool {
+    path.match_indices(sequence).any(|(start, matched)| {
+        let end = start + matched.len();
+        (start == 0 || path.as_bytes().get(start.wrapping_sub(1)) == Some(&b'/'))
+            && (end == path.len() || path.as_bytes().get(end) == Some(&b'/'))
+    })
+}
+
+pub(crate) fn collect_source_selector_matches<I, S, F>(
+    registry: &HookRuntime,
     selectors: I,
     should_block: F,
-) -> Vec<SourceSelectorMatch<'provider>>
+) -> Vec<SourceSelectorMatch>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
-    F: Fn(&ActivatedProvider) -> bool,
+    F: Fn(&HookProviderProjection) -> bool,
 {
-    let mut matches: Vec<SourceSelectorMatch<'provider>> = Vec::new();
+    let mut matches: Vec<SourceSelectorMatch> = Vec::new();
     for selector in selectors {
         let route_selector = normalize_source_route_selector(selector.as_ref()).to_string();
         for matched in matching_blocked_providers(registry, &route_selector, &should_block) {
@@ -32,29 +167,29 @@ where
     matches
 }
 
-fn matching_blocked_providers<'provider, F>(
-    registry: &'provider HookRuntime,
+fn matching_blocked_providers<F>(
+    registry: &HookRuntime,
     route_selector: &str,
     should_block: &F,
-) -> Vec<crate::protocol_activation::ProviderSelectorMatch<'provider>>
+) -> Vec<ProviderSelectorMatch>
 where
-    F: Fn(&ActivatedProvider) -> bool,
+    F: Fn(&HookProviderProjection) -> bool,
 {
     let match_selector = normalize_source_selector(route_selector);
     registry
         .providers_for_selector(match_selector)
         .into_iter()
-        .filter(|matched| should_block(matched.provider))
+        .filter(|matched| should_block(&matched.provider))
         .collect()
 }
 
-fn merge_source_selector_match<'provider>(
-    matches: &mut Vec<SourceSelectorMatch<'provider>>,
+fn merge_source_selector_match(
+    matches: &mut Vec<SourceSelectorMatch>,
     route_selector: &str,
-    provider: &'provider ActivatedProvider,
+    provider: HookProviderProjection,
     kind: SourceSelectorKind,
 ) {
-    if let Some(existing) = find_provider_match(matches, provider) {
+    if let Some(existing) = find_provider_match(matches, &provider) {
         if selector_is_more_specific(&existing.route_selector, route_selector) {
             existing.route_selector = route_selector.to_string();
             existing.kind = kind;
@@ -68,10 +203,10 @@ fn merge_source_selector_match<'provider>(
     });
 }
 
-fn find_provider_match<'matches, 'provider>(
-    matches: &'matches mut [SourceSelectorMatch<'provider>],
-    provider: &ActivatedProvider,
-) -> Option<&'matches mut SourceSelectorMatch<'provider>> {
+fn find_provider_match<'matches>(
+    matches: &'matches mut [SourceSelectorMatch],
+    provider: &HookProviderProjection,
+) -> Option<&'matches mut SourceSelectorMatch> {
     matches.iter_mut().find(|existing| {
         existing.provider.language_id == provider.language_id
             && existing.provider.provider_id == provider.provider_id
@@ -110,81 +245,6 @@ fn is_decimal_locator(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-pub(crate) fn provider_source_selector(provider: &ActivatedProvider) -> String {
-    let mut extensions = provider
-        .source_extensions
-        .iter()
-        .map(|extension| extension.trim_start_matches('.').to_string())
-        .filter(|extension| !extension.is_empty())
-        .collect::<Vec<_>>();
-    extensions.sort();
-    extensions.dedup();
-    match extensions.as_slice() {
-        [] => "**/*".to_string(),
-        [extension] => format!("**/*.{extension}"),
-        extensions => format!("**/*.{{{}}}", extensions.join(",")),
-    }
-}
-
-pub(crate) fn provider_matches_source_extension(
-    provider: &ActivatedProvider,
-    extension: &str,
-) -> bool {
-    provider
-        .source_extensions
-        .iter()
-        .any(|source| source == extension)
-}
-
-pub(crate) fn provider_matches_source_type(
-    provider: &ActivatedProvider,
-    target_type: &str,
-) -> bool {
-    target_type == provider.language_id
-        || target_type == provider.namespace
-        || provider
-            .source_extensions
-            .iter()
-            .any(|source| source.trim_start_matches('.') == target_type)
-}
-
-pub(crate) fn push_source_extension(extensions: &mut Vec<String>, token: &str, allow_bare: bool) {
-    let clean = token
-        .trim_matches(|character| matches!(character, '\'' | '"' | ',' | ';'))
-        .trim_start_matches('*')
-        .to_ascii_lowercase();
-    if let Some(start) = clean.find(".{")
-        && let Some(end) = clean[start + 2..].find('}')
-    {
-        for extension in clean[start + 2..start + 2 + end].split(',') {
-            if is_source_extension_atom(extension) {
-                extensions.push(format!(".{extension}"));
-            }
-        }
-        return;
-    }
-    let clean = clean.trim_start_matches('{').trim_end_matches('}');
-    if allow_bare && is_source_extension_atom(clean) {
-        extensions.push(format!(".{clean}"));
-        return;
-    }
-    if let Some((_, extension)) = clean.rsplit_once('.') {
-        let extension = extension.trim_end_matches('}');
-        if is_source_extension_atom(extension) {
-            extensions.push(format!(".{extension}"));
-        }
-    }
-}
-
-pub(crate) fn selector_has_glob(token: &str) -> bool {
-    token
-        .chars()
-        .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
-}
-
-fn is_source_extension_atom(extension: &str) -> bool {
-    !extension.is_empty()
-        && extension
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
-}
+#[cfg(test)]
+#[path = "../tests/unit/source_selector.rs"]
+mod tests;

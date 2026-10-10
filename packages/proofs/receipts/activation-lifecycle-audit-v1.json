@@ -1,0 +1,120 @@
+{"sourcePath": "ASPProof/ActivationLifecycleAudit.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.ActivationLifecycleAudit",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (state : ASPProof.ActivationLifecycleAudit.ActivationState),\n  ASPProof.ActivationLifecycleAudit.OperationalReady state →\n    state.activationReadable = true ∧\n      state.registryBound = true ∧\n        state.hostReachable = true ∧\n          state.transportBound = true ∧\n            ASPProof.ActivationLifecycleAudit.RuntimeIdentityMatches state ∧\n              ASPProof.ActivationLifecycleAudit.DispatchRecoverable state.dispatchEvidence",
+   "theoremFamily": "derived-ready-invariant",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-READY"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.operational_ready_implies_live_bound_matching_runtime",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationLifecycleAudit.OperationalReady ASPProof.ActivationLifecycleAudit.cachedReadyWithoutHost",
+   "theoremFamily": "false-ready-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-READY"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.cached_ready_without_host_is_not_operational",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationLifecycleAudit.CanEnterRepair ASPProof.ActivationLifecycleAudit.unreadableActivationWithoutEmergency",
+   "theoremFamily": "repair-deadlock-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-REPAIR"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.missing_activation_without_emergency_capability_deadlocks_repair",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationLifecycleAudit.SafeReplacement ASPProof.ActivationLifecycleAudit.hiddenReachableChild",
+   "theoremFamily": "unsafe-replacement-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-REPLACEMENT"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.hidden_reachable_child_is_not_safe_to_replace",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.ActivationLifecycleAudit.AcknowledgementRebind ASPProof.ActivationLifecycleAudit.idleResumableChild ∧\n  ¬ASPProof.ActivationLifecycleAudit.EventOnlyRebind ASPProof.ActivationLifecycleAudit.idleResumableChild",
+   "theoremFamily": "acknowledgement-rebind",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-REBIND"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.idle_resume_can_rebind_by_ack_without_subagent_start",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationLifecycleAudit.OperationalReady ASPProof.ActivationLifecycleAudit.readyWithMissingDispatchReceipt",
+   "theoremFamily": "dispatch-ambiguity-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-DISPATCH"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.missing_dispatch_receipt_blocks_operational_ready",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationLifecycleAudit.OperationalReady ASPProof.ActivationLifecycleAudit.readyWithBinaryDrift",
+   "theoremFamily": "runtime-identity-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-IDENTITY"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.binary_drift_blocks_operational_ready",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.ActivationLifecycleAudit.OperationalReady ASPProof.ActivationLifecycleAudit.staleReadyObservation.state ∧\n  ¬ASPProof.ActivationLifecycleAudit.TrustedReady ASPProof.ActivationLifecycleAudit.staleReadyObservation",
+   "theoremFamily": "stale-observation-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-FRESHNESS"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.operational_ready_does_not_imply_fresh_trusted_ready",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (state : ASPProof.ActivationLifecycleAudit.ActivationState) (plan : ASPProof.ActivationLifecycleAudit.EvolutionPlan)\n  (applicable : ASPProof.ActivationLifecycleAudit.CanApplyEvolution state plan),\n  state.observedGeneration <\n      (ASPProof.ActivationLifecycleAudit.applyEvolution state plan applicable).observedGeneration ∧\n    ASPProof.ActivationLifecycleAudit.RuntimeIdentityMatches\n      (ASPProof.ActivationLifecycleAudit.applyEvolution state plan applicable)",
+   "theoremFamily": "monotone-evolution",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-EVOLUTION"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.applicable_evolution_advances_generation_and_matches_runtime",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.ActivationLifecycleAudit.ActivationState) (plan : ASPProof.ActivationLifecycleAudit.EvolutionPlan),\n  plan.targetGeneration ≤ state.observedGeneration → ¬ASPProof.ActivationLifecycleAudit.CanApplyEvolution state plan",
+   "theoremFamily": "generation-regression-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-EVOLUTION"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.generation_regression_cannot_be_applied",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.ActivationLifecycleAudit.ActivationState) (plan : ASPProof.ActivationLifecycleAudit.EvolutionPlan),\n  plan.rollbackCheckpoint = false → ¬ASPProof.ActivationLifecycleAudit.CanApplyEvolution state plan",
+   "theoremFamily": "missing-rollback-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-EVOLUTION"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.evolution_without_rollback_cannot_be_applied",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.ActivationLifecycleAudit.ActivationState) (plan : ASPProof.ActivationLifecycleAudit.EvolutionPlan),\n  plan.compatibilityWitness = false → ¬ASPProof.ActivationLifecycleAudit.CanApplyEvolution state plan",
+   "theoremFamily": "missing-compatibility-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALAE-EVOLUTION"],
+   "name":
+   "ASPProof.ActivationLifecycleAudit.evolution_without_compatibility_witness_cannot_be_applied",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 12,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 2}

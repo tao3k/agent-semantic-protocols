@@ -1,0 +1,30 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchLoopRfcLeanSystem
+
+open ASPProof.SearchLoopRfcLeanSystem
+
+#print axioms restore_reuse_iff_clean
+#print axioms generation_drift_does_not_destroy_content_artifact
+#print axioms resident_excludes_repository_work
+#print axioms exact_query_excludes_search_acquisition
+#print axioms predicate_directed_search_has_no_mandatory_partner
+#print axioms chain_associative_projection_preserves_leaf_order
+#print axioms rg_scope_admitted_iff_inherited
+#print axioms explicit_rg_path_cannot_enter_composition
+#print axioms nested_acquisition_intersection_is_valid
+#print axioms structural_intersection_is_not_an_acquisition
+#print axioms prefilter_preserves_regex_iff_coverage
+#print axioms equivalent_backends_make_intersection_redundant
+#print axioms superset_branch_has_zero_marginal_gain
+#print axioms missing_coverage_can_create_false_negative
+#print axioms structural_search_excludes_lexical_acquisition
+#print axioms exact_selector_routes_to_query_index
+#print axioms composition_is_unboundedly_extensible_but_each_value_is_finite
+#print axioms zero_node_budget_rejects_every_composition
+#print axioms operator_registry_drift_invalidates_expansion
+#print axioms resident_work_is_corpus_independent
+#print axioms joiners_do_not_multiply_compute
+#print axioms budget_admission_iff_all_dimensions_fit

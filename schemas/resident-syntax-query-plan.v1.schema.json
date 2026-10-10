@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/resident-syntax-query-plan.v1.schema.json",
+  "title": "Resident Syntax Query Plan V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "profileId",
+    "planDigest",
+    "queryDigest",
+    "languageId",
+    "providerId",
+    "parserAbiDigest",
+    "queryGrammarDigest",
+    "operatorTableDigest",
+    "capabilityTableDigest",
+    "generationDigest",
+    "patterns",
+    "selectedFields",
+    "requiredCapabilityRows",
+    "regexPrograms"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.resident-syntax-query-plan"},
+    "schemaVersion": {"const": "1"},
+    "profileId": {"const": "asp.enhanced-tree-sitter-query.v1"},
+    "planDigest": {"$ref": "#/$defs/digest"},
+    "queryDigest": {"$ref": "#/$defs/digest"},
+    "languageId": {"$ref": "#/$defs/identity"},
+    "providerId": {"$ref": "#/$defs/identity"},
+    "parserAbiDigest": {"$ref": "#/$defs/digest"},
+    "queryGrammarDigest": {"$ref": "#/$defs/digest"},
+    "operatorTableDigest": {"$ref": "#/$defs/digest"},
+    "capabilityTableDigest": {"$ref": "#/$defs/digest"},
+    "generationDigest": {"$ref": "#/$defs/digest"},
+    "patterns": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pattern"}},
+    "selectedFields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/resultField"}
+    },
+    "requiredCapabilityRows": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identity"}
+    },
+    "regexPrograms": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/regexProgram"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+    "identity": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._+:/-]*$"},
+    "resultField": {
+      "enum": ["kind", "name", "selector", "byte-range", "scopes", "queryKeys", "projections", "relations"]
+    },
+    "cardinality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": {"type": "integer", "minimum": 0},
+        "maximum": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "residentFactPath", "cardinality", "capabilityRowId"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+        "residentFactPath": {"$ref": "#/$defs/factPath"},
+        "cardinality": {"$ref": "#/$defs/cardinality"},
+        "capabilityRowId": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "factPath": {
+      "enum": [
+        "kind",
+        "name",
+        "selector",
+        "byte-range",
+        "scopes.relation",
+        "scopes.kind",
+        "scopes.symbol",
+        "queryKeys",
+        "projections.kind",
+        "relations"
+      ]
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capabilityRowId"],
+      "properties": {
+        "kind": {"enum": ["node", "field", "capture", "anchor", "quantifier", "standard-predicate", "asp-predicate"]},
+        "capabilityRowId": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "condition": {
+      "oneOf": [
+        {"$ref": "#/$defs/trueCondition"},
+        {"$ref": "#/$defs/compositeCondition"},
+        {"$ref": "#/$defs/scalarCondition"},
+        {"$ref": "#/$defs/setCondition"},
+        {"$ref": "#/$defs/rangeCondition"},
+        {"$ref": "#/$defs/relationCondition"}
+      ]
+    },
+    "trueCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "origin"],
+      "properties": {
+        "kind": {"const": "true"},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "compositeCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "terms"],
+      "properties": {
+        "kind": {"enum": ["all", "any"]},
+        "terms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/condition"}}
+      }
+    },
+    "scalarCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capture", "factPath", "operator", "value", "origin"],
+      "allOf": [
+        {
+          "if": {"properties": {"operator": {"enum": ["any-of", "not-any-of"]}}, "required": ["operator"]},
+          "then": {"properties": {"value": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}}},
+          "else": {"properties": {"value": {"type": "string"}}}
+        },
+        {
+          "if": {"properties": {"operator": {"enum": ["match", "not-match", "any-match", "any-not-match"]}}, "required": ["operator"]},
+          "then": {"required": ["regexProgramId"]},
+          "else": {"not": {"required": ["regexProgramId"]}}
+        }
+      ],
+      "properties": {
+        "kind": {"const": "scalar"},
+        "capture": {"type": "string", "minLength": 1},
+        "factPath": {"enum": ["kind", "name", "selector"]},
+        "operator": {"enum": ["eq", "not-eq", "match", "not-match", "any-eq", "any-not-eq", "any-match", "any-not-match", "any-of", "not-any-of"]},
+        "value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}
+          ]
+        },
+        "regexProgramId": {"$ref": "#/$defs/identity"},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "setCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capture", "factPath", "operator", "value", "origin"],
+      "allOf": [
+        {
+          "if": {"properties": {"operator": {"enum": ["any-match", "none-match"]}}, "required": ["operator"]},
+          "then": {"required": ["regexProgramId"]},
+          "else": {"not": {"required": ["regexProgramId"]}}
+        }
+      ],
+      "properties": {
+        "kind": {"const": "set"},
+        "capture": {"type": "string", "minLength": 1},
+        "factPath": {"enum": ["scopes.relation", "scopes.kind", "scopes.symbol", "queryKeys", "projections.kind"]},
+        "operator": {"enum": ["any-eq", "none-eq", "any-match", "none-match"]},
+        "value": {"type": "string"},
+        "regexProgramId": {"$ref": "#/$defs/identity"},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "rangeCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capture", "mode", "start", "end", "origin"],
+      "properties": {
+        "kind": {"const": "range"},
+        "capture": {"type": "string", "minLength": 1},
+        "mode": {"enum": ["within", "contains", "overlaps"]},
+        "start": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+        "end": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "relationCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capture", "operator", "direction", "relationKind", "origin"],
+      "properties": {
+        "kind": {"const": "relation"},
+        "capture": {"type": "string", "minLength": 1},
+        "operator": {"enum": ["related", "not-related"]},
+        "direction": {"enum": ["in", "out", "either"]},
+        "relationKind": {"type": "string", "minLength": 1},
+        "endpointSelector": {"type": "string", "minLength": 1},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "captures", "structure", "predicates"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "captures": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/capture"}},
+        "structure": {"$ref": "#/$defs/condition"},
+        "predicates": {"type": "array", "items": {"$ref": "#/$defs/condition"}}
+      }
+    },
+    "regexProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "engineId", "engineVersion", "syntaxProfile", "encoding", "program", "programDigest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identity"},
+        "engineId": {"$ref": "#/$defs/identity"},
+        "engineVersion": {"type": "string", "minLength": 1},
+        "syntaxProfile": {"const": "tree-sitter-rust-regex-v1"},
+        "encoding": {"const": "base64"},
+        "program": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$"},
+        "programDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

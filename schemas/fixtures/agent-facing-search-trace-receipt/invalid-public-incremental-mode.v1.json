@@ -1,0 +1,34 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-facing-search-trace-receipt",
+  "schemaVersion": "1",
+  "traceSetId": "trace-tree-sitter-public-mode-counterexample",
+  "requestIdentity": {
+    "requestId": "request-public-mode-counterexample",
+    "providerWorkspaceIdentity": "workspace-rust-1",
+    "queryDigest": "blake3-256:query-public-mode-counterexample",
+    "admittedGeneration": "blake3-256:generation-1"
+  },
+  "backend": { "kind": "tree-sitter" },
+  "execution": {
+    "mode": "incremental",
+    "inventory": "exact",
+    "cachedOwners": 4,
+    "scheduledOwners": 0,
+    "remainingOwners": 0,
+    "sourceReads": 0,
+    "providerParses": 0,
+    "ownerWrites": 0,
+    "fullWorkspaceWalks": 0
+  },
+  "result": {
+    "state": "complete",
+    "matchCount": 0,
+    "truncated": false
+  },
+  "terminalEmissionCount": 1,
+  "nextActionEmissionCount": 1,
+  "recommendedNext": {
+    "kind": "refine-query",
+    "command": "asp search playbook --language rust --rg -n -F '<terms>' '<owner>' --tantivy 'body:<terms>' --workspace ."
+  }
+}

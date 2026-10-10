@@ -1,0 +1,249 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.36 — Agent Session Host Registry Crash-Safe Materialization Recovery
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.35-agent-session-host-registry-executable-receipt-materialization/00-overview.org][RFC 10.05.35 — Agent Session Host Registry Executable Receipt Materialization]]. The Lean source and direct audit compile, all 19 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+This RFC verifies recovery and single-winner sealing semantics. It does not claim that a concrete verifier runtime or durable capture store implements them. No Rust implementation is authorized in this session.
+
+* Problem
+
+RFC35 proves that a materialized receipt must pass through adjacent lifecycle stages and bind the complete payload. It does not yet linearize concurrent recovery.
+
+Without an explicit recovery model, five defects remain possible:
+
+- an executor starts before the materialization intent is durable;
+- a retry changes invocation identity or reuses an old generation;
+- partial stdout or stderr capture is overwritten rather than appended;
+- two recovery workers publish different terminal receipts for one invocation;
+- a conflicting terminal capture is treated as another successful seal instead of quarantine.
+
+The terminal publication point must therefore be a generation-scoped CAS over one stable invocation key.
+
+* Evidence alignment
+
+=AgentSessionDispatchTransaction= owns durable reservation, stable dispatch keys, idempotent host acceptance, and conflict detection. =AgentSessionHostRegistryCompaction= owns canonical CAS publication and stale-generation quarantine. RFC36 composes those ideas with RFC35 capture and sealing evidence.
+
+The new model deliberately separates capture from publication. Append-only fragments are evidence under construction; only a successful seal CAS publishes a terminal capture.
+
+* Durable intent law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRR-INTENT
+:END:
+
+#+name: registry-crash-recovery-intent-law
+#+begin_src typst
+#let Authorized(i, x) = $upright("IntentAuthorizesInvocation")(#i, #x)$
+#let Persisted(i) = $upright("persisted")(#i)$
+#let Key(x) = $upright("stableInvocationKey")(#x)$
+#let Payload(x) = $upright("payloadDigest")(#x)$
+#let True = $upright("true")$
+
+$
+  forall i, x,
+  Authorized(i, x) =>
+  Persisted(i) = True and Key(i) = Key(x) and Payload(i) = Payload(x).
+$
+#+end_src
+
+Invocation before durable intent is prohibited. A process-local object or an in-memory reservation is not durable authorization.
+
+* Append-only capture law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRR-CAPTURE
+:END:
+
+#+name: registry-crash-recovery-capture-law
+#+begin_src typst
+#let AppendOnly(a, b) = $upright("AppendOnlyCapture")(#a, #b)$
+#let Concat(a, s) = $upright("concat")(#a, #s)$
+
+$
+  forall a, b,
+  AppendOnly(a, b) <=> exists s, b = Concat(a, s).
+$
+#+end_src
+
+Recovery may append missing fragments. It may not rewrite, reorder, or delete the captured prefix.
+
+* Single-winner seal law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRR-SEAL
+:END:
+
+#+name: registry-crash-recovery-seal-law
+#+begin_src typst
+#let Seal(k, t) = $upright("Sealed")(#k, #t)$
+#let Quarantine(k, a, c) = $upright("Quarantined")(#k, #a, #c)$
+#let Cas(b, r, a) = $upright("SealCas")(#b, #r, #a)$
+
+$
+  forall k, a, c,
+  a != c =>
+  not Cas(Seal(k, a), c, Seal(k, c)) and
+  Cas(Seal(k, a), c, Quarantine(k, a, c)).
+$
+#+end_src
+
+An identical retry is idempotent. A different terminal capture is not a second winner; it advances the slot to quarantine with both competing identities retained.
+
+* Stable generation law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRR-GENERATION
+:END:
+
+#+name: registry-crash-recovery-generation-law
+#+begin_src typst
+#let Key(d, i, g) = $upright("InvocationKey")(#d, #i, #g)$
+
+$
+  forall d, i, g_1, g_2,
+  g_1 != g_2 => Key(d, i, g_1) != Key(d, i, g_2).
+$
+#+end_src
+
+Generation participates in the invocation key and prevents an ABA-style reuse of an old terminal slot.
+
+* Stateful architecture
+
+#+name: registry-crash-recovery-architecture
+#+begin_src mermaid
+flowchart LR
+  D["Durable intent store\nstate: Missing | Persisted(key, payload)"]
+  E["Independent executor\nstate: Blocked | Started(key)"]
+  C["Capture log\nstate: AppendOnly(prefix, nextSequence)"]
+  R["Recovery worker\nstate: Idle | Resuming(stableKey)"]
+  S["Seal CAS\nstate: Empty(revision) | Sealed(key, terminal) | Quarantined(conflict)"]
+  P["Receipt publisher\nstate: Unpublished | Published(singleWinner)"]
+
+  D -->|"guard; state: Persisted -> Started; exact key and payload"| E
+  E -->|"transition; state: Started -> AppendOnly; channel fragments"| C
+  C -->|"transition; state: PartialAfterCrash -> Resuming; preserved prefix"| R
+  R -->|"guard; state: Resuming -> CASPending; stable key and generation"| S
+  S -->|"capability; state: Empty -> Sealed; first terminal wins"| P
+  S -->|"guard; state: SealedSame -> Sealed; idempotent retry"| P
+  S -->|"prohibitedEffect; state: SealedDifferent -> Quarantined; retain both terminals"| P
+  D -->|"prohibitedEffect; state: Missing -> Blocked; no invocation"| E
+#+end_src
+
+* Recovery state machine
+
+#+name: registry-crash-recovery-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "IntentMissing\nstate: NotDurable" as Missing
+  state "IntentPersisted\nstate: StableKeyReserved" as Persisted
+  state "Invoked\nstate: ExecutionStarted" as Invoked
+  state "CapturePartial\nstate: AppendOnlyPrefix" as Partial
+  state "SealPending\nstate: ExpectedRevision" as Pending
+  state "Sealed\nstate: SingleWinner" as Sealed
+  state "Quarantined\nstate: ConflictingTerminal" as Quarantined
+
+  Missing --> Persisted: "transition; state: NotDurable -> StableKeyReserved"
+  Missing --> Quarantined: "prohibitedEffect; state: InvokeBeforeIntent -> TypedDefect"
+  Persisted --> Invoked: "guard; state: Reserved -> ExecutionStarted; key matches"
+  Invoked --> Partial: "transition; state: Started -> AppendOnlyPrefix"
+  Partial --> Partial: "transition; state: Prefix -> LongerPrefix; retry append"
+  Partial --> Pending: "guard; state: CaptureComplete -> ExpectedRevision"
+  Pending --> Sealed: "capability; state: EmptyCurrentRevision -> SingleWinner"
+  Sealed --> Sealed: "guard; state: SameTerminal -> IdempotentReplay"
+  Sealed --> Quarantined: "prohibitedEffect; state: DifferentTerminal -> ConflictingTerminal"
+  Quarantined --> Quarantined: "guard; state: ConflictingTerminal -> NoPublication"
+#+end_src
+
+* Crash and competing recovery sequence
+
+#+name: registry-crash-recovery-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant I as "Intent Store [state: Missing]"
+  participant E as "Executor [state: Blocked]"
+  participant C as "Capture Log [state: Empty]"
+  participant R1 as "Recovery A [state: Idle]"
+  participant R2 as "Recovery B [state: Idle]"
+  participant S as "Seal CAS [state: Empty(revision)]"
+
+  I->>I: "transition; state: Missing -> Persisted; stable key and payload"
+  I->>E: "guard; state: Persisted -> Started; durable authorization"
+  E->>C: "transition; state: Started -> Partial; append fragment"
+  E--xC: "prohibitedEffect; state: Crash -> PrefixPreserved"
+  C->>R1: "transition; state: PrefixPreserved -> Resuming; same key"
+  C->>R2: "transition; state: PrefixPreserved -> Resuming; same key"
+  R1->>S: "guard; state: Resuming -> CASPending; terminal A"
+  S-->>R1: "capability; state: Empty -> Sealed(A); winner"
+  R2->>S: "guard; state: Resuming -> ConflictCheck; terminal B"
+  alt terminal B equals terminal A
+    S-->>R2: "transition; state: Sealed(A) -> Sealed(A); idempotent"
+  else terminal B differs
+    S-->>R2: "prohibitedEffect; state: Sealed(A) -> Quarantined(A,B)"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-crash-recovery-lean-contract
+#+begin_src lean
+def IntentAuthorizesInvocation
+    (intent : DurableMaterializationIntent)
+    (invocation : MaterializationInvocation) : Prop :=
+  intent.persisted = true ∧
+  invocation.started = true ∧
+  invocation.key = intent.key ∧
+  invocation.payloadDigest = intent.payloadDigest
+
+def AppendOnlyCapture (before after : CaptureLog) : Prop :=
+  ∃ suffix, after = before ++ suffix
+
+inductive SealCas : SealRequest → SealHead → SealHead → Prop where
+  | first : SealCas request emptyHead sealedHead
+  | replay : SealCas sameRequest sealedHead sealedHead
+  | conflict : conflicting ≠ accepted →
+      SealCas conflictingRequest sealedHead quarantinedHead
+
+def RetryPreservesExperiment
+    (before after : RecoverySnapshot) : Prop :=
+  after.intent = before.intent ∧
+  AppendOnlyCapture before.capture after.capture
+#+end_src
+
+* Lean-discovered obligations
+
+Lean proves that unpersisted intent, a wrong invocation key, or a wrong payload cannot authorize execution. Capture extension is represented as an existing prefix plus a suffix, so recovery cannot claim overwrite semantics.
+
+The seal relation has exactly three constructors:
+
+- =first= publishes from an empty current revision;
+- =replay= preserves an identical sealed terminal;
+- =conflict= moves a different terminal to quarantine.
+
+There is no constructor that moves a sealed terminal directly to a different sealed terminal, and no constructor that publishes from quarantine. Stale revisions cannot perform the first seal. Generation changes produce distinct invocation keys, closing the ABA reuse hole.
+
+During proof construction, direct simplification of existential append relations and concrete dependent CAS states introduced =propext=. The final model removes those simplifier-dependent proofs: the audited theorem family uses explicit constructors, equality elimination, and structural witnesses, leaving all 19 declarations axiom-free.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- admit the scoped theorem families through AXLE;
+- evaluate every Typst block through parser-owned Org content on stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- add no Rust implementation in this session.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryCrashSafeMaterializationRecovery.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryCrashSafeMaterializationRecovery.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-crash-safe-materialization-recovery-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-crash-safe-materialization-recovery-axle-audit-v1.json=
+- admitted audit SHA-256: =7f28256d92f9ebd0c533ee6238afaec617c23294f875c4ee94d0bdf0e9e3a157=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.37-agent-session-host-registry-quarantine-adjudication/00-overview.org][RFC 10.05.37 — Agent Session Host Registry Quarantine Adjudication]].
+
+The next formal boundary is quarantine adjudication and recovery authorization: evidence-complete conflict comparison, authority-scoped resolution, append-only adjudication history, generation advance after resolution, and proof that quarantine cannot be cleared by the same worker whose terminal capture is under dispute.

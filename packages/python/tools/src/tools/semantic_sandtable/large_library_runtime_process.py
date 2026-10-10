@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Execute public ASP commands with bounded provider-process cleanup."""
 
 from __future__ import annotations
@@ -82,7 +86,6 @@ def _drain_terminated_process(
 def facade_environment(provider_timeout_ms: int) -> dict[str, str]:
     return {
         **os.environ,
-        "ASP_NO_AGENT_PLATFORM": "1",
         "ASP_PROVIDER_TIMEOUT_MS": str(provider_timeout_ms),
     }
 

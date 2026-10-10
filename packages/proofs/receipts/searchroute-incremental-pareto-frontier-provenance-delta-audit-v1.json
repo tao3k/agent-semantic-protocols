@@ -1,0 +1,103 @@
+{"sourcePath":
+ "ASPProof/SearchRouteIncrementalParetoFrontierProvenanceDelta.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates left right →\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse right left → False",
+   "theoremFamily": "strict-dominance-asymmetry",
+   "rfcClauseIds": ["IPFD-DOMINANCE", "IPFD-ORDER"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.strict_dominance_excludes_reverse_no_worse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteGraphRouterParetoCostSelection.RouteCost),\n  ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CostEquivalent left right →\n    ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates left right ∧\n      ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates right left",
+   "theoremFamily": "cost-equivalence-allows-provenance",
+   "rfcClauseIds": ["IPFD-EQUIVALENCE", "IPFD-PROVENANCE"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.cost_equivalence_excludes_strict_dominance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (Frontier : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry → Prop)\n  (candidate : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry),\n  ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.StrictFrontierAntichain Frontier →\n    ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CandidateUndominated Frontier candidate →\n      ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CandidateFresh Frontier candidate →\n        ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.StrictFrontierAntichain\n          (ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.InsertedFrontier Frontier candidate)",
+   "theoremFamily": "insert-preserves-strict-antichain",
+   "rfcClauseIds": ["IPFD-ANTICHAIN", "IPFD-INSERT"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.undominated_fresh_insertion_preserves_strict_antichain",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (Frontier Candidates : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry → Prop)\n  (candidate : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry),\n  ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.EntryParetoCovers Frontier Candidates →\n    (∀ (existing : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry),\n        Frontier existing →\n          ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates candidate.cost existing.cost ∨\n            ¬ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates candidate.cost existing.cost) →\n      ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.EntryParetoCovers\n        (ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.InsertedFrontier Frontier candidate)\n        (ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CandidatesAfterInsert Candidates candidate)",
+   "theoremFamily": "insert-preserves-coverage",
+   "rfcClauseIds": ["IPFD-COVERAGE", "IPFD-INSERT"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.insertion_preserves_pareto_coverage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (Frontier : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry → Prop)\n  (existing candidate : ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.FrontierEntry),\n  Frontier existing →\n    ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CostEquivalent existing.cost candidate.cost →\n      ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.InsertedFrontier Frontier candidate candidate ∧\n        ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.InsertedFrontier Frontier candidate existing",
+   "theoremFamily": "equal-cost-provenance-survives",
+   "rfcClauseIds": ["IPFD-EQUIVALENCE", "IPFD-INSERT"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.equal_cost_distinct_provenance_routes_survive_insertion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "have sharedCost :=\n  { graphHops := 1, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n    modelPrefixRecomputations := 0 };\nhave left := { canonicalRouteIdentity := 1, evidenceProvenanceDigest := 11, cost := sharedCost };\nhave right := { canonicalRouteIdentity := 2, evidenceProvenanceDigest := 22, cost := sharedCost };\nASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.CostEquivalent left.cost right.cost ∧\n  left.canonicalRouteIdentity < right.canonicalRouteIdentity",
+   "theoremFamily": "cost-equality-not-route-identity",
+   "rfcClauseIds": ["IPFD-IDENTITY", "IPFD-PROVENANCE"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.equal_cost_routes_can_have_distinct_canonical_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "have cheaper :=\n  { canonicalRouteIdentity := 7, evidenceProvenanceDigest := 70,\n    cost :=\n      { graphHops := 1, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n        modelPrefixRecomputations := 0 } };\nhave drifted :=\n  { canonicalRouteIdentity := 7, evidenceProvenanceDigest := 71,\n    cost :=\n      { graphHops := 2, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n        modelPrefixRecomputations := 0 } };\nASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.SameCanonicalRoute cheaper drifted ∧\n  ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates cheaper.cost drifted.cost",
+   "theoremFamily": "canonical-id-needs-cost-consistency",
+   "rfcClauseIds": ["IPFD-COUNTEREXAMPLE", "IPFD-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.canonical_identity_alone_can_hide_cost_drift",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedBytes candidateBytes removalCount frontierCapacity removalReceiptByteMaximum : Nat),\n  removalCount ≤ frontierCapacity →\n    ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.ExplicitDecisionDeltaBytes fixedBytes candidateBytes\n        removalCount removalReceiptByteMaximum ≤\n      ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.ExplicitDecisionDeltaBytes fixedBytes candidateBytes\n        frontierCapacity removalReceiptByteMaximum",
+   "theoremFamily": "explicit-delta-frontier-bound",
+   "rfcClauseIds": ["IPFD-CAPACITY", "IPFD-DELTA"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.explicit_delta_is_bounded_by_frontier_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (byteBound : Nat),\n  byteBound <\n    ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.ExplicitDecisionDeltaBytes 0 0 byteBound.succ 1",
+   "theoremFamily": "uncapped-removal-delta",
+   "rfcClauseIds": ["IPFD-COUNTEREXAMPLE", "IPFD-DELTA"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.uncapped_explicit_removals_have_no_fixed_delta_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedBytes candidateBytes firstRemovalCount secondRemovalCount removalSummaryBytes : Nat),\n  ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.SummarizedDecisionDeltaBytes fixedBytes candidateBytes\n      firstRemovalCount removalSummaryBytes =\n    ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.SummarizedDecisionDeltaBytes fixedBytes candidateBytes\n      secondRemovalCount removalSummaryBytes",
+   "theoremFamily": "summary-delta-constant",
+   "rfcClauseIds": ["IPFD-DELTA", "IPFD-SUMMARY"],
+   "name":
+   "ASPProof.SearchRouteIncrementalParetoFrontierProvenanceDelta.summarized_delta_is_independent_of_removal_count",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 10,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 0}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Focused ASP graph turbo tests."""
 
 from __future__ import annotations
@@ -57,7 +61,7 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     assert "\nomit=code,full-score-vector,full-graph\n" in compact
     assert "\navoid=raw-read,repeat-owner,broad-lexical,manual-window-scan\n" in compact
     assert (
-        "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo\n"
+        "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-python-graphs\n"
         in compact
     )
     assert (

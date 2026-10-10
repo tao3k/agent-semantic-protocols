@@ -1,0 +1,325 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+schema_id = "agent.semantic-protocols.live-corpus-scheme-scenario-suite"
+schema_version = "1"
+lock_path = "benchmarks/large-library-runtime-corpora.json"
+resident_sample_count = 128
+sequential_sample_count = 10
+concurrent_sample_count = 32
+failure_injections = ["cancel-before-terminal", "bounded-mailbox-saturation", "stale-content-binding"]
+required_languages = ["gerbil-scheme", "julia", "md", "org", "python", "rust", "typescript"]
+
+[client_protocol]
+protocol_id = "agent.semantic-protocols.client"
+protocol_version = "1"
+transport = "grpc-tokio-streams"
+workspace_scheduling = "tokio-join-set"
+session_policy = "one-initialize-per-session"
+phases = ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"]
+required_telemetry_events = ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"]
+ready_effects = ["mpsc", "oneshot", "cancel", "response"]
+forbidden_ready_effects = ["process", "filesystem", "dbWrite", "generationMutation", "providerActivation", "controlPoll"]
+applies_to_case_count = 17
+maximum_resident_micros = 1000
+non_ready_dispatch_count = 0
+residual_task_count = 0
+p50_maximum_micros = 250
+p99_maximum_micros = 700
+max_maximum_micros = 1000
+
+[[cache_states]]
+state = "cold-build"
+prepare_action = "new-isolated-workspace-generation"
+mutation_scope = "benchmark-workspace-generation"
+sample_count = 1
+
+[[cache_states]]
+state = "cold-load"
+prepare_action = "evict-resident-generation-only"
+mutation_scope = "benchmark-workspace-generation"
+sample_count = 10
+
+[[cache_states]]
+state = "warm-read"
+prepare_action = "reuse-exact-resident-generation"
+mutation_scope = "none"
+sample_count = 128
+
+[[cache_states]]
+state = "released"
+prepare_action = "release-exact-benchmark-generation"
+mutation_scope = "benchmark-workspace-generation"
+sample_count = 1
+
+[[cases]]
+case_id = "gerbil-scheme.gerbil.core"
+resource_id = "gerbil-scheme.gerbil"
+scenario_id = "gerbil-scheme.gerbil-intent-matrix"
+language_id = "gerbil-scheme"
+provider_id = "asp-gerbil-scheme"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language gerbil-scheme)) (syntax gerbil-scheme "(_) @item"))'''
+zero_match_search = '''(search (producers (language gerbil-scheme)) (rg "-n" "-F" "asp_live_corpus_zero_match_gerbil_7c02"))'''
+source_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language gerbil-scheme)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "julia.dataframes.core"
+resource_id = "julia.dataframes"
+scenario_id = "julia.dataframes-intent-matrix"
+language_id = "julia"
+provider_id = "asp-julia"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language julia)) (syntax julia "(_) @item"))'''
+zero_match_search = '''(search (producers (language julia)) (rg "-n" "-F" "asp_live_corpus_zero_match_dataframes_92a1"))'''
+source_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "julia.flux.core"
+resource_id = "julia.flux"
+scenario_id = "julia.flux-intent-matrix"
+language_id = "julia"
+provider_id = "asp-julia"
+scenario_classes = ["regex-truth", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language julia)) (rg "-n" "-F" "-e" "Flux" "-e" "Chain"))'''
+zero_match_search = '''(search (producers (language julia)) (rg "-n" "-F" "asp_live_corpus_zero_match_flux_ee31"))'''
+source_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "julia.makie.core"
+resource_id = "julia.makie"
+scenario_id = "julia.makie-intent-matrix"
+language_id = "julia"
+provider_id = "asp-julia"
+scenario_classes = ["regex-truth", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language julia)) (rg "-n" "-F" "-e" "Figure" "-e" "plot"))'''
+zero_match_search = '''(search (producers (language julia)) (rg "-n" "-F" "asp_live_corpus_zero_match_makie_3ba9"))'''
+source_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language julia)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "md.mdn-content.core"
+resource_id = "md.mdn-content"
+scenario_id = "md.mdn-content-intent-matrix"
+language_id = "md"
+provider_id = "asp-md"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (documents md)) (syntax md "(_) @item"))'''
+zero_match_search = '''(search (producers (documents md)) (rg "-n" "-F" "asp_live_corpus_zero_match_mdn_77dc"))'''
+source_query = '''(query (producers (documents md)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (documents md)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "org.worg.core"
+resource_id = "org.worg"
+scenario_id = "org.worg-intent-matrix"
+language_id = "org"
+provider_id = "asp-org"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (documents org)) (syntax org "(headline) @item"))'''
+zero_match_search = '''(search (producers (documents org)) (rg "-n" "-F" "asp_live_corpus_zero_match_worg_5f11"))'''
+source_query = '''(query (producers (documents org)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (documents org)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "python.fastapi.core"
+resource_id = "python.fastapi"
+scenario_id = "python.fastapi-intent-matrix"
+language_id = "python"
+provider_id = "asp-python"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language python)) (syntax python "(_) @item"))'''
+zero_match_search = '''(search (producers (language python)) (rg "-n" "-F" "asp_live_corpus_zero_match_fastapi_d197"))'''
+source_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "python.pandas.core"
+resource_id = "python.pandas"
+scenario_id = "python.pandas-intent-matrix"
+language_id = "python"
+provider_id = "asp-python"
+scenario_classes = ["ranked-text", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language python)) (tantivy "title:\"DataFrame Series\"^2 OR body:\"DataFrame Series\""))'''
+zero_match_search = '''(search (producers (language python)) (rg "-n" "-F" "asp_live_corpus_zero_match_pandas_a603"))'''
+source_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "python.rich.core"
+resource_id = "python.rich"
+scenario_id = "python.rich-intent-matrix"
+language_id = "python"
+provider_id = "asp-python"
+scenario_classes = ["ranked-text", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language python)) (tantivy "title:\"Console RenderableType\"^2 OR body:\"Console RenderableType\""))'''
+zero_match_search = '''(search (producers (language python)) (rg "-n" "-F" "asp_live_corpus_zero_match_rich_4e8d"))'''
+source_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language python)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "rust.tokio.core"
+resource_id = "rust.tokio"
+scenario_id = "rust.tokio-intent-matrix"
+language_id = "rust"
+provider_id = "asp-rust"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language rust)) (syntax rust "(function_item) @item"))'''
+zero_match_search = '''(search (producers (language rust)) (rg "-n" "-F" "asp_live_corpus_zero_match_tokio_b2ca"))'''
+source_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "rust.bytes.core"
+resource_id = "rust.bytes"
+scenario_id = "rust.bytes-intent-matrix"
+language_id = "rust"
+provider_id = "asp-rust"
+scenario_classes = ["topology-membership", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language rust)) (topology (owners (kind file) (extension "rs") (path-prefix "src/"))))'''
+zero_match_search = '''(search (producers (language rust)) (rg "-n" "-F" "asp_live_corpus_zero_match_bytes_1ad4"))'''
+source_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "rust.ripgrep.core"
+resource_id = "rust.ripgrep"
+scenario_id = "rust.ignore-intent-matrix"
+language_id = "rust"
+provider_id = "asp-rust"
+scenario_classes = ["explicit-conjunction", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language rust)) (intersect (rg "-n" "-F" "RegexMatcher") (tantivy "title:\"RegexMatcher search\"^2 OR body:\"RegexMatcher search\"")))'''
+zero_match_search = '''(search (producers (language rust)) (rg "-n" "-F" "asp_live_corpus_zero_match_ripgrep_995b"))'''
+source_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language rust)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "typescript.compiler.core"
+resource_id = "typescript.compiler"
+scenario_id = "typescript.typescript-intent-matrix"
+language_id = "typescript"
+provider_id = "asp-typescript"
+scenario_classes = ["structural-syntax", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language typescript)) (syntax typescript "(_) @item"))'''
+zero_match_search = '''(search (producers (language typescript)) (rg "-n" "-F" "asp_live_corpus_zero_match_typescript_a77e"))'''
+source_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "typescript.effect.core"
+resource_id = "typescript.effect"
+scenario_id = "typescript.effect-claude-concurrency-flow"
+language_id = "typescript"
+provider_id = "asp-typescript"
+scenario_classes = ["ranked-text", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language typescript)) (tantivy "title:\"Effect Layer\"^2 OR body:\"Effect Layer\""))'''
+zero_match_search = '''(search (producers (language typescript)) (rg "-n" "-F" "asp_live_corpus_zero_match_effect_124f"))'''
+source_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "typescript.playwright.core"
+resource_id = "typescript.playwright"
+scenario_id = "typescript.playwright-intent-matrix"
+language_id = "typescript"
+provider_id = "asp-typescript"
+scenario_classes = ["regex-truth", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language typescript)) (rg "-n" "-F" "Page"))'''
+zero_match_search = '''(search (producers (language typescript)) (rg "-n" "-F" "asp_live_corpus_zero_match_playwright_c341"))'''
+source_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "typescript.vite.core"
+resource_id = "typescript.vite"
+scenario_id = "typescript.vite-intent-matrix"
+language_id = "typescript"
+provider_id = "asp-typescript"
+scenario_classes = ["regex-truth", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language typescript)) (rg "-n" "-F" "defineConfig"))'''
+zero_match_search = '''(search (producers (language typescript)) (rg "-n" "-F" "asp_live_corpus_zero_match_vite_02f8"))'''
+source_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''
+
+[[cases]]
+case_id = "typescript.vue.core"
+resource_id = "typescript.vue"
+scenario_id = "typescript.vue-runtime-scheduler-real-trigger-flow"
+language_id = "typescript"
+provider_id = "asp-typescript"
+scenario_classes = ["ranked-text", "exact-parser-owner", "zero-match"]
+minimum_candidates = 1
+maximum_search_micros = 500000
+maximum_resident_query_micros = 1000
+required_telemetry_events = ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"]
+search = '''(search (producers (language typescript)) (tantivy "title:\"createApp Component\"^2 OR body:\"createApp Component\""))'''
+zero_match_search = '''(search (producers (language typescript)) (rg "-n" "-F" "asp_live_corpus_zero_match_vue_889a"))'''
+source_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection source) (output json)))'''
+callable_skeleton_query = '''(query (producers (language typescript)) (select (selectors {{selector}}) (projection callable-skeleton) (output json)))'''

@@ -1,17 +1,97 @@
-//! EvidenceGraph node ranking policy for graph-route seeds.
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! EvidenceGraph node ranking policy for admitted graph entry nodes.
 
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 
+macro_rules! evidence_graph_rank_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(
+            Clone,
+            Debug,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            serde::Deserialize,
+            serde::Serialize,
+        )]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl From<&String> for $name {
+            fn from(value: &String) -> Self {
+                Self(value.clone())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+    };
+}
+
+evidence_graph_rank_text!(EvidenceGraphNodeId);
+evidence_graph_rank_text!(EvidenceGraphNodeKind);
+evidence_graph_rank_text!(EvidenceGraphNodeLabel);
+evidence_graph_rank_text!(EvidenceGraphNodePath);
+evidence_graph_rank_text!(EvidenceGraphNodeSelector);
+evidence_graph_rank_text!(EvidenceGraphNodeQueryKey);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvidenceGraphRankNode {
     pub ordinal: usize,
-    pub id: String,
-    pub kind: String,
-    pub label: String,
-    pub path: Option<String>,
-    pub selector: Option<String>,
-    pub query_keys: Vec<String>,
+    pub id: EvidenceGraphNodeId,
+    pub kind: EvidenceGraphNodeKind,
+    pub label: EvidenceGraphNodeLabel,
+    pub path: Option<EvidenceGraphNodePath>,
+    pub selector: Option<EvidenceGraphNodeSelector>,
+    pub query_keys: Vec<EvidenceGraphNodeQueryKey>,
     pub outgoing_edge_count: usize,
 }
 

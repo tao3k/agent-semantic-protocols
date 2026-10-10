@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/global-resident-data.v1.schema.json",
+  "title": "Global ASP resident data transport",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "transportContractDigest",
+        "ownerEpoch",
+        "bindingToken",
+        "workspaceIdentity",
+        "operation",
+        "surface",
+        "payload"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.global-resident-data-request.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bindingToken": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceIdentity": {
+          "$ref": "https://agent-semantic-protocols.local/schemas/workspace-reference.v1.schema.json"
+        },
+        "operation": {
+          "enum": [
+            "search",
+            "query",
+            "graph",
+            "source-index-read",
+            "source-index-write",
+            "provider-request"
+          ]
+        },
+        "surface": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/programmingLanguageSurface"
+            },
+            {
+              "$ref": "#/$defs/documentSurface"
+            }
+          ]
+        },
+        "generationEvidence": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "deadlineUnixNanos": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    "programmingLanguageSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "languageId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "programming-language"
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "documentSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "documentFormat",
+        "gitScopeDigest"
+      ],
+      "properties": {
+        "kind": {
+          "const": "document"
+        },
+        "documentFormat": {
+          "enum": [
+            "org",
+            "md"
+          ]
+        },
+        "gitScopeDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "transportContractDigest",
+        "workspaceIdentity",
+        "state",
+        "workspaceAdmission",
+        "payload"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.global-resident-data-receipt.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "workspaceIdentity": {
+          "$ref": "https://agent-semantic-protocols.local/schemas/workspace-reference.v1.schema.json"
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "cancelled",
+            "rejected",
+            "degraded"
+          ]
+        },
+        "workspaceAdmission": {
+          "enum": [
+            "reused",
+            "admitted"
+          ]
+        },
+        "phaseReceipt": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

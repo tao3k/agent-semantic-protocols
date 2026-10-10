@@ -1,6 +1,9 @@
-use asp_rust_project_harness_policy::{
-    asp_rust_project_harness_scenario, asp_rust_project_harness_scenario_package,
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use asp_rust_project_harness_policy::asp_rust_project_harness_scenario;
+use asp_rust_project_harness_policy::asp_rust_project_harness_scenario_package;
 
 #[test]
 fn scenario_macro_packages_custom_scenario_data() {
@@ -31,7 +34,7 @@ fn scenario_macro_packages_custom_scenario_data() {
 fn scenario_package_macro_groups_custom_scenarios() {
     let scenario = asp_rust_project_harness_scenario! {
         name: "owner-items-frontier",
-        package: "agent-semantic-protocol",
+        package: "agent-semantic-client",
         description: "owner-items frontier is available before direct source reads",
         fixture_root: "tests/unit/scenarios/owner_items_frontier",
         tags: ["owner-items"],
@@ -43,11 +46,11 @@ fn scenario_package_macro_groups_custom_scenarios() {
         ],
     };
     let package = asp_rust_project_harness_scenario_package! {
-        package: "agent-semantic-protocol",
+        package: "agent-semantic-client",
         scenarios: [scenario],
     };
 
-    assert_eq!(package.package_name, "agent-semantic-protocol");
+    assert_eq!(package.package_name, "agent-semantic-client");
     assert_eq!(package.scenarios.len(), 1);
     assert_eq!(package.scenarios[0].name, "owner-items-frontier");
 }

@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-command.v1.schema.json",
+  "title": "ASP Semantic Command v1",
+  "description": "Typed semantic projection of one canonical ASP command after generic shell and wrapper normalization.",
+  "$ref": "#/$defs/semanticCommand",
+  "$defs": {
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "typedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^(?:blake3:)?[a-f0-9]{64}$"
+    },
+    "canonicalSelector": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
+    },
+    "opaqueToken": {
+      "type": "string",
+      "minLength": 75,
+      "maxLength": 75,
+      "pattern": "^capability\\.[0-9a-f]{64}$"
+    },
+    "audience": {
+      "enum": ["main-agent", "resident", "capability-runtime", "authorized-operator"]
+    },
+    "commandKind": {
+      "enum": [
+        "search-loop",
+        "exact-query",
+        "internal-action",
+        "maintenance",
+        "invalid"
+      ]
+    },
+    "dispatchClass": {
+      "enum": [
+        "resident-dispatch",
+        "resident-terminal",
+        "direct",
+        "internal-capability",
+        "maintenance",
+        "invalid"
+      ]
+    },
+    "exactness": {
+      "enum": ["not-applicable", "canonical-item"]
+    },
+    "semanticCommand": {
+      "oneOf": [
+        { "$ref": "#/$defs/searchLoopCommand" },
+        { "$ref": "#/$defs/exactQuery" },
+        { "$ref": "#/$defs/internalAction" },
+        { "$ref": "#/$defs/maintenance" },
+        { "$ref": "#/$defs/invalidCommand" }
+      ]
+    },
+    "searchLoopCommand": {
+      "oneOf": [
+        { "$ref": "#/$defs/searchLoopOpen" },
+        { "$ref": "#/$defs/searchLoopAdvance" },
+        { "$ref": "#/$defs/searchLoopPoll" },
+        { "$ref": "#/$defs/searchLoopReceipt" }
+      ]
+    },
+    "commandBase": {
+      "type": "object",
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.semantic-command"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^asp\\.[a-z][a-z0-9.-]+\\.v1$"
+        },
+        "kind": {
+          "$ref": "#/$defs/commandKind"
+        },
+        "audience": {
+          "$ref": "#/$defs/audience"
+        },
+        "dispatchClass": {
+          "$ref": "#/$defs/dispatchClass"
+        },
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "exactness": {
+          "$ref": "#/$defs/exactness"
+        }
+      },
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "commandId",
+        "kind",
+        "audience",
+        "dispatchClass",
+        "exactness"
+      ]
+    },
+    "searchLoopOpen": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "languageId",
+            "exactness",
+            "dispatchRef"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.search.loop.open.v1" },
+            "kind": { "const": "search-loop" },
+            "audience": { "const": "resident" },
+            "dispatchClass": { "const": "resident-dispatch" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "dispatchRef": { "$ref": "#/$defs/typedId" }
+          }
+        }
+      ]
+    },
+    "searchLoopAdvance": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "languageId",
+            "exactness",
+            "loopId",
+            "panelId",
+            "choiceId",
+            "choiceToken"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.search.loop.advance.v1" },
+            "kind": { "const": "search-loop" },
+            "audience": { "const": "resident" },
+            "dispatchClass": { "const": "resident-terminal" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "loopId": { "$ref": "#/$defs/typedId" },
+            "panelId": { "$ref": "#/$defs/typedId" },
+            "choiceId": { "$ref": "#/$defs/typedId" },
+            "choiceToken": { "$ref": "#/$defs/opaqueToken" }
+          }
+        }
+      ]
+    },
+    "searchLoopPoll": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "languageId",
+            "exactness",
+            "loopId",
+            "batchId",
+            "pollToken"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.search.loop.poll.v1" },
+            "kind": { "const": "search-loop" },
+            "audience": { "const": "resident" },
+            "dispatchClass": { "const": "resident-terminal" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "loopId": { "$ref": "#/$defs/typedId" },
+            "batchId": { "$ref": "#/$defs/typedId" },
+            "pollToken": { "$ref": "#/$defs/opaqueToken" }
+          }
+        }
+      ]
+    },
+    "searchLoopReceipt": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "languageId",
+            "exactness",
+            "loopId",
+            "receiptToken"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.search.loop.receipt.v1" },
+            "kind": { "const": "search-loop" },
+            "audience": { "const": "resident" },
+            "dispatchClass": { "const": "resident-terminal" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "loopId": { "$ref": "#/$defs/typedId" },
+            "receiptToken": { "$ref": "#/$defs/opaqueToken" }
+          }
+        }
+      ]
+    },
+    "exactQuery": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "languageId",
+            "exactness",
+            "selector",
+            "projection",
+            "snapshotEnvelopeRef"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.query.exact.v1" },
+            "kind": { "const": "exact-query" },
+            "audience": {
+              "enum": ["main-agent", "resident"]
+            },
+            "dispatchClass": { "const": "direct" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "canonical-item" },
+            "selector": { "$ref": "#/$defs/canonicalSelector" },
+            "projection": {
+              "enum": ["code", "skeleton", "names", "verbatim"]
+            },
+            "snapshotEnvelopeRef": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "internalAction": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "exactness",
+            "actionRef",
+            "capabilityToken"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.internal.action.execute.v1" },
+            "kind": { "const": "internal-action" },
+            "audience": { "const": "capability-runtime" },
+            "dispatchClass": { "const": "internal-capability" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "actionRef": { "$ref": "#/$defs/typedId" },
+            "capabilityToken": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    },
+    "maintenance": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "exactness",
+            "operation"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.maintenance.v1" },
+            "kind": { "const": "maintenance" },
+            "audience": { "const": "authorized-operator" },
+            "dispatchClass": { "const": "maintenance" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "operation": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9.-]*$"
+            }
+          }
+        }
+      ]
+    },
+    "invalidCommand": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaId",
+            "schemaVersion",
+            "commandId",
+            "kind",
+            "audience",
+            "dispatchClass",
+            "exactness",
+            "reasonKind"
+          ],
+          "properties": {
+            "schemaId": {
+              "const": "agent.semantic-protocols.semantic-command"
+            },
+            "schemaVersion": { "const": "1" },
+            "commandId": { "const": "asp.invalid.v1" },
+            "kind": { "const": "invalid" },
+            "audience": {
+              "enum": [
+                "main-agent",
+                "resident",
+                "capability-runtime",
+                "authorized-operator"
+              ]
+            },
+            "dispatchClass": { "const": "invalid" },
+            "languageId": { "$ref": "#/$defs/languageId" },
+            "exactness": { "const": "not-applicable" },
+            "reasonKind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

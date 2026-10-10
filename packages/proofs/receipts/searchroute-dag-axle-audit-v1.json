@@ -1,0 +1,25 @@
+{
+  "auditSha256": "2069d03bafaa0fa336ad01859dba0e52f28c5a3c722f319527bd18056a4d9a0e",
+  "axiomDependentDeclarationCount": 3,
+  "axiomFreeDeclarationCount": 4,
+  "axiomInventory": [
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 7,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SRD-CANDIDATE-COMPLETE",
+    "ASP-RFC-10.05-SRD-GLOBAL-OPTIMALITY",
+    "ASP-RFC-10.05-SRD-PATH-VALIDATION",
+    "ASP-RFC-10.05-SRD-RANKED-DAG",
+    "ASP-RFC-10.05-SRD-SEPARATE-HOPS"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "candidate-completeness",
+    "counterexample",
+    "graph-router",
+    "ranked-dag"
+  ]
+}

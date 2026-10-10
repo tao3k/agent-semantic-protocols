@@ -1,0 +1,67 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (nodeId candidate : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.NodeId)\n  (rest : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.signerSelected (nodeId :: nodeId :: rest) candidate =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.signerSelected (nodeId :: rest) candidate",
+   "theoremFamily": "boolean-signer-deduplication",
+   "rfcClauseIds": ["CRCI-DUPLICATE", "CRCI-SELECT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.signer_selection_ignores_duplicate_head",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (members : List ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry)\n  (nodeId : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.NodeId)\n  (rest : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.projectedVotingWeight members\n      (nodeId :: nodeId :: rest) =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.projectedVotingWeight members (nodeId :: rest)",
+   "theoremFamily": "duplicate-safe-realized-weight",
+   "rfcClauseIds": ["CRCI-DUPLICATE", "CRCI-PROJECTION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.projected_weight_ignores_duplicate_signer_head",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (members : List ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry)\n  (nodeId : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.NodeId)\n  (leftRest rightSigners : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersectionVotingWeightForMembers members\n      (nodeId :: nodeId :: leftRest) rightSigners =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersectionVotingWeightForMembers members\n      (nodeId :: leftRest) rightSigners",
+   "theoremFamily": "duplicate-safe-intersection-weight",
+   "rfcClauseIds": ["CRCI-DUPLICATE", "CRCI-INTERSECTION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersection_weight_ignores_duplicate_left_signer_head",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (members : List ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry)\n  (leftSigners rightSigners : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersectionVotingWeightForMembers members\n      leftSigners rightSigners ≤\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeightForMembers members",
+   "theoremFamily": "intersection-total-bound",
+   "rfcClauseIds": ["CRCI-BOUND", "CRCI-INTERSECTION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersection_weight_is_bounded_by_total",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (members : List ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry)\n  (leftSigners rightSigners : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.projectedVotingWeight members leftSigners +\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.projectedVotingWeight members rightSigners ≤\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeightForMembers members +\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersectionVotingWeightForMembers members\n        leftSigners rightSigners",
+   "theoremFamily": "finite-membership-inclusion-exclusion",
+   "rfcClauseIds": ["CRCI-ACCOUNTING", "CRCI-BOUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.concrete_intersection_satisfies_inclusion_exclusion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (leftSigners rightSigners : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.SignerSet),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.concretePairWeightAccounting policy leftSigners\n        rightSigners).intersectionWeight =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.intersectionVotingWeight policy leftSigners\n      rightSigners",
+   "theoremFamily": "constructible-pair-accounting",
+   "rfcClauseIds": ["CRCI-ACCOUNTING", "CRCI-ROUTER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.concrete_pair_accounting_requires_no_external_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

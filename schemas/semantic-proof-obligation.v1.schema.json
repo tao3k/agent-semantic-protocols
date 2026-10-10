@@ -151,17 +151,17 @@
       "required": ["illegalBranches", "legalBranches"],
       "properties": {
         "illegalBranches": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/branch"
-          }
+          "$ref": "#/$defs/branchList"
         },
         "legalBranches": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/branch"
-          }
+          "$ref": "#/$defs/branchList"
         }
+      }
+    },
+    "branchList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/branch"
       }
     },
     "branch": {

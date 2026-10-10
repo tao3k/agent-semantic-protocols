@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CodeQL and acceptance checks for RFC 011."""
 
 from .helpers import RFC_PATH, missing_terms
@@ -56,7 +60,8 @@ def test_tree_sitter_query_rfc_defines_closure_gates() -> None:
         "tree-sitter-compatible native projection",
         "=executionBackends=",
         "A provider may list =codeql= only when a real CodeQL-backed executor emits",
-        "RFC 012 owns the native relation catalog",
+        "an active RFC owns the native relation",
+        "does not admit a CodeQL command surface by itself",
         "pattern graph",
         "multi-capture",
         "field structural selector",

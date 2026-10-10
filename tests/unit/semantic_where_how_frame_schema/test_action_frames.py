@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 import copy
 import json
 from pathlib import Path
@@ -23,7 +27,7 @@ def valid_how_frame():
             "frameId": "search-1",
             "actionKind": "search",
             "intent": "locate source-index owner evidence",
-            "command": "asp rust search owner src/lib.rs items --query fixture --workspace . --view seeds",
+            "command": "asp search playbook --language rust --rg -n -e fixture src/lib.rs --tantivy term fixture",
             "evidence": [{"id": "ev-search", "kind": "source-index"}],
             "stopCondition": "owner selector evidence found",
             "avoid": ["line-range-selector"],

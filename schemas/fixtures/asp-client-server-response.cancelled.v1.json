@@ -1,0 +1,25 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-client-server-response",
+  "schemaVersion": "1",
+  "operationId": "owner-items-1",
+  "languageId": "rust",
+  "providerId": "asp-rust",
+  "workspaceIdentity": "workspace-fixture",
+  "generationDigest": "blake3-256:generation-fixture",
+  "rootDigest": "blake3-256:root-fixture",
+  "providerCatalogDigest": "blake3-256:catalog-fixture",
+  "transport": "http-json",
+  "operation": "owner-items",
+  "projectionKind": "owner-items",
+  "requestPayloadDigest": "blake3-256:owner-items-payload",
+  "terminalStatus": "cancelled",
+  "cacheState": "not-cacheable",
+  "overlayIdentity": null,
+  "elapsedMicros": 350,
+  "resultDigest": "blake3-256:cancelled-result",
+  "result": null,
+  "error": {
+    "reasonKind": "operation-cancelled",
+    "message": "operation was cancelled"
+  }
+}
