@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-frame.schema.json",
+  "title": "ASP Client Protocol Frame",
+  "oneOf": [
+    { "$ref": "#/$defs/initialize" },
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/cancel" },
+    { "$ref": "#/$defs/shutdown" },
+    { "$ref": "#/$defs/exit" },
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/event" }
+  ],
+  "$defs": {
+    "clientInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "base": {
+      "type": "object",
+      "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId"],
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.client.frame" },
+        "schemaVersion": { "const": "1" },
+        "protocolId": { "const": "agent.semantic-protocols.client" },
+        "protocolVersion": { "const": "1" },
+        "kind": { "type": "string" },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "traceContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["traceparent"],
+          "properties": {
+            "traceparent": { "type": "string", "minLength": 1 },
+            "tracestate": { "type": "string" }
+          }
+        }
+      }
+    },
+    "initialize": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId", "clientInfo", "capabilities"],
+          "properties": {
+            "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
+            "kind": { "const": "initialize" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
+            "requestId": { "type": "string", "minLength": 1 },
+            "clientInfo": { "$ref": "#/$defs/clientInfo" },
+            "capabilities": { "type": "object" }
+          }
+        }
+      ]
+    },
+    "request": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId", "catalogGeneration", "workspaceGeneration", "method", "params"],
+          "properties": {
+            "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
+            "kind": { "const": "request" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
+            "requestId": { "type": "string", "minLength": 1 },
+            "catalogGeneration": { "type": "string", "minLength": 1 },
+            "workspaceGeneration": { "type": "string", "minLength": 1 },
+            "method": { "type": "string", "minLength": 1 },
+            "params": {},
+            "clientTimingWitness": { "$ref": "runtime-search-client-timing-witness.v1.schema.json" }
+          }
+        }
+      ]
+    },
+    "cancel": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "projectId", "workspaceId", "requestId"],
+          "properties": {
+            "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
+            "kind": { "const": "cancel" }, "sessionId": {}, "projectId": {}, "workspaceId": {}, "traceContext": {},
+            "requestId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "shutdown": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["requestId"],
+          "properties": {
+            "kind": { "const": "shutdown" },
+            "requestId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "exit": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "type": "object", "properties": { "kind": { "const": "exit" } } }
+      ]
+    },
+    "response": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["requestId", "outcome"],
+          "properties": {
+            "kind": { "const": "response" },
+            "requestId": { "type": "string", "minLength": 1 },
+            "outcome": { "enum": ["ready", "error", "cancelled", "stale-generation"] },
+            "result": {},
+            "error": { "type": "object" },
+            "catalog": { "$ref": "asp-client-protocol-catalog.schema.json" }
+          }
+        }
+      ]
+    },
+    "event": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["eventId", "event", "payload"],
+          "properties": {
+            "kind": { "const": "event" },
+            "eventId": { "type": "string", "minLength": 1 },
+            "event": { "type": "string", "minLength": 1 },
+            "payload": {}
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate Python tree-sitter-compatible query corpus fixtures."""
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ REPO_ROOT = repo_root()
 GRAMMAR_ROOT = (
     REPO_ROOT
     / "languages"
-    / "python-lang-project-harness"
+    / "asp-python"
     / "tree-sitter"
     / "tree-sitter-python"
 )

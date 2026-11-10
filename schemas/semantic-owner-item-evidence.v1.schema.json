@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.semantic-owner-item-evidence.v1",
+  "title": "Semantic owner-item evidence",
+  "type": "object",
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "language",
+    "owner",
+    "items",
+    "edges"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-owner-item-evidence.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "edges": {
+      "type": "object"
+    },
+    "admission": {
+      "$ref": "#/$defs/admission"
+    }
+  },
+  "$defs": {
+    "admission": {
+      "type": "object",
+      "required": [
+        "status",
+        "requestedLanguage"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "accepted",
+            "owner-language-mismatch"
+          ]
+        },
+        "requestedLanguage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerExtension": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "suggestedLanguage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "required": [
+        "kind",
+        "name",
+        "proof"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proof": {
+          "type": "object"
+        },
+        "readSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enclosingReadSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "graphOnly": {
+          "const": true
+        },
+        "next": {
+          "type": "object"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "readSelector"
+          ]
+        },
+        {
+          "required": [
+            "evidenceSelector",
+            "graphOnly"
+          ]
+        }
+      ]
+    }
+  }
+}

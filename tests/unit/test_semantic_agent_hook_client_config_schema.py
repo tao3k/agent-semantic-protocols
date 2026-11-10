@@ -1,12 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for semantic agent hook client configuration."""
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from tests.unit.schema_validation import schema_validator_for
+from tests.unit.semantic_search_action_fixture import complete_search_playbook_argv
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -19,8 +23,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
             / "schemas"
             / "semantic-agent-hook-client-config.v1.schema.json"
         )
-        with schema_path.open("r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, config: dict) -> list[str]:
         return [error.message for error in self.validator.iter_errors(config)]
@@ -49,21 +52,16 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                     },
                     "routes": [
                         {
-                            "providerId": "rs-harness",
+                            "providerId": "asp-rust",
                             "languageId": "rust",
-                            "binary": "rs-harness",
-                            "kind": "ingest",
-                            "argv": [
-                                "rs-harness",
-                                "search",
-                                "ingest",
-                                "items",
-                                "tests",
-                                "--workspace",
-                                ".",
-                                "--view",
-                                "seeds",
-                            ],
+                            "binary": "asp-rust",
+                            "kind": "playbook",
+                            "argv": complete_search_playbook_argv(
+                                language="rust",
+                                term="raw source search",
+                                path_hint="*.rs",
+                                globs=("*.rs",),
+                            ),
                             "stdinMode": "pipe-candidates",
                         }
                     ],
@@ -78,6 +76,49 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
             self.validation_errors({"rules": [{"id": "block", "decision": "block"}]}),
             [],
         )
+
+    def test_terminal_allow_with_leading_environment_assignment_is_valid(self) -> None:
+        self.assertEqual(
+            self.validation_errors(
+                {
+                    "rules": [
+                        {
+                            "id": "allow-host-policy-passthrough",
+                            "decision": "allow",
+                            "terminal": True,
+                            "match": {
+                                "processEnvironmentAssignmentAny": ["CI_MODE=1"]
+                            },
+                        }
+                    ]
+                }
+            ),
+            [],
+        )
+
+    def test_terminal_rule_rejects_non_allow_decision(self) -> None:
+        errors = self.validation_errors(
+            {
+                "rules": [
+                    {"id": "invalid-terminal", "decision": "deny", "terminal": True}
+                ]
+            }
+        )
+        self.assertTrue(any("'allow' was expected" in error for error in errors))
+
+    def test_leading_environment_assignment_rejects_non_assignment(self) -> None:
+        errors = self.validation_errors(
+            {
+                "rules": [
+                    {
+                        "id": "invalid-assignment",
+                        "decision": "allow",
+                        "match": {"processEnvironmentAssignmentAny": ["CI_MODE"]},
+                    }
+                ]
+            }
+        )
+        self.assertTrue(any("does not match" in error for error in errors))
 
     def test_agent_org_artifacts_archive_warning_config_is_valid(self) -> None:
         config = {
@@ -160,7 +201,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                         "decision": "block",
                         "routes": [
                             {
-                                "providerId": "rs-harness",
+                                "providerId": "asp-rust",
                                 "kind": "query",
                                 "argv": [],
                             }
@@ -180,10 +221,10 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                         "decision": "block",
                         "routes": [
                             {
-                                "providerId": "rs-harness",
-                                "binary": "../rs-harness",
+                                "providerId": "asp-rust",
+                                "binary": "../asp-rust",
                                 "kind": "query",
-                                "argv": ["rs-harness"],
+                                "argv": ["asp-rust"],
                             }
                         ],
                     }

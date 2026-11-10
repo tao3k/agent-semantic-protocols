@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-owner-identity-journal.v1.schema.json",
+  "title": "Runtime Owner Identity Journal V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "epoch",
+    "baseGenerationDigest",
+    "sourceMutationId",
+    "sourceMutationDigest",
+    "previousEpochReadable",
+    "entries"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-owner-identity-journal"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "baseGenerationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "sourceMutationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceMutationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "previousEpochReadable": {
+      "type": "boolean"
+    },
+    "entries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "state"],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "state": {
+          "enum": ["present", "missing", "mutating"]
+        },
+        "contentDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "mutationId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "present"
+              }
+            }
+          },
+          "then": {
+            "required": ["contentDigest"],
+            "not": {
+              "required": ["mutationId"]
+            }
+          },
+          "else": {
+            "not": {
+              "required": ["contentDigest"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "mutating"
+              }
+            }
+          },
+          "then": {
+            "required": ["mutationId"],
+            "not": {
+              "required": ["contentDigest"]
+            }
+          },
+          "else": {
+            "not": {
+              "required": ["mutationId"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

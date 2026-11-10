@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Refresh TypeScript tree-sitter query corpus metadata."""
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ REPO_ROOT = repo_root()
 GRAMMAR_ROOT = (
     REPO_ROOT
     / "languages"
-    / "typescript-lang-project-harness"
+    / "asp-typescript"
     / "tree-sitter"
     / "tree-sitter-typescript"
 )

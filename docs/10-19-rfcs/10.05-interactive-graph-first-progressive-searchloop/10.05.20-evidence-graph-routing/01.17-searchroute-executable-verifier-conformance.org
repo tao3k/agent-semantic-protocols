@@ -1,0 +1,265 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute executable verifier conformance
+#+property: rfc_layer 10.05.20-evidence-graph-routing
+
+* Status and authority
+
+This RFC is canonical for proving that a cryptographic transfer receipt was
+verified through an executable verifier path rather than accepted from logical
+fields or digests alone.
+
+It refines
+[[file:01.16-searchroute-cryptographic-transfer-receipt-binding.org][cryptographic transfer-receipt binding]].
+It defines runtime evidence obligations without selecting a provider language
+or implementing a verifier.
+
+The proof and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteExecutableVerifierConformance.lean][SearchRouteExecutableVerifierConformance.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteExecutableVerifierConformance.lean][Lean JSON audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-executable-verifier-conformance-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-executable-verifier-conformance-axle-audit-v1.json][AXLE admission receipt]]
+
+* Lean-discovered execution gap
+
+The abstract =verify : SignatureEnvelope -> Prop= boundary is intentionally
+insufficient to prove that a real executable was invoked.
+
+The following evidence is not executable closure:
+
+- matching payload or statement digest;
+- a resolved verifier manifest;
+- a resolved binary path;
+- a zero exit code;
+- a decoded accepted response;
+- replay performed by the same executor.
+
+Each item is a useful stage receipt. None can replace the complete chain.
+
+Lean constructs an explicit receipt whose digest matches while the verifier is
+unresolved. It also constructs an invocation and accepted decode whose replay
+uses the same executor. Both prefixes are rejected by the complete predicate.
+
+* Six-stage conformance chain
+
+Executable verification requires all six stages:
+
+1. canonical statement serialization;
+2. exact key-registry resolution;
+3. exact verifier binary resolution;
+4. bound verifier invocation;
+5. response decoding and accepted decision;
+6. independent replay by a different executor.
+
+Every stage binds the output identity of its predecessor. A later green stage
+does not repair a missing or mismatched earlier stage.
+
+* Normative clauses
+
+** ASP-RFC-10.05-EVFC-STAGE-CLOSURE
+
+Executable verification MUST contain all six stage receipts. Admission is the
+conjunction of the stage predicates, not the last reported status.
+
+** ASP-RFC-10.05-EVFC-CANONICAL-SERIALIZATION
+
+The statement receipt MUST bind every signature-envelope field, the canonical
+serializer digest, statement-schema digest, and serialized statement-bytes
+digest. =canonical= MUST be true.
+
+A payload digest without canonical statement serialization is insufficient.
+
+** ASP-RFC-10.05-EVFC-KEY-REGISTRY
+
+Key resolution MUST bind the exact key-registry snapshot, authority digest, key
+epoch, algorithm digest, and public-key digest. Resolution MUST succeed and the
+resolved key MUST NOT be revoked.
+
+Resolution from another registry snapshot rejects verification.
+
+** ASP-RFC-10.05-EVFC-VERIFIER-RESOLUTION
+
+Verifier resolution MUST bind the verifier identity, executable binary digest,
+and signature-algorithm digest. The executable artifact MUST be resolved.
+
+A manifest or binary name without an artifact digest is not executable
+evidence.
+
+** ASP-RFC-10.05-EVFC-INVOCATION
+
+The invocation receipt MUST bind:
+
+- verifier binary digest;
+- canonical statement-bytes digest;
+- resolved public-key digest;
+- signature digest;
+- executor digest;
+- exit code;
+- raw response-bytes digest.
+
+The exit code MUST be zero. A zero exit code alone does not imply acceptance.
+
+** ASP-RFC-10.05-EVFC-DECODE
+
+The decode receipt MUST bind the raw response-bytes digest and decoder-schema
+digest. Decoding MUST succeed and the decoded decision MUST be accepted.
+
+An undecoded response or rejected decision fails closed.
+
+** ASP-RFC-10.05-EVFC-INDEPENDENT-REPLAY
+
+Independent replay MUST bind the same verifier binary, statement bytes, public
+key, signature, and accepted decision. The replay executor digest MUST differ
+from the original invocation executor digest.
+
+Repeating a claim within the same executor is not independent replay.
+
+** ASP-RFC-10.05-EVFC-PREFIX-INSUFFICIENT
+
+Digest equality, resolution, invocation, or decoding prefixes MUST NOT be
+reported as executable verification closure.
+
+Reports MUST name the highest completed stage and the first missing or
+mismatched stage.
+
+** ASP-RFC-10.05-EVFC-CHAIN-PROJECTION
+
+Every executable verification edge MUST project to a valid cryptographic
+rotation edge. An executable verification chain MUST project to the
+cryptographic chain and retain the exact registry epoch span.
+
+Runtime execution cannot repair invalid semantic identity, authority transfer,
+or registry continuity.
+
+** ASP-RFC-10.05-EVFC-GLOBAL-LIFT
+
+Only executable-chain-admitted vector coverage may lift frontier-local Pareto
+minimality to global Pareto minimality when the decision depends on an
+authority-rotation signature.
+
+* Org-Babel Typst executable mathematics
+
+#+name: executable-verifier-conformance-math
+#+begin_src typst
+#let stages = (
+  canonical-serialization: true,
+  key-resolution: true,
+  verifier-resolution: true,
+  invocation: true,
+  decode-accepted: true,
+  independent-replay: true,
+)
+
+#let prefix-only = (
+  canonical-serialization: true,
+  key-resolution: true,
+  verifier-resolution: false,
+  invocation: false,
+  decode-accepted: false,
+  independent-replay: false,
+)
+
+#let full-conformance(value) = (
+  value.canonical-serialization
+  and value.key-resolution
+  and value.verifier-resolution
+  and value.invocation
+  and value.decode-accepted
+  and value.independent-replay
+)
+
+#let invocation = (
+  binary: 305,
+  statement: 801,
+  public-key: 901,
+  signature: 7001,
+  executor: 1001,
+  response: 1101,
+)
+
+#let replay = (
+  binary: 305,
+  statement: 801,
+  public-key: 901,
+  signature: 7001,
+  executor: 1002,
+  accepted: true,
+)
+
+#let replay-bound = (
+  replay.binary == invocation.binary
+  and replay.statement == invocation.statement
+  and replay.public-key == invocation.public-key
+  and replay.signature == invocation.signature
+  and replay.executor != invocation.executor
+)
+
+#metadata((
+  schema-id: "asp.searchroute.executable-verifier-conformance.v1",
+  full-stage-closure: full-conformance(stages),
+  prefix-is-not-closure: not full-conformance(prefix-only),
+  replay-inputs-bound: replay-bound,
+)) <executable-verifier-conformance>
+
+$ "ExecutableVerified" =
+  S_"serialize"
+  and S_"key"
+  and S_"binary"
+  and S_"invoke"
+  and S_"decode"
+  and S_"replay" $
+
+$ e_"replay" != e_"invoke" $
+
+$ "DigestBound" != "ExecutableVerified" $
+#+end_src
+
+The Typst program is evaluated directly through =typst eval= on stdin.
+
+* Lean theorem correspondence
+
+| RFC obligation | Lean theorem |
+|-
+| Complete stage binding | =valid_executable_verification_binds_all_stages= |
+| Distinct replay executor | =valid_executable_verification_has_distinct_replay_executor= |
+| Canonical serialization | =noncanonical_statement_rejects_executable_verification= |
+| Key resolution | =unresolved_key_rejects_executable_verification= |
+| Registry snapshot | =wrong_registry_snapshot_rejects_executable_verification= |
+| Verifier resolution | =unresolved_verifier_rejects_executable_verification= |
+| Invocation | =failed_invocation_rejects_executable_verification= |
+| Decode | =undecoded_response_rejects_executable_verification= |
+| Accepted decision | =rejected_decision_rejects_executable_verification= |
+| Replay presence | =missing_replay_rejects_executable_verification= |
+| Replay independence | =same_executor_replay_rejects_independence= |
+| Cryptographic projection | =valid_executable_edge_is_valid_cryptographic_edge= |
+| Chain projection | =valid_executable_chain_projects_cryptographic_chain= |
+| Exact epoch span | =valid_executable_chain_exact_epoch_span= |
+| Global Pareto lift | =executable_chain_admitted_vector_coverage_lifts_global_pareto= |
+| Digest-prefix counterexample | =digest_and_resolved_prefix_do_not_prove_execution= |
+| Same-executor counterexample | =same_executor_replay_is_not_independent= |
+
+* Failure behavior
+
+The executable receipt fails closed when:
+
+- serialization is noncanonical;
+- the key is unresolved, revoked, or from another snapshot;
+- verifier identity, binary, or algorithm differs;
+- invocation inputs do not match resolved artifacts;
+- invocation fails;
+- the response cannot be decoded;
+- the decoded decision is not accepted;
+- replay is absent, mismatched, or uses the original executor.
+
+The receipt MUST preserve the stage-specific failure rather than collapse all
+failures into =verification failed=.
+
+* Explicit implementation boundary
+
+This RFC proves the dataflow and admission logic only. Provider implementation
+must still produce receipts from real process execution and independent replay.
+Fixture construction, digest equality, source inspection, or Lean compilation
+does not constitute an executable conformance receipt.

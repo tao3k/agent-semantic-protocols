@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "candidate-topology-owner-scope"
+title = "Topology materialization is candidate scoped"
+package = "agent-semantic-client-db"
+phase = "on-demand-detail-materialization"
+intent = "project parser topology only for the exact owner frontier selected by Search"
+
+[identity]
+cache_key = ["runtime-generation", "topology-source-generation", "canonical-owner-set"]
+generation_proof_is_required = true
+
+[gate]
+workspace_owner_count = 4096
+requested_owner_count = 2
+returned_owner_count = 2
+unrequested_owner_projection_count = 0
+entry_node_lookup_count = 2
+request_workspace_scan_count = 0

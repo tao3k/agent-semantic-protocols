@@ -1,0 +1,86 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n      publication proposal →\n    proposal.expectedAdmissionRevision = publication.bundle.admission.revision ∧\n      proposal.expectedPolicyRevision = policy.revision ∧\n        proposal.expectedPolicyDigest = policy.digest ∧\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.CanAcknowledgeWithLifecycle verifier\n            policy.lifecycle policy.revision publication proposal.receipt",
+   "theoremFamily": "dual-snapshot-commit-gate",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRPS-GATE", "ASP-RFC-10.05-CRPS-OBSERVATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.committable_acknowledgement_is_bound_to_current_snapshots",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme)\n  (committable :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n      publication proposal),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.commitAcknowledgement verifier scheme policy publication\n          proposal committable).admissionRevision =\n      publication.bundle.admission.revision ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.commitAcknowledgement verifier scheme policy\n            publication proposal committable).policyRevision =\n        policy.revision ∧\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.commitAcknowledgement verifier scheme policy\n              publication proposal committable).policyDigest =\n          policy.digest ∧\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.commitAcknowledgement verifier scheme policy\n                  publication proposal committable).closedBundle.obligation.phase =\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.acknowledged",
+   "theoremFamily": "snapshot-bound-closure",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-COMMIT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.committed_acknowledgement_records_snapshots_and_closes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme),\n  proposal.expectedAdmissionRevision < publication.bundle.admission.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n        publication proposal",
+   "theoremFamily": "stale-admission-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.stale_admission_snapshot_cannot_commit_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme),\n  proposal.expectedPolicyRevision < policy.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n        publication proposal",
+   "theoremFamily": "stale-policy-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.stale_policy_revision_cannot_commit_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme),\n  proposal.expectedPolicyDigest ≠ policy.digest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n        publication proposal",
+   "theoremFamily": "wrong-policy-digest-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-POLICY", "ASP-RFC-10.05-CRPS-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.wrong_policy_digest_cannot_commit_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (oldPolicy newPolicy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme),\n  proposal.expectedPolicyRevision = oldPolicy.revision →\n    oldPolicy.revision < newPolicy.revision →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme newPolicy\n          publication proposal",
+   "theoremFamily": "policy-race-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.newer_policy_snapshot_rejects_old_validation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme)\n  (publication : ASPProof.SearchRouteAdmissionRetryCacheRejoinSinkAcceptance.SinkBoundPublication Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.AcknowledgementProposal verifier scheme)\n  (observedRevision : Nat),\n  proposal.expectedAdmissionRevision = observedRevision →\n    observedRevision ≠ publication.bundle.admission.revision →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme policy\n          publication proposal",
+   "theoremFamily": "admission-race-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.changed_admission_snapshot_rejects_old_validation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.BoundPolicySnapshot scheme),\n  left.digest = right.digest → left.lifecycle = right.lifecycle",
+   "theoremFamily": "injective-policy-commitment",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPS-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.equal_bound_policy_digest_implies_equal_lifecycle",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 8,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 8,
+ "axiomDependentDeclarationCount": 0}

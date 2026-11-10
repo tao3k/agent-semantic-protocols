@@ -1,15 +1,28 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Typed Merkle frames for ASP evidence-to-repair chains.
 //!
 //! The repair-chain model turns search evidence, edit boundaries, change sets,
 //! and proof receipts into artifact roots. DB storage and render expansion stay
 //! outside this crate.
 
-use crate::identity::{
-    ArtifactChildRef, ArtifactGeneration, ArtifactHash, ArtifactJson, ArtifactKind,
-    ArtifactNodeInput, ArtifactRepoId, ArtifactRootInput, ArtifactRootRef, ArtifactScopeId,
-    ArtifactWorkspaceId, hash_node, hash_normalized_json,
-};
-use serde::{Deserialize, Serialize};
+use crate::identity::ArtifactChildRef;
+use crate::identity::ArtifactGeneration;
+use crate::identity::ArtifactHash;
+use crate::identity::ArtifactJson;
+use crate::identity::ArtifactKind;
+use crate::identity::ArtifactNodeInput;
+use crate::identity::ArtifactRepoId;
+use crate::identity::ArtifactRootInput;
+use crate::identity::ArtifactRootRef;
+use crate::identity::ArtifactScopeId;
+use crate::identity::ArtifactWorkspaceId;
+use crate::identity::hash_node;
+use crate::identity::hash_normalized_json;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Schema id for Merkle repair-chain frame nodes.
 pub const REPAIR_CHAIN_FRAME_SCHEMA_ID: &str = "semantic-artifact-repair-chain-frame";
@@ -90,6 +103,21 @@ impl RepairChainParentRef {
     }
 }
 
+/// Stable identity and generation coordinates for one repair-chain frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepairChainFrameIdentity {
+    /// Frame kind and artifact root kind.
+    pub frame_kind: RepairChainFrameKind,
+    /// Stable State Core repository identity.
+    pub repo_id: ArtifactRepoId,
+    /// Stable State Core workspace identity.
+    pub workspace_id: ArtifactWorkspaceId,
+    /// Stable scope identity.
+    pub scope_id: ArtifactScopeId,
+    /// Artifact generation identity.
+    pub generation: ArtifactGeneration,
+}
+
 /// Input for building one repair-chain Merkle frame.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,20 +145,16 @@ pub struct RepairChainFrameInput {
 impl RepairChainFrameInput {
     /// Build repair-chain frame input without optional producer/schema hashes.
     pub fn new(
-        frame_kind: RepairChainFrameKind,
-        repo_id: ArtifactRepoId,
-        workspace_id: ArtifactWorkspaceId,
-        scope_id: ArtifactScopeId,
-        generation: ArtifactGeneration,
+        identity: RepairChainFrameIdentity,
         content: ArtifactJson,
         parents: Vec<RepairChainParentRef>,
     ) -> Self {
         Self {
-            frame_kind,
-            repo_id,
-            workspace_id,
-            scope_id,
-            generation,
+            frame_kind: identity.frame_kind,
+            repo_id: identity.repo_id,
+            workspace_id: identity.workspace_id,
+            scope_id: identity.scope_id,
+            generation: identity.generation,
             producer_hash: None,
             schema_hash: None,
             content,

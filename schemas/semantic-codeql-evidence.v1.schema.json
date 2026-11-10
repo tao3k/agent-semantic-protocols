@@ -136,7 +136,7 @@
     "omissions": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/omission"
+        "$ref": "semantic-definitions.v1.schema.json#/$defs/omission"
       }
     },
     "fields": {
@@ -160,36 +160,8 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
-    "scalar": {
-      "type": [
-        "string",
-        "number",
-        "integer",
-        "boolean",
-        "null"
-      ]
-    },
     "fields": {
-      "type": "object",
-      "additionalProperties": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/scalar"
-          },
-          {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/scalar"
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/$defs/scalar"
-            }
-          }
-        ]
-      }
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/fields"
     },
     "normalizedRow": {
       "type": "object",
@@ -224,37 +196,6 @@
         },
         "location": {
           "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "omission": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "enum": [
-            "unsupported",
-            "unavailable",
-            "backend-unavailable",
-            "too-expensive",
-            "ambiguous",
-            "policy-blocked"
-          ]
-        },
-        "message": {
-          "type": "string",
-          "minLength": 1
-        },
-        "target": {
-          "type": "string",
-          "minLength": 1
         },
         "fields": {
           "$ref": "#/$defs/fields"

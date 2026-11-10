@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 id = "search-source-index-owner-item-graph-chain"
 title = "Source-index evidence projects to executable owner and item graph nodes"
 policy_ids = [

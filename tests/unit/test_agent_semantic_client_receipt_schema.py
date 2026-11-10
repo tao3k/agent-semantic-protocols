@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Schema tests for agent semantic client receipts."""
 
 from __future__ import annotations
@@ -35,8 +39,8 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "providerCommands": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "argv": ["direnv", "exec", ".", "rs-harness", "search", "prime", "."],
+                    "providerId": "asp-rust",
+                    "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                     "exitCode": 0,
                     "stdoutBytes": 300,
                     "stderrBytes": 0,
@@ -57,10 +61,10 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "nativeProvenance": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "providerBinary": "rs-harness",
+                    "providerId": "asp-rust",
+                    "providerBinary": "asp-rust",
                     "schemaIds": [
-                        "agent.semantic-protocols.semantic-search-packet"
+                        "agent.semantic-protocols.workspace-search-playbook-result"
                     ],
                 }
             ],

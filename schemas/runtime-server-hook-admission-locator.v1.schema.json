@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-hook-admission-locator.v1.schema.json",
+  "title": "Runtime Server Hook Admission Locator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "generation",
+    "contentDigest",
+    "endpoint",
+    "workspaces"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-hook-admission-locator.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 2,
+      "multipleOf": 2
+    },
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "endpoint": {
+      "$ref": "#/$defs/endpointBinding"
+    },
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workspaceAdmission"
+      }
+    }
+  },
+  "$defs": {
+    "absolutePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endpointBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerEpoch",
+        "transportContractDigest",
+        "runtimeArtifactPath",
+        "runtimeArtifactDigest",
+        "bindingToken",
+        "dataEndpoint",
+        "workspaceStorePath"
+      ],
+      "properties": {
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "runtimeArtifactDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeArtifactPath": {
+          "$ref": "#/$defs/absolutePath"
+        },
+        "bindingToken": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataEndpoint": { "$ref": "#/$defs/loopbackEndpoint" },
+        "workspaceStorePath": {
+          "$ref": "#/$defs/absolutePath"
+        }
+      }
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "address", "port"],
+      "properties": {
+        "transport": { "const": "loopback-tcp" },
+        "address": { "enum": ["127.0.0.1", "::1"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "workspaceAdmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceIdentity",
+        "canonicalProjectRoot",
+        "lookupRoots"
+      ],
+      "properties": {
+        "workspaceIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonicalProjectRoot": {
+          "$ref": "#/$defs/absolutePath"
+        },
+        "lookupRoots": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/absolutePath"
+          }
+        }
+      }
+    }
+  }
+}

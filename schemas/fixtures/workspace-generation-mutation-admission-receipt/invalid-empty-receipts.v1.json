@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-generation-mutation-admission-receipt",
+  "schemaVersion": "1",
+  "mutationId": "session-root/tool-use-1",
+  "changedPathCount": 2,
+  "affectedWorkspaceCount": 1,
+  "receipts": []
+}

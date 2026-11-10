@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Ablation packet generator tests for graph turbo sandtable calibration."""
 
 from __future__ import annotations
@@ -8,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asp_graph_turbo_cli_support import validate_shared_schema
+from unit.asp_graph_turbo_cli_support import validate_shared_schema
 
 
 def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
@@ -19,7 +23,7 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablate",
             str(packet_path),
             "--format",
@@ -85,7 +89,7 @@ def test_graph_turbo_ablation_cli_can_emit_one_variant_as_text(tmp_path) -> None
         [
             sys.executable,
             "-m",
-            "asp_graph_turbo",
+            "asp_python_graphs",
             "ablate",
             str(packet_path),
             "--variant",
@@ -114,7 +118,7 @@ def _node_kinds(packet: dict[str, object]) -> set[str]:
 
 def _subprocess_env() -> dict[str, str]:
     repo_root = Path(__file__).resolve().parents[2]
-    package_src = repo_root / "packages/python/asp_graph_turbo/src"
+    package_src = repo_root / "packages/python/asp_python_graphs/src"
     env = os.environ.copy()
     env["PYTHONPATH"] = (
         f"{package_src}{os.pathsep}{env['PYTHONPATH']}"
@@ -133,7 +137,7 @@ def _ablation_request() -> dict[str, object]:
         "packetKind": "graph-turbo-request",
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
-        "seedIds": ["query:vec"],
+        "entryNodeIds": ["query:vec"],
         "budget": 4,
         "readMemory": {"seenSelectors": ["src/lib.rs:10:12"]},
         "graph": {

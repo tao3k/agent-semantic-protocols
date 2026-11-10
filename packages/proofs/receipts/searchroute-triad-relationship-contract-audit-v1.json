@@ -1,0 +1,22 @@
+{
+  "auditSha256": "990fccf4c4d6cdcd8383da8a3059bdd6ad523ba45520eebfec3cfec9017a3a3e",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 13,
+  "axiomInventory": [],
+  "declarationCount": 13,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05.64-RELATIONSHIP-CONTRACT"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "coverage-subset-counterexample",
+    "exact-audit-coverage",
+    "exact-relationship-binding",
+    "frontier-local-reuse",
+    "identifier-only-counterexample",
+    "org-contract-relationship-binding",
+    "relationship-dependency-invalidation",
+    "relationship-semantic-invalidation"
+  ]
+}

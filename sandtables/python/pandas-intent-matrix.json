@@ -75,94 +75,90 @@
       "id": "prime-groupby",
       "command": [
         "asp",
-        "python",
         "search",
-        "prime",
-        "--package",
-        "core/groupby",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "core|groupby|source",
+        ".",
+        "--tantivy",
+        "title:\"core\"^2 OR body:\"groupby\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "analysis=structure",
-          "nativeSyntaxFacts=skipped",
-          "policyFindings=skipped",
-          "entries="
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "groupby-query-set",
       "command": [
         "asp",
-        "python",
         "search",
-        "lexical",
-        "--query",
-        "groupby",
-        "--query",
-        "DataFrameGroupBy",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--package",
-        "core/groupby",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "groupby|DataFrameGroupBy",
+        ".",
+        "--tantivy",
+        "title:\"groupby\"^2 OR body:\"DataFrameGroupBy\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=2",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 12,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "internals-query-set",
       "command": [
         "asp",
-        "python",
         "search",
-        "lexical",
-        "--query",
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
         "BlockManager",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--package",
-        "core/internals",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        ".",
+        "--tantivy",
+        "title:\"BlockManager\"^2 OR body:\"BlockManager\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=1",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 12,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

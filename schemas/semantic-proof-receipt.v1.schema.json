@@ -84,20 +84,20 @@
       }
     },
     "schemaProjection": {
-      "$ref": "#/$defs/schemaProjection"
+      "$ref": "semantic-proof-definitions.v1.schema.json#/$defs/schemaProjection"
     },
     "packetProjection": {
-      "$ref": "#/$defs/packetProjection"
+      "$ref": "semantic-proof-definitions.v1.schema.json#/$defs/packetProjection"
     },
     "validatedClaims": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/validatedClaim"
+        "$ref": "semantic-proof-definitions.v1.schema.json#/$defs/validatedClaim"
       }
     },
     "defensiveEngineeringAssessment": {
-      "$ref": "#/$defs/defensiveEngineeringAssessment"
+      "$ref": "semantic-proof-definitions.v1.schema.json#/$defs/defensiveEngineeringAssessment"
     },
     "branchLegalityUpdate": {
       "$ref": "#/$defs/branchLegalityUpdate"
@@ -144,55 +144,6 @@
         "$ref": "#/$defs/scalar"
       }
     },
-    "validatedClaim": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "verified", "meaning", "theorem"],
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/id"
-        },
-        "verified": {
-          "type": "boolean"
-        },
-        "meaning": {
-          "type": "string",
-          "minLength": 1
-        },
-        "theorem": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "defensiveEngineeringAssessment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["result", "blockedBranch", "whyBlocked", "correctBoundary", "replacementBranches"],
-      "properties": {
-        "result": {
-          "enum": ["blocked", "allowed", "unproven"]
-        },
-        "blockedBranch": {
-          "$ref": "#/$defs/id"
-        },
-        "whyBlocked": {
-          "type": "string",
-          "minLength": 1
-        },
-        "correctBoundary": {
-          "type": "string",
-          "minLength": 1
-        },
-        "replacementBranches": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/id"
-          },
-          "uniqueItems": true
-        }
-      }
-    },
     "branchLegalityUpdate": {
       "type": "object",
       "additionalProperties": false,
@@ -211,128 +162,6 @@
             "$ref": "#/$defs/id"
           },
           "uniqueItems": true
-        }
-      }
-    },
-    "schemaProjection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["sourceSchema", "facts", "formalLeanPath", "candidateLeanPath"],
-      "properties": {
-        "sourceSchema": {
-          "type": "string",
-          "minLength": 1
-        },
-        "formalLeanPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "candidateLeanPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "facts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/schemaProjectionFact"
-          }
-        }
-      }
-    },
-    "schemaProjectionFact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "owner", "field", "role"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "owner": {
-          "type": "string",
-          "minLength": 1
-        },
-        "field": {
-          "type": "string",
-          "minLength": 1
-        },
-        "role": {
-          "enum": ["executable-selector", "display-only"]
-        }
-      }
-    },
-    "packetProjection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "sourceKind",
-        "sourcePacket",
-        "facts",
-        "formalLeanPath",
-        "candidateLeanPath",
-        "identityKind",
-        "contractValid"
-      ],
-      "properties": {
-        "sourceKind": {
-          "enum": ["contract-fixture", "provider-output"]
-        },
-        "sourcePacket": {
-          "type": "string",
-          "minLength": 1
-        },
-        "formalLeanPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "candidateLeanPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "identityKind": {
-          "enum": ["selector-owned", "path-line-only", "missing"]
-        },
-        "contractValid": {
-          "type": "boolean"
-        },
-        "facts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/packetProjectionFact"
-          }
-        }
-      }
-    },
-    "packetProjectionFact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "path", "role", "value", "meaning"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1
-        },
-        "role": {
-          "enum": [
-            "executable-selector",
-            "display-only",
-            "identity-kind",
-            "contract-valid"
-          ]
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1
-        },
-        "meaning": {
-          "type": "string",
-          "minLength": 1
         }
       }
     }

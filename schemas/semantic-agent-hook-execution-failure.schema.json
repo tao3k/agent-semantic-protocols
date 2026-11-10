@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-hook-execution-failure.schema.json",
+  "title": "Semantic Agent Hook Execution Failure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "phase",
+    "failureKind",
+    "runtimeArtifactFingerprint",
+    "message"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.hook.execution-failure"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "state": {
+      "const": "failed"
+    },
+    "phase": {
+      "enum": ["bootstrap", "classification", "decision-emission"]
+    },
+    "failureKind": {
+      "enum": [
+        "invalid-invocation",
+        "launcher-process-exited",
+        "launcher-target-unavailable",
+        "runtime-error",
+        "runtime-panic"
+      ]
+    },
+    "event": {
+      "type": ["string", "null"]
+    },
+    "client": {
+      "type": ["string", "null"]
+    },
+    "runtimeArtifactFingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
+    },
+    "executablePath": {
+      "type": ["string", "null"]
+    },
+    "launcherBinaryPath": {
+      "type": ["string", "null"]
+    },
+    "launcherPath": {
+      "type": ["string", "null"]
+    },
+    "launcherStateHome": {
+      "type": ["string", "null"]
+    },
+    "pluginPayloadVersion": {
+      "type": ["string", "null"]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

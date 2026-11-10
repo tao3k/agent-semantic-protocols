@@ -1,0 +1,9 @@
+{
+  "schemaId": "agent.semantic-protocols.host-agent-lifecycle-attestation",
+  "schemaVersion": "1",
+  "agentType": "asp_explorer",
+  "canonicalPath": "/root/asp_explorer",
+  "childId": "019fc530-4001-7640-be11-76471ba30a4e",
+  "observedAtUnixSeconds": 1785719703,
+  "bindingFresh": true
+}

@@ -1,0 +1,158 @@
+{
+  "schemaId": "agent.semantic-protocols.search-topology-settlement",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.search-playbook",
+  "protocolVersion": "1",
+  "resultState": "queryable",
+  "binding": {
+    "projectWorkspaceIdentity": "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+    "sourceGenerationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+    "providerCatalogDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+    "topologyLibraryDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+    "topologyGenerationDigest": "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",
+    "structuralTopologyDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+    "semanticTopologyDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "inferenceProgramDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888",
+    "topologyClosureDigest": "blake3-256:1717171717171717171717171717171717171717171717171717171717171717",
+    "evidenceBindingDigest": "blake3-256:6666666666666666666666666666666666666666666666666666666666666666",
+    "decisionCoreDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+    "topologyDeltaDigest": "blake3-256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "inference": {
+    "programId": "project-topology-inference.v1",
+    "engineProfile": "ascent-seminaive.v1",
+    "scope": "bounded",
+    "state": "complete",
+    "terminationKind": "fixed-point",
+    "iterationCount": 3,
+    "traversalDepth": 2,
+    "derivedRelationCount": 1,
+    "proofDagDigest": "blake3-256:9999999999999999999999999999999999999999999999999999999999999999",
+    "proofArtifactLocator": "proof-cas/search/proof-path-42",
+    "rankingReceiptDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateClosureReceiptDigest": "blake3-256:1717171717171717171717171717171717171717171717171717171717171717",
+    "candidateRelationSetDigest": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "nextRelationSetDigest": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "postRankingCertified": true
+  },
+  "nodes": [
+    {
+      "id": "refresh",
+      "language": "rust",
+      "kind": "Method",
+      "name": "refresh_registry",
+      "selector": "rust://src/registry.rs#item/method/refresh_registry/scope/implementation-owner/type/Registry",
+      "projection": {
+        "rank": 1,
+        "depth": 0,
+        "hit": {
+          "rg": [
+            [
+              42,
+              46
+            ]
+          ],
+          "tantivy": [
+            "artifact refresh"
+          ],
+          "native": true
+        }
+      }
+    },
+    {
+      "id": "publication",
+      "language": "org",
+      "kind": "Heading",
+      "name": "Publication",
+      "selector": "org://docs/publication.org#item/heading/Publication",
+      "projection": {
+        "rank": 3,
+        "depth": 1,
+        "hit": {
+          "rg": [
+            [
+              18,
+              24
+            ]
+          ],
+          "tantivy": [
+            "artifact publication"
+          ],
+          "native": true
+        }
+      }
+    },
+    {
+      "id": "meaning",
+      "language": "natural-language",
+      "kind": "SemanticAnnotation",
+      "annotation": {
+        "text": "Registry refresh reaches publication through the artifact commit path.",
+        "state": "proposed",
+        "bindingDigest": "blake3-256:7777777777777777777777777777777777777777777777777777777777777777",
+        "premiseWitnesses": [
+          "call-refresh-publish",
+          "doc-explains-publication"
+        ],
+        "producer": "model-reasoner@receipt-7"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "refresh",
+      "to": "publication",
+      "relation": "DOCUMENTED_PATH",
+      "modality": "derived",
+      "producerAuthority": "project-topology-inference.v1",
+      "evidenceAuthority": "proof-dag",
+      "witnesses": [
+        "call-refresh-publish",
+        "doc-explains-publication"
+      ],
+      "derivedBy": "project-topology-inference.v1",
+      "proofRef": "proof-path-42"
+    },
+    {
+      "from": "meaning",
+      "to": "refresh",
+      "relation": "SUMMARIZES",
+      "modality": "proposed",
+      "producerAuthority": "model-proposal",
+      "evidenceAuthority": "model-premises",
+      "witnesses": [
+        "doc-explains-publication"
+      ]
+    }
+  ],
+  "coverageCertificates": [
+    {
+      "id": "coverage-admits",
+      "relation": "ADMITS",
+      "targetKind": "RuntimeAdmission",
+      "scope": "partial",
+      "digest": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ],
+  "frontiers": [
+    {
+      "anchor": "refresh",
+      "relation": "ADMITS",
+      "targetKind": "RuntimeAdmission",
+      "depth": 2,
+      "state": "unknown",
+      "reason": "coverage-open",
+      "target": "publication",
+      "coverageRef": "coverage-admits"
+    }
+  ],
+  "rendering": {
+    "format": "org-gql",
+    "gqlBlockCount": 1,
+    "ascentSourceExposed": false
+  },
+  "terminal": {
+    "state": "ready",
+    "terminalCount": 1
+  }
+}

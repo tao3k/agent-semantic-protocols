@@ -1,4 +1,10 @@
-use std::{fs, path::PathBuf, process};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::fs;
+use std::path::PathBuf;
+use std::process;
 
 use crate::cli_args::parse_client_args;
 
@@ -56,14 +62,18 @@ fn selector_dot_does_not_count_as_extra_project_root() {
             ".".to_string(),
             "--selector".to_string(),
             ".".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
     )
     .expect("selector dot is an option value");
 
-    assert_eq!(parsed.forwarded_args, vec!["--selector", ".", "--code"]);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["--selector", ".", "--projection", "source"]
+    );
     let _ = fs::remove_dir_all(cwd);
 }
 
@@ -76,15 +86,12 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
     let parsed = parse_client_args(
         vec![
             "query".to_string(),
-            "--from-hook".to_string(),
-            "direct-source-read".to_string(),
             "--workspace".to_string(),
             "workspace".to_string(),
             "--selector".to_string(),
             "crates/example/src/lib.rs:1:20".to_string(),
-            "--source".to_string(),
-            "worktree".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
@@ -98,13 +105,10 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
     assert_eq!(
         parsed.forwarded_args,
         vec![
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "crates/example/src/lib.rs:1:20",
-            "--source",
-            "worktree",
-            "--code",
+            "--projection",
+            "source",
         ]
     );
     let _ = fs::remove_dir_all(cwd);
@@ -145,7 +149,7 @@ fn search_view_option_value_stays_provider_arg_without_project_root_inference() 
 }
 
 #[test]
-fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
+fn workspace_flag_allows_explicit_external_project_root() {
     let cwd = temp_dir("workspace-flag-outside");
     let outside = temp_dir("workspace-flag-outside-target");
 
@@ -156,23 +160,23 @@ fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
             outside.display().to_string(),
             "--selector".to_string(),
             "src/lib.rs:1:20".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
     )
     .expect("explicit workspace flag may target an external project root");
 
-    assert_eq!(parsed.activation_root, cwd);
     assert_eq!(
         parsed.project_root,
         fs::canonicalize(&outside).expect("canonical outside root")
     );
     assert_eq!(
         parsed.forwarded_args,
-        vec!["--selector", "src/lib.rs:1:20", "--code"]
+        vec!["--selector", "src/lib.rs:1:20", "--projection", "source"]
     );
-    let _ = fs::remove_dir_all(parsed.activation_root);
+    let _ = fs::remove_dir_all(cwd);
     let _ = fs::remove_dir_all(outside);
 }
 
@@ -247,7 +251,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
 #[test]
 fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
     let cwd = temp_dir("positional-root-activation");
-    let provider_root = cwd.join("languages/rust-lang-project-harness");
+    let provider_root = cwd.join("languages/asp-rust");
     fs::create_dir_all(&provider_root).expect("create provider root");
     fs::write(
         provider_root.join("Cargo.toml"),
@@ -268,8 +272,7 @@ fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
     )
     .expect("positional marker path is a provider arg");
 
-    assert_eq!(parsed.activation_root, cwd);
-    assert_eq!(parsed.project_root, parsed.activation_root);
+    assert_eq!(parsed.project_root, cwd);
     assert_eq!(
         parsed.forwarded_args,
         vec![
@@ -279,7 +282,7 @@ fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
             provider_root.to_str().expect("utf8 provider root")
         ]
     );
-    let _ = fs::remove_dir_all(parsed.activation_root);
+    let _ = fs::remove_dir_all(cwd);
 }
 
 #[test]
@@ -324,4 +327,65 @@ fn temp_dir(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&path);
     fs::create_dir_all(&path).expect("create temp dir");
     path
+}
+
+#[test]
+fn doctor_parser_preserves_global_invocation_fields() {
+    let cwd = temp_dir("doctor-global-fields");
+    let parsed = parse_client_args(vec!["doctor".to_string()], cwd.clone(), None)
+        .expect("plain doctor arguments must parse");
+
+    assert_eq!(parsed.command.as_deref(), Some("doctor"));
+    assert_eq!(parsed.project_root, cwd);
+    assert!(parsed.forwarded_args.is_empty());
+    assert!(!parsed.receipt_json);
+    assert!(parsed.frontier_receipt_out.is_none());
+}
+
+#[test]
+fn doctor_parser_does_not_reinterpret_workspace_as_project_root() {
+    let cwd = temp_dir("doctor-workspace-forwarding");
+    let parsed = parse_client_args(
+        vec![
+            "doctor".to_string(),
+            "--workspace".to_string(),
+            "/tmp/project".to_string(),
+        ],
+        cwd.clone(),
+        None,
+    )
+    .expect("doctor workspace tokens must remain available for command validation");
+
+    assert_eq!(parsed.project_root, cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["--workspace".to_string(), "/tmp/project".to_string()]
+    );
+}
+
+#[test]
+fn cache_refresh_workspace_is_client_scope_not_a_forwarded_mutation_argument() {
+    let cwd = temp_dir("cache-refresh-workspace");
+    let workspace = cwd.join("workspace");
+    fs::create_dir_all(&workspace).expect("create workspace");
+
+    let parsed = parse_client_args(
+        vec![
+            "cache".to_string(),
+            "source-index".to_string(),
+            "refresh".to_string(),
+            "--workspace".to_string(),
+            "workspace".to_string(),
+        ],
+        cwd.clone(),
+        None,
+    )
+    .expect("cache refresh accepts one explicit workspace scope");
+
+    assert_eq!(
+        parsed.project_root,
+        fs::canonicalize(&workspace).expect("canonical workspace")
+    );
+    assert_eq!(parsed.forwarded_args, vec!["source-index", "refresh"]);
+    let _ = fs::remove_dir_all(cwd);
 }

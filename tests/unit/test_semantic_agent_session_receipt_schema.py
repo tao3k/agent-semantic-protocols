@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate semantic agent session receipt and graph feedback schemas."""
 
 from __future__ import annotations
@@ -113,7 +117,7 @@ def test_agent_session_quality_report_accepts_findings() -> None:
                 "phase": "command-result",
                 "commandId": "command-call_1",
                 "commandKind": "search",
-                "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                 "metrics": {"stdoutBytes": 40, "stderrBytes": 0, "elapsedMs": 0},
                 "qualitySignals": ["command-recorded", "repeated-command"],
                 "findingIds": ["command.repeated"],
@@ -143,7 +147,7 @@ def test_agent_session_quality_report_accepts_findings() -> None:
                 "ordinal": 0,
                 "commandId": "command-call_1",
                 "commandKind": "search",
-                "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                 "metrics": {"stdoutBytes": 40, "stderrBytes": 0, "elapsedMs": 0},
                 "qualitySignals": ["command-recorded", "repeated-command"],
                 "findingIds": ["command.repeated"],
@@ -178,9 +182,8 @@ def _receipt() -> dict[str, object]:
             "commandCount": 1,
             "aspCommands": 1,
             "searchCommands": 1,
-            "searchPrimeCommands": 1,
+            "searchPlaybookCommands": 1,
             "queryCommands": 0,
-            "checkCommands": 0,
             "guideCommands": 0,
             "deniedCommands": 0,
             "repeatedCommands": 0,
@@ -203,7 +206,7 @@ def _receipt() -> dict[str, object]:
             {
                 "id": "command-call_1",
                 "kind": "search",
-                "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+                "argv": ["asp", "search", "playbook", "--language", "rust", "--rg", "--files", ".", "--tantivy", "term", "source"],
                 "metrics": {"elapsedMs": 0, "stdoutBytes": 20, "stderrBytes": 0},
             }
         ],

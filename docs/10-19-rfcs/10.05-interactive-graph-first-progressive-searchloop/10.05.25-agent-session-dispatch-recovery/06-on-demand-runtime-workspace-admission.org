@@ -1,0 +1,205 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: On-demand Runtime workspace admission
+#+PROPERTY: ASP_SCHEMA_VERSION 1
+
+* Problem
+
+A healthy global Runtime Server may start with an empty workspace-admission
+catalog.  The former read path required a catalog entry before it could open a
+Runtime session, while the only operation capable of creating that entry was
+reachable through a Runtime session.  Agent dispatch then formed this invalid
+fixed point:
+
+#+begin_example
+read/search needs active generation
+  -> typed Agent route needs Runtime registration
+  -> Runtime registration needs a workspace namespace
+  -> workspace namespace needs an admitted generation
+#+end_example
+
+Restarting the server, disabling the Hook, or adding a client-side catalog
+writer does not repair this ownership error.
+
+* Contract
+
+The global Runtime endpoint is the bootstrap authority.  For a canonical
+absolute project root, a read-side caller MUST:
+
+1. derive =ProjectId/WorkspaceId= locally without reading or writing the Runtime
+   catalog;
+2. on a Host-reachable loopback transport, execute exactly one typed
+   =EnsureWorkspace(projectRoot)= control request inside the cached session's
+   Initialize single-flight; the Runtime validates the root, derives the same
+   identities, and is the sole V1 catalog writer.  This identity admission MUST
+   NOT discover a generation candidate, build or publish a generation, open a
+   workspace database, or bootstrap a provider;
+3. on an inherited connected descriptor, require the Host supervisor to finish
+   that admission before transferring the descriptor; the sandbox client never
+   opens a control transport;
+4. bind the public ClientFrame session using only =ProjectId/WorkspaceId=;
+5. call the daemon-owned =EnsureRuntimeGenerationReady= operation; it MUST
+   schedule one discovery when absent or join the existing completion watch
+   when startup restore or another caller already owns discovery;
+6. wait for terminal Ready without issuing the non-blocking
+   =EnsureRuntimeGeneration= operation, whose =discovery-in-progress= receipt is
+   not a read barrier;
+7. open the read-only workspace session using the admitted identity.
+
+=projectRoot= exists only on the cold control request.  It is absent from
+Initialize, Search, Query, and every warm read frame.  This retains LSP's useful
+explicit workspace initialization lesson without copying its client-owned
+workspace-routing state into every request.
+
+A successful =EnsureWorkspace= terminal proves only the durable
+=ProjectId/WorkspaceId/projectRoot= binding.  It does not imply generation
+readiness.  =EnsureRuntimeGenerationReady= is the sole cold generation barrier;
+putting that work in both control admission and generation preflight creates a
+duplicate authority, forces every new session through repository discovery, and
+can commit state after the control client has already timed out.
+
+The public ClientFrame spelling of step 3 is
+=asp.workspace.generation.ensure-ready=.  It is a server-owned cold-preflight
+method, not a language-provider method.  Its first request may discover and
+publish one =CompleteGeneration=; an already-Ready request reads the resident
+admission receipt and MUST NOT discover Git state, scan owners, open Turso, or
+start a provider.  A client connection executes this preflight at most once
+before its first language =search=, =query=, =source-index.lookup=, or
+=search.owner= dispatch.  Control-plane methods do not execute it.
+
+=accepted= on an admission receipt is edge-triggered enqueue evidence.  It says
+whether that call inserted new work; it is deliberately false on an observed
+or replayed terminal and MUST NOT be used as generation readiness.  Readiness
+requires all of: the same =attempt= terminal, =state=Ready=, a non-null commit,
+a =CompleteGeneration= scope, and exact generation/root identity equality with
+the resident read binding.  A queued or Building snapshot is never a read
+barrier, and client retry is never a substitute for waiting on the daemon-owned
+completion watch.
+
+Language dispatch is the warm phase after this barrier.  It MUST NOT discover a
+repository candidate, enqueue generation work, await a provider, or mutate a
+generation.  Missing resident readiness produces one immediate typed
+=query-not-ready= terminal.  Dispatcher semantic tests invoke the
+transport-neutral frame service directly; AF_UNIX/HTTP2 listener creation is
+owned only by dedicated transport integration tests and is not a prerequisite
+for semantic unit coverage.
+
+Malformed catalogs, permission failures, identity mismatches, failed builds,
+and cancelled builds remain typed failures.  They MUST NOT be converted into a
+new catalog or hidden by a fallback.
+
+Concurrent first readers MUST converge on the same workspace identity and the
+same admission flight.  The CLI and Hook MUST NOT write
+=workspace-admissions.v1.json= directly.  Ordinary Hook policy matching remains
+Runtime-independent; only parser/search/session operations that require the
+resident data plane may invoke on-demand admission.
+
+* Deadlock freedom obligation
+
+Let =G= mean the global endpoint is healthy, =C= mean the workspace catalog is
+admitted, =B= mean bounded daemon admission is reachable, and =R= mean the
+read-side generation is ready.  The legacy state =G and not C= had no enabled
+transition.  Under this contract, =G and not C and B= enables exactly the
+daemon-owned admission transition, producing =C=; readiness then produces
+=R=.  No Hook disable/reload state participates in the proof.
+
+* Acceptance
+
+- Start a healthy Runtime Server with zero admitted workspaces.
+- Issue concurrent exact/search/session requests for one canonical workspace.
+- Observe one workspace identity, one admitted generation, and no duplicate
+  resident service.
+- Prove =EnsureWorkspace= performs no generation discovery/publication, DB open,
+  provider spawn, or workspace-store bootstrap, and returns exactly one typed
+  terminal even when the catalog entry already exists.
+- Prove one cold =ensure-ready= terminal followed by warm language dispatches
+  with zero candidate discovery, generation mutation, or provider process
+  starts.
+- Prove a replayed Ready terminal remains readable when =accepted=false=, while
+  a queued snapshot and a targeted-only publication remain unreadable.
+- Require a nonzero generation before typed Agent call/resume.
+- Verify catalog corruption and permission failure stay typed and bounded.
+- Verify ordinary Hook black/white matrices have no Runtime dependency and
+  stay within the one-millisecond CPU budget.
+
+* Agent control-plane independence
+
+AgentSessionRegistry and ChoicePlane operations are global Runtime control-plane
+operations keyed by the derived workspace identity.  They MUST bind through the
+global endpoint and MUST NOT pass through the Hook admission locator, source
+generation catalog, or generation readiness gate.  A slow or failed source
+generation therefore cannot prevent typed Agent create/register/call/resume.
+
+* Protocol-interface authority and artifact scope
+
+Workspace admission MUST bind to a versioned protocol-interface catalog, not to
+the byte identity, size, filesystem path, or publication receipt of the ASP
+Runtime binary.  The catalog is the language-neutral authority for capability
+identities and their request and response schema digests.  A provider
+registration binds one implementation identity to those interfaces; its binary
+digest remains supply-chain evidence owned by the global provider registry and
+is not a workspace active-artifact prerequisite.
+
+The Runtime release catalog, provider implementation registry, and workspace
+generation catalog are three distinct authorities:
+
+- a Runtime release is global and may be atomically replaced without changing
+  project identity, workspace identity, or an admitted workspace generation;
+- a provider registration is global and may become unavailable or stale
+  without making AgentSessionRegistry or ChoicePlane unavailable;
+- a workspace generation contains only the project/workspace identity, source
+  snapshot identity, protocol-interface catalog generation, and references to
+  selected provider registrations.
+
+Legacy workspace-local =active-asp-artifact-receipt.v1.json= files MAY be read
+as migration evidence, but MUST NOT be admission authority.  A stale or missing
+legacy receipt can degrade a provider capability to a typed
+=provider-unavailable= result; it cannot produce =source-unavailable= for the
+global control plane and cannot prevent namespace creation.
+
+* Proof obligations for bootstrap independence
+
+The executable design and its Lean model MUST establish all of the following:
+
+1. From a healthy global Runtime and a valid derived workspace identity, the
+   zero-generation state has a transition that creates the first namespace and
+   admits a nonzero generation without requiring a pre-existing namespace.
+2. Agent create/register/call/resume remains reachable when every language
+   provider is unavailable.
+3. A stale Runtime or provider artifact receipt affects only the corresponding
+   global release or capability selection; it cannot revoke workspace identity
+   or global control-plane reachability.
+4. Atomic ASP binary replacement preserves project identity, workspace
+   identity, admitted generation identity, and protocol-interface identity.
+5. The admission dependency relation is well-founded: bootstrap control-plane
+   operations have rank zero, workspace generation has rank one, source
+   materialization has rank two, and provider query execution has rank three.
+   No transition may depend on an operation of equal or greater rank.
+
+The formal owner for these obligations is
+=ASPProof.ProtocolInterfaceBootstrapSeparation=.  Its audit surface MUST expose
+=zero_generation_bootstrap_progress=,
+=first_namespace_creation_requires_no_existing_namespace=,
+=provider_unavailable_does_not_block_global_control_plane=,
+=stale_runtime_receipt_does_not_block_global_control_plane=,
+=stale_provider_receipt_degrades_only_provider_capability=,
+=runtime_binary_refresh_preserves_workspace_and_interface_identity=,
+=admission_dependency_is_acyclic=, and
+=bootstrap_control_plane_has_no_admitted_dependency=.
+
+* Restore-first freshness separation
+
+Runtime startup MUST NOT perform live Git worktree discovery before restoring a
+previously validated canonical generation.  =RestoreOnly= validates the durable
+materialization, provider catalog identity, checksums, and publication pointer,
+then publishes it resident with a schema-valid restore identity.  Live candidate
+discovery starts only after Ready and runs in the daemon background.  A changed
+candidate enters the existing single admission/mutation lane; it never starts a
+second build and never blocks initial durable restore.
+
+The restore identity is not freshness evidence and MUST NOT be exposed as a
+current Git candidate.  Read readiness and candidate freshness are separate
+facts.  Exact owner reads additionally reconcile their owner atomically, while
+broad search transitions to the new generation after background reconciliation.

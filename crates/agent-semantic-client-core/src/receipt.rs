@@ -1,17 +1,40 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Execution receipts emitted by the `agent-semantic-client` command layer.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
+use crate::cache_manifest::CacheManifestReport;
+use crate::cache_manifest::CacheManifestStatus;
 use crate::request::ClientMethod;
-use crate::types::{
-    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbBackend,
-    ClientDbEngineDurability, ClientDbFileName, ClientDbJournalMode, ClientDbStatus, ClientRepoId,
-    ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, CompactArtifactId, ElapsedMillis,
-    LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId,
-    SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId,
-    SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
-};
+use crate::types::ByteCount;
+use crate::types::CacheArtifactId;
+use crate::types::CacheStatus;
+use crate::types::ClientCachePath;
+use crate::types::ClientDbBackend;
+use crate::types::ClientDbEngineDurability;
+use crate::types::ClientDbFileName;
+use crate::types::ClientDbJournalMode;
+use crate::types::ClientDbStatus;
+use crate::types::ClientRepoId;
+use crate::types::ClientScopeId;
+use crate::types::ClientStateLayoutVersion;
+use crate::types::ClientWorkspaceId;
+use crate::types::CompactArtifactId;
+use crate::types::ElapsedMillis;
+use crate::types::LanguageId;
+use crate::types::ProviderId;
+use crate::types::SemanticProtocolId;
+use crate::types::SemanticProtocolVersion;
+use crate::types::SemanticSchemaId;
+use crate::types::SemanticSchemaVersion;
+use crate::types::SyntaxQueryAstAbiFingerprint;
+use crate::types::SyntaxQueryGrammarId;
+use crate::types::SyntaxQueryGrammarProfileVersion;
+use crate::types::SyntaxQuerySelector;
 
 /// Schema id for `agent-semantic-client-receipt.v1`.
 pub const AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID: &str = "agent.semantic-protocols.client-receipt";
@@ -26,7 +49,7 @@ pub const AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_VERSION: &str = "1";
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionRoute {
-    LocalNative,
+    RuntimeService,
     LocalCache,
     CloudFlight,
     HybridReroute,
@@ -186,14 +209,6 @@ pub struct ClientReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_syntax_row_capture_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_db_structural_index_generation_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_db_structural_index_owner_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_db_structural_index_symbol_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_db_structural_index_dependency_usage_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_source_index_generation_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_source_index_owner_count: Option<u32>,
@@ -230,7 +245,7 @@ impl ClientReceipt {
             protocol_id: AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID.into(),
             protocol_version: AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_VERSION.into(),
             method,
-            route: ExecutionRoute::LocalNative,
+            route: ExecutionRoute::RuntimeService,
             cache_status: CacheStatus::Miss,
             provider_command_count: 1,
             provider_processes_spawned: 1,
@@ -264,10 +279,6 @@ impl ClientReceipt {
             client_db_syntax_row_generation_count: None,
             client_db_syntax_row_match_count: None,
             client_db_syntax_row_capture_count: None,
-            client_db_structural_index_generation_count: None,
-            client_db_structural_index_owner_count: None,
-            client_db_structural_index_symbol_count: None,
-            client_db_structural_index_dependency_usage_count: None,
             client_db_source_index_generation_count: None,
             client_db_source_index_owner_count: None,
             client_db_source_index_selector_count: None,
@@ -340,10 +351,6 @@ impl ClientReceipt {
             client_db_syntax_row_generation_count: None,
             client_db_syntax_row_match_count: None,
             client_db_syntax_row_capture_count: None,
-            client_db_structural_index_generation_count: None,
-            client_db_structural_index_owner_count: None,
-            client_db_structural_index_symbol_count: None,
-            client_db_structural_index_dependency_usage_count: None,
             client_db_source_index_generation_count: None,
             client_db_source_index_owner_count: None,
             client_db_source_index_selector_count: None,

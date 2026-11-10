@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/evidence-query-catalog.v1.schema.json",
+  "title": "Evidence Query Catalog v1",
+  "description": "Language-neutral catalog of typed evidence actions that may be referenced by a persisted search-loop plan.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "catalogId",
+    "catalogDigest",
+    "entries"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.evidence-query-catalog"
+    },
+    "schemaVersion": { "const": "1" },
+    "catalogId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]*\\.v1$"
+    },
+    "catalogDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3:[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogId",
+        "inputs",
+        "outputs",
+        "closureCapabilities",
+        "providerCapabilities",
+        "backendClasses"
+      ],
+      "properties": {
+        "catalogId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*\\.v1$"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/output"
+          }
+        },
+        "closureCapabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "discovery",
+              "existential",
+              "enumeration",
+              "negative-completeness"
+            ]
+          }
+        },
+        "providerCapabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "backendClasses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "native-parser",
+              "source-index",
+              "tree-sitter",
+              "flow-lite",
+              "codeql-extension"
+            ]
+          }
+        },
+        "costClass": {
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "required"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9]*$"
+        },
+        "kind": {
+          "enum": [
+            "fact-ref",
+            "canonical-item-selector",
+            "evidence-scope-ref",
+            "literal"
+          ]
+        },
+        "required": { "type": "boolean" }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relation", "entityKind"],
+      "properties": {
+        "relation": {
+          "$ref": "#/$defs/identifier"
+        },
+        "entityKind": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  }
+}

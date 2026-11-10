@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.dev/schemas/agent-facing-search-trace-receipt.v1.schema.json",
+  "title": "Agent-facing merged search trace receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "traceSetId",
+    "requestIdentity",
+    "backend",
+    "execution",
+    "result",
+    "terminalEmissionCount",
+    "nextActionEmissionCount",
+    "recommendedNext"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-facing-search-trace-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "traceSetId": { "type": "string", "minLength": 1 },
+    "requestIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "providerWorkspaceIdentity",
+        "queryDigest",
+        "admittedGeneration"
+      ],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1 },
+        "providerWorkspaceIdentity": { "type": "string", "minLength": 1 },
+        "queryDigest": { "type": "string", "minLength": 1 },
+        "admittedGeneration": { "type": "string", "minLength": 1 }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "tree-sitter" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inventory",
+        "cachedOwners",
+        "scheduledOwners",
+        "remainingOwners",
+        "sourceReads",
+        "providerParses",
+        "ownerWrites",
+        "fullWorkspaceWalks"
+      ],
+      "properties": {
+        "inventory": { "enum": ["exact", "known"] },
+        "cachedOwners": { "type": "integer", "minimum": 0 },
+        "scheduledOwners": { "type": "integer", "minimum": 0 },
+        "remainingOwners": { "type": "integer", "minimum": 0 },
+        "sourceReads": { "type": "integer", "minimum": 0 },
+        "providerParses": { "type": "integer", "minimum": 0 },
+        "ownerWrites": { "type": "integer", "minimum": 0 },
+        "fullWorkspaceWalks": { "const": 0 }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "matchCount", "truncated"],
+      "properties": {
+        "state": { "enum": ["complete", "partial", "failed"] },
+        "matchCount": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "reasonKind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "terminalEmissionCount": { "const": 1 },
+    "nextActionEmissionCount": { "const": 1 },
+    "recommendedNext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

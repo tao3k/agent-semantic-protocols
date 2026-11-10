@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-runtime-request-stream-frame.schema.json",
+  "title": "Provider Runtime Request Stream Frame",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "streamId", "frameIndex", "frameCount", "requestChunk"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.provider-runtime-request-stream-frame"},
+    "schemaVersion": {"const": "1"},
+    "streamId": {"type": "string", "minLength": 1},
+    "frameIndex": {"type": "integer", "minimum": 0},
+    "frameCount": {"type": "integer", "minimum": 2, "maximum": 1024},
+    "requestChunk": {"type": "string"}
+  }
+}

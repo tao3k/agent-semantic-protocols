@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-route-registry",
+  "schemaVersion": "1",
+  "agents": {
+    "asp_testing": {
+      "sessionName": "asp_testing",
+      "sessionLifetime": "resident",
+      "roles": ["build", "subagent", "testing"],
+      "platforms": {
+        "codex": { "projection": "asp-testing_codex.toml" }
+      }
+    }
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-method-argument-projection.v1.schema.json",
+  "title": "Provider Method Argument Projection v1",
+  "description": "Closed, language-neutral projection from facade fields to deterministic provider argv. Tokens are data; they are never evaluated as shell, format, or template source.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "tokens"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1"
+    },
+    "tokens": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    }
+  },
+  "$defs": {
+    "token": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/literalToken"
+        },
+        {
+          "$ref": "#/$defs/querySlot"
+        },
+        {
+          "$ref": "#/$defs/workspaceSlot"
+        },
+        {
+          "$ref": "#/$defs/presentationSlot"
+        },
+        {
+          "$ref": "#/$defs/ownerSlot"
+        }
+      ]
+    },
+    "literalToken": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "literal"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "querySlot": {
+      "$ref": "#/$defs/stringSlot",
+      "properties": {
+        "name": {
+          "const": "query"
+        }
+      }
+    },
+    "workspaceSlot": {
+      "$ref": "#/$defs/pathSlot",
+      "properties": {
+        "name": {
+          "const": "workspace"
+        }
+      }
+    },
+    "presentationSlot": {
+      "$ref": "#/$defs/presentationValueSlot",
+      "properties": {
+        "name": {
+          "const": "presentation"
+        }
+      }
+    },
+    "ownerSlot": {
+      "$ref": "#/$defs/pathSlot",
+      "properties": {
+        "name": {
+          "const": "owner"
+        }
+      }
+    },
+    "stringSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "valueType"
+      ],
+      "properties": {
+        "kind": {
+          "const": "slot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "valueType": {
+          "const": "string"
+        }
+      }
+    },
+    "pathSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "valueType"
+      ],
+      "properties": {
+        "kind": {
+          "const": "slot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "valueType": {
+          "const": "path"
+        }
+      }
+    },
+    "presentationValueSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "valueType"
+      ],
+      "properties": {
+        "kind": {
+          "const": "slot"
+        },
+        "name": {
+          "type": "string"
+        },
+        "valueType": {
+          "const": "presentation"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Codex Multi-Agent V2 Downstream Control Plane
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Normative ASP downstream control-plane model for Codex Multi-Agent V2. It is
+not a generic multi-agent runtime and not an alternative Codex scheduler. No
+legacy lifecycle model remains an authority input.
+
+* Ownership boundary
+
+Codex is the execution-plane authority.  It owns scheduling and live host
+operations: spawn, list, followup, queue-only send, interrupt, and wait.
+ASP is a downstream user of that execution plane and must use the Codex
+capabilities rather than reproduce them.
+
+ASP owns only the durable control-plane projection over facts returned by
+Codex: stable task and agent identity, parent/root topology, physical
+generation, delivered receipts, path observation, and the admission decision
+for the next downstream request. ASP may request an
+operation through a Codex-provided capability; it cannot claim that the
+operation happened until Codex evidence is observed and indexed.
+
+The product is:
+
+#+begin_src text
+WorkspaceServer
+× CodexRootTask
+× List CodexAgentNode
+× List CodexTurnNode
+× List CodexDelegationEdge
+#+end_src
+
+Each =AgentNode= embeds the single-session lifecycle product defined by
+=09-agent-session-lifecycle-executable-projection.org=.  The leaf projection is
+therefore not the final model; it is one node of the Multi-Agent v2 graph.
+
+* Agent graph
+
+An agent node contains a root session id, an optional parent session id, a
+stable resident name and role, optional provider-owned agent type, and one
+typed AgentSession lifecycle projection.  Model name and reasoning effort are
+observations or spawn policy; neither participates in durable node identity,
+binding freshness or dispatch authority.
+
+A well-formed graph requires:
+
+- one independently evidenced =CodexRootTask= whose session id equals
+  =rootSessionId=;
+- unique observed session ids;
+- every node belongs to the same root task;
+- every agent parent refers either to the root task or to an existing agent;
+- every node's Workspace Server identity equals the aggregate identity;
+- no node is its own parent.
+
+The root task is not an =AgentSession= registry row.  It carries execution-plane
+identity evidence but no invented resident name, role, physical generation,
+binding, or dispatch lifecycle.  The =agents= collection contains only
+downstream managed-agent observations.
+
+* Turn and delegation graph
+
+A turn node belongs to one agent session and carries its physical generation.
+Its phase is one of =unobserved=, =idle=, =queued=, =running=, =waiting=,
+=completed=, =failed=, =interrupted=, or =quarantined=.
+
+A delegation edge connects a parent session and optional parent turn to one
+child session generation.  Its phase is =unobserved=, =intent-durable=,
+=dispatched=, =delivered=, =quarantined=, =rejected=, or =completed=.  A
+Codex-delivered receipt reference is indexed separately from the phase label.
+A boolean or phase string alone cannot manufacture delivery evidence or
+identify its execution-plane source.
+
+Every turn and delegation reference must resolve to an agent node.  The edge's
+child generation must equal the referenced child's physical generation.  A
+late receipt from an older physical child is rejected.
+
+* Independence and authority
+
+Workspace Server restart changes availability and epoch, but not root-task,
+agent, turn, or delegation identity.  Failure, quarantine, or stale binding of
+one child does not retarget its siblings. A present path always selects
+=followup_task=; only an explicitly absent path selects =spawn_agent=.
+
+Multi-Agent v2 graph validation is fail-closed.  Missing evidence is
+=unobserved=; it is not =idle=, =unbound=, =delivered=, or =completed=.
+
+* Executable control-plane projection
+
+The Codex-specific schema is
+=schemas/multi-agent-lifecycle-projection.v1.schema.json= with
+=schemaVersion: "1"= and schema id
+=agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection=.  Rust
+owns a pure downstream control-plane validator outside the CLI.  Status and
+hook adapters may emit the typed graph or a typed projection error during
+migration, but legacy flat strings never become graph authority.  No scheduler,
+worker queue, turn runner, or host-operation implementation belongs in this
+model.
+
+The ASP Runtime Server owns materialization of this downstream projection.  A
+snapshot carries a monotonic generation, source digest, Codex evidence
+references, and =unobserved/current/stale= freshness.  CLI and hooks read the
+snapshot through the resident service; they do not rebuild the Codex tree with
+per-request scans.  Only a =current= snapshot with indexed evidence can
+authorize downstream dispatch.  Workspace Server restart preserves graph
+identity but marks the prior snapshot stale until Codex evidence is reconciled.

@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-schema-management-report.v1.schema.json",
+  "title": "ASP Schema Management Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "summary",
+    "diagnostics",
+    "referenceOpportunities",
+    "schemas"
+  ],
+  "properties": {
+    "schemaId": {"const": "asp.schema-management-report.v1"},
+    "schemaVersion": {"const": "1"},
+    "summary": {"$ref": "#/$defs/summary"},
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+    "referenceOpportunities": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/referenceOpportunity"}
+    },
+    "schemas": {"type": "array", "items": {"$ref": "#/$defs/schemaState"}}
+  },
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "nonNegativeInteger": {"type": "integer", "minimum": 0},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaCount",
+        "schemaWithRefCount",
+        "totalSchemaBytes",
+        "referenceOpportunityCount",
+        "estimatedReducibleBytes",
+        "estimatedReductionBasisPoints",
+        "directRustCount",
+        "transitiveRustCount",
+        "unobservedRustCount",
+        "removalCandidateCount",
+        "familyCount",
+        "classifiedSchemaCount",
+        "unclassifiedSchemaCount",
+        "referenceOpportunityScopeCounts",
+        "unusedDefinitionCount"
+      ],
+      "properties": {
+        "schemaCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "schemaWithRefCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "totalSchemaBytes": {"$ref": "#/$defs/nonNegativeInteger"},
+        "referenceOpportunityCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "estimatedReducibleBytes": {"$ref": "#/$defs/nonNegativeInteger"},
+        "estimatedReductionBasisPoints": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "directRustCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "transitiveRustCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "unobservedRustCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "removalCandidateCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "familyCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "classifiedSchemaCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "unclassifiedSchemaCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "referenceOpportunityScopeCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family-local", "cross-family", "mixed", "unclassified"],
+          "properties": {
+            "family-local": {"$ref": "#/$defs/nonNegativeInteger"},
+            "cross-family": {"$ref": "#/$defs/nonNegativeInteger"},
+            "mixed": {"$ref": "#/$defs/nonNegativeInteger"},
+            "unclassified": {"$ref": "#/$defs/nonNegativeInteger"}
+          }
+        },
+        "unusedDefinitionCount": {"$ref": "#/$defs/nonNegativeInteger"}
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {"enum": ["error", "warning"]},
+        "code": {"$ref": "#/$defs/nonEmptyString"},
+        "message": {"$ref": "#/$defs/nonEmptyString"},
+        "schemaPath": {"$ref": "#/$defs/nonEmptyString"},
+        "jsonPointer": {"type": "string"},
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "familyIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/nonEmptyString"}
+        },
+        "count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaPath", "jsonPointer"],
+      "properties": {
+        "schemaPath": {"$ref": "#/$defs/nonEmptyString"},
+        "jsonPointer": {"type": "string"}
+      }
+    },
+    "referenceOpportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "occurrences",
+        "validationBytes",
+        "estimatedReducibleBytes",
+        "recommendation",
+        "familyIds",
+        "familyScope"
+      ],
+      "properties": {
+        "fingerprint": {"$ref": "#/$defs/nonEmptyString"},
+        "occurrences": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/occurrence"}},
+        "validationBytes": {"$ref": "#/$defs/nonNegativeInteger"},
+        "estimatedReducibleBytes": {"$ref": "#/$defs/nonNegativeInteger"},
+        "recommendation": {"$ref": "#/$defs/nonEmptyString"},
+        "familyIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/nonEmptyString"}
+        },
+        "familyScope": {
+          "enum": ["family-local", "cross-family", "mixed", "unclassified"]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {"enum": ["schema-file", "schema-id", "protocol-schema-id", "transitive-ref"]},
+        "path": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    },
+    "schemaState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaPath",
+        "schemaIdentifier",
+        "hasReferences",
+        "inboundReferenceCount",
+        "rustUsage",
+        "rustEvidence",
+        "unusedDefinitionPointers",
+        "familyId",
+        "familySource",
+        "lifecycleStatus",
+        "lifecycleSource"
+      ],
+      "properties": {
+        "schemaPath": {"$ref": "#/$defs/nonEmptyString"},
+        "schemaIdentifier": {"type": ["string", "null"]},
+        "hasReferences": {"type": "boolean"},
+        "inboundReferenceCount": {"$ref": "#/$defs/nonNegativeInteger"},
+        "rustUsage": {"enum": ["direct", "transitive", "unobserved"]},
+        "rustEvidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "unusedDefinitionPointers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/\\$defs/"}
+        },
+        "familyId": {"type": ["string", "null"]},
+        "familySource": {
+          "enum": ["namespace-selector", "explicit-include", "unclassified", "ambiguous"]
+        },
+        "lifecycleStatus": {"enum": ["active", "deprecated", "retired", "review", "removal-candidate"]},
+        "lifecycleSource": {"enum": ["manifest", "inferred"]},
+        "owner": {"type": ["string", "null"]},
+        "rationale": {"type": ["string", "null"]},
+        "replacementRef": {"type": ["string", "null"]},
+        "sunsetAfter": {"type": ["string", "null"], "format": "date"}
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryVerifierAttestation
+
+namespace ASPProof.Audit.AgentSessionHostRegistryVerifierAttestation
+
+open ASPProof.AgentSessionHostRegistryVerifierAttestation
+
+#print axioms canonical_field_length_is_exact
+#print axioms canonical_leaf_frame_has_leaf_domain
+#print axioms canonical_leaf_frame_binds_key_length
+#print axioms canonical_leaf_frame_binds_generation_length
+#print axioms naive_concatenation_is_ambiguous
+#print axioms equal_canonical_fields_have_equal_payloads
+#print axioms wrong_domain_is_malformed
+#print axioms wrong_length_is_malformed
+#print axioms every_lean_decoder_terminates
+#print axioms rejecting_decoder_returns_error
+#print axioms always_decode_does_not_reject_malformed
+#print axioms passing_vector_matches_expected
+#print axioms always_zero_fails_nonzero_vector
+#print axioms attestation_binds_artifact
+#print axioms attestation_rejects_malformed
+#print axioms attestation_passes_every_declared_vector
+#print axioms attestation_binds_verifier_semantics
+#print axioms axle_receipt_binds_lean_module
+#print axioms axle_receipt_binds_lean_audit
+#print axioms axle_receipt_binds_verifier_artifact
+#print axioms axle_receipt_binds_vector_suite
+#print axioms unbound_axle_receipt_constructible
+#print axioms mismatched_axle_receipt_is_rejected
+
+end ASPProof.Audit.AgentSessionHostRegistryVerifierAttestation

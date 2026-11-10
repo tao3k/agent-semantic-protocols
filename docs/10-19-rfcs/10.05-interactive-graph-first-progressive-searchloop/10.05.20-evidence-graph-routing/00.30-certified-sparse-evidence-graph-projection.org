@@ -1,0 +1,353 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.30 — Certified Sparse Evidence Graph Projection
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+This RFC defines the correctness boundary between a complete Evidence Graph
+and the future sparse Python Graph Turbo representation.
+
+It extends:
+
+- [[file:../10.05.88-lexical-search-frame-graph-router.org][RFC 10.05.88 — Lexical SearchFrame and GraphRouter]];
+- [[file:00.28-evidence-graph-router-executability-certificate.org][RFC 10.05.28 — Evidence Graph Router Executability Certificate]];
+- [[file:00.29-evidence-graph-temporal-capability-lease.org][RFC 10.05.29 — Evidence Graph Temporal Capability Lease]].
+
+Lean ownership:
+
+- =packages/proofs/ASPProof/SearchRouteSparseEvidenceGraph.lean=;
+- =packages/proofs/ASPProof/Audit/SearchRouteSparseEvidenceGraph.lean=.
+
+Current validation is blocked by the workspace activation failure documented in
+RFC 10.05.29.  No build, AXLE, Typst, or proof receipt is claimed yet.
+
+* Problem
+
+Python Graph Turbo is expected to use sparse graph storage and avoid sending or
+traversing the complete Evidence Graph on every search.
+
+Sparsity saves:
+
+- graph storage;
+- candidate enumeration work;
+- route-evaluation latency;
+- evidence packet bytes;
+- agent-visible tokens.
+
+But a sparse graph can silently change shortest-path semantics.
+
+It is not sufficient to prove that every sparse edge came from the complete
+graph.  A sparse projection may omit a direct low-cost edge while retaining a
+longer multi-edge route.  Every displayed edge is then valid, but the selected
+route is not globally shortest.
+
+* Graph model
+
+An =EvidenceEdge= contains:
+
+- source node;
+- target node;
+- non-negative cost;
+- evidence digest.
+
+An =EvidenceGraph= contains a finite edge set.
+
+A =Walk= is parser/evidence-owned path material:
+
+- every edge belongs to the graph;
+- adjacent edges connect through their typed endpoints;
+- the empty walk connects a node to itself.
+
+=PathCost= is the sum of edge costs.
+
+The first Lean model uses natural-number cost.  A later refinement may replace
+it with the existing Graph Router lexicographic tuple for hops, uncached
+tokens, rounds, and transitions.
+
+* Edge soundness
+
+=EdgeSound(full, sparse)= means every sparse edge is a complete-graph edge.
+
+Edge soundness proves:
+
+- every sparse walk is a valid complete-graph walk;
+- the sparse graph does not invent semantic or dependency edges.
+
+It does not prove:
+
+- shortest-path preservation;
+- reachability completeness;
+- coverage of omitted owners, tests, declarations, or dependencies;
+- global Graph Router optimality.
+
+* Lean counterexample
+
+The Lean counterexample contains:
+
+- full graph edges from node 0 to 1, 1 to 2, and directly 0 to 2;
+- sparse graph edges only from 0 to 1 and 1 to 2;
+- every sparse edge is present in the full graph;
+- sparse visible route cost is 2;
+- omitted full-graph direct route cost is 1.
+
+Therefore:
+
+=EdgeSound= does not imply shortest-path preservation.
+
+This is the principal logical constraint on Python sparse Graph Turbo.
+
+* Distance completeness
+
+For one source and target,
+=DistanceComplete(full, sparse, source, target)= means:
+
+For every complete-graph walk, the sparse graph contains a walk whose cost is
+no greater.
+
+This definition permits:
+
+- the identical walk;
+- a different sparse representative with equal cost;
+- a cheaper equivalent route derived from graph contraction;
+- a certified summary edge that preserves the omitted subpath cost.
+
+It forbids omission that makes the sparse optimum worse than the complete
+optimum.
+
+* Certified sparse route
+
+A =CertifiedSparseRoute= contains:
+
+- active generation identity;
+- generation binding proof;
+- complete Evidence Graph root digest;
+- sparse projection root digest;
+- selected sparse walk;
+- edge-soundness proof;
+- sparse optimality proof;
+- distance-completeness proof.
+
+The selected route is globally optimal only when all these components hold.
+
+The root digests are retained even though the first Lean theorem treats them as
+abstract identities.  Python must later bind them to deterministic graph and
+projection serialization.
+
+* Global optimality theorem
+
+If:
+
+- the selected walk is optimal in the sparse graph;
+- every complete walk has a sparse representative of no greater cost;
+
+then the selected sparse walk is no more expensive than every complete-graph
+walk.
+
+Edge soundness separately proves that the selected sparse walk is a real
+complete-graph walk.
+
+Together, soundness and distance completeness provide both:
+
+- route validity;
+- global optimality.
+
+* Omitted-frontier alternative
+
+Materializing a distance-complete sparse graph may be too expensive.
+
+Python Graph Turbo MAY instead use the branch-bound pattern already developed
+for SearchRoute:
+
+- retain visible sparse routes;
+- group omitted routes into certified frontiers;
+- attach a lower bound to every omitted frontier;
+- prove the selected route cost is no greater than every frontier lower bound;
+- bind the frontier certificate to the same complete-graph generation.
+
+This is logically equivalent to proving that no omitted route can improve the
+selected cost.  A bare count of omitted nodes or edges is not sufficient.
+
+* Evidence provenance
+
+Sparse summary edges MUST retain:
+
+- source and target node identities;
+- edge kind;
+- original evidence or contraction proof identities;
+- provider and parser provenance;
+- complete graph generation;
+- cost derivation;
+- sparse projection generation.
+
+A summary edge without reconstruction/provenance evidence is not edge-sound.
+
+* Token and latency boundary
+
+The sparse representation is useful only if it reduces implementation cost
+without weakening correctness.
+
+Receipts SHOULD report:
+
+- full node and edge counts;
+- sparse node and edge counts;
+- full and sparse packet byte estimates;
+- selected path hops;
+- selected uncached token cost;
+- selected interaction rounds;
+- projection-build latency;
+- warm-route latency;
+- distance-completeness or frontier-certificate identity.
+
+The proof does not prescribe a fixed sparsity ratio.  It rejects savings that
+cannot certify omitted-route safety.
+
+* Cache boundary
+
+Sparse projection caching is bound to:
+
+- complete Evidence Graph root;
+- sparse projection algorithm and version;
+- source-index generation;
+- provider/runtime generation;
+- cost-model version;
+- query or reusable query-class identity.
+
+A stale sparse projection cannot inherit distance completeness from an older
+complete graph.
+
+* Python Graph Turbo boundary
+
+The future Python architecture owns:
+
+- sparse adjacency/storage representation;
+- graph contraction or projection algorithms;
+- lower-bound/frontier computation;
+- efficient walk and route enumeration;
+- warm projection cache;
+- benchmark and memory implementation.
+
+The shared RFC and Lean model own:
+
+- edge soundness;
+- distance completeness or omitted-frontier safety;
+- generation binding;
+- route-validity and global-optimality claims.
+
+Python fixture graphs are examples, not proof that the production projection
+satisfies this RFC.
+
+* Mathematical model
+
+#+name: certified-sparse-evidence-graph-projection-model
+#+begin_src typst
+#let FullGraph = $ G = (V, E) $
+#let SparseGraph = $ S = (V_S, E_S) $
+
+#let EdgeSound = $ "EdgeSound"(G, S) "iff"
+  forall e in E_S, e in E $
+
+#let WalkSound = $ cases(
+  "EdgeSound"(G, S),
+  p in "Walks"(S, s, t),
+) "implies" p in "Walks"(G, s, t) $
+
+#let PathCost = $ K(p) = sum_(e in p) w(e) $
+
+#let SparseOptimal = $ cases(
+  p^* in "Walks"(S, s, t),
+  forall p in "Walks"(S, s, t), K(p^*) <= K(p),
+) $
+
+#let DistanceComplete = $ forall p in "Walks"(G, s, t),
+  exists p_S in "Walks"(S, s, t), K(p_S) <= K(p) $
+
+#let GlobalOptimality = $ cases(
+  "SparseOptimal"(S, s, t, p^*),
+  "DistanceComplete"(G, S, s, t),
+) "implies" forall p in "Walks"(G, s, t),
+  K(p^*) <= K(p) $
+
+#let EdgeSoundCounterexample = $ cases(
+  E = cases((0,1,1), (1,2,1), (0,2,1)),
+  E_S = cases((0,1,1), (1,2,1)),
+  "EdgeSound"(G, S),
+  K([(0,2,1)]) = 1,
+  K([(0,1,1), (1,2,1)]) = 2,
+) $
+
+#let OmittedFrontierSafety = $ forall f in F_"omitted",
+  K(p^*) <= L_f
+  "and" forall p in f, L_f <= K(p) $
+
+#let Main = (
+  FullGraph,
+  SparseGraph,
+  EdgeSound,
+  WalkSound,
+  PathCost,
+  SparseOptimal,
+  DistanceComplete,
+  GlobalOptimality,
+  EdgeSoundCounterexample,
+  OmittedFrontierSafety,
+)
+
+"ok"
+#+end_src
+
+The block is extracted with =orgize eval plan --json NAME PATH= and evaluated
+through =typst eval --in -=.  No =:file= header, standalone Typst source,
+compile step, or PDF is owned by this RFC.
+
+* Lean theorem mapping
+
+=SearchRouteSparseEvidenceGraph.lean= proves:
+
+- =sparse_walk_lifts_to_full_graph=;
+- =certified_sparse_route_is_globally_optimal=;
+- =counterexample_two_hop_walk=;
+- =counterexample_direct_walk=;
+- =counterexample_projection_is_edge_sound=;
+- =edge_sound_sparse_graph_can_hide_shorter_path=.
+
+* Audit requirements
+
+The modular Lean audit MUST classify:
+
+- walk soundness;
+- global sparse-route optimality;
+- counterexample sparse walk;
+- counterexample omitted direct walk;
+- counterexample edge soundness;
+- edge-soundness insufficiency.
+
+Its target inventory belongs to
+=ASPProof.Audit.SearchRouteSparseEvidenceGraph= and imports only
+=ASPProof.Audit.Core= plus the proof module.
+
+* Non-goals
+
+This RFC does not:
+
+- implement Python Graph Turbo;
+- require a particular sparse matrix library;
+- prescribe a fixed sparsity ratio;
+- equate edge soundness with route completeness;
+- accept unbound summary edges;
+- modify Rust provider code;
+- use raw LaTeX or standalone Typst.
+
+* Remaining proof boundary
+
+The next proof layer should:
+
+- replace natural-number edge cost with the full Graph Router cost tuple;
+- prove omitted-frontier lower-bound equivalence;
+- bind contraction edges to reconstructable full paths;
+- formalize incremental sparse projection updates;
+- prove projection-cache invalidation under generation drift;
+- connect Python sparse graph receipts to committed candidate-universe roots.

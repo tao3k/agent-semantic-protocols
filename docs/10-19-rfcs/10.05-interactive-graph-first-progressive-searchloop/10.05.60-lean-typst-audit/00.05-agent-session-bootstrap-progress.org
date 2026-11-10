@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Agent Session Bootstrap Progress
+
+* Status
+
+This refinement closes the observable-progress gap between the Runtime Server
+session-registry authority and the hook recovery loop.
+
+It refines the owner-lifetime contract in =00.04-agent-session-registry-owner-lifetime.org=.
+The Runtime Server remains the only process that opens the Turso registry.  A
+client bootstrap uses typed IPC and must terminate with a receipt that states
+what happened.
+
+* Discovered counterexample
+
+The following execution is invalid even when the process exit code is zero:
+
+#+begin_example
+bootstrap exits 0
+registry entry is absent
+resident route is not routable
+no command receipt is emitted
+#+end_example
+
+Process success is not session bootstrap success.  Treating it as success
+causes the hook to repeat the same recovery command indefinitely while source
+access remains denied.
+
+A second invalid execution was reproduced with a healthy Runtime Server: the
+bootstrap client waited 39.62 seconds, attempted to open the canonical Turso
+file directly, and failed because the resident owner already held it.  The
+correct response is neither a longer lock retry nor a second database handle;
+the client must select typed IPC before any database-open operation.
+
+* Terminal-result contract
+
+Every bootstrap request must produce exactly one typed terminal result before
+the client returns:
+
+- =ready=: the registry entry exists, its route is routable, and the requested
+  command has a completion receipt when a command was supplied.
+- =waiting-for-host=: the host must perform a named action; the receipt carries
+  that action and the request identity.
+- =failed=: the receipt carries a typed reason and a retry classification.
+
+EOF, an empty stdout stream, or timeout without one of these results is a
+protocol failure and must return a non-zero process status.  A zero exit status
+is permitted only for =ready= or for an explicitly rendered
+=waiting-for-host= result.
+
+* Progress and boundedness
+
+The client may wait only within an explicit deadline.  The Runtime Server must
+not hold the registry writer lane while evaluating the hook or waiting for a
+host action.  Registry mutations are serialized by the writer actor; hook
+evaluation and client response delivery use distinct lanes.
+
+For a request carrying =command-json=, =ready= additionally requires a command
+completion receipt whose request identity matches the bootstrap request.  A
+registry row alone cannot discharge command execution.
+
+* Rust conformance obligations
+
+The ASP CLI client must:
+
+1. decode the Runtime Server terminal result;
+2. render a non-empty compact receipt;
+3. map =failed= and untyped EOF to a non-zero exit;
+4. verify registry presence and routability before rendering =ready=;
+5. verify command completion when =command-json= is present.
+
+The agent-session CLI does not accept a registry or state-root path.  It
+resolves the current Git workspace and reaches the canonical AST State Home
+registry only through Runtime Server typed IPC.  Explicit state-root opening
+is a Runtime Server construction concern, not a client option.  This prevents
+bootstrap, register, status, and hook recovery from silently selecting
+different database-opening modes.
+
+Scenario tests must cover the discovered empty-success counterexample, typed
+waiting, typed failure, ready without a command, ready with a matching command
+receipt, request-identity mismatch, deadline expiry, and a published Runtime
+Server endpoint that makes every client direct-open path unreachable.
+
+* Formal model
+
+=ASPProof.AgentSessionBootstrapProgress= preserves the empty-success
+counterexample and proves that the corrected exit rule cannot classify it as a
+successful bootstrap.  Rust scenario tests are the executable refinement of
+that model; neither the Lean proof nor a unit test alone is a runtime
+conformance receipt.

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-client-terminal.schema.json",
+  "title": "ASP Runtime Client Boundary Terminal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "reasonKind", "retryAdmitted", "argv", "cause"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.runtime-client-terminal" },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "failed" },
+    "reasonKind": {
+      "enum": [
+        "runtime-client-connect-deadline-exceeded",
+        "runtime-client-session-deadline-exceeded",
+        "runtime-client-response-deadline-exceeded"
+      ]
+    },
+    "retryAdmitted": { "const": false },
+    "argv": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "cause": { "type": "string", "minLength": 1 }
+  }
+}

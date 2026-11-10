@@ -1,0 +1,174 @@
+{"sourcePath":
+ "ASPProof/SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.SeparatorCount 0 = 0",
+   "theoremFamily": "empty-array-separator-count",
+   "rfcClauseIds": ["CRGI-EMPTY", "CRGI-SEPARATOR"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.separator_count_zero",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (count : Nat), ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.SeparatorCount count.succ = count",
+   "theoremFamily": "nonempty-array-separator-count",
+   "rfcClauseIds": ["CRGI-EXACT", "CRGI-SEPARATOR"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.separator_count_succ",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (count : Nat), ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.SeparatorCount count ≤ count",
+   "theoremFamily": "separator-capacity-bound",
+   "rfcClauseIds": ["CRGI-CAPACITY", "CRGI-SEPARATOR"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.separator_count_is_bounded_by_item_count",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.JsonArrayBytes 0 0 = 2",
+   "theoremFamily": "empty-array-framing",
+   "rfcClauseIds": ["CRGI-EMPTY", "CRGI-JSON"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.empty_json_array_has_two_bytes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (itemCount itemCapacity totalEncodedItemBytes encodedItemByteMaximum : Nat),\n  itemCount ≤ itemCapacity →\n    totalEncodedItemBytes ≤ itemCount * encodedItemByteMaximum →\n      ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.JsonArrayBytes itemCount\n          totalEncodedItemBytes ≤\n        2 + itemCapacity * encodedItemByteMaximum + itemCapacity",
+   "theoremFamily": "array-encoded-byte-bound",
+   "rfcClauseIds": ["CRGI-CAPACITY", "CRGI-JSON"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.json_array_bytes_are_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (encodedByteCapacity : Nat), ∃ oneItemEncodedBytes, encodedByteCapacity < oneItemEncodedBytes",
+   "theoremFamily": "count-cap-insufficient",
+   "rfcClauseIds": ["CRGI-COUNTEREXAMPLE", "CRGI-ITEM"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.item_count_cap_without_item_byte_cap_does_not_bound_payload",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (encodedCountBytes encodedCountByteMaximum fixedSummaryBytes digestBytes : Nat),\n  encodedCountBytes ≤ encodedCountByteMaximum →\n    ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.OverflowSummaryBytes encodedCountBytes\n        fixedSummaryBytes digestBytes ≤\n      ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.OverflowSummaryBytes encodedCountByteMaximum\n        fixedSummaryBytes digestBytes",
+   "theoremFamily": "overflow-count-byte-bound",
+   "rfcClauseIds": ["CRGI-COUNT", "CRGI-OVERFLOW"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.overflow_summary_is_bounded_by_encoded_count_cap",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedSummaryBytes digestBytes byteCapacity : Nat),\n  ∃ encodedCountBytes,\n    byteCapacity <\n      ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.OverflowSummaryBytes encodedCountBytes\n        fixedSummaryBytes digestBytes",
+   "theoremFamily": "overflow-root-insufficient",
+   "rfcClauseIds": ["CRGI-COUNTEREXAMPLE", "CRGI-OVERFLOW"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.fixed_digest_without_count_byte_cap_does_not_bound_overflow_summary",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (fixedObjectBytes candidateCount candidateCapacity totalCandidateBytes candidateReceiptByteMaximum comparisonCount\n    totalComparisonBytes comparisonReceiptByteMaximum overflowSummaryBytes overflowSummaryByteMaximum : Nat),\n  candidateCount ≤ candidateCapacity →\n    totalCandidateBytes ≤ candidateCount * candidateReceiptByteMaximum →\n      comparisonCount ≤ candidateCount →\n        totalComparisonBytes ≤ comparisonCount * comparisonReceiptByteMaximum →\n          overflowSummaryBytes ≤ overflowSummaryByteMaximum →\n            ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.CanonicalProjectionBytes fixedObjectBytes\n                candidateCount totalCandidateBytes comparisonCount totalComparisonBytes overflowSummaryBytes ≤\n              ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.CanonicalProjectionCapacityBytes\n                fixedObjectBytes candidateCapacity candidateReceiptByteMaximum comparisonReceiptByteMaximum\n                overflowSummaryByteMaximum",
+   "theoremFamily": "canonical-projection-bound",
+   "rfcClauseIds": ["CRGI-CAPACITY", "CRGI-PROJECTION"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.canonical_projection_bytes_are_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectBudget)\n  (state : ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectBudgetState)\n  (nextStepEncodedBytes : Nat),\n  ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectAuthorized budget state\n      nextStepEncodedBytes →\n    (ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.applyInspect state\n          nextStepEncodedBytes).stepsUsed ≤\n      budget.maxSteps",
+   "theoremFamily": "inspect-step-invariant",
+   "rfcClauseIds": ["CRGI-INSPECT", "CRGI-STEPS"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.authorized_inspect_preserves_step_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectBudget)\n  (state : ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectBudgetState)\n  (nextStepEncodedBytes : Nat),\n  ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectAuthorized budget state\n      nextStepEncodedBytes →\n    (ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.applyInspect state\n          nextStepEncodedBytes).encodedBytesUsed ≤\n      budget.maxEncodedBytes",
+   "theoremFamily": "inspect-byte-invariant",
+   "rfcClauseIds": ["CRGI-BYTES", "CRGI-INSPECT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.authorized_inspect_preserves_byte_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (maxSteps maxEncodedBytes encodedBytesUsed nextStepEncodedBytes : Nat),\n  ¬ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectAuthorized\n      { maxSteps := maxSteps, maxEncodedBytes := maxEncodedBytes }\n      { stepsUsed := maxSteps, encodedBytesUsed := encodedBytesUsed } nextStepEncodedBytes",
+   "theoremFamily": "inspect-step-exhaustion",
+   "rfcClauseIds": ["CRGI-FAIL-CLOSED", "CRGI-INSPECT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.exhausted_step_budget_blocks_inspect",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (stepBytes : List Nat) (stepByteMaximum : Nat),\n  (∀ (stepBytesValue : Nat), stepBytesValue ∈ stepBytes → stepBytesValue ≤ stepByteMaximum) →\n    stepBytes.sum ≤ stepBytes.length * stepByteMaximum",
+   "theoremFamily": "inspect-list-sum-bound",
+   "rfcClauseIds": ["CRGI-INSPECT", "CRGI-SEQUENCE"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.inspect_step_sum_is_bounded_by_length",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (initialProjectionBytes : Nat) (stepBytes : List Nat) (maxSteps stepByteMaximum : Nat),\n  stepBytes.length ≤ maxSteps →\n    (∀ (stepBytesValue : Nat), stepBytesValue ∈ stepBytes → stepBytesValue ≤ stepByteMaximum) →\n      ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectSequenceBytes initialProjectionBytes\n          stepBytes ≤\n        initialProjectionBytes + maxSteps * stepByteMaximum",
+   "theoremFamily": "inspect-global-byte-bound",
+   "rfcClauseIds": ["CRGI-GLOBAL", "CRGI-INSPECT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.inspect_sequence_bytes_are_globally_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type": "∀ (byteBudget : Nat), ∃ stepCount, byteBudget < stepCount * 1",
+   "theoremFamily": "per-step-cap-insufficient",
+   "rfcClauseIds": ["CRGI-COUNTEREXAMPLE", "CRGI-INSPECT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.per_step_cap_without_interaction_cap_does_not_bound_total",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectIdentity),\n  ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectCompatible identity identity",
+   "theoremFamily": "inspect-identity-reflexive",
+   "rfcClauseIds": ["CRGI-IDENTITY", "CRGI-INSPECT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.unchanged_inspect_identity_is_compatible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (workspaceSnapshotDigest projectionIdentityDigest selectorDigest depth changedDepth expansionPolicyDigest : Nat),\n  depth ≠ changedDepth →\n    ¬ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectCompatible\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, projectionIdentityDigest := projectionIdentityDigest,\n          selectorDigest := selectorDigest, depth := depth, expansionPolicyDigest := expansionPolicyDigest }\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, projectionIdentityDigest := projectionIdentityDigest,\n          selectorDigest := selectorDigest, depth := changedDepth, expansionPolicyDigest := expansionPolicyDigest }",
+   "theoremFamily": "inspect-depth-invalidates",
+   "rfcClauseIds": ["CRGI-DEPTH", "CRGI-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.changed_inspect_depth_invalidates_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (workspaceSnapshotDigest changedWorkspaceSnapshotDigest projectionIdentityDigest selectorDigest depth\n    expansionPolicyDigest : Nat),\n  workspaceSnapshotDigest ≠ changedWorkspaceSnapshotDigest →\n    ¬ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.InspectCompatible\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, projectionIdentityDigest := projectionIdentityDigest,\n          selectorDigest := selectorDigest, depth := depth, expansionPolicyDigest := expansionPolicyDigest }\n        { workspaceSnapshotDigest := changedWorkspaceSnapshotDigest,\n          projectionIdentityDigest := projectionIdentityDigest, selectorDigest := selectorDigest, depth := depth,\n          expansionPolicyDigest := expansionPolicyDigest }",
+   "theoremFamily": "inspect-snapshot-invalidates",
+   "rfcClauseIds": ["CRGI-IDENTITY", "CRGI-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalReceiptGrammarProgressiveInspectBound.changed_inspect_snapshot_invalidates_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 18,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 18,
+ "axiomDependentDeclarationCount": 0}

@@ -1,0 +1,120 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteInspectTraceCatalog.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectTraceCatalog",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (candidate : SearchRouteDAG.GraphCandidate), SearchRouteDAG.graphLexNoWorse candidate candidate",
+   "theoremFamily": "selector-order",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name": "SearchRouteInspectTraceCatalog.graph_candidate_lex_refl",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {first second third : SearchRouteDAG.GraphCandidate},\n  SearchRouteDAG.graphLexNoWorse first second →\n    SearchRouteDAG.graphLexNoWorse second third → SearchRouteDAG.graphLexNoWorse first third",
+   "theoremFamily": "selector-order",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name": "SearchRouteInspectTraceCatalog.graph_candidate_lex_trans",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (left right : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.graphLexNoWorse (SearchRouteDAG.preferGraphCandidate left right) left",
+   "theoremFamily": "selector-order",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name": "SearchRouteInspectTraceCatalog.preferGraphCandidate_no_worse_left",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (left right : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.graphLexNoWorse (SearchRouteDAG.preferGraphCandidate left right) right",
+   "theoremFamily": "selector-order",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name": "SearchRouteInspectTraceCatalog.preferGraphCandidate_no_worse_right",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (left right : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.preferGraphCandidate left right = left ∨ SearchRouteDAG.preferGraphCandidate left right = right",
+   "theoremFamily": "selector-membership",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name":
+   "SearchRouteInspectTraceCatalog.preferGraphCandidate_eq_left_or_right",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (requirement : SearchRouteCost.RouteRequirement) (budget : SearchRouteDAG.GraphRouteBudget)\n  (candidates : List SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.chooseBestGraphCandidate requirement budget candidates = none →\n    ∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ candidates → SearchRouteDAG.graphFeasibleB requirement budget candidate = false",
+   "theoremFamily": "selector-feasibility",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name":
+   "SearchRouteInspectTraceCatalog.chooseBestGraphCandidate_none_implies_infeasible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (requirement : SearchRouteCost.RouteRequirement) (budget : SearchRouteDAG.GraphRouteBudget)\n  (candidates : List SearchRouteDAG.GraphCandidate) (selected : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.chooseBestGraphCandidate requirement budget candidates = some selected →\n    selected ∈ candidates ∧ SearchRouteDAG.graphFeasibleB requirement budget selected = true",
+   "theoremFamily": "selector-membership",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name":
+   "SearchRouteInspectTraceCatalog.chooseBestGraphCandidate_mem_and_feasible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (requirement : SearchRouteCost.RouteRequirement) (budget : SearchRouteDAG.GraphRouteBudget)\n  (candidates : List SearchRouteDAG.GraphCandidate) (selected : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.chooseBestGraphCandidate requirement budget candidates = some selected →\n    ∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ candidates →\n        SearchRouteDAG.graphFeasibleB requirement budget candidate = true →\n          SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "selector-local-optimality",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-SELECTOR"],
+   "name":
+   "SearchRouteInspectTraceCatalog.chooseBestGraphCandidate_is_lex_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {graph : SearchRouteDAG.RankedDAG}\n  {source target : Fin graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget}\n  {catalog : List (SearchRouteInspectTraceCatalog.RealizedTraceCatalogEntry initial graph source target)}\n  {selected : SearchRouteDAG.GraphCandidate},\n  SearchRouteDAG.chooseBestGraphCandidate requirement budget\n        (SearchRouteInspectTraceCatalog.projectTraceCatalog catalog) =\n      some selected →\n    ∃ entry, entry ∈ catalog ∧ entry.candidate = selected",
+   "theoremFamily": "catalog-provenance",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-REALIZATION"],
+   "name":
+   "SearchRouteInspectTraceCatalog.selected_candidate_has_trace_provenance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {graph : SearchRouteDAG.RankedDAG}\n  {source target : Fin graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget}\n  {catalog : List (SearchRouteInspectTraceCatalog.RealizedTraceCatalogEntry initial graph source target)}\n  {selected : SearchRouteDAG.GraphCandidate},\n  SearchRouteDAG.chooseBestGraphCandidate requirement budget\n        (SearchRouteInspectTraceCatalog.projectTraceCatalog catalog) =\n      some selected →\n    SearchRouteDAG.LocallyOptimal graph source target requirement budget\n      (SearchRouteInspectTraceCatalog.projectTraceCatalog catalog) selected",
+   "theoremFamily": "selector-local-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-STC-REALIZATION", "ASP-RFC-10.05-STC-SELECTOR"],
+   "name":
+   "SearchRouteInspectTraceCatalog.selected_catalog_candidate_is_locally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} {graph : SearchRouteDAG.RankedDAG}\n  {source target : Fin graph.nodeCount} {requirement : SearchRouteCost.RouteRequirement}\n  {budget : SearchRouteDAG.GraphRouteBudget}\n  {catalog : List (SearchRouteInspectTraceCatalog.RealizedTraceCatalogEntry initial graph source target)}\n  {selected : SearchRouteDAG.GraphCandidate},\n  SearchRouteInspectTraceCatalog.RealizedTraceCatalogComplete graph source target requirement budget catalog →\n    SearchRouteDAG.chooseBestGraphCandidate requirement budget\n          (SearchRouteInspectTraceCatalog.projectTraceCatalog catalog) =\n        some selected →\n      (∃ entry, entry ∈ catalog ∧ entry.candidate = selected) ∧\n        SearchRouteDAG.Realizes graph source target selected ∧\n          ∀ (candidate : SearchRouteDAG.GraphCandidate),\n            SearchRouteDAG.Realizes graph source target candidate →\n              SearchRouteDAG.graphFeasibleB requirement budget candidate = true →\n                SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "catalog-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-STC-COMPLETE",
+    "ASP-RFC-10.05-STC-GLOBAL",
+    "ASP-RFC-10.05-STC-REALIZATION"],
+   "name":
+   "SearchRouteInspectTraceCatalog.complete_trace_catalog_selects_global_driver",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteDAG.chooseBestGraphCandidate SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n      [SearchRouteDAG.shortInteractionLongGraph] =\n    some SearchRouteDAG.shortInteractionLongGraph ∧\n  SearchRouteDAG.graphFeasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n        SearchRouteDAG.longInteractionShortGraph =\n      true ∧\n    ¬SearchRouteDAG.graphLexNoWorse SearchRouteDAG.shortInteractionLongGraph SearchRouteDAG.longInteractionShortGraph",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-STC-INCOMPLETE"],
+   "name":
+   "SearchRouteInspectTraceCatalog.incomplete_catalog_can_hide_cheaper_driver",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 12,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 12}

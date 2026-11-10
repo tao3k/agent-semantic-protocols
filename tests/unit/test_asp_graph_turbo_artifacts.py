@@ -1,10 +1,14 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Artifact evaluation tests for ASP graph turbo."""
 
 from __future__ import annotations
 
 import json
 
-from asp_graph_turbo.artifacts import (
+from asp_python_graphs.artifacts import (
     evaluate_search_artifacts,
     search_packet_to_graph_turbo_request,
 )
@@ -12,9 +16,9 @@ from asp_graph_turbo.artifacts import (
 
 def search_packet() -> dict[str, object]:
     return {
-        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
         "languageId": "python",
-        "method": "search/lexical",
+        "method": "search/playbook",
         "view": "lexical",
         "query": "semantic_string_type",
         "searchSynthesis": {
@@ -40,7 +44,7 @@ def test_search_packet_can_be_converted_to_graph_turbo_request() -> None:
     assert request is not None
     assert request["profile"] == "query-deps"
     assert request["budget"] == 6
-    assert request["seedIds"]
+    assert request["entryNodeIds"]
     assert len(request["graph"]["nodes"]) == 3
     assert any(edge["relation"] == "covers" for edge in request["graph"]["edges"])
 
@@ -61,7 +65,7 @@ def test_artifact_evaluation_reports_cache_and_duplicate_metrics(tmp_path) -> No
                 "providerCommands": [
                     {
                         "argv": [
-                            "py-harness",
+                            "asp-python",
                             "search",
                             "owner",
                             "src/" + "types.py",

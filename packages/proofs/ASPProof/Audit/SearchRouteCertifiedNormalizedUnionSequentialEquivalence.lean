@@ -1,0 +1,26 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence
+
+namespace ASPProof.Audit.SearchRouteCertifiedNormalizedUnionSequentialEquivalence
+
+open ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence
+
+#print axioms normalization_is_idempotent
+#print axioms normalized_union_equals_sequential_insertion
+#print axioms normalized_three_way_union_equals_sequential_insertion
+#print axioms normalized_parallel_fanin_equals_normalized_sequential_fold
+#print axioms duplicate_evidence_merge_is_commutative
+#print axioms normalized_union_preserves_early_provenance
+#print axioms premature_destructive_pruning_drops_early_provenance
+#print axioms destructive_pruning_is_not_extensionally_equivalent
+#print axioms same_normalization_identity_authorizes_reuse
+#print axioms changed_candidate_universe_rejects_reuse
+#print axioms changed_dominance_certificate_rejects_reuse
+#print axioms explicit_normalization_receipt_is_capacity_bounded
+#print axioms uncapped_normalization_disclosure_exceeds_every_fixed_bound
+#print axioms summarized_normalization_receipt_is_count_independent
+
+end ASPProof.Audit.SearchRouteCertifiedNormalizedUnionSequentialEquivalence

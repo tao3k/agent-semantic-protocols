@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-context-product"
+license.workspace = true
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Language-neutral ASP context product wire contract and structural validation."
+
+[dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+serde.workspace = true
+serde_json.workspace = true
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

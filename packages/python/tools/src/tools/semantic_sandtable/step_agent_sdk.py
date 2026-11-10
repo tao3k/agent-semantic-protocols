@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Resolve sandtable live agent SDK steps."""
 
 from __future__ import annotations
@@ -308,10 +312,10 @@ def _max_asp_bash_commands(spec: dict[str, Any], step: dict[str, Any]) -> Any:
     expect = step.get("expect")
     if not isinstance(expect, dict):
         return None
-    pipe_flow = expect.get("pipeFlow")
-    if not isinstance(pipe_flow, dict):
+    command_flow = expect.get("commandFlow")
+    if not isinstance(command_flow, dict):
         return None
-    return pipe_flow.get("maxAspCommands")
+    return command_flow.get("maxAspCommands")
 
 
 def _base_openai_compatible_command(

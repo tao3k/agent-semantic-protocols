@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-binary-bundle.v2.schema.json",
+  "title": "Runtime Binary Bundle V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "bundleDigest", "members", "executionBinding"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-binary-bundle"},
+    "schemaVersion": {"const": 2},
+    "bundleDigest": {"$ref": "#/$defs/blake3Digest"},
+    "members": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/blake3Digest"},
+      "required": [
+        "provider-registration.json",
+        "provider-artifact-set",
+        "evaluator-policy.json",
+        "evaluator-abi.json",
+        "schema-bundle.json"
+      ],
+      "minProperties": 6,
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"}
+    },
+    "executionBinding": {"$ref": "runtime-artifact-bundle-binding.v2.schema.json"}
+  },
+  "$defs": {
+    "blake3Digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+  }
+}

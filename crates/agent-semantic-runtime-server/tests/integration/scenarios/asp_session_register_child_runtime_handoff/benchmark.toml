@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "child_registration_uses_the_grpc_client_frame_and_runtime_registry_owner"
+phase = "resident-request"
+target_total = "5ms"
+max_total = "50ms"
+observed_total = "8ms"
+regression_budget = "45ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 1048576
+route_source = "runtime-grpc-agent-session-register"
+max_provider_process_count = 0
+max_stdout_bytes = 1024
+fallback_reason = "none"
+target_rationale = "The Runtime endpoint is already connected and initialized; child registration is one typed gRPC request plus one Turso registry transaction, with no provider or search work."
+
+[observed_timings]
+request_plane = "8ms"

@@ -1,0 +1,194 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::{
+    collections::BTreeSet,
+    env,
+    path::{Path, PathBuf},
+};
+
+use super::runtime_gates::{
+    read_toml, require_observed_timing_manifest_field, require_positive_duration_manifest_field,
+};
+use super::scenario_performance_gate_impl::{is_non_scenario_dir, read_dir_sorted};
+use super::scenario_policy_scan::{
+    benchmark_has_hot_path_metadata, canonical_benchmark_language, discover_scenario_policy_ids,
+    is_agent_policy_id, require_non_empty_manifest_field, require_supported_language_harness,
+    validate_language_harness_json_boundary,
+};
+use super::shared::{
+    AGENT_POLICY_ID_GRAMMAR, LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS,
+    REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS, SharedBenchmarkToml, SharedScenarioToml,
+};
+
+pub(super) fn discover_toml_scenario_benchmark_roots(root: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    collect_toml_scenario_benchmark_roots(root, &mut roots);
+    roots.sort();
+    roots
+}
+
+pub(super) fn scenario_performance_gate_registers_every_source_module() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let module_root = crate_root.join("tests/unit/scenario_performance_gate.rs");
+    let module_source = std::fs::read_to_string(&module_root)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", module_root.display()));
+    let module_dir = crate_root.join("tests/unit/scenario_performance_gate");
+    let mut missing = read_dir_sorted(&module_dir)
+        .into_iter()
+        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
+        .filter_map(|path| {
+            let file_name = path.file_name()?.to_str()?;
+            let registration = format!("scenario_performance_gate/{file_name}");
+            (!module_source.contains(&registration)).then_some(file_name.to_owned())
+        })
+        .collect::<Vec<_>>();
+    missing.sort();
+    assert!(
+        missing.is_empty(),
+        "scenario performance source modules must be registered by {}; unregistered={missing:?}",
+        module_root.display()
+    );
+}
+
+fn collect_toml_scenario_benchmark_roots(root: &Path, roots: &mut Vec<PathBuf>) {
+    let scenario_path = root.join("scenario.toml");
+    let benchmark_path = root.join("benchmark.toml");
+    if scenario_path.is_file() || benchmark_path.is_file() {
+        assert!(
+            scenario_path.is_file() && benchmark_path.is_file(),
+            "scenario benchmark root must carry both scenario.toml and benchmark.toml: {}",
+            root.display()
+        );
+        roots.push(root.to_path_buf());
+        return;
+    }
+    for path in read_dir_sorted(root) {
+        if path.is_dir() && !is_non_scenario_dir(&path) {
+            collect_toml_scenario_benchmark_roots(&path, roots);
+        }
+    }
+}
+
+pub(super) fn discover_benchmark_ss_files(root: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    collect_benchmark_ss_files(root, &mut paths);
+    paths.sort();
+    paths
+}
+
+fn collect_benchmark_ss_files(root: &Path, paths: &mut Vec<PathBuf>) {
+    for path in read_dir_sorted(root) {
+        if path.is_dir() && !is_non_scenario_dir(&path) {
+            collect_benchmark_ss_files(&path, paths);
+        } else if path.file_name().and_then(|name| name.to_str()) == Some("benchmark.ss") {
+            paths.push(path);
+        }
+    }
+}
+
+pub(super) fn validate_toml_scenario_benchmark(
+    language: &str,
+    root: &Path,
+    invalid: &mut Vec<String>,
+    hot_path_coverage: &mut BTreeSet<&'static str>,
+) {
+    let scenario_path = root.join("scenario.toml");
+    let benchmark_path = root.join("benchmark.toml");
+    let scenario: SharedScenarioToml = read_toml(&scenario_path);
+    let benchmark: SharedBenchmarkToml = read_toml(&benchmark_path);
+
+    require_non_empty_manifest_field(invalid, &scenario_path, "id", &scenario.id);
+    require_non_empty_manifest_field(invalid, &scenario_path, "title", &scenario.title);
+    require_non_empty_manifest_field(invalid, &scenario_path, "agent_goal", &scenario.agent_goal);
+    require_non_empty_manifest_field(invalid, &scenario_path, "inputs", &scenario.inputs);
+    require_non_empty_manifest_field(invalid, &scenario_path, "expected", &scenario.expected);
+    validate_language_harness_json_boundary(root, &scenario, invalid);
+    if scenario.policy_ids.is_empty() {
+        invalid.push(format!(
+            "{}: scenario.policy_ids must not be empty",
+            scenario_path.display()
+        ));
+    }
+    for policy_id in &scenario.policy_ids {
+        if !is_agent_policy_id(policy_id) {
+            invalid.push(format!(
+                "{}: policy id {policy_id:?} must match {AGENT_POLICY_ID_GRAMMAR}",
+                scenario_path.display()
+            ));
+        }
+    }
+
+    require_supported_language_harness(language, &benchmark_path, &benchmark.harness, invalid);
+    if benchmark.test.as_deref().unwrap_or("").trim().is_empty()
+        && benchmark.bench.as_deref().unwrap_or("").trim().is_empty()
+    {
+        invalid.push(format!(
+            "{}: benchmark must name test or bench",
+            benchmark_path.display()
+        ));
+    }
+    for (field, value) in [
+        ("target_total", benchmark.target_total.as_str()),
+        ("max_total", benchmark.max_total.as_str()),
+        ("observed_total", benchmark.observed_total.as_str()),
+        ("regression_budget", benchmark.regression_budget.as_str()),
+    ] {
+        require_positive_duration_manifest_field(invalid, &benchmark_path, field, value);
+    }
+    if benchmark.memory_budget_bytes == 0 {
+        invalid.push(format!(
+            "{}: memory budget must be positive",
+            benchmark_path.display()
+        ));
+    }
+    if benchmark.observed_memory_bytes > benchmark.memory_budget_bytes {
+        invalid.push(format!(
+            "{}: observed memory {} exceeds budget {}",
+            benchmark_path.display(),
+            benchmark.observed_memory_bytes,
+            benchmark.memory_budget_bytes
+        ));
+    }
+    require_non_empty_manifest_field(
+        invalid,
+        &benchmark_path,
+        "target_rationale",
+        &benchmark.target_rationale,
+    );
+    if benchmark.observed_timings.is_empty() {
+        invalid.push(format!(
+            "{}: benchmark.observed_timings must not be empty",
+            benchmark_path.display()
+        ));
+    }
+    for (field, value) in &benchmark.observed_timings {
+        require_observed_timing_manifest_field(invalid, &benchmark_path, field, value);
+    }
+    if benchmark_has_hot_path_metadata(&benchmark) {
+        hot_path_coverage.insert(canonical_benchmark_language(language));
+    }
+}
+
+pub(super) fn asp_unit_scenarios_cover_perf_sensitive_subcommands() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root.join("tests").join("unit").join("scenarios");
+    let mut policy_ids = discover_scenario_policy_ids(&scenario_root);
+    let workspace_root = crate_root.join("../..");
+    for requirement in LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS {
+        policy_ids.extend(discover_scenario_policy_ids(
+            &workspace_root.join(requirement.root),
+        ));
+    }
+    let missing = REQUIRED_PERFORMANCE_SENSITIVE_SUBCOMMAND_POLICY_IDS
+        .iter()
+        .copied()
+        .filter(|policy_id| !policy_ids.contains(*policy_id))
+        .collect::<Vec<_>>();
+
+    assert!(
+        missing.is_empty(),
+        "ASP unit scenarios must cover performance-sensitive subcommands; missing={missing:?}; observed={policy_ids:?}"
+    );
+}

@@ -1,0 +1,335 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.06.16 - Project Topology Reasoning Library
+#+LANGUAGE: en
+#+DATE: 2026-09-06
+#+AUTHOR: ASP Maintainers
+#+FILETAGS: :asp:rfc:search:topology:reasoning:
+#+OPTIONS: toc:2 num:nil
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/basic.template.v1.org][basic.template.v1]]
+:END:
+
+* SDD Project Topology Reasoning Library
+:PROPERTIES:
+:ID: a71a217c-a298-470f-95d2-5db5ae512293
+:CUSTOM_ID: asp-project-topology-reasoning-library-v1
+:SDD_KIND: system
+:SDD_STATUS: draft
+:SDD_CONCERN: durable project orientation and evidence-bound topology
+:SDD_SCOPE: topology construction admission reuse and slicing
+:SDD_OWNER: ASP shared topology contract
+:TRACEABILITY_STATUS: abstract-model-mapped
+:EVIDENCE_STATUS: see RFC 10.06.14 receipt
+:REVIEW_STATUS: source-admission-validated-runtime-integration-withheld
+:END:
+
+** Epistemic Planes
+
+Topology preserves project orientation across searches and context compaction:
+
+1. =StructuralSubstrate=: parser-certified hierarchy, ownership, membership,
+   names, imports, reexports, and document anchors.
+2. =DeclaredSemantics=: source-owned responsibilities, invariants, and rationale.
+3. =SynthesizedSemantics=: Agent/LLM summaries and proposed relations, each
+   bound to explicit premises, producer identity, and admission state.
+4. =EvidenceOverlay=: request-local fd, rg, Tantivy, native, and runtime evidence.
+
+Natural language is necessary because native structure does not explain why a
+component exists or how it participates in an architecture. It therefore lives
+inside the graph as a typed =SemanticAnnotation= or semantic edge, not as loose
+text and not as a parser fact. A proposal may improve recall, explain a selected
+path, or open a frontier. Only an authorized human or source-owned Org contract
+may promote it to =accepted=. Neither proposed nor accepted prose may mint a
+selector or contradict a current parser fact.
+
+** Native Skeleton And Locator
+
+The structural substrate stores names and topology, not implementation bodies:
+
+- Rust keeps files, modules, impl/type names, member names, functions, imports,
+  and reexports.
+- Python, TypeScript, Julia, and Scheme keep analogous module/type/function and
+  import/export structure.
+- Org and Markdown keep titles, heading hierarchy, named blocks, and links.
+- JSON keeps queryable object/pointer structure; Nix keeps attribute structure.
+
+Each native node has a canonical direct Query selector. A separate ephemeral
+locator maps content occurrences and byte intervals to those selectors so rg
+and Tantivy hits can be enriched. Locator ranges are retrieval evidence; they
+are never topology identity and are not rendered for selector-owned nodes.
+
+Each file binds =ContentDigest=, =SkeletonDigest=, and =LocatorDigest=. A
+body-only edit changes content and lexical/locator state while permitting reuse
+of declaration hierarchy. Body-derived CALLS, RETURNS, EMITS, and REFERENCES
+relations bind content identity and are invalidated even when the declaration
+skeleton is unchanged. A renamed member, changed hierarchy, or changed
+import/reexport changes the skeleton and invalidates the affected topology.
+
+** ProjectTopologyLibrary
+
+An immutable content-addressed library contains typed MRR relations, admitted
+semantic annotations, coverage certificates, a versioned
+=project-topology-inference.v1= program, its stable closure, and all identity bindings.
+Search imports the exact admitted library automatically; this is not a CLI flag.
+Live evidence enters as a delta for the current run.
+
+The six standard profiles and project-owned extension boundary are defined by
+[[file:10.06.18-mrr-defined-project-topology.org][RFC 10.06.18]]. MRR is the
+semantic and admission authority. GQL is the Agent-facing query and projection
+adapter; it is not the storage identity or closure authority.
+
+The current language-neutral machine shape is
+[[file:../../../schemas/project-topology-library.v1.schema.json][project-topology-library.v1]].
+This still-evolving V1 carries source-owned expected relations, coverage
+certificates, and exact frontier classification; no parallel V2 contract is
+introduced during V1 stabilization.
+It explicitly declares Search, Query, code understanding, framework
+calibration, refactoring, and context recovery as consumers. Request-local
+rank, hit ranges, read ranges, and retrieval scores are excluded from the
+library and belong only to a bound projection.
+
+Ascent semi-naive evaluation accelerates a fixed-point run; it is not automatic
+cross-version deletion maintenance. Libraries are generation-scoped. Runtime
+reuses unchanged file segments, rebuilds affected strongly connected components
+and strata, verifies all additions and removals, and atomically switches only a
+complete topology generation. Unioning an old closure with a new delta is
+invalid because deleted nodes and edges could survive.
+
+*** Tokio Execution And Atomic Publication
+
+Project Topology construction is a Runtime-owned Tokio workflow. The public
+builder API is asynchronous. Parser acquisition, durable reads, cancellation,
+single-flight coordination, admission, and publication remain on Tokio-owned
+tasks. CPU-bound MRR/Ascent closure evaluation runs only in a bounded
+=spawn_blocking= section; the synchronous evaluator is an internal pure kernel,
+not a public Runtime or cache authority.
+
+The topology blocking lane has a supported-runtime floor of four concurrent
+workers and scales to the machine's available parallelism. Per-generation
+single-flight prevents duplicate work for an equal identity; it MUST NOT be
+implemented by reducing the whole topology service to one worker. Runtime
+resource admission may delay work before it enters the lane, but it may not
+silently run CPU closure on an async worker thread.
+
+The Runtime coordinator keys one in-flight build by the complete topology
+generation identity tuple, never by workspace path, activation generation, or
+provider name alone. Equal keys coalesce onto the same terminal. Unequal keys
+must not share a candidate or completion receipt. A canceled waiter does not
+necessarily stop already-running CPU work, but cancellation before commit makes
+its result inadmissible and the result is discarded. Cancellation therefore
+cannot publish a partial library or mutate the active generation.
+
+The cache contains only immutable admitted =Arc<ProjectTopologyLibrary>= values.
+It is owned by the Runtime generation authority and indexed by full content
+identity. Builders, providers, Search, and Query MUST NOT own process-global,
+provider-private, path-keyed, or latest-candidate caches. Incremental segment
+reuse is input to a new candidate; it is not mutation of an admitted library.
+
+Publication is one atomic state transition:
+
+#+begin_example
+Building(identity)
+  -> graph attachment complete
+  -> Tantivy attachment complete
+  -> Project Topology closure complete
+  -> independent rebuild receipt admitted
+  -> RuntimeProjectTopologyAttachment admitted
+  -> Ready(identity, graph, Tantivy, Arc<ProjectTopologyLibrary>, attachment)
+#+end_example
+
+Graph, Tantivy, and Project Topology are three members of one Tokio generation
+transaction. Their workers may run concurrently, but their individual
+completion events are observations rather than Search-ready terminals. Runtime
+emits exactly one generation terminal after all three attachments are admitted.
+No reader can observe the library, attachment, or Search-ready generation
+between these steps. Failure, budget exhaustion, join failure, or cancellation
+of any member produces the single typed non-ready terminal and leaves the
+previously admitted generation unchanged. =activationGeneration= may fence
+lifecycle transactions but cannot key, validate, or recover topology caching.
+
+The immutable Search data plane retains provider relations with their explicit
+source owner in both resident and mmap forms. The topology builder consumes
+that owner-attributed snapshot directly. Reconstructing ownership from a graph
+endpoint, a selector string, a workspace path, or a later provider query is
+forbidden because none of those values proves the relation's source segment.
+Parser item nodes carry exact Query-compatible selectors. Parser owner nodes
+instead carry a canonical language-qualified owner locator such as
+=rust://src/lib.rs=. An owner locator is structural topology evidence, not an
+exact item selector, and Query Playbook MUST NOT silently promote it into one.
+
+Every parser-owned selector in a source segment also contributes exactly one
+structural =Owner -[:CONTAINS]-> Item= edge. This is a topology-builder fact
+derived from the owner-attributed generation segment, not a provider-supplied
+semantic relation and not a Search-request heuristic. The same canonical edge
+set MUST be installed in the resident Graph attachment and the Project
+Topology library. A provider edge equal to this structural edge is coalesced;
+it cannot create a second fact or change its authority. Therefore a labelled
+GQL containment pattern can select parser items even when a language provider
+emits no optional relations, while unsupported relations remain empty rather
+than being fabricated.
+
+=CONTAINS= is retained and queried through the structural hierarchy index. It
+MUST NOT be inserted into the generic =TOPOLOGY_REACHABLE= transitive program:
+an Owner with many Items would otherwise manufacture pairwise Item
+reachability through a structural hub and can expand quadratically. Excluding
+it from that program does not discard the direct fact; the inference receipt
+still binds the complete direct edge inventory, while its derived relationship
+set records only relations admitted by the generic reachability profile.
+
+Deletion invalidation follows the proof dependency graph transitively. If a
+base fact is removed, every derived descendant that depends on it is removed
+before the successor generation can be admitted. The successor closure MUST be
+observationally equal to a from-scratch evaluation under the successor tuple;
+an addition-only delta check cannot certify this condition.
+
+The from-scratch equivalence claim is backed by a separately admitted rebuild
+receipt that binds the topology generation and recomputed library digest. A
+candidate cannot certify itself by copying its own =libraryDigest= into a field
+named =fromScratchEquivalentDigest=. Digest equality without an independently
+resolved rebuild receipt is an untrusted assertion.
+
+*** Executable Inference Profile
+
+The first executable MRR profile is deliberately narrower than the complete
+Topology relation vocabulary. It retains each parser-owned edge's relation
+kind, projects those edges into a separate bounded adjacency relation, derives
+=TOPOLOGY_REACHABLE= without relabelling its premises, and evaluates the typed
+=CALLS(x,y) + READS_CONFIG(y,z) => DEPENDS_ON_CONFIG(x,z)= rule through the MRR
+facade backed by bounded Ascent semi-naive evaluation.
+It MUST NOT relabel a heterogeneous =DECLARES -> CALLS= path as either
+=DECLARES= or =CALLS=. A complete result carries the sorted
+direct-edge identities, every derived endpoint pair, the complete parser
+premise set for each pair, the MRR closure digest, and the separately
+materialized lineage/transition receipt digest. This receipt is defined by
+[[file:../../../schemas/project-topology-inference-receipt.v1.schema.json][project-topology-inference-receipt.v1]].
+
+The standard program source is the Org Contract-governed resource
+[[file:../../../org/templates/asp/topology/program.v1.org][org/templates/asp/topology/program.v1.org]].
+=orgize= parses its typed rule fields, and Runtime binds its exact source digest
+into the topology resolver identity before building the generation. The native
+program is not project-local =.agents= state.
+
+This profile MUST NOT claim support for arbitrary Topology rules. Relation-kind
+compatibility, expected-edge gaps, lattice selection, and project-defined MRR
+extensions enter later executable profiles under their own admitted rule-pack
+and ABI identities. Unsupported rule shapes fail closed rather than being
+translated into string heuristics.
+
+Output truncation is an incomplete terminal and cannot be published as a fixed
+point. Deleting a parser premise requires rebuilding the affected closure; a
+derived relationship survives only when its complete premise set exists in the
+successor generation. Runtime publication consumes the typed receipt and never
+reconstructs or self-asserts it from a digest.
+
+The machine packet carries that evidence in =fromScratchRebuildReceipt=. Its
+complete record MUST equal the independently admitted receipt resolved by
+=id=; ID membership alone is insufficient. Its
+=topologyGenerationDigest= and =recomputedLibraryDigest= MUST equal the
+candidate generation and library. The packet also inventories
+=semanticAdmissionReceipts=; an accepted annotation's
+=admissionReceiptRef= MUST resolve to an identical externally admitted receipt whose
+=annotationNodeId= and =semanticTopologyDigest= match exactly.
+
+Relation storage follows its algebra instead of one universal table: hierarchy
+uses prefix/tree backing, equivalence and reexport classes use union-find,
+reachability uses SCC-aware relations, best-plan selection uses a lattice or
+Pareto frontier, and ordinary evidence uses hash-indexed sets. Multiple access
+patterns may share one physical index only when the storage contract proves
+their equivalence.
+
+** Identities And Admission
+
+=StructuralTopologyIdentity= binds workspace/source identity, provider grammar,
+resolver and schema versions, normalized skeleton facts, and coverage.
+=SemanticTopologyIdentity= also binds declarations, synthesized annotations,
+premise sets, producer/model identity, and admission receipts.
+=TopologyInferenceIdentity= binds the admitted logical-inference program. Publication
+generation is only a transaction fence and never topology freshness identity.
+
+A missing, stale, partially rebuilt, or premise-incompatible library fails
+before derivation. New declarations or accepted model semantics publish a new
+semantic identity instead of mutating a hidden cache.
+
+Every Search projection MUST jointly bind the following library identity tuple:
+
+#+begin_example
+(projectWorkspaceIdentity,
+ sourceGenerationDigest,
+ providerCatalogDigest,
+ topologyLibraryDigest,
+ topologyGenerationDigest,
+ structuralTopologyDigest,
+ semanticTopologyDigest,
+ inferenceProgramDigest)
+#+end_example
+
+=projectWorkspaceIdentity= is the manifest-declared product URI
+=<canonical-git-locator>#workspace/<logical-key>=. It is stable across clone
+paths and Runtime sessions. It MUST NOT contain a generated Runtime workspace
+identifier. =sourceGenerationDigest= independently binds source freshness; a
+shared project identity therefore never implies equal source bytes.
+
+Equality of publication or activation generations is neither necessary nor
+sufficient for this binding. Replay with any unequal tuple member fails before
+ranking, logical inference, GQL rendering, or Query materialization.
+
+An accepted synthesized annotation is factual only when its current semantic
+binding and a separately admitted receipt are both present. The literal state
+=accepted= is not an admission receipt. Shape validation of that field is also
+not evidence that the referenced receipt exists or belongs to the same
+semantic topology generation. The receipt MUST bind the annotation identity,
+semantic topology digest, admitting authority, and receipt identity. A receipt
+for another annotation or another semantic generation fails closed.
+
+Stable closure carries one =proofDependencies= record for every derived edge.
+Each record binds =derivedEdgeId= to its complete =premiseEdgeIds=. A removed
+or unresolved premise invalidates that derived edge and every transitive
+descendant before publication.
+
+** Bounded Slice And Replay
+
+Internal logical inference computes edge-kind-safe recursive reachability, expected
+relation grammar, coverage-sensitive known/missing/unknown state, and proof
+dependencies. Depth is relative to a seed and differs from structural depth or
+semantic hops. Python Graphs ranks only eligible facts and selects a minimal
+witness-connected decision core. A second topology-proof certification pass rejects
+any selected node outside every seed, best path, exact Query target, frontier
+boundary, or proof dependency.
+
+The default response renders this slice in one GQL graph. It retains exact
+library, logic-program, evidence-binding, proof-DAG, coverage, and ranking
+identities in the typed receipt so a later Agent can replay the project picture.
+Topology excludes volatile rank, runtime state, copied bodies, and unverified
+behavior edges.
+
+The selected Query materialization is a deterministic set, not an execution
+history. It contains unique, canonically ordered, currently admitted selectors.
+Every retained connector and every transitive proof dependency needed to
+justify those selectors remains in the decision core even when it is outside a
+flat rank prefix.
+
+** Admission Invariants
+
+- Structural facts require a current provider projection.
+- Declared semantics require source-owned contract identity.
+- Accepted synthesis retains all premises and its admission receipt.
+- Proposed synthesis is frontier-only without independent factual support.
+- Missing is derivable only under certified complete relation coverage.
+- Every path is edge-kind-safe and jointly compatible under one binding.
+- Direct and declared relations retain their original witnesses and modality.
+- Derived relations retain the same binding plus inference-program and proof
+  identities; settlement may not flatten them into parser facts.
+- Budget or fuel exhaustion is a typed non-fixed-point terminal. Only a receipt
+  whose =candidateRelationSetDigest= equals =nextRelationSetDigest= may claim
+  =fixed-point=.
+- Materialization selectors are unique, canonically ordered, and admitted by
+  the same topology generation.
+- A complete generation accounts for additions, removals, and invalidated
+  derived descendants, and equals a from-scratch rebuild for that generation.
+
+The formal model is
+[[file:../../../packages/proofs/ASPProof/SearchEvidenceDerivation.lean][SearchEvidenceDerivation]].

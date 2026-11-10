@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-ast-patch-definitions.v1.schema.json",
+  "title": "Semantic AST Patch Family Definitions v1",
+  "description": "Shared definitions owned by the semantic-ast-patch schema family.",
+  "$defs": {
+    "operationName": {
+      "type": "string",
+      "enum": [
+        "append_to_block",
+        "insert_before_statement",
+        "insert_after_statement",
+        "replace_statement",
+        "replace_expression",
+        "replace_call_arg",
+        "insert_import",
+        "remove_import",
+        "remove_statement",
+        "remove_item",
+        "replace_item",
+        "split_owner_items"
+      ]
+    }
+  }
+}

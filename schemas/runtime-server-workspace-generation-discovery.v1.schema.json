@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-workspace-generation-discovery.v1.schema.json",
+  "title": "Runtime Server Workspace Generation Discovery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "projectRoot",
+    "state",
+    "attempt",
+    "startedAtUnixMs",
+    "deadlineUnixMs",
+    "finishedAtUnixMs",
+    "reasonKind",
+    "error"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-generation-discovery.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "enum": ["discovering", "failed", "cancelled"]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "startedAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deadlineUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "finishedAtUnixMs": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "reasonKind": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "error": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "discovering"}}},
+      "then": {
+        "properties": {
+          "finishedAtUnixMs": {"type": "null"},
+          "reasonKind": {"type": "null"},
+          "error": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["failed", "cancelled"]}}},
+      "then": {
+        "properties": {
+          "finishedAtUnixMs": {"type": "integer"},
+          "reasonKind": {"type": "string", "minLength": 1},
+          "error": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  ]
+}

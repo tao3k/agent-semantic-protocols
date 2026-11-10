@@ -247,34 +247,7 @@
       }
     },
     "metricTarget": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["metric", "value"],
-      "properties": {
-        "metric": {
-          "type": "string",
-          "minLength": 1
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0
-            },
-            {
-              "type": "number",
-              "minimum": 0
-            },
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "boolean"
-            }
-          ]
-        }
-      }
+      "$ref": "#/$defs/metricObservation"
     },
     "countMap": {
       "type": "object",

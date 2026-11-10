@@ -1,0 +1,122 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (now : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseActive lease now →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseExpired lease now",
+   "theoremFamily": "active-expired-boundary",
+   "rfcClauseIds": ["BPRL-LEASE", "BPRL-TIME"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.active_and_expired_are_disjoint",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (maximumDuration now : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseDurationBound lease\n      maximumDuration →\n    lease.issuedAt + maximumDuration ≤ now →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseActive lease now",
+   "theoremFamily": "bounded-active-ownership",
+   "rfcClauseIds": ["BPRL-BOUND", "BPRL-LIVENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.maximum_duration_bounds_active_ownership",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (expectedLeaseEpoch expectedRevision now : Nat) (expectedSnapshot : SnapshotId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseActive lease now →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.TakeoverAuthorized lease\n        expectedLeaseEpoch expectedRevision now expectedSnapshot",
+   "theoremFamily": "active-holder-exclusion",
+   "rfcClauseIds": ["BPRL-ACTIVE", "BPRL-TAKEOVER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.active_lease_blocks_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (now : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.LeaseExpired lease now →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.TakeoverAuthorized lease\n      lease.leaseEpoch lease.publicationRevision now lease.verificationSnapshotId",
+   "theoremFamily": "expired-exact-fence-takeover",
+   "rfcClauseIds": ["BPRL-EXPIRED", "BPRL-TAKEOVER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.expired_lease_with_exact_fences_authorizes_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (expectedLeaseEpoch expectedRevision now : Nat) (expectedSnapshot : SnapshotId),\n  expectedLeaseEpoch ≠ lease.leaseEpoch →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.TakeoverAuthorized lease\n        expectedLeaseEpoch expectedRevision now expectedSnapshot",
+   "theoremFamily": "stale-epoch-takeover-rejection",
+   "rfcClauseIds": ["BPRL-EPOCH", "BPRL-FENCE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.stale_lease_epoch_blocks_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (expectedLeaseEpoch expectedRevision now : Nat) (expectedSnapshot : SnapshotId),\n  expectedRevision ≠ lease.publicationRevision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.TakeoverAuthorized lease\n        expectedLeaseEpoch expectedRevision now expectedSnapshot",
+   "theoremFamily": "stale-revision-takeover-rejection",
+   "rfcClauseIds": ["BPRL-FENCE", "BPRL-REVISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.stale_publication_revision_blocks_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (expectedLeaseEpoch expectedRevision now : Nat) (expectedSnapshot : SnapshotId),\n  expectedSnapshot ≠ lease.verificationSnapshotId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.TakeoverAuthorized lease\n        expectedLeaseEpoch expectedRevision now expectedSnapshot",
+   "theoremFamily": "snapshot-takeover-rejection",
+   "rfcClauseIds": ["BPRL-FENCE", "BPRL-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.changed_verification_snapshot_blocks_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (newHolder : HolderId) (now newExpiry : Nat),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.takeoverLease lease newHolder now\n          newExpiry).leaseEpoch =\n      lease.leaseEpoch + 1 ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.takeoverLease lease newHolder now\n          newExpiry).publicationRevision =\n      lease.publicationRevision + 1",
+   "theoremFamily": "takeover-generation-advance",
+   "rfcClauseIds": ["BPRL-EPOCH", "BPRL-REVISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.takeover_increments_epoch_and_revision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (newHolder candidateHolder : HolderId) (now newExpiry expectedRevision : Nat) (candidateSnapshot : SnapshotId),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.PublicationLeaseFence\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.takeoverLease lease newHolder now\n        newExpiry)\n      candidateHolder lease.leaseEpoch expectedRevision now candidateSnapshot",
+   "theoremFamily": "old-holder-post-takeover-fence",
+   "rfcClauseIds": ["BPRL-FENCE", "BPRL-OLD-HOLDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.old_lease_epoch_is_fenced_after_takeover",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {HolderId SnapshotId : Type}\n  (lease :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryLease HolderId SnapshotId)\n  (candidateHolder : HolderId) (candidateLeaseEpoch expectedRevision now : Nat) (candidateSnapshot : SnapshotId),\n  candidateSnapshot ≠ lease.verificationSnapshotId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.PublicationLeaseFence lease\n        candidateHolder candidateLeaseEpoch expectedRevision now candidateSnapshot",
+   "theoremFamily": "active-command-snapshot-fence",
+   "rfcClauseIds": ["BPRL-ACTIVE", "BPRL-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.changed_snapshot_blocks_active_holder_command",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId HolderId SnapshotId DecisionReceiptId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryCommandKey TransitionId\n      HolderId SnapshotId DecisionReceiptId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryCommandCompatible left right →\n    left.leaseEpoch = right.leaseEpoch",
+   "theoremFamily": "recovery-command-epoch-binding",
+   "rfcClauseIds": ["BPRL-COMMAND", "BPRL-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.recovery_command_compatibility_binds_lease_epoch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId HolderId SnapshotId DecisionReceiptId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryCommandKey TransitionId\n      HolderId SnapshotId DecisionReceiptId),\n  left.leaseEpoch ≠ right.leaseEpoch →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.RecoveryCommandCompatible left right",
+   "theoremFamily": "cross-epoch-replay-rejection",
+   "rfcClauseIds": ["BPRL-EPOCH", "BPRL-REPLAY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedPublicationRecoveryLease.changed_lease_epoch_rejects_recovery_replay",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 12,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 12,
+ "axiomDependentDeclarationCount": 0}

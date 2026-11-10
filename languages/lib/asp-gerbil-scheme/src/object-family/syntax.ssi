@@ -1,0 +1,28 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/src/object-family
+namespace: asp-gerbil-scheme/src/object-family/syntax
+
+(%#begin (%#import
+          (spec:
+           (:clan/poo/object)
+           (0 .slot? 0 .slot?)
+           (0 .ref 0 .ref)
+           (0 .o 0 .o)
+           (0 .def 0 .def)))
+         (%#export
+          (spec: 0 defpoo-object-family defpoo-object-family)
+          (spec: 0 poo-family-ref poo-family-ref))
+         (%#define-runtime
+          absent-poo-family-slot
+          asp-gerbil-scheme/src/object-family/syntax#absent-poo-family-slot)
+         (%#define-runtime
+          poo-family-ref
+          asp-gerbil-scheme/src/object-family/syntax#poo-family-ref)
+         (%#begin (%#begin-syntax
+                   (%#call (%#ref load-module)
+                           (%#quote "asp-gerbil-scheme/src/object-family/syntax~1")))
+                  (%#define-syntax
+                   defpoo-object-family
+                   |asp-gerbil-scheme/src/object-family/syntax[:0:]#defpoo-object-family|)))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/src/object-family/syntax~0"))

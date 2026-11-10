@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-search-derived-attachment-event.v1.schema.json",
+  "title": "Runtime Search Derived Attachment Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sequence",
+    "projectId",
+    "workspaceId",
+    "generationToken",
+    "contentGenerationDigest",
+    "attachment",
+    "state",
+    "buildMicros",
+    "finalizeMicros",
+    "reasonKind"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-search-derived-attachment-event"
+    },
+    "schemaVersion": { "const": "1" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "generationToken": { "type": "integer", "minimum": 1 },
+    "contentGenerationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "attachment": { "enum": ["graph", "tantivy"] },
+    "state": { "enum": ["queued", "building", "ready", "failed"] },
+    "buildMicros": { "type": ["integer", "null"], "minimum": 0 },
+    "finalizeMicros": { "type": ["integer", "null"], "minimum": 0 },
+    "reasonKind": { "type": ["string", "null"], "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "ready" } } },
+      "then": {
+        "properties": {
+          "buildMicros": { "type": "integer", "minimum": 0 },
+          "finalizeMicros": { "type": "integer", "minimum": 0 },
+          "reasonKind": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } } },
+      "then": {
+        "properties": { "reasonKind": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["queued", "building"] } } },
+      "then": {
+        "properties": {
+          "buildMicros": { "type": "null" },
+          "finalizeMicros": { "type": "null" },
+          "reasonKind": { "type": "null" }
+        }
+      }
+    }
+  ]
+}

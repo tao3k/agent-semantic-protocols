@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "asp-provider-projection-batch-workspace-pressure"
+title = "ASP bounds large-workspace projection batches before provider spawn"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-RUNTIME-TIMEOUT-POLICY-001",
+]
+agent_goal = "Keep GSLPH and every registered language provider lightweight by splitting a 294-owner workspace generation into bounded, short-lived provider processes."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "provider_projection_batch_ranges",
+  "MAX_PROVIDER_PROJECTION_BATCH_OWNERS",
+  "MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES",
+]
+inputs = "inputs"
+expected = "expected"
+harness = "libtest"
+test = "asp_provider_projection_batch_workspace_pressure_stays_inside_scenario_gate"
+snapshot = "asp_provider_projection_batch_workspace_pressure_stays_inside_scenario_gate"

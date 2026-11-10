@@ -1,0 +1,47 @@
+{
+  "$id": "urn:agent-semantic-protocols:schema:codex-agent-definition",
+  "x-asp-schema-version": 1,
+  "title": "ASP-managed Codex agent definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "model",
+    "model_reasoning_effort",
+    "sandbox_mode",
+    "developer_instructions"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nickname_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_reasoning_effort": {
+      "enum": ["low", "medium", "high", "xhigh", "max"]
+    },
+    "sandbox_mode": {
+      "enum": ["read-only", "workspace-write", "danger-full-access"]
+    },
+    "developer_instructions": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

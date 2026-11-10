@@ -1,0 +1,22 @@
+name: Consume Orgize FFI
+description: Install the FFI runtime toolchain and fetch the exact producer archive.
+inputs:
+  install-toolchain:
+    description: Install the paired toolchain for the C FFI lifecycle bridge.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: tao3k/gerbil-scheme-rust/.github/actions/setup-gerbil@f61643b3a787d005612dc5021b4941612f3e1f68
+      if: inputs.install-toolchain == 'true'
+      with:
+        release-root: ${{ runner.temp }}/orgize-ffi-runtime
+    - shell: bash
+      if: runner.os == 'macOS'
+      run: |
+        printf 'CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=/usr/bin/cc\n' >> "$GITHUB_ENV"
+        printf 'CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS=%s -C link-arg=-Wl,-ld_classic\n' "${CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS:-}" >> "$GITHUB_ENV"
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash .github/scripts/fetch-orgize-ffi.sh

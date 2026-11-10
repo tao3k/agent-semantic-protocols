@@ -1,7 +1,11 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Tree-sitter Query RFC Roadmap and Documentation Closure
 #+DATE: 2026-06-05
 #+STATUS: active-roadmap
-#+RFC: docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org, docs/10-19-rfcs/10.05-cli-first-harness-ux.org, docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org
+#+RFC: docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org, docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org, docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org
 
 * Summary
 
@@ -140,15 +144,15 @@ parse raw S-expression strings in provider-private ways.
 | Owner | File | Scope |
 |-------+------+-------|
 | Syntax ABI | =docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org= | tree-sitter-compatible query packet, catalog/profile/corpus layout, native-projection limits, pattern graph roadmap |
-| Agent CLI | =docs/10-19-rfcs/10.05-cli-first-harness-ux.org= | =asp <language> guide=, =query guide treesitter=, search/read-plan/code stdout contracts |
+| Agent CLI | =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org= | =asp <language> guide=, =query guide treesitter=, search/read-plan/code stdout contracts |
 | Hook Recovery | =docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org= | Markdown hook prompt, =Run Next= route, =Detected Binaries=, ast-patch config branch |
 | Schema Catalog | =schemas/README.md= | shared schema roles, provenance base schema, activation/runtime profile relationship |
 | Agent Skill | =SKILL.md= | embedded install template for complex flows only; no static active language list |
 | Installed Skill | =.agents/skills/agent-semantic-protocols/SKILL.md= | generated copy with do-not-edit notice and provider table from activation/runtime profile |
 
-The packet envelopes remain separate.  =semantic-search-packet=,
+The packet envelopes remain separate. =workspace-search-playbook-result=,
 =semantic-query-packet=, and =semantic-read-packet= keep their own consumer
-contracts.  Tree-sitter provenance converges through
+contracts. Tree-sitter provenance converges through
 =semantic-tree-sitter-provenance.v1= and optional refs such as
 =syntaxQueryRef=, =syntaxMatchRefs=, =syntaxCaptureRefs=, and =syntaxAnchor=.
 
@@ -188,7 +192,7 @@ contracts.  Tree-sitter provenance converges through
    - capture =Run Next=, =Detected Binaries=, =asp <language> guide --workspace .=, and
      ast-patch disabled guidance as the smoke evidence;
    - record one Rust and one TypeScript real-project syntax flow with
-     =search-prime=, =syntax-frontier=, =exact-selector-code=, and
+     =search-playbook=, =syntax-frontier=, =exact-selector-code=, and
      =hook-recovery= commands;
    - render the measured record with =python -m tools syntax real-evidence=;
    - record =commandCount=, =providerProcessCount=, =packetBytes=,
@@ -199,7 +203,7 @@ contracts.  Tree-sitter provenance converges through
    Rust evidence status: =docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org=
    records the first =agent-semantic-protocols= flow.  TypeScript evidence
    status: =docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org=
-   records the first =typescript-lang-project-harness= flow.  Benchmark review
+   records the first =asp-typescript= flow.  Benchmark review
    status: =docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=
    accepts the Rust and TypeScript native-projection v1 lanes.  Neither record claims cache hit replay.
 

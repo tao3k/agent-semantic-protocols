@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.exact-selector-execution-receipt.v1.schema.json",
+  "title": "ASP Exact Selector Execution Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "workspaceIdentity",
+    "catalogGeneration",
+    "exactGenerationDigest",
+    "projectionMode",
+    "routeKind",
+    "activationReads",
+    "activationWrites",
+    "syncCalls",
+    "databaseOpens",
+    "providerProcessCount",
+    "elapsedMicros"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.exact-selector-execution-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "catalogGeneration": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "exactGenerationDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "projectionMode": {
+      "enum": [
+        "source",
+        "callable-skeleton"
+      ]
+    },
+    "routeKind": {
+      "enum": [
+        "resident-fixture",
+        "resident-live-overlay",
+        "global-catalog-native",
+        "global-catalog-generic"
+      ]
+    },
+    "activationReads": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "activationWrites": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "syncCalls": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "databaseOpens": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "providerProcessCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "elapsedMicros": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

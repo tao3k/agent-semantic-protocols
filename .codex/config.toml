@@ -1,4 +1,0 @@
-[features]
-unified_exec = true
-plugins = true
-hooks = true

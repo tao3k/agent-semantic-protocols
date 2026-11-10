@@ -1,0 +1,77 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest : MembershipDigest) (left right : scheme.CertificateId)\n  (projectionVersion : scheme.ProjectionVersion),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n      membershipDigest left right projectionVersion =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n      membershipDigest right left projectionVersion",
+   "theoremFamily": "unordered-certificate-pair-symmetry",
+   "rfcClauseIds": ["CARI-ACCOUNTING", "CARI-PAIR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.swapping_certificates_preserves_accounting_receipt_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest otherMembershipDigest : MembershipDigest) (left right otherLeft otherRight : scheme.CertificateId)\n  (projectionVersion otherProjectionVersion : scheme.ProjectionVersion),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest left right projectionVersion =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        otherMembershipDigest otherLeft otherRight otherProjectionVersion →\n    membershipDigest = otherMembershipDigest ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.SameUnorderedCertificatePair scheme left\n          right otherLeft otherRight ∧\n        projectionVersion = otherProjectionVersion",
+   "theoremFamily": "accounting-owner-reflection",
+   "rfcClauseIds": ["CARI-ACCOUNTING", "CARI-COLLISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.equal_accounting_receipt_implies_same_semantic_owners",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest otherMembershipDigest : MembershipDigest) (left right : scheme.CertificateId)\n  (projectionVersion : scheme.ProjectionVersion),\n  membershipDigest ≠ otherMembershipDigest →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest left right projectionVersion ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        otherMembershipDigest left right projectionVersion",
+   "theoremFamily": "membership-change-invalidation",
+   "rfcClauseIds": ["CARI-ACCOUNTING", "CARI-INVALIDATE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.changed_membership_prevents_accounting_receipt_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest : MembershipDigest) (left right otherLeft otherRight : scheme.CertificateId)\n  (projectionVersion : scheme.ProjectionVersion),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.SameUnorderedCertificatePair scheme left right\n        otherLeft otherRight →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest left right projectionVersion ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest otherLeft otherRight projectionVersion",
+   "theoremFamily": "certificate-pair-change-invalidation",
+   "rfcClauseIds": ["CARI-INVALIDATE", "CARI-PAIR"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.changed_unordered_pair_prevents_accounting_receipt_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest : MembershipDigest) (left right : scheme.CertificateId)\n  (projectionVersion otherProjectionVersion : scheme.ProjectionVersion),\n  projectionVersion ≠ otherProjectionVersion →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest left right projectionVersion ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n        membershipDigest left right otherProjectionVersion",
+   "theoremFamily": "projection-change-invalidation",
+   "rfcClauseIds": ["CARI-INVALIDATE", "CARI-PROJECTION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.changed_projection_prevents_accounting_receipt_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest : MembershipDigest) (left right : scheme.CertificateId)\n  (projectionVersion : scheme.ProjectionVersion)\n  (faultBoundSnapshotId otherFaultBoundSnapshotId : scheme.FaultBoundSnapshotId),\n  faultBoundSnapshotId ≠ otherFaultBoundSnapshotId →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n          membershipDigest left right projectionVersion =\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.accountingReceiptIdentity scheme\n          membershipDigest left right projectionVersion ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.honestOverlapVerdictIdentity scheme\n          membershipDigest left right projectionVersion faultBoundSnapshotId ≠\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.honestOverlapVerdictIdentity scheme\n          membershipDigest left right projectionVersion otherFaultBoundSnapshotId",
+   "theoremFamily": "two-tier-fault-bound-invalidation",
+   "rfcClauseIds": ["CARI-CACHE", "CARI-VERDICT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.fault_bound_snapshot_change_preserves_accounting_but_changes_verdict",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest : Type}\n  (scheme :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.AccountingReceiptIdentityScheme\n      MembershipDigest)\n  (membershipDigest otherMembershipDigest : MembershipDigest) (left right otherLeft otherRight : scheme.CertificateId)\n  (projectionVersion otherProjectionVersion : scheme.ProjectionVersion)\n  (faultBoundSnapshotId otherFaultBoundSnapshotId : scheme.FaultBoundSnapshotId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.honestOverlapVerdictIdentity scheme\n        membershipDigest left right projectionVersion faultBoundSnapshotId =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.honestOverlapVerdictIdentity scheme\n        otherMembershipDigest otherLeft otherRight otherProjectionVersion otherFaultBoundSnapshotId →\n    membershipDigest = otherMembershipDigest ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.SameUnorderedCertificatePair scheme left\n          right otherLeft otherRight ∧\n        projectionVersion = otherProjectionVersion ∧ faultBoundSnapshotId = otherFaultBoundSnapshotId",
+   "theoremFamily": "verdict-owner-reflection",
+   "rfcClauseIds": ["CARI-COLLISION", "CARI-VERDICT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.equal_verdict_implies_same_accounting_owners_and_fault_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 7,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 7,
+ "axiomDependentDeclarationCount": 0}

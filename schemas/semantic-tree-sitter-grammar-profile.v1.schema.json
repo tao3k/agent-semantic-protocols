@@ -53,6 +53,9 @@
     "corpusProfilePath": {
       "$ref": "#/$defs/projectPath"
     },
+    "enhancedQueryCapabilityTablePath": {
+      "$ref": "#/$defs/projectPath"
+    },
     "queryCorpus": {
       "$ref": "#/$defs/queryCorpus"
     },

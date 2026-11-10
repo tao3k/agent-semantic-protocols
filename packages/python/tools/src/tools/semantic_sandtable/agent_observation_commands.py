@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Extract ASP command invocations from agent messages."""
 
 from __future__ import annotations
@@ -10,13 +14,6 @@ from .agent_observation_asp import (
     asp_binary_provenance as _asp_binary_provenance,
     command_contains_asp as _command_contains_asp,
     normalize_command as _normalize_command,
-)
-from .agent_observation_command_precision import (
-    failure_frontier_precision_facts as _failure_frontier_precision_facts,
-    search_pipe_precision_facts as _search_pipe_precision_facts,
-)
-from .agent_observation_failure_memory import (
-    failure_frontier_memory as _failure_frontier_memory,
 )
 from .agent_observation_json import walk
 
@@ -78,11 +75,6 @@ def asp_command_output_records_from_messages(
                 "hookFeedback": _hook_feedback_from_output(output)
                 if denied
                 else None,
-                "precision": _search_pipe_precision_facts(command, output),
-                "failurePrecision": _failure_frontier_precision_facts(
-                    command, output
-                ),
-                "failureMemory": _failure_frontier_memory(command, output),
             }
             binary = _asp_binary_provenance(command)
             if binary:
@@ -154,9 +146,9 @@ def _hook_feedback_from_output(output: str) -> str | None:
         match = pattern.search(output)
         if match:
             return match.group(1)
-    if "repeated `search prime` before `search pipe`" in output:
+    if "repeated Search Playbook before selector query" in output:
         return "repeat-prime-before-pipe"
-    if "code/direct read before `search pipe`" in output:
+    if "code/direct read before Search Playbook" in output:
         return "read-before-pipe"
     if "unknown ASP facade" in output:
         return "invalid-asp-facade"

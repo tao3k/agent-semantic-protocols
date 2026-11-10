@@ -1,0 +1,225 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.39 — Agent Session Host Registry Both-Valid Ambiguity Refinement
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.38-agent-session-host-registry-adjudication-decision-certificate/00-overview.org][RFC 10.05.38 — Agent Session Host Registry Adjudication Decision Certificate]]. The Lean source and direct audit compile, all 20 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+This RFC verifies semantic witness shape, provenance-root preservation, strict ambiguity reduction, and finite evidence bounds. It does not prove that the chosen terminal-semantics abstraction or discriminator implementation is adequate. No Rust implementation is authorized in this session.
+
+* Problem
+
+RFC38 correctly keeps a =valid/valid= terminal pair quarantined because its decision relation has no entailment constructor for that judgment pair. Permanent quarantine is safe but incomplete.
+
+Additional evidence may resolve the dispute in two ways:
+
+- an equivalence witness proves that both captures represent the same terminal semantics and may be coalesced;
+- an incompatibility witness proves different terminal semantics and carries a discriminator selecting the supported terminal.
+
+Refinement must not mutate acquisition facts. The accepted and conflicting provenance roots are immutable indices across every step. Only their semantic interpretation and ambiguity rank may change.
+
+Evidence acquisition must also be bounded. Spending a round without strictly reducing certified ambiguity is not progress.
+
+* Equivalence witness law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASBR-EQUIVALENCE
+:END:
+
+#+name: registry-both-valid-equivalence-law
+#+begin_src typst
+#let ValidEq(a, c, w) = $upright("ValidEquivalenceWitness")(#a, #c, #w)$
+#let RootA(w) = $upright("acceptedProvenanceRoot")(#w)$
+#let RootC(w) = $upright("conflictingProvenanceRoot")(#w)$
+#let SemA(w) = $upright("acceptedSemantics")(#w)$
+#let SemC(w) = $upright("conflictingSemantics")(#w)$
+
+$
+  forall a, c, w,
+  ValidEq(a, c, w) =>
+  RootA(w) = a and RootC(w) = c and SemA(w) = SemC(w).
+$
+#+end_src
+
+Equivalence entails only =coalescedEquivalent=. It cannot silently prefer one terminal.
+
+* Incompatibility witness law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASBR-INCOMPATIBILITY
+:END:
+
+#+name: registry-both-valid-incompatibility-law
+#+begin_src typst
+#let ValidNe(a, c, w) = $upright("ValidIncompatibilityWitness")(#a, #c, #w)$
+#let SemA(w) = $upright("acceptedSemantics")(#w)$
+#let SemC(w) = $upright("conflictingSemantics")(#w)$
+#let Disc(w) = $upright("discriminatorDigest")(#w)$
+
+$
+  forall a, c, w,
+  ValidNe(a, c, w) => SemA(w) != SemC(w) and Disc(w) != 0.
+$
+#+end_src
+
+A nonzero discriminator digest is identity evidence, not proof of discriminator correctness. Executable discriminator conformance remains a later boundary.
+
+* Monotone refinement law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASBR-REFINEMENT
+:END:
+
+#+name: registry-both-valid-refinement-law
+#+begin_src typst
+#let Step(s, n) = $upright("RefinementStep")(#s, #n)$
+#let RootA(s) = $upright("acceptedProvenanceRoot")(#s)$
+#let RootC(s) = $upright("conflictingProvenanceRoot")(#s)$
+#let Rank(s) = $upright("ambiguityRank")(#s)$
+#let Budget(s) = $upright("evidenceBudget")(#s)$
+
+$
+  forall s, n,
+  Step(s, n) =>
+  RootA(n) = RootA(s) and RootC(n) = RootC(s) and
+  Rank(n) < Rank(s) and Budget(n) < Budget(s).
+$
+#+end_src
+
+Root drift, unchanged ambiguity, and self-loops are invalid refinement steps.
+
+* Bounded acquisition law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASBR-BOUND
+:END:
+
+#+name: registry-both-valid-bound-law
+#+begin_src typst
+#let Run(i, f, k) = $upright("RefinementRun")(#i, #f, #k)$
+#let Rank(s) = $upright("ambiguityRank")(#s)$
+#let Budget(s) = $upright("evidenceBudget")(#s)$
+
+$
+  forall i, f, k,
+  Run(i, f, k) => k <= Rank(i) and k <= Budget(i).
+$
+#+end_src
+
+The run is bounded independently by initial ambiguity and available evidence budget.
+
+* Stateful architecture
+
+#+name: registry-both-valid-refinement-architecture
+#+begin_src mermaid
+flowchart LR
+  P["Provenance pair\nstate: Verified(rootA, rootC)"]
+  B["Both-valid ambiguity\nstate: RankPositive(budget)"]
+  E["Evidence acquisition\nstate: BoundedQuery | BudgetExhausted"]
+  W["Semantic witness\nstate: Equivalent | Incompatible(discriminator) | Invalid"]
+  R["Refinement checker\nstate: RootsStableAndRankDecreased | Rejected"]
+  O["Resolution outcome\nstate: Coalesced | PreferAccepted | PreferConflicting | Quarantined"]
+
+  P -->|"transition; state: Verified -> RankPositive; roots become immutable indices"| B
+  B -->|"guard; state: RankPositive -> BoundedQuery; budget available"| E
+  E -->|"transition; state: BoundedQuery -> WitnessPending; evidence consumed"| W
+  W -->|"guard; state: ValidWitness -> RootsStableAndRankDecreased"| R
+  R -->|"capability; state: StrictDecrease -> ResolvedOutcome"| O
+  E -->|"prohibitedEffect; state: BudgetExhausted -> Quarantined"| O
+  W -->|"prohibitedEffect; state: FalseEquivalenceOrMissingDiscriminator -> Rejected"| R
+  R -->|"prohibitedEffect; state: RootDriftOrNoDecrease -> Quarantined"| O
+#+end_src
+
+* Refinement state machine
+
+#+name: registry-both-valid-refinement-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "Ambiguous\nstate: RankN(rootA, rootC, budget)" as Ambiguous
+  state "EvidencePending\nstate: BudgetCharged" as EvidencePending
+  state "Equivalent\nstate: SemanticEqualityWitness" as Equivalent
+  state "Incompatible\nstate: SemanticDifferenceWitness" as Incompatible
+  state "Refined\nstate: RankLowerRootsStable" as Refined
+  state "Resolved\nstate: RankZero" as Resolved
+  state "Quarantined\nstate: InvalidOrExhausted" as Quarantined
+
+  Ambiguous --> EvidencePending: "transition; state: RankN -> BudgetCharged"
+  EvidencePending --> Equivalent: "guard; state: Charged -> SemanticEqualityWitness"
+  EvidencePending --> Incompatible: "guard; state: Charged -> SemanticDifferenceWitness"
+  Equivalent --> Refined: "transition; state: EqualityWitness -> RankLowerRootsStable"
+  Incompatible --> Refined: "transition; state: DifferenceWitness -> RankLowerRootsStable"
+  Refined --> Ambiguous: "guard; state: RankLowerPositive -> NextBoundedStep"
+  Refined --> Resolved: "capability; state: RankZero -> TerminalOutcome"
+  EvidencePending --> Quarantined: "prohibitedEffect; state: BudgetExhaustedOrInvalidWitness -> InvalidOrExhausted"
+  Refined --> Quarantined: "prohibitedEffect; state: RootDriftOrRankUnchanged -> InvalidOrExhausted"
+#+end_src
+
+* Bounded refinement sequence
+
+#+name: registry-both-valid-refinement-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant P as "Provenance Store [state: RootsVerified]"
+  participant C as "Refinement Controller [state: RankN]"
+  participant E as "Evidence Provider [state: BudgetAvailable]"
+  participant V as "Witness Verifier [state: Pending]"
+  participant O as "Outcome Gate [state: Quarantined]"
+
+  P->>C: "transition; state: RootsVerified -> RankN; immutable root pair"
+  C->>E: "guard; state: RankN -> QueryPending; charge one budget unit"
+  E->>V: "transition; state: QueryPending -> WitnessPending; semantic evidence"
+  alt valid equivalence or incompatibility witness and strict rank decrease
+    V->>C: "guard; state: WitnessPending -> RankLower; roots unchanged"
+    C->>O: "capability; state: RankZero -> ResolvedOutcome"
+  else false witness, root drift, unchanged rank, or exhausted budget
+    V-->>O: "prohibitedEffect; state: Invalid -> QuarantinedUnchanged"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-both-valid-refinement-lean-contract
+#+begin_src lean
+def ValidEquivalenceWitness
+    (acceptedRoot conflictingRoot : Nat)
+    (witness : SemanticEquivalenceWitness) : Prop :=
+  witness.acceptedProvenanceRoot = acceptedRoot ∧
+  witness.conflictingProvenanceRoot = conflictingRoot ∧
+  witness.acceptedSemantics = witness.conflictingSemantics
+
+def RefinementStep
+    (current next : AmbiguityRefinementState) : Prop :=
+  next.acceptedProvenanceRoot = current.acceptedProvenanceRoot ∧
+  next.conflictingProvenanceRoot = current.conflictingProvenanceRoot ∧
+  next.ambiguityRank < current.ambiguityRank ∧
+  next.evidenceBudget < current.evidenceBudget
+#+end_src
+
+* Lean-discovered obligations
+
+Lean rejects false equivalence, missing discriminator identity, accepted-root drift, conflicting-root drift, unchanged ambiguity, refinement self-loops, and refinement after rank zero.
+
+Every refinement run is bounded by both the initial ambiguity rank and initial evidence budget. The proof therefore excludes unbounded “ask for more evidence” loops even when the state remains quarantined.
+
+The model also exposes its own next assumption boundary. =TerminalSemantics= is currently an abstract pair of outcome and effect digests. Equality of this structure is only useful if that abstraction is adequate, and a nonzero discriminator digest does not prove executable discriminator correctness. Those are explicit future proof obligations rather than hidden assumptions.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- admit scoped theorem families through AXLE;
+- evaluate all Typst blocks through parser-owned Org content on stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- add no Rust implementation in this session.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryBothValidAmbiguityRefinement.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryBothValidAmbiguityRefinement.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-both-valid-ambiguity-refinement-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-both-valid-ambiguity-refinement-axle-audit-v1.json=
+- admitted audit SHA-256: =5fe7d2f97a951b15d07277ff449e8c53a97d2d80b439347c7f1fa29cd61114ee=
+
+* Next boundary
+
+The next formal boundary is [[file:../10.05.39.01-agent-session-host-registry-semantic-abstraction-discriminator-conformance/00-overview.org][RFC 10.05.39.01 — Agent Session Host Registry Semantic Abstraction and Discriminator Conformance]]: canonical observation abstraction, encoding injectivity, reference-decision agreement, artifact-and-input binding, and independent replay.

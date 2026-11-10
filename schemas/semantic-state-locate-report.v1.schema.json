@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-state-locate-report.v1.schema.json",
-  "title": "Semantic State Locate Report",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-state-locate-report.v1.schema.json",
+  "title": "ASP Semantic State Locate Report v1",
+  "description": "Canonical v1 report for the resolved repository, workspace, Turso fact store, and artifact namespace.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "layoutVersion",
+    "stateLayoutVersion",
     "stateHome",
     "repoId",
     "workspaceId",
@@ -24,98 +25,69 @@
     "projectLocalCache"
   ],
   "properties": {
-    "layoutVersion": {
-      "const": "state-v2"
+    "stateLayoutVersion": {
+      "const": "1"
     },
     "stateHome": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "repoId": {
-      "type": "string",
-      "pattern": "^repo-[0-9a-f]{16}$"
+      "type": "string"
     },
     "workspaceId": {
-      "type": "string",
-      "pattern": "^workspace-[0-9a-f]{16}$"
+      "type": "string"
     },
     "scopeId": {
-      "const": "default"
+      "type": "string"
     },
     "repoDisplayName": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "workspaceDisplayName": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "checkoutRoot": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "gitToplevel": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": "string"
     },
     "gitDir": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": "string"
     },
     "remoteUrl": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": "string"
     },
     "dbPath": {
-      "type": "string",
-      "pattern": "/live/client/client\\.turso$"
+      "type": "string"
     },
     "artifactPath": {
-      "type": "string",
-      "pattern": "/artifacts$"
+      "type": "string"
     },
     "manifestPath": {
-      "type": "string",
-      "pattern": "/live/client/manifest\\.json$"
+      "type": "string"
     },
     "generationManifestPath": {
-      "type": "string",
-      "pattern": "/live/client/cache-manifest\\.json$"
+      "type": "string"
     },
     "backend": {
-      "enum": [
-        "turso"
-      ]
+      "const": "turso"
     },
     "projectLocalCache": {
-      "anyOf": [
-        {
-          "type": "null"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "path",
-            "exists"
-          ],
-          "properties": {
-            "path": {
-              "type": "string",
-              "minLength": 1
-            },
-            "exists": {
-              "type": "boolean"
-            }
-          }
+        "exists": {
+          "type": "boolean"
         }
-      ]
+      }
     }
   }
 }

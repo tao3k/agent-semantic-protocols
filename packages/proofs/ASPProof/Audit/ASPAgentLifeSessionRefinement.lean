@@ -1,0 +1,32 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ASPAgentLifeSessionRefinement
+
+open ASPProof.ASPAgentLifeSessionRefinement
+
+#print axioms staticProjectionDoesNotConferDurableAuthority
+#print axioms absentBindingSelectsInternalRegistration
+#print axioms orphanedBindingRemainsHostOnly
+#print axioms deliveredCurrentBindingHasDurableAuthority
+#print axioms staleProfileEvidenceWithholdsDurableAuthority
+#print axioms invalidRunningAbsentStateFailsClosed
+#print axioms legacyPortalQueuesWithoutDurableBinding
+#print axioms runtimeHealthCannotCreateSessionAuthority
+#print axioms runtimeGenerationCannotAlterDecision
+#print axioms profileEvidenceCannotAlterNameProjection
+#print axioms wrongExportStillDominatesLifeSessionAuthority
+#print axioms publicSurfaceContainsOnlyThePortal
+#print axioms publicCommandIsNotAnAdministrativeDirective
+#print axioms hostAckAdvancesBeyondProbe
+#print axioms hostAckDoesNotConferDeliveredBinding
+#print axioms duplicateHostAckIsIdempotent
+#print axioms rebindIntentMustPrecedeReceipt
+#print axioms persistedIntentAdvancesToReceiptRequirement
+#print axioms indexedReceiptClosesRebind
+#print axioms completedRebindHasEveryDurableEdge
+#print axioms canonicalSuccessfulRepairHasThreeTransitions
+#print axioms correctedRepairKeepsOneAgentRound
+#print axioms correctedRepairHasBoundedInternalProgress
+#print axioms correctedRepairStrictlyReducesObservedAgentRounds

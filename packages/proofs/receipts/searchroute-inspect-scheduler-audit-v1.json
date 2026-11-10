@@ -1,0 +1,108 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteInspectScheduler.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectScheduler",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {current next : SearchRouteInspectScheduler.PartialRoute} {step : SearchRouteCost.RouteStep},\n  SearchRouteInspectScheduler.ExtendsByOne current next step →\n    SearchRouteInspectScheduler.partialUncachedTokens next =\n      SearchRouteInspectScheduler.partialUncachedTokens current + step.evidenceTokens +\n        (step.promptTokens - step.cachedPromptTokens)",
+   "theoremFamily": "partial-cost-extension",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-MONOTONE-EXTENSION", "ASP-RFC-10.05-SPR-PARTIAL-BOUND"],
+   "name": "SearchRouteInspectScheduler.partial_uncached_tokens_extend",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {current next : SearchRouteInspectScheduler.PartialRoute} {step : SearchRouteCost.RouteStep},\n  SearchRouteInspectScheduler.ExtendsByOne current next step →\n    SearchRouteInspectScheduler.partialRounds next = SearchRouteInspectScheduler.partialRounds current + step.roundCost",
+   "theoremFamily": "partial-cost-extension",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-MONOTONE-EXTENSION", "ASP-RFC-10.05-SPR-PARTIAL-BOUND"],
+   "name": "SearchRouteInspectScheduler.partial_rounds_extend",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {current next : SearchRouteInspectScheduler.PartialRoute} {step : SearchRouteCost.RouteStep},\n  SearchRouteInspectScheduler.ExtendsByOne current next step →\n    SearchRouteBranchBound.keyLexNoWorse (SearchRouteInspectScheduler.partialLowerBound current)\n      (SearchRouteInspectScheduler.partialLowerBound next)",
+   "theoremFamily": "partial-lower-bound",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-MONOTONE-EXTENSION", "ASP-RFC-10.05-SPR-PARTIAL-BOUND"],
+   "name": "SearchRouteInspectScheduler.partial_lower_bound_is_monotone",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (left right : SearchRouteBranchBound.GraphLowerBound),\n  SearchRouteInspectScheduler.keyLexNoWorseB left right = true ↔ SearchRouteBranchBound.keyLexNoWorse left right",
+   "theoremFamily": "executable-order",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE", "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name": "SearchRouteInspectScheduler.keyLexNoWorseB_true_iff",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (selected : SearchRouteDAG.GraphCandidate) (frontiers : List SearchRouteInspectScheduler.CertifiedPartialFrontier)\n  (frontier : SearchRouteInspectScheduler.CertifiedPartialFrontier),\n  frontier ∈ frontiers →\n    frontier ∈ (SearchRouteInspectScheduler.scheduleInspect selected frontiers).pruned ∨\n      frontier ∈ (SearchRouteInspectScheduler.scheduleInspect selected frontiers).inspect",
+   "theoremFamily": "scheduler-partition",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE", "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name": "SearchRouteInspectScheduler.scheduleInspect_covers",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {frontiers : List SearchRouteInspectScheduler.CertifiedPartialFrontier}\n  {frontier : SearchRouteInspectScheduler.CertifiedPartialFrontier},\n  frontier ∈ (SearchRouteInspectScheduler.scheduleInspect selected frontiers).pruned →\n    ∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ frontier.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "scheduler-pruning",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE", "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name": "SearchRouteInspectScheduler.scheduled_pruning_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {frontiers : List SearchRouteInspectScheduler.CertifiedPartialFrontier}\n  {frontier : SearchRouteInspectScheduler.CertifiedPartialFrontier},\n  frontier ∈ (SearchRouteInspectScheduler.scheduleInspect selected frontiers).inspect →\n    ¬SearchRouteBranchBound.Prunable selected (SearchRouteInspectScheduler.partialLowerBound frontier.prefixRoute)",
+   "theoremFamily": "scheduler-inspection",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE", "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name": "SearchRouteInspectScheduler.scheduled_inspection_is_not_prunable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {frontiers : List SearchRouteInspectScheduler.CertifiedPartialFrontier},\n  SearchRouteInspectScheduler.ScheduleComplete selected frontiers →\n    ∀ (frontier : SearchRouteInspectScheduler.CertifiedPartialFrontier),\n      frontier ∈ frontiers → frontier ∈ (SearchRouteInspectScheduler.scheduleInspect selected frontiers).pruned",
+   "theoremFamily": "scheduler-completion",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE", "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name":
+   "SearchRouteInspectScheduler.completed_schedule_prunes_every_frontier",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {candidateUniverse : SearchRouteBranchBound.CandidateUniverse}\n  {visible : List SearchRouteDAG.GraphCandidate}\n  {frontiers : List SearchRouteInspectScheduler.CertifiedPartialFrontier},\n  SearchRouteBranchBound.VisibleOptimal selected visible →\n    ∀ (receipt : SearchRouteBranchBound.CoverageReceipt candidateUniverse visible),\n      receipt.deferred = List.map SearchRouteInspectScheduler.CertifiedPartialFrontier.toCertifiedFrontier frontiers →\n        SearchRouteInspectScheduler.ScheduleComplete selected frontiers →\n          ∀ (candidate : SearchRouteDAG.GraphCandidate),\n            candidate ∈ candidateUniverse.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "scheduler-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-COMPLETE",
+    "ASP-RFC-10.05-SPR-MONOTONE-EXTENSION",
+    "ASP-RFC-10.05-SPR-PARTIAL-BOUND",
+    "ASP-RFC-10.05-SPR-SCHEDULER"],
+   "name":
+   "SearchRouteInspectScheduler.completed_inspect_schedule_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteInspectScheduler.decreasingGraphExtension.steps =\n    SearchRouteInspectScheduler.decreasingGraphPrefix.steps ++ [SearchRouteDAGEnumeration.zeroCostInspectStep] ∧\n  ¬SearchRouteBranchBound.keyLexNoWorse\n      (SearchRouteInspectScheduler.partialLowerBound SearchRouteInspectScheduler.decreasingGraphPrefix)\n      (SearchRouteInspectScheduler.partialLowerBound SearchRouteInspectScheduler.decreasingGraphExtension)",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SPR-MONOTONE-EXTENSION", "ASP-RFC-10.05-SPR-PARTIAL-BOUND"],
+   "name":
+   "SearchRouteInspectScheduler.decreasing_graph_bound_breaks_extension_monotonicity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 10,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 10}

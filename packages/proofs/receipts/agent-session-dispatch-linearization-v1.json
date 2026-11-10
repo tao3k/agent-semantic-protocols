@@ -1,0 +1,12 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.AgentSessionDispatchLinearization",
+  "sourcePath": "ASPProof/AgentSessionDispatchLinearization.lean",
+  "leanVersion": "4.32.2",
+  "hasSorryAx": false,
+  "declarationCount": 15,
+  "axiomFreeDeclarationCount": 15,
+  "axiomDependentDeclarationCount": 0
+}

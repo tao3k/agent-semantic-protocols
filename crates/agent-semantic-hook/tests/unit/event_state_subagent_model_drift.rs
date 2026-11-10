@@ -1,6 +1,12 @@
-use std::path::{Path, PathBuf};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_hook::{latest_subagent_runtime_drift, latest_subagent_runtime_rebind_verified};
+use std::path::Path;
+use std::path::PathBuf;
+
+use agent_semantic_hook::latest_subagent_runtime_drift;
+use agent_semantic_hook::latest_subagent_runtime_rebind_verified;
 use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 
@@ -68,6 +74,7 @@ fn completed_turn(
 
 #[test]
 fn completed_v2_turn_preserves_runtime_drift_for_same_child_resume() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-completed-turn");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -86,7 +93,7 @@ fn completed_v2_turn_preserves_runtime_drift_for_same_child_resume() {
         ],
     );
 
-    let observation = latest_subagent_runtime_drift(&root, root_session_id)
+    let observation = latest_subagent_runtime_drift(&root, &root_session_id.into())
         .expect("read runtime drift")
         .expect("completed turn must preserve drift");
     assert_eq!(observation.child_session_id, child_session_id);
@@ -97,6 +104,7 @@ fn completed_v2_turn_preserves_runtime_drift_for_same_child_resume() {
 
 #[test]
 fn repeated_same_child_drift_counts_failed_runtime_rebind() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-repeated-rebind");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -116,7 +124,7 @@ fn repeated_same_child_drift_counts_failed_runtime_rebind() {
         ],
     );
 
-    let observation = latest_subagent_runtime_drift(&root, root_session_id)
+    let observation = latest_subagent_runtime_drift(&root, &root_session_id.into())
         .expect("read runtime drift")
         .expect("repeated drift remains active");
     assert_eq!(observation.child_session_id, child_session_id);
@@ -126,6 +134,7 @@ fn repeated_same_child_drift_counts_failed_runtime_rebind() {
 
 #[test]
 fn resumed_turn_stop_counts_as_fresh_runtime_observation_without_new_start() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-resume-stop");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -138,7 +147,7 @@ fn resumed_turn_stop_counts_as_fresh_runtime_observation_without_new_start() {
         ],
     );
 
-    let observation = latest_subagent_runtime_drift(&root, root_session_id)
+    let observation = latest_subagent_runtime_drift(&root, &root_session_id.into())
         .expect("read runtime drift")
         .expect("resumed turn still drifts");
     assert_eq!(observation.child_session_id, child_session_id);
@@ -153,6 +162,7 @@ fn resumed_turn_stop_counts_as_fresh_runtime_observation_without_new_start() {
 
 #[test]
 fn matching_runtime_on_untyped_child_does_not_clear_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-resume-repaired");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -165,13 +175,13 @@ fn matching_runtime_on_untyped_child_does_not_clear_drift() {
         ],
     );
 
-    let drift = latest_subagent_runtime_drift(&root, root_session_id)
+    let drift = latest_subagent_runtime_drift(&root, &root_session_id.into())
         .expect("read runtime drift")
         .expect("model values cannot attest an untyped child");
     assert_eq!(drift.child_session_id, child_session_id);
     assert_eq!(drift.observed_agent_type, "default");
     assert_eq!(
-        latest_subagent_runtime_rebind_verified(&root, root_session_id)
+        latest_subagent_runtime_rebind_verified(&root, &root_session_id.into())
             .expect("read verified runtime rebind"),
         None
     );
@@ -180,6 +190,7 @@ fn matching_runtime_on_untyped_child_does_not_clear_drift() {
 
 #[test]
 fn fresh_typed_replacement_start_clears_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-typed-replacement");
     let root_session_id = "root-thread";
     write_events(
@@ -200,10 +211,10 @@ fn fresh_typed_replacement_start_clears_drift() {
     );
 
     assert_eq!(
-        latest_subagent_runtime_drift(&root, root_session_id).expect("read runtime drift"),
+        latest_subagent_runtime_drift(&root, &root_session_id.into()).expect("read runtime drift"),
         None
     );
-    let verified = latest_subagent_runtime_rebind_verified(&root, root_session_id)
+    let verified = latest_subagent_runtime_rebind_verified(&root, &root_session_id.into())
         .expect("read verified replacement")
         .expect("typed replacement must close drift");
     assert_eq!(verified.child_session_id, "typed-replacement");
@@ -214,6 +225,7 @@ fn fresh_typed_replacement_start_clears_drift() {
 
 #[test]
 fn explicit_resident_archive_supersedes_runtime_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-explicit-archive");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -233,7 +245,7 @@ fn explicit_resident_archive_supersedes_runtime_drift() {
     );
 
     assert_eq!(
-        latest_subagent_runtime_drift(&root, root_session_id).expect("read runtime drift"),
+        latest_subagent_runtime_drift(&root, &root_session_id.into()).expect("read runtime drift"),
         None
     );
     let _ = std::fs::remove_dir_all(root);

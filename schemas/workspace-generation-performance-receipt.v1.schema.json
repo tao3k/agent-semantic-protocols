@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-generation-performance-receipt.v1.schema.json",
+  "title": "Workspace Generation Performance Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "observationEpoch",
+    "activeRootDigest",
+    "observedRootDigest",
+    "changedPathSetDigest",
+    "changedPathCount",
+    "phaseMicros",
+    "counters",
+    "outcome",
+    "budgetVerdicts"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-generation-performance-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "observationEpoch": { "type": "integer", "minimum": 1 },
+    "activeRootDigest": { "$ref": "#/$defs/digest" },
+    "observedRootDigest": { "$ref": "#/$defs/digest" },
+    "publishedRootDigest": {
+      "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+    },
+    "changedPathSetDigest": { "$ref": "#/$defs/digest" },
+    "changedPathCount": { "type": "integer", "minimum": 0 },
+    "phaseMicros": { "$ref": "#/$defs/phases" },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scannedOwners", "reusedOwners", "rebuiltOwners", "publishedOwners"],
+      "properties": {
+        "scannedOwners": { "type": "integer", "minimum": 0 },
+        "reusedOwners": { "type": "integer", "minimum": 0 },
+        "rebuiltOwners": { "type": "integer", "minimum": 0 },
+        "publishedOwners": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "outcome": {
+      "enum": ["coalesced", "superseded", "published", "failed"]
+    },
+    "budgetVerdicts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enqueue", "acceptance", "warmRead", "publication"],
+      "properties": {
+        "enqueue": { "$ref": "#/$defs/verdict" },
+        "acceptance": { "$ref": "#/$defs/verdict" },
+        "warmRead": { "$ref": "#/$defs/verdict" },
+        "publication": { "$ref": "#/$defs/verdict" }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enqueue", "acceptance", "materialization", "publication", "warmRead"],
+      "properties": {
+        "enqueue": { "type": "integer", "minimum": 0 },
+        "acceptance": { "type": "integer", "minimum": 0 },
+        "materialization": { "type": "integer", "minimum": 0 },
+        "publication": { "type": "integer", "minimum": 0 },
+        "warmRead": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "verdict": { "enum": ["pass", "fail", "not-applicable"] }
+  }
+}

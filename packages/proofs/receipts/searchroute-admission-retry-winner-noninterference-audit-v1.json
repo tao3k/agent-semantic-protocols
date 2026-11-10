@@ -1,0 +1,61 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryWinnerNoninterference.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Payload : Type u},\n  ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.UnauthorizedNoninterference\n    ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.constantDeniedObservation",
+   "theoremFamily": "unauthorized observation equality",
+   "rfcClauseIds": ["ASP-RFC-10.05-RWNI-EQUALITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.constant_denial_is_independent_of_winner_occupancy",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.outcomeLeakingObservation none ≠\n  ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.outcomeLeakingObservation (some true)",
+   "theoremFamily": "outcome leakage counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWNI-NONIMPLICATION", "ASP-RFC-10.05-RWNI-OUTCOME"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.winner_existence_leaks_through_outcome_class",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.payloadLeakingObservation none ≠\n  ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.payloadLeakingObservation (some true)",
+   "theoremFamily": "payload leakage counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWNI-NONIMPLICATION", "ASP-RFC-10.05-RWNI-PAYLOAD"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.winner_existence_leaks_through_denied_payload",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.cacheLeakingObservation none ≠\n  ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.cacheLeakingObservation (some true)",
+   "theoremFamily": "cache leakage counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWNI-CACHE", "ASP-RFC-10.05-RWNI-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.winner_existence_leaks_through_cache_mutation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.timingLeakingObservation none ≠\n  ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.timingLeakingObservation (some true)",
+   "theoremFamily": "timing-class leakage counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RWNI-NONIMPLICATION", "ASP-RFC-10.05-RWNI-TIMING-CLASS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryWinnerNoninterference.winner_existence_leaks_through_protocol_timing_class",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

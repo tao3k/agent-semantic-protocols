@@ -1,0 +1,203 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 01.37 Polyglot Search Evidence Sufficiency
+#+property: header-args:typst :lint typst-eval :runtime typst :format typst
+
+* Status
+
+This module records whether the evidence required by 01.36 actually exists.
+Its normative clause identifier is
+=ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY=.
+
+The current state is =reference-only= and the decision is =blocked=.  The
+production baseline is the parser-owned =asp <language> search/query= surface.
+No production GQL/Logic progressive candidate surface has been evidenced.  The
+01.33--01.36 Python and Lean artifacts are executable reference semantics and
+qualification logic; they are not a production provider implementation.
+
+* Why a separate sufficiency contract is necessary
+
+A valid qualification algorithm can still be fed invented, incomplete, or
+incomparable measurements.  The qualification result is authoritative only if
+the candidate executable exists, its installed artifacts are bound, paired
+runs share task/source/environment identity, raw metrics are complete, cold and
+warm cache cases are present, repeated samples exist, and the 01.36
+qualification payload passes.
+
+#+begin_src typst
+#{
+  $E = E_"exec" and E_"artifact" and E_"task" and E_"source"
+    and E_"environment" and E_"metrics" and E_"cold" and E_"warm"
+    and E_"repeated"$
+  $"Authorize" = E and Q_"passed"$
+  $Q_"passed" without E = "inconsistent"$
+}
+#+end_src
+
+This prevents a reference fixture, a source checkout, or an unbound executable
+from being promoted into replacement evidence.
+
+* Evidence lifecycle
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> ReferenceOnly
+  ReferenceOnly --> ExecutableUnbound: production candidate becomes callable
+  ExecutableUnbound --> ExecutableBound: installed provider and runtime identities are pinned
+  ExecutableBound --> PairedMeasured: identical task, source, environment, metrics, cache modes, repetitions
+  PairedMeasured --> Qualified: 01.36 qualification payload passes and is digest-bound
+  ReferenceOnly --> Blocked: candidate executable missing
+  ExecutableUnbound --> Blocked: artifact identity missing
+  PairedMeasured --> Blocked: qualification fails
+  ReferenceOnly --> Inconsistent: downstream evidence claimed early
+  ExecutableUnbound --> Inconsistent: paired evidence claimed before artifact binding
+  Inconsistent --> Blocked
+  Qualified --> [*]
+  Blocked --> [*]
+#+end_src
+
+The lifecycle is monotone with respect to evidence authority, not elapsed time.
+Restarting a process or regenerating a reference fixture cannot advance it.
+Artifact drift may move a candidate back to =executable-unbound= until the new
+installed identities are captured and all dependent measurements are rerun.
+
+* Agent-facing interface boundary
+
+This contract does not add another complex public search command.  A future
+candidate executor should remain behind the single interactive agent-facing
+search session.  Experimental baseline/candidate selection is server-owned and
+must appear in receipts as a typed engine identity; it must not require the LLM
+to assemble a second CLI grammar.
+
+The existing production surface remains:
+
+#+begin_src text
+asp <language> search ...
+asp <language> query --selector <parser-owned-selector> --projection <projection>
+#+end_src
+
+The future candidate must use the same task, continuation, and evidence graph
+identity while recording a distinct engine/provider/runtime identity inside
+the paired-run receipt.
+
+* Candidate engine admission contract
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION
+:END:
+
+The executable Rust receipt refines a fail-closed model.  A blocked admission
+has no selected engine.  =asp-python-graphs= is the canonical service and
+engine identity of the production Python graph algorithms; Graph Turbo is an
+internal algorithm family, not a public identifier.  A future
+=progressive-gql-logic= implementation is a separately artifact-bound
+algorithm candidate.  Neither identity is an alias or fallback for the other.
+
+#+name: search-engine-candidate-admission-model
+#+begin_src typst
+#let admit(requested, identity-valid) = {
+  if (requested == "asp-python-graphs" or requested == "progressive-gql-logic")
+    and identity-valid {
+    (decision: "ready", selected: requested)
+  } else {
+    (decision: "blocked", selected: none)
+  }
+}
+
+#let missing = admit("progressive-gql-logic", false)
+#assert(missing.decision == "blocked")
+#assert(missing.selected == none)
+#let production = admit("asp-python-graphs", true)
+#assert(production.decision == "ready")
+#assert(production.selected == "asp-python-graphs")
+"ok"
+#+end_src
+
+The Lean owner
+=packages/proofs/ASPProof/SearchRouteEvidenceGraphAdmission.lean= proves the
+same refinement through =missing_progressive_identity_is_blocked=,
+=invalid_progressive_identity_is_blocked=,
+=blocked_candidate_admission_selects_no_engine=, and
+=progressive_identity_failure_cannot_fallback_to_graph_turbo=.  AXLE audits
+these theorems against this clause ID; the model does not assume the desired
+no-fallback conclusion as an axiom.
+
+Rust owns a small internal admission boundary.  It accepts the canonical
+ASP Python Graphs or progressive GQL/Logic algorithm identity together with its
+bound artifact identity; it does not parse agent-facing CLI arguments and it
+does not expose engine selection as a public choice.  The production default
+is =asp-python-graphs=.
+
+A =progressive-gql-logic= request is ready only when provider, runtime, and
+semantic-contract digests are all present and syntactically valid SHA-256
+identities.  Missing or malformed identity produces a typed blocked receipt.
+Any unknown or retired engine identifier is rejected as an unknown value.  The
+admission layer must not select the other algorithm after an identity failure
+because that would make paired receipts misreport which engine executed.
+
+The receipt schema is
+=schemas/semantic-search-engine-admission.v1.schema.json=.  Router integration
+may consume this receipt internally, but must not add a public subcommand or
+require the LLM to choose an implementation-specific engine flag.
+
+* Current blocked receipt
+
+The committed receipt records:
+
+- healthy production runtime observed through =asp server status=;
+- production baseline surface =asp-language-search-query=;
+- candidate surface =asp-gql-logic-progressive-reference= with kind
+  =reference-only=;
+- no candidate provider or runtime artifact digest;
+- no paired task/source/environment identity;
+- no raw token, hop, turn, latency, cache, or quality measurements;
+- no qualification payload digest.
+
+Its blockers are explicit rather than inferred from absent files.  The first
+blocker is =candidate-executable-missing=.
+
+* Normative artifacts
+
+| Role | Artifact |
+|-
+| Schema | =schemas/semantic-polyglot-search-evidence-sufficiency.v1.schema.json= |
+| Evaluator | =packages/proofs/src/asp_proofs/polyglot_search_evidence_sufficiency.py= |
+| Blocked receipt fixture | =tests/fixtures/semantic_polyglot_search/evidence-sufficiency.blocked.json= |
+| Python tests | =packages/proofs/tests/test_polyglot_search_evidence_sufficiency.py= |
+| Lean model | =packages/proofs/ASPProof/PolyglotSearchEvidenceSufficiency.lean= |
+| Lean audit | =packages/proofs/ASPProof/Audit/PolyglotSearchEvidenceSufficiency.lean= |
+| AXLE input | =packages/proofs/audit/polyglot-search-evidence-sufficiency-audit-v1.json= |
+| AXLE receipt | =packages/proofs/audit/polyglot-search-evidence-sufficiency-axle-receipt-v1.json= |
+
+* Lean obligations
+
+The model proves:
+
+1. reference-only evidence cannot authorize replacement;
+2. an executable candidate without artifact binding is insufficient;
+3. complete paired measurements remain blocked until qualification passes;
+4. complete evidence authorizes qualification;
+5. authorization exposes every prerequisite;
+6. a downstream qualification claim without prerequisites is inconsistent.
+
+Lean proves the lifecycle logic, not the honesty of future measurement tools or
+the representativeness of the selected project corpus.
+
+* Reproduction
+
+#+begin_src shell
+asp server status
+uv run --project packages/proofs python -m asp_proofs.polyglot_search_evidence_sufficiency --format json
+uv run --project packages/proofs pytest packages/proofs/tests/test_polyglot_search_evidence_sufficiency.py -q
+cd packages/proofs && lake build ASPProof.PolyglotSearchEvidenceSufficiency ASPProof.Audit.PolyglotSearchEvidenceSufficiency
+cd packages/proofs && lake env lean audit/PolyglotSearchEvidenceSufficiencyAudit.lean
+#+end_src
+
+* Next admissible implementation step
+
+Implement the candidate execution engine behind the existing interactive
+SearchLoop interface.  Its first receipt must bind the installed provider and
+runtime artifacts; only then may the paired-run collector execute the 01.36
+scenario matrix.  Until that happens, the blocked receipt is the correct and
+complete conclusion.

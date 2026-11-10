@@ -1,0 +1,144 @@
+{"sourcePath": "ASPProof/RuntimeSelectorOverlay.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.RuntimeSelectorOverlay",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (admission : ASPProof.RuntimeSelectorOverlay.OverlayAdmission),\n  ASPProof.RuntimeSelectorOverlay.publish admission = ASPProof.RuntimeSelectorOverlay.Publication.published ↔\n    ASPProof.RuntimeSelectorOverlay.Admissible admission",
+   "theoremFamily": "runtime-selector-overlay-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-OVERLAY-ADMISSION"],
+   "name": "ASPProof.RuntimeSelectorOverlay.publish_iff_complete_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (admission : ASPProof.RuntimeSelectorOverlay.OverlayAdmission),\n  ¬ASPProof.RuntimeSelectorOverlay.Admissible admission →\n    ¬ASPProof.RuntimeSelectorOverlay.MayServe (ASPProof.RuntimeSelectorOverlay.publish admission)",
+   "theoremFamily": "runtime-selector-overlay-fail-closed",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-NO-SERVE-BEFORE-PUBLISH"],
+   "name": "ASPProof.RuntimeSelectorOverlay.invalid_overlay_cannot_serve",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (admission : ASPProof.RuntimeSelectorOverlay.OverlayAdmission),\n  admission.ownerFreshnessProved = false →\n    ¬ASPProof.RuntimeSelectorOverlay.MayServe (ASPProof.RuntimeSelectorOverlay.publish admission)",
+   "theoremFamily": "runtime-selector-overlay-owner-freshness",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-OWNER-FRESHNESS"],
+   "name": "ASPProof.RuntimeSelectorOverlay.stale_owner_cannot_serve",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (generation : ASPProof.RuntimeSelectorOverlay.RuntimeGeneration) (key : ASPProof.RuntimeSelectorOverlay.OverlayKey),\n  (ASPProof.RuntimeSelectorOverlay.applySelector generation key).sourceEpoch = generation.sourceEpoch",
+   "theoremFamily": "runtime-selector-overlay-source-epoch-preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-SELECTOR-ONLY-EPOCH-PRESERVATION"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.selector_only_publication_preserves_source_epoch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (generation : ASPProof.RuntimeSelectorOverlay.RuntimeGeneration),\n  (ASPProof.RuntimeSelectorOverlay.applyOwner generation).selectors = []",
+   "theoremFamily": "runtime-selector-overlay-owner-invalidation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-OWNER-INVALIDATES-SELECTORS"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.owner_publication_invalidates_selector_overlays",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (generation : ASPProof.RuntimeSelectorOverlay.RuntimeGeneration),\n  have priorLease := ASPProof.RuntimeSelectorOverlay.checkout generation;\n  have _currentGeneration := ASPProof.RuntimeSelectorOverlay.applyOwner generation;\n  priorLease.sourceEpoch = generation.sourceEpoch ∧ priorLease.selectors = generation.selectors",
+   "theoremFamily": "runtime-selector-overlay-prior-lease-isolation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-LEASE-SNAPSHOT-ISOLATION"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.prior_lease_remains_snapshot_isolated",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (generation : ASPProof.RuntimeSelectorOverlay.RuntimeGeneration),\n  (ASPProof.RuntimeSelectorOverlay.checkout (ASPProof.RuntimeSelectorOverlay.applyOwner generation)).sourceEpoch =\n    (ASPProof.RuntimeSelectorOverlay.checkout generation).sourceEpoch + 1",
+   "theoremFamily": "runtime-selector-overlay-owner-epoch-advance",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-OWNER-EPOCH-ADVANCE"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.current_generation_advances_after_owner_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (generation : ASPProof.RuntimeSelectorOverlay.RuntimeGeneration),\n  (ASPProof.RuntimeSelectorOverlay.admitResidentReady generation).generation = generation ∧\n    (ASPProof.RuntimeSelectorOverlay.admitResidentReady generation).durableOpens = 0 ∧\n      (ASPProof.RuntimeSelectorOverlay.admitResidentReady generation).providerSpawns = 0",
+   "theoremFamily": "runtime-resident-ready-memory-first",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-RESIDENT-READY-MEMORY-FIRST"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.resident_ready_admission_preserves_generation_and_overlays",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.RuntimeSelectorOverlay.requestsGenerationAdmission ASPProof.RuntimeSelectorOverlay.RuntimeEntryPoint.preTool =\n  true",
+   "theoremFamily": "runtime-generation-lifecycle-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-LIFECYCLE-ADMISSION-OWNER"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.pre_tool_requests_generation_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.RuntimeSelectorOverlay.requestsGenerationAdmission\n    ASPProof.RuntimeSelectorOverlay.RuntimeEntryPoint.exactQuery =\n  false",
+   "theoremFamily": "runtime-exact-query-no-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-LIFECYCLE-ADMISSION-OWNER"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.exact_query_cannot_request_generation_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (workspaceIdentity firstRoot secondRoot : String),\n  firstRoot ≠ secondRoot →\n    { workspaceIdentity := workspaceIdentity, canonicalProjectRoot := firstRoot } ≠\n      { workspaceIdentity := workspaceIdentity, canonicalProjectRoot := secondRoot }",
+   "theoremFamily": "runtime-admission-project-root-isolation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-PROJECT-ROOT-ISOLATION"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.different_project_roots_have_distinct_admission_scopes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (materialization : ASPProof.RuntimeSelectorOverlay.CanonicalMaterialization),\n  ASPProof.RuntimeSelectorOverlay.MayPublishCommitted\n    { committed := true, materializationIdentityDigest := materialization.identityDigest } materialization",
+   "theoremFamily": "runtime-commit-publication-binding",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-COMMIT-PUBLICATION-BINDING"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.committed_materialization_can_publish_without_cross_connection_readback",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (receipt : ASPProof.RuntimeSelectorOverlay.DurableCommitReceipt)\n  (materialization : ASPProof.RuntimeSelectorOverlay.CanonicalMaterialization),\n  receipt.materializationIdentityDigest ≠ materialization.identityDigest →\n    ¬ASPProof.RuntimeSelectorOverlay.MayPublishCommitted receipt materialization",
+   "theoremFamily": "runtime-commit-publication-drift-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-COMMIT-PUBLICATION-BINDING"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.identity_drift_cannot_publish_committed_materialization",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (sourceKind skeletonKind selector : String),\n  sourceKind ≠ skeletonKind →\n    { projectionKind := sourceKind, structuralSelector := selector } ≠\n      { projectionKind := skeletonKind, structuralSelector := selector }",
+   "theoremFamily": "runtime-selector-overlay-projection-binding",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-PROJECTION-BINDING"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.projection_kind_separates_overlay_keys",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (publication : ASPProof.RuntimeSelectorOverlay.Publication),\n  ASPProof.RuntimeSelectorOverlay.MayServe publication →\n    publication = ASPProof.RuntimeSelectorOverlay.Publication.published",
+   "theoremFamily": "runtime-selector-overlay-publication-before-serve",
+   "rfcClauseIds": ["ASP-RFC-10.05-ESGA-NO-SERVE-BEFORE-PUBLISH"],
+   "name":
+   "ASPProof.RuntimeSelectorOverlay.serve_requires_successful_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 15,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 9,
+ "axiomDependentDeclarationCount": 6}

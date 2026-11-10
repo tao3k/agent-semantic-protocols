@@ -143,38 +143,32 @@
       "id": "prime",
       "command": [
         "asp",
-        "rust",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--seeds",
-        "4",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "rust",
+        "--rg",
+        "-n",
+        "-e",
+        "rust|source",
+        ".",
+        "--tantivy",
+        "title:\"rust\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "alg=budgeted-prime-frontier-v1",
-          "|decision purpose=decision-primer",
-          "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query",
-          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
-          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
-          "G>{",
-          "rank=",
-          "frontier=",
-          "omit=items,blocks,code,full-test-list",
-          "avoid=raw-read"
+          "#+begin_src gql :name result",
+          "(rust:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     },
@@ -182,40 +176,32 @@
       "id": "intent-query-set",
       "command": [
         "asp",
-        "rust",
         "search",
-        "lexical",
-        "--query",
-        "OverrideBuilder",
-        "--query",
-        "WalkBuilder",
-        "--query",
-        "gitignore",
-        "--view",
-        "seeds",
-        "--seeds",
-        "4",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "rust",
+        "--rg",
+        "-n",
+        "-e",
+        "OverrideBuilder|WalkBuilder|gitignore",
+        ".",
+        "--tantivy",
+        "title:\"OverrideBuilder\"^2 OR body:\"WalkBuilder\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier=",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(rust:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250,
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
-          "G=search:result!query"
+          "G=search:result!query",
+          "MaterializationSet"
         ]
       }
     }

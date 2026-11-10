@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "query-callable-skeleton-compact-presentation"
+scenario = "query-callable-skeleton-compact-presentation"
+performance_owner = "query_callable_skeleton_uses_compact_text_babel_presentation"
+workload = "one admitted V1 callable with one queryable child node"
+runtime_or_provider_process_count = 0
+
+[work_metrics]
+wire_envelope_decode_count = 1
+compact_node_visit_count = 2
+human_wire_authority_copy_count = 0
+org_block_count = 1
+
+[invariants]
+compare_compact_bytes_with_complete_wire_frame = true
+compact_bytes_must_be_strictly_smaller = true
+latency_threshold_is_not_a_semantic_gate = true

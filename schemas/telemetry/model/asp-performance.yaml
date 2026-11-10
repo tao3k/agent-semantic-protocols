@@ -1,0 +1,246 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+groups:
+  - id: registry.asp.performance
+    type: attribute_group
+    stability: development
+    brief: ASP search and Runtime Server performance-gate attributes.
+    attributes:
+      - id: asp.surface
+        type:
+          members:
+            - id: query
+              value: query
+            - id: search
+              value: search
+            - id: runtime_server
+              value: runtime-server
+            - id: graph_turbo
+              value: graph-turbo
+        brief: Public or resident surface that owns the measured operation.
+        requirement_level: required
+      - id: asp.stage
+        type: string
+        brief: Stable parser or Runtime Server stage identity.
+        requirement_level: required
+      - id: asp.hook.event_projection.status
+        type:
+          members:
+            - id: recorded
+              value: recorded
+            - id: unavailable
+              value: unavailable
+        brief: Diagnostic event projection outcome; it never changes the authoritative Hook decision.
+        requirement_level: recommended
+      - id: asp.hook.event_projection.lock_wait
+        type: int
+        unit: us
+        brief: Time spent attempting the workspace event-state writer lock.
+        requirement_level: recommended
+      - id: asp.hook.decision.elapsed
+        type: int
+        unit: us
+        brief: Monotonic elapsed duration for authoritative Hook decision production.
+        requirement_level: recommended
+      - id: asp.hook.decision.budget
+        type: int
+        unit: us
+        brief: Admitted hard budget for authoritative Hook decision production.
+        requirement_level: recommended
+      - id: asp.hook.decision.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict for the authoritative Hook decision budget.
+        requirement_level: recommended
+      - id: asp.hook.config.snapshot.digest
+        type: string
+        brief: Digest of the immutable Hook matcher snapshot used for the decision.
+        requirement_level: recommended
+      - id: asp.hook.config.snapshot.age
+        type: int
+        unit: us
+        brief: Age of the immutable Hook matcher snapshot when the decision starts.
+        requirement_level: recommended
+      - id: asp.workspace.identity
+        type: string
+        brief: Canonical workspace identity admitted by the Runtime Server.
+        requirement_level: recommended
+      - id: asp.language.id
+        type: string
+        brief: Registered provider language identity.
+        requirement_level: recommended
+      - id: asp.generation.digest
+        type: string
+        brief: Active immutable workspace-generation digest.
+        requirement_level: recommended
+      - id: asp.runtime.artifact.digest
+        type: string
+        brief: Canonical ASP Runtime Server artifact digest.
+        requirement_level: recommended
+      - id: asp.runtime.transport_contract.digest
+        type: string
+        brief: Runtime Server transport-contract digest.
+        requirement_level: recommended
+      - id: asp.operation.id
+        type: string
+        brief: Correlation identity shared by every stage of one admitted operation.
+        requirement_level: recommended
+      - id: asp.process.resident_memory
+        type: int
+        unit: By
+        brief: Resident bytes observed at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.peak_resident_memory
+        type: int
+        unit: By
+        brief: Process-lifetime peak resident bytes observed at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.memory.budget
+        type: int
+        unit: By
+        brief: Hard resident-memory budget for the Runtime Server process.
+        requirement_level: recommended
+      - id: asp.process.memory.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing resident and peak resident bytes with the memory budget.
+        requirement_level: recommended
+      - id: asp.process.disk.read_bytes
+        type: int
+        unit: By
+        brief: Process-lifetime bytes read from disk at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.disk.write_bytes
+        type: int
+        unit: By
+        brief: Process-lifetime bytes written to disk at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.page_ins
+        type: int
+        brief: Process-lifetime page-in count at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.open_descriptors
+        type: int
+        brief: Open process descriptor count observed by the resident sampler.
+        requirement_level: recommended
+      - id: asp.process.open_descriptors.budget
+        type: int
+        brief: Maximum admitted open process descriptor count.
+        requirement_level: recommended
+      - id: asp.process.open_descriptors.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing open descriptors with the process budget.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag
+        type: int
+        unit: us
+        brief: Tokio timer scheduling lag observed by the resident sampler.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag.budget
+        type: int
+        unit: us
+        brief: Maximum admitted Tokio event-loop scheduling lag.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing resident event-loop lag with its budget.
+        requirement_level: recommended
+      - id: asp.runtime.worker_threads
+        type: int
+        brief: Adaptive Tokio worker-thread count owned by the resident Runtime Server.
+        requirement_level: recommended
+      - id: asp.runtime.alive_tasks
+        type: int
+        brief: Tokio tasks alive when the resident sampler observed the process.
+        requirement_level: recommended
+      - id: asp.runtime.global_queue_depth
+        type: int
+        brief: Tokio global scheduler queue depth at the observation boundary.
+        requirement_level: recommended
+      - id: asp.runtime.active_connections
+        type: int
+        brief: Accepted Runtime Server connections that have not yet been reaped.
+        requirement_level: recommended
+      - id: asp.runtime.connection_limit
+        type: int
+        brief: Adaptive connection admission bound derived from the resident Tokio scheduler.
+        requirement_level: recommended
+      - id: asp.runtime.connection_high_watermark
+        type: int
+        brief: Highest accepted-but-not-reaped connection count in this daemon epoch.
+        requirement_level: recommended
+      - id: asp.runtime.rejected_connections
+        type: int
+        brief: Connections rejected because the bounded resident supervisor was saturated.
+        requirement_level: recommended
+      - id: asp.runtime.diagnostic_queue_depth
+        type: int
+        brief: Pending bounded diagnostic events at the observation boundary.
+        requirement_level: recommended
+      - id: asp.runtime.diagnostic_queue_capacity
+        type: int
+        brief: Adaptive bounded diagnostic queue capacity.
+        requirement_level: recommended
+      - id: asp.runtime.dropped_diagnostics
+        type: int
+        brief: Diagnostic events dropped after the bounded queue saturated.
+        requirement_level: recommended
+      - id: asp.performance.elapsed
+        type: int
+        unit: us
+        brief: Monotonic elapsed duration for the measured stage.
+        requirement_level: required
+      - id: asp.performance.budget
+        type: int
+        unit: us
+        brief: Budget owned by the same measured stage.
+        requirement_level: required
+      - id: asp.performance.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing elapsed and budget durations.
+        requirement_level: required
+      - id: asp.failure.reason
+        type: string
+        brief: Stable low-cardinality typed failure reason.
+        requirement_level:
+          conditionally_required: when the span status is error
+      - id: asp.retry_after
+        type: int
+        unit: ms
+        brief: Minimum recommended retry interval.
+        requirement_level: opt_in
+
+  - id: span.asp.performance.stage
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One measured ASP search, graph, or resident-runtime stage.
+    note: >
+      Span names use `asp {asp.surface} {asp.stage}`. A budget failure is an
+      error span and is persisted even when the invoking CLI exits.
+    extends: registry.asp.performance

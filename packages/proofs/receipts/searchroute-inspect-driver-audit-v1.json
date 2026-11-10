@@ -1,0 +1,60 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteInspectDriver.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectDriver",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "SearchRouteInspectDriver.DecisionTotal →\n  ∀ {initial : SearchRouteInspectLoop.InspectLoopState},\n    SearchRouteInspectLoop.LoopWellFormed initial → Nonempty (SearchRouteInspectDriver.ClosedTraceReceipt initial)",
+   "theoremFamily": "liveness-existence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SID-CLOSED-TRACE", "ASP-RFC-10.05-SID-DECISION-TOTAL"],
+   "name": "SearchRouteInspectDriver.decision_total_produces_closed_trace",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} (receipt : SearchRouteInspectDriver.ClosedTraceReceipt initial),\n  receipt.steps ≤ SearchRouteInspectLoop.loopWork initial",
+   "theoremFamily": "bounded-liveness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SID-CLOSED-TRACE", "ASP-RFC-10.05-SID-DECISION-TOTAL"],
+   "name": "SearchRouteInspectDriver.closed_trace_is_within_initial_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteDAG.graphLexNoWorse finalState.selected initial.selected",
+   "theoremFamily": "selected-non-regression",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SID-CLOSED-TRACE", "ASP-RFC-10.05-SID-GLOBAL"],
+   "name": "SearchRouteInspectDriver.trace_selected_no_worse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate},\n  SearchRouteInspectDriver.DecisionTotal →\n    ∀ {initial : SearchRouteInspectLoop.InspectLoopState},\n      SearchRouteInspectLoop.LoopWellFormed initial →\n        SearchRouteInspectLoop.LoopCovers candidateUniverse initial →\n          ∃ receipt,\n            receipt.steps ≤ SearchRouteInspectLoop.loopWork initial ∧\n              SearchRouteDAG.graphLexNoWorse receipt.finalState.selected initial.selected ∧\n                ∀ (candidate : SearchRouteDAG.GraphCandidate),\n                  candidate ∈ candidateUniverse → SearchRouteDAG.graphLexNoWorse receipt.finalState.selected candidate",
+   "theoremFamily": "liveness-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SID-CLOSED-TRACE",
+    "ASP-RFC-10.05-SID-DECISION-TOTAL",
+    "ASP-RFC-10.05-SID-GLOBAL"],
+   "name":
+   "SearchRouteInspectDriver.decision_total_produces_bounded_global_optimum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {state : SearchRouteInspectLoop.InspectLoopState},\n  ¬SearchRouteInspectLoop.LoopClosed state →\n    Nonempty (SearchRouteInspectLoop.InspectLoopTrace state state 0) ∧ ¬SearchRouteInspectLoop.LoopClosed state",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SID-DECISION-TOTAL", "ASP-RFC-10.05-SID-SAFETY-LIVENESS"],
+   "name": "SearchRouteInspectDriver.safety_trace_alone_allows_early_stop",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 4}

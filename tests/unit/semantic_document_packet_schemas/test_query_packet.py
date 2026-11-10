@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate document query packet schema examples."""
 
 from __future__ import annotations
@@ -5,6 +9,27 @@ from __future__ import annotations
 import unittest
 
 from .helpers import REPO_ROOT, schema_validator_for
+
+
+def packet_evidence() -> dict[str, object]:
+    return {
+        "sourceSnapshot": {
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": "a" * 64,
+            "sourceKind": "filesystem",
+            "leafCount": 1,
+            "providerDigest": "orgize-parser-v1",
+        },
+        "resolutionEvidence": {
+            "schemaId": "agent.semantic-protocols.document-resolution-evidence",
+            "snapshotRoot": "a" * 64,
+            "authority": "live-parser",
+            "state": "live-hit",
+        },
+        "itemDigest": "blake3:" + "b" * 64,
+        "executionCommandDigest": "sha256:" + "c" * 64,
+    }
 
 
 class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
@@ -15,12 +40,13 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
         packet = {
             "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
             "schemaVersion": "1",
+            "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
             "protocolId": "agent.semantic-protocols.semantic-language",
             "protocolVersion": "1",
             "languageId": "md",
-            "providerId": "orgize",
+            "providerId": "asp-md",
             "binary": "asp",
-            "namespace": "agent.semantic-protocols.languages.md.orgize",
+            "namespace": "agent.semantic-protocols.languages.md.asp-md",
             "method": "query/document",
             "projectRoot": ".",
             "query": "README.md:1-1",
@@ -38,14 +64,17 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
                     "sourceKind": "NodeValue::Heading",
                     "name": "Project",
                     "documentPath": "README.md",
+                    "structuralSelector": "md://README.md#heading/Project",
                     "location": {"path": "README.md", "lineRange": "1:1"},
                     "parserAuthority": "comrak",
                     "queryKeys": ["heading", "Project"],
                     "attributes": {"title": "Project", "level": "1"},
+                    "textSnippet": "Project",
                 }
             ],
             "contentBlocks": [],
             "truncated": False,
+            **packet_evidence(),
         }
 
         self.assertEqual([], list(validator.iter_errors(packet)))
@@ -57,12 +86,13 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
         packet = {
             "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
             "schemaVersion": "1",
+            "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
             "protocolId": "agent.semantic-protocols.semantic-language",
             "protocolVersion": "1",
             "languageId": "rust",
-            "providerId": "orgize",
+            "providerId": "asp-rust",
             "binary": "asp",
-            "namespace": "agent.semantic-protocols.languages.rust.orgize",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
             "method": "query/document",
             "projectRoot": ".",
             "query": "*",
@@ -76,6 +106,7 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
             "documentFacts": [],
             "contentBlocks": [],
             "truncated": False,
+            **packet_evidence(),
         }
 
         self.assertTrue(list(validator.iter_errors(packet)))
@@ -87,12 +118,13 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
         packet = {
             "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
             "schemaVersion": "1",
+            "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
             "protocolId": "agent.semantic-protocols.semantic-language",
             "protocolVersion": "1",
             "languageId": "org",
-            "providerId": "orgize",
+            "providerId": "asp-org",
             "binary": "asp",
-            "namespace": "agent.semantic-protocols.languages.org.orgize",
+            "namespace": "agent.semantic-protocols.languages.org.asp-org",
             "method": "query/document",
             "projectRoot": ".",
             "query": "embedded",
@@ -108,25 +140,15 @@ class SemanticDocumentQueryPacketSchemaTests(unittest.TestCase):
                 {
                     "kind": "element",
                     "documentPath": "notes.org",
+                    "structuralSelector": "org://notes.org#paragraph/3",
                     "location": {"path": "notes.org", "lineRange": "3:3"},
                     "parserAuthority": "orgize",
-                    "contentKind": "documentation-metadata",
-                    "criticality": "metadata",
-                    "sourceFingerprint": "sha256:notes-org-section-3",
-                    "compaction": {
-                        "mode": "org-metadata-outline",
-                        "lossiness": "aggressive",
-                        "trustLevel": "metadata-backed",
-                        "sourceOfTruth": "document-parser-facts",
-                        "validFor": ["discovery", "routing"],
-                        "notValidFor": ["quoting", "normative-proof"],
-                        "preserved": ["headlines", "tags", "links"],
-                        "omitted": ["body-paragraphs", "result-blocks"],
-                    },
                     "content": "Document providers stay embedded inside ASP.",
+                    "itemDigest": "blake3:" + "d" * 64,
                 }
             ],
             "truncated": False,
+            **packet_evidence(),
         }
 
         self.assertEqual([], list(validator.iter_errors(packet)))

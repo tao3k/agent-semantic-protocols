@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Contract checks for the agent hook interception RFC."""
 
 from pathlib import Path
@@ -12,40 +16,33 @@ _RFC_PATH = (
 )
 
 
-def test_codex_source_access_layer_records_no_daemon_scope() -> None:
-    text = _RFC_PATH.read_text(encoding="utf-8")
+def test_hook_rfc_keeps_source_enforcement_inside_compiled_policy() -> None:
+    text = " ".join(_RFC_PATH.read_text(encoding="utf-8").split())
 
     required_terms = [
-        "schemas/semantic-source-access-decision.v1.schema.json",
-        "asp source-access read-file --activation <activation.json>",
-        "asp source-access shell-egress --activation <activation.json>",
-        "MCP surfaces are out of scope",
-        "fsApi=enforced",
-        "shellOutput=egress-enforced",
-        "subprocessOpen=not-enforced",
-        "mcp=out-of-scope",
-        "daemon=not-used",
+        "compiled policy + provider projection",
+        "without contacting the Runtime Server",
+        "Semantic capability MUST NOT be copied from the Host tool name",
+        "An unobserved Host event produces no Action IR and no decision receipt",
+        "source access remains fail-closed",
+        "performs no Runtime RPC, provider execution, socket discovery",
     ]
     missing_terms = [term for term in required_terms if term not in text]
 
     assert missing_terms == []
 
 
-def test_hook_rfc_defines_markdown_recovery_prompt_and_runtime_binaries() -> None:
-    text = _RFC_PATH.read_text(encoding="utf-8")
+def test_hook_rfc_defines_standalone_runtime_and_typed_decision() -> None:
+    text = " ".join(_RFC_PATH.read_text(encoding="utf-8").split())
 
     required_terms = [
-        "the rendered reason text is Markdown",
-        "# ASP Hook Recovery",
-        "## Run Next",
-        "## Detected Binaries",
-        "command=<runtime-profile argv>",
-        "Start from asp <language> guide --workspace .",
-        "runtime profile's resolved =argv=",
-        "The public route in",
-        "=routes[].argv= still uses the =asp <language>= facade",
-        "experimental.semanticAstPatch.enabled = false",
-        "=apply_patch=",
+        "asp-hook pre-tool --client codex",
+        "asp-hook pre-tool --client claude",
+        "=asp-hook-exec= adapter resolves the active Runtime artifact slot",
+        "=runtime/bin/asp-hook=",
+        "MUST NOT insert an =asp hook= subcommand",
+        "=--emit decision= exposes the typed packet",
+        "Rendered prose is not an orchestration protocol",
     ]
 
     missing_terms = [term for term in required_terms if term not in text]
@@ -53,22 +50,17 @@ def test_hook_rfc_defines_markdown_recovery_prompt_and_runtime_binaries() -> Non
     assert missing_terms == []
 
 
-def test_hook_rfc_closure_gates_cover_recovery_prompt_and_retired_routes() -> None:
+def test_hook_rfc_closure_gates_cover_compiled_policy_and_retired_routes() -> None:
     text = _RFC_PATH.read_text(encoding="utf-8")
 
     required_terms = [
-        "Prompt-facing deny output is a Markdown recovery prompt",
-        "=# ASP Hook Recovery=",
-        "=## Detected Binaries=",
-        "current runtime profile command argv",
-        "=routes[].argv= remains the public =asp <language>=",
-        "experimental.semanticAstPatch.enabled = false",
-        "=apply_patch=",
-        "Generated skills and hook prompts must not reintroduce",
-        "agent-prefixed guide spelling",
-        "old search-wrapper hook query",
-        "accepted guide entrypoint is =asp <language> guide --workspace .=",
-        "help surface is =asp <language> guide --help .=",
+        "The prior =HookRoutes=, =HookRouteBindings=, =HookActivation=",
+        "remain immutable archive contracts",
+        "MUST NOT be used to reconstruct a compatibility path",
+        "dependency gates prove Runtime Server and Client Core do not depend on",
+        "source gates reject reintroduction of route-bearing Hook activation DTOs",
+        "latency evidence proves every covered decision is strictly below 1 ms",
+        "Zero tests, an unregistered test file, stale binary evidence",
     ]
 
     missing_terms = [term for term in required_terms if term not in text]

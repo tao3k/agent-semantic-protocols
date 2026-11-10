@@ -1,0 +1,20 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ProtocolInterfaceBootstrapSeparation
+
+namespace ASPProof.Audit.ProtocolInterfaceBootstrapSeparation
+
+open ASPProof.ProtocolInterfaceBootstrapSeparation
+
+#check zero_generation_bootstrap_progress
+#check first_namespace_creation_requires_no_existing_namespace
+#check provider_unavailable_does_not_block_global_control_plane
+#check stale_runtime_receipt_does_not_block_global_control_plane
+#check stale_provider_receipt_degrades_only_provider_capability
+#check runtime_binary_refresh_preserves_workspace_and_interface_identity
+#check admission_dependency_is_acyclic
+#check bootstrap_control_plane_has_no_admitted_dependency
+
+end ASPProof.Audit.ProtocolInterfaceBootstrapSeparation

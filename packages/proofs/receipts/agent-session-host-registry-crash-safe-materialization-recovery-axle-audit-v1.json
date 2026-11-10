@@ -1,0 +1,23 @@
+{
+  "auditSha256": "7f28256d92f9ebd0c533ee6238afaec617c23294f875c4ee94d0bdf0e9e3a157",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 19,
+  "axiomInventory": [],
+  "declarationCount": 19,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-ASRR-CAPTURE",
+    "ASP-RFC-10.05-ASRR-GENERATION",
+    "ASP-RFC-10.05-ASRR-INTENT",
+    "ASP-RFC-10.05-ASRR-SEAL"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "append-only-capture",
+    "crash-recovery",
+    "durable-intent",
+    "generation-fence",
+    "quarantine-conflict",
+    "seal-cas"
+  ]
+}

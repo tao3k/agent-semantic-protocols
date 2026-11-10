@@ -1,0 +1,362 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Explicit acceptance of Codex Host-to-Hook delivery from a normal-task rollout.
+//!
+//! This is a diagnostic-plane reader. The Hook event path must never discover or
+//! scan Codex rollouts itself.
+
+use serde::Serialize;
+use serde_json::Value;
+use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::path::Path;
+
+/// The diagnostic plane must have a fixed cost even after a long-running
+/// normal task.  The Host declaration is emitted near the start of a rollout,
+/// while the probe and Hook decision are emitted near its end.
+const ROLLOUT_PREFIX_BYTES: u64 = 1024 * 1024;
+const ROLLOUT_TAIL_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct HostAcceptanceReceipt {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    state: &'static str,
+    reason_kind: &'static str,
+    plugin_loaded: bool,
+    probe_call_observed: bool,
+    hook_event_observed: bool,
+    generation_bound_deny_observed: bool,
+    source_bytes_returned: bool,
+}
+
+impl HostAcceptanceReceipt {
+    pub(super) fn accepted(&self) -> bool {
+        self.state == "accepted"
+    }
+
+    pub(super) fn reason_kind(&self) -> &'static str {
+        self.reason_kind
+    }
+}
+
+#[derive(Default)]
+struct HostAcceptanceEvidence {
+    plugin_loaded: bool,
+    probe_call_observed: bool,
+    probe_call_ids: std::collections::HashSet<String>,
+    hook_event_observed: bool,
+    hook_event_call_ids: std::collections::HashSet<String>,
+    typed_deny_observed: bool,
+    typed_deny_call_ids: std::collections::HashSet<String>,
+    generation_bound_deny_observed: bool,
+    generation_bound_deny_call_ids: std::collections::HashSet<String>,
+    source_bytes_returned: bool,
+}
+
+struct HostAcceptanceContext<'a> {
+    rollout_path: &'a Path,
+    probe_path: &'a str,
+    source_sentinel: &'a str,
+}
+
+pub(super) fn inspect_host_rollout(
+    rollout_path: &Path,
+    hook_events_path: &Path,
+    probe_path: &str,
+    source_sentinel: &str,
+) -> Result<HostAcceptanceReceipt, String> {
+    if probe_path.trim().is_empty() {
+        return Err("--host-probe-path must not be empty".to_owned());
+    }
+    if source_sentinel.trim().is_empty() {
+        return Err("--host-sentinel must not be empty".to_owned());
+    }
+    let metadata = std::fs::metadata(rollout_path).map_err(|error| {
+        format!(
+            "failed to inspect Host rollout {}: {error}",
+            rollout_path.display()
+        )
+    })?;
+    let mut file = File::open(rollout_path).map_err(|error| {
+        format!(
+            "failed to open Host rollout {}: {error}",
+            rollout_path.display()
+        )
+    })?;
+    let mut evidence = HostAcceptanceEvidence::default();
+    let context = HostAcceptanceContext {
+        rollout_path,
+        probe_path,
+        source_sentinel,
+    };
+    let prefix_len = metadata.len().min(ROLLOUT_PREFIX_BYTES);
+    inspect_rollout_window(&mut file, 0, prefix_len, false, &context, &mut evidence)?;
+    if metadata.len() > prefix_len {
+        let tail_start = metadata.len().saturating_sub(ROLLOUT_TAIL_BYTES);
+        inspect_rollout_window(
+            &mut file,
+            tail_start,
+            metadata.len() - tail_start,
+            tail_start != 0,
+            &context,
+            &mut evidence,
+        )?;
+    }
+    inspect_hook_events(hook_events_path, &mut evidence)?;
+    evidence.hook_event_observed =
+        all_probe_calls_are_covered(&evidence.probe_call_ids, &evidence.hook_event_call_ids);
+    evidence.typed_deny_observed =
+        all_probe_calls_are_covered(&evidence.probe_call_ids, &evidence.typed_deny_call_ids);
+    evidence.generation_bound_deny_observed = all_probe_calls_are_covered(
+        &evidence.probe_call_ids,
+        &evidence.generation_bound_deny_call_ids,
+    );
+
+    let (state, reason_kind) = if !evidence.plugin_loaded {
+        ("rejected", "plugin-not-loaded")
+    } else if !evidence.probe_call_observed {
+        ("rejected", "probe-call-missing")
+    } else if evidence.source_bytes_returned {
+        ("rejected", "source-bytes-leaked")
+    } else if !evidence.hook_event_observed {
+        ("rejected", "hook-event-missing")
+    } else if !evidence.typed_deny_observed {
+        ("rejected", "hook-deny-missing")
+    } else if !evidence.generation_bound_deny_observed {
+        ("rejected", "hook-deny-publication-identity-missing")
+    } else {
+        (
+            "accepted",
+            "normal-task-hook-policy-bundle-bound-deny-observed",
+        )
+    };
+
+    Ok(HostAcceptanceReceipt {
+        schema_id: "agent.semantic-protocols.hook-host-acceptance",
+        schema_version: "1",
+        state,
+        reason_kind,
+        plugin_loaded: evidence.plugin_loaded,
+        probe_call_observed: evidence.probe_call_observed,
+        hook_event_observed: evidence.hook_event_observed,
+        generation_bound_deny_observed: evidence.generation_bound_deny_observed,
+        source_bytes_returned: evidence.source_bytes_returned,
+    })
+}
+
+fn inspect_rollout_window(
+    file: &mut File,
+    start: u64,
+    length: u64,
+    skip_first_partial_line: bool,
+    context: &HostAcceptanceContext<'_>,
+    evidence: &mut HostAcceptanceEvidence,
+) -> Result<(), String> {
+    file.seek(SeekFrom::Start(start)).map_err(|error| {
+        format!(
+            "failed to seek Host rollout {} to byte {start}: {error}",
+            context.rollout_path.display()
+        )
+    })?;
+    let mut reader = BufReader::new(file.take(length));
+    if skip_first_partial_line {
+        let mut partial = Vec::new();
+        reader.read_until(b'\n', &mut partial).map_err(|error| {
+            format!(
+                "failed to align Host rollout {} tail window: {error}",
+                context.rollout_path.display()
+            )
+        })?;
+    }
+
+    let mut line = String::new();
+    let mut record = 0_u64;
+    loop {
+        line.clear();
+        let bytes = reader.read_line(&mut line).map_err(|error| {
+            format!(
+                "failed to read Host rollout {} near byte {}: {error}",
+                context.rollout_path.display(),
+                start + record
+            )
+        })?;
+        if bytes == 0 {
+            break;
+        }
+        record += bytes as u64;
+        // A bounded window can end in the middle of a JSONL item.  It is not
+        // an invalid rollout record and must not turn a long session into a
+        // false rejection.
+        if !line.ends_with('\n') {
+            break;
+        }
+        let value: Value = serde_json::from_str(line.trim_end()).map_err(|error| {
+            format!(
+                "invalid Host rollout JSON at {} near byte {}: {error}",
+                context.rollout_path.display(),
+                start + record
+            )
+        })?;
+        observe_rollout_item(
+            &value,
+            context.probe_path,
+            context.source_sentinel,
+            evidence,
+        );
+    }
+    Ok(())
+}
+
+fn observe_rollout_item(
+    value: &Value,
+    probe_path: &str,
+    source_sentinel: &str,
+    evidence: &mut HostAcceptanceEvidence,
+) {
+    let payload_type = value.pointer("/payload/type").and_then(Value::as_str);
+    let probe_call = match payload_type {
+        Some("function_call") => value.pointer("/payload/arguments"),
+        Some("custom_tool_call") => value.pointer("/payload/input"),
+        _ => None,
+    }
+    .and_then(Value::as_str)
+    .is_some_and(|input| input.contains(probe_path));
+    if probe_call {
+        evidence.probe_call_observed = true;
+        if let Some(call_id) = value.pointer("/payload/call_id").and_then(Value::as_str) {
+            evidence.probe_call_ids.insert(call_id.to_owned());
+        }
+    }
+
+    let output = value.pointer("/payload/output");
+    let output_is_for_probe = value
+        .pointer("/payload/call_id")
+        .and_then(Value::as_str)
+        .is_some_and(|call_id| evidence.probe_call_ids.contains(call_id));
+    let source_sentinel_observed = match payload_type {
+        Some("function_call_output" | "custom_tool_call_output") => {
+            output_is_for_probe
+                && output.is_some_and(|output| value_contains_text(output, source_sentinel))
+        }
+        _ => false,
+    };
+    if source_sentinel_observed {
+        evidence.source_bytes_returned = true;
+    }
+}
+
+fn inspect_hook_events(path: &Path, evidence: &mut HostAcceptanceEvidence) -> Result<(), String> {
+    let file = File::open(path)
+        .map_err(|error| format!("failed to open Hook events {}: {error}", path.display()))?;
+    for (line_index, line) in BufReader::new(file).lines().enumerate() {
+        let line = line
+            .map_err(|error| format!("failed to read Hook events {}: {error}", path.display()))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(&line).map_err(|error| {
+            format!(
+                "invalid Hook event JSON at {}:{}: {error}",
+                path.display(),
+                line_index + 1
+            )
+        })?;
+        evidence.plugin_loaded |= value.get("schemaId").and_then(Value::as_str)
+            == Some("agent.semantic-protocols.hook.event")
+            && value.get("schemaVersion").and_then(Value::as_str) == Some("1");
+        let matching_call_id = value
+            .pointer("/fields/toolUseId")
+            .and_then(Value::as_str)
+            .filter(|call_id| evidence.probe_call_ids.contains(*call_id));
+        let exact_probe_event = value.get("event").and_then(Value::as_str) == Some("pre-tool")
+            && value.pointer("/fields/hostMatcher").and_then(Value::as_str) == Some("Bash")
+            && matching_call_id.is_some();
+        if !exact_probe_event {
+            continue;
+        }
+        let call_id = matching_call_id.expect("exact probe event has a matching call id");
+        evidence.hook_event_call_ids.insert(call_id.to_owned());
+        if value_contains_typed_hook_deny(&value) {
+            evidence.typed_deny_call_ids.insert(call_id.to_owned());
+        }
+        if value_contains_generation_bound_hook_deny(&value) {
+            evidence
+                .generation_bound_deny_call_ids
+                .insert(call_id.to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn all_probe_calls_are_covered(
+    probe_call_ids: &std::collections::HashSet<String>,
+    evidence_call_ids: &std::collections::HashSet<String>,
+) -> bool {
+    !probe_call_ids.is_empty() && probe_call_ids.is_subset(evidence_call_ids)
+}
+
+fn value_contains_typed_hook_deny(value: &Value) -> bool {
+    if agent_semantic_hook::is_typed_hook_deny(value) {
+        return true;
+    }
+    match value {
+        Value::String(text) => hook_decision_from_text(text)
+            .as_ref()
+            .is_some_and(agent_semantic_hook::is_typed_hook_deny),
+        Value::Array(values) => values.iter().any(value_contains_typed_hook_deny),
+        Value::Object(fields) => fields.values().any(value_contains_typed_hook_deny),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn value_contains_generation_bound_hook_deny(value: &Value) -> bool {
+    if agent_semantic_hook::is_generation_bound_hook_deny(value) {
+        return true;
+    }
+    match value {
+        Value::String(text) => hook_decision_from_text(text)
+            .as_ref()
+            .is_some_and(agent_semantic_hook::is_generation_bound_hook_deny),
+        Value::Array(values) => values.iter().any(value_contains_generation_bound_hook_deny),
+        Value::Object(fields) => fields
+            .values()
+            .any(value_contains_generation_bound_hook_deny),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn hook_decision_from_text(text: &str) -> Option<Value> {
+    let marker_offset = ["[asp-hook]", "[agent-hook-decision]"]
+        .iter()
+        .filter_map(|marker| text.find(marker).map(|offset| offset + marker.len()))
+        .min()?;
+    let document = &text[marker_offset..];
+    let start = document.find('{')?;
+    let end = document.rfind('}')?;
+    serde_json::from_str(&document[start..=end]).ok()
+}
+
+fn value_contains_text(value: &Value, needle: &str) -> bool {
+    match value {
+        Value::String(text) => text.contains(needle),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| value_contains_text(value, needle)),
+        Value::Object(fields) => fields
+            .values()
+            .any(|value| value_contains_text(value, needle)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/hook_host_acceptance.rs"]
+mod tests;

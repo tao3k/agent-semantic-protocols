@@ -1,0 +1,23 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.Audit.RuntimeWorkspaceGeneration
+
+open ASPProof.RuntimeWorkspaceGeneration
+open ASPProof.Audit.RuntimeWorkspaceGeneration
+
+#check generation_identity_deterministic
+#check writer_offline_preserves_active
+#check stale_reconciliation_preserves_active
+#check acquire_lease_preserves_active
+#check release_lease_preserves_active
+#check active_publication_is_atomic
+#check workspace_transition_isolated
+#check generation_identity_is_a_function
+#check resident_read_gate_requires_zero_db_open
+#check resident_read_gate_requires_memory_hit
+#check legacy_v1_catalog_has_no_project_workspace_authority
+#check current_v1_catalog_preserves_project_workspace_identity
+#check host_control_can_admit_empty_v1_catalog
+#check initialized_read_session_cannot_mutate_v1_catalog

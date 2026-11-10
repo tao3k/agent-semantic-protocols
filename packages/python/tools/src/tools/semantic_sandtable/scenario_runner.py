@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Execute semantic sandtable scenarios."""
 
 from __future__ import annotations
@@ -165,7 +169,7 @@ def _run_loaded_scenario(
     path: Path,
     scenario: dict[str, Any],
     *,
-    isolate: bool,
+    isolate: bool = True,
 ) -> ScenarioResult:
     env = build_env(scenario.get("env", {}), repo_root=repo_root)
     if isolate:
@@ -364,7 +368,7 @@ def _live_agent_steps_from_deep_question(
         agent_sdk["allowedTools"] = allowed_tools
     if isinstance(live_agent.get("model"), str):
         agent_sdk["model"] = live_agent["model"]
-    pipe_expect = dict_value(expect.get("pipeFlow"))
+    pipe_expect = dict_value(expect.get("commandFlow"))
     max_asp_commands = optional_int(pipe_expect.get("maxAspCommands"))
     if max_asp_commands is not None:
         agent_sdk["maxAspBashCommands"] = max_asp_commands

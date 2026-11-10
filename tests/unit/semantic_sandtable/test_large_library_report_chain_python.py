@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Python large-library report-chain readiness tests."""
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ def test_large_library_report_chain_can_pass_with_python_fixture(
         "optimizationRunCount": 3,
         "optimizationVariantRunCount": 15,
         "ablationVariantCount": 5,
-        "coveredSearchMethods": ["search/lexical"],
+        "coveredSearchMethods": ["search/playbook"],
         "coveredSearchQueries": ["feature", "owner"],
         "byLanguage": [
             {
@@ -48,7 +52,7 @@ def test_large_library_report_chain_can_pass_with_python_fixture(
                 "uniqueSearchCommandCount": 1,
                 "optimizationRunCount": 3,
                 "optimizationVariantRunCount": 15,
-                "coveredSearchMethods": ["search/lexical"],
+                "coveredSearchMethods": ["search/playbook"],
                 "coveredSearchQueries": ["feature", "owner"],
             }
         ],
@@ -58,8 +62,8 @@ def test_large_library_report_chain_can_pass_with_python_fixture(
         {
             "commandId": " ".join(command),
             "language": "python",
-            "method": "search/lexical",
-            "view": "lexical",
+            "method": "search/playbook",
+            "view": "playbook",
             "queries": ["feature", "owner"],
             "command": command,
             "scenarioIds": ["python.multi-depth"],

@@ -1,0 +1,311 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute safe replay-mode negotiation
+#+startup: overview
+
+* Status
+
+This module is a proof-backed refinement of the interactive-first,
+graph-first, progressive SearchLoop architecture.  It specifies how a verifier
+chooses between full-field replay, digest-compressed replay, and explicit-field
+fallback after shortcut-envelope admission and canonical payload construction.
+
+The module is intentionally limited to RFC, Lean, machine-readable Lean audit,
+and Org-Babel Typst mathematics.  It does not specify a Rust or Python runtime
+implementation.
+
+* Why this module exists
+
+The canonical payload module establishes two different identity paths:
+
+1. canonical full-field equality is sufficient without a hash assumption; and
+2. digest equality is sufficient only when collision freedom is known on the
+   admitted payload domain.
+
+Those facts do not by themselves specify a safe negotiation algorithm.  A
+caller could still observe equal digests, omit collision evidence, and select a
+compressed replay mode.  That would turn a conditional theorem into an
+unconditional protocol claim.  This module closes that gap by making the mode
+selection result proof-carrying.
+
+This distinction matters to SearchLoop efficiency.  Digest-compressed replay
+can reduce receipt tokens and repeated evidence transfer, but it must never
+reduce the evidence needed to justify identity.  Full-field replay is the
+assumption-free route; explicit-field fallback is the fail-closed route when no
+identity evidence is available.
+
+* Terminology and cache boundary
+
+=Digest-compressed replay= is a protocol representation choice.  It may reuse a
+verified canonical payload digest or a search-result cache entry whose identity
+is already bound to the admitted domain.
+
+It is not the same mechanism as an LLM provider's prefix-cache hit.  A model
+cache may reduce inference cost when prompts share a stable prefix, while a
+search cache may avoid graph traversal or payload reconstruction.  Both affect
+end-to-end token or latency cost, but neither establishes payload equality.
+Only the proof-carrying replay evidence in this module can discharge that
+identity obligation.
+
+* Protocol clauses
+
+** SRM-MODE: the verifier owns an explicit replay mode
+
+The verifier returns exactly one of:
+
+- =fullField=, carrying a proof that canonical full-field equality identifies
+  the two payloads;
+- =digestCompressed=, carrying a proof derived from admitted-domain collision
+  evidence and digest equality; or
+- =explicitFieldFallback=, carrying no acceptance claim.
+
+Mode selection is evidence-driven.  It is not a CLI flag and must not be
+selected by a string heuristic, payload-size threshold, or optimistic cache
+hit.
+
+** SRM-ASSUMPTION: digest mode carries assumption identity
+
+Collision freedom is proof-carrying data, not an ambient undocumented axiom.
+The evidence includes an =assumptionIdentity= that a receipt can bind to the
+specific collision policy, verifier artifact, or admitted-domain certificate.
+
+Because collision evidence is stored in =Option= during negotiation, its Lean
+carrier must inhabit =Type=.  Treating it as a proposition-only witness is not
+sufficient for the protocol data path.
+
+** SRM-FULL-FIELD: full-field replay is assumption-free
+
+Canonical equality evidence alone is sufficient to select =fullField=.  The
+result has no collision-assumption identity.  Digest equality may be present,
+but without collision evidence it is unusable for digest-compressed replay.
+
+** SRM-DIGEST: digest mode requires both inputs
+
+=digestCompressed= is selected only when both of the following are present:
+
+- collision-free evidence for the admitted payload domain; and
+- equality of the canonical payload digests.
+
+If both inputs are present, digest mode has priority over a redundant
+full-field equality witness.  The selected result already carries a proof of
+payload equality, so later consumers do not need to rerun mode negotiation.
+
+** SRM-FALLBACK: missing identity evidence fails closed
+
+Collision evidence without digest equality proves no pairwise identity.
+Digest equality without collision evidence proves no admitted-domain identity.
+If canonical equality is also absent, the verifier returns
+=explicitFieldFallback=.  A fallback result is not an accepted replay and must
+trigger explicit field acquisition or a narrower progressive inspection step.
+
+** SRM-SOUNDNESS: every accepted mode proves one payload identity
+
+Every non-fallback result implies equality of the canonical payloads.  When
+both full-field and digest evidence exist, the two selected modes agree on that
+same equality; they are alternative evidence transports, not different notions
+of identity.
+
+** SRM-RECEIPT: the receipt exposes mode, assumptions, and cost
+
+A digest receipt binds the collision =assumptionIdentity=.  A full-field
+receipt exposes no collision identity.  The proof model assigns a smaller
+abstract token cost to the digest receipt than to the full-field receipt, while
+keeping the identity proof obligation unchanged.
+
+The numeric cost constants are a comparative model, not a runtime benchmark.
+Real-project evidence must separately report serialized bytes, tokenizer
+tokens, latency, search command count, graph transitions, and model prefix-cache
+behavior.
+
+* Mathematical negotiation model
+
+Let =C= be collision evidence, =D= digest equality, and =F= canonical
+full-field equality.  The safe negotiation order is:
+
+#+name: safe-replay-mode-negotiation
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+[
+  $ "collision evidence" + "digest equality"
+      arrow.r "digest-compressed" $
+
+  $ "no collision evidence" + "canonical equality"
+      arrow.r "full-field" $
+
+  $ "no identity evidence"
+      arrow.r "explicit-field fallback" $
+]
+#+end_src
+
+This is not a truth table over untrusted Boolean claims.  Each positive input
+is a typed evidence object whose constructor contains the proof needed by the
+selected branch.
+
+For payloads =P_1= and =P_2=, receipt safety is:
+
+#+name: safe-replay-mode-safety
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+[
+  $ "mode" = "digest-compressed"
+      quad "implies" quad
+      "assumptionIdentity" != "none" $
+
+  $ "mode" != "explicit-field fallback"
+      quad "implies" quad
+      P_1 = P_2 $
+]
+#+end_src
+
+The first implication prevents an unassumed digest replay.  The second makes
+acceptance independent of which compact transport was selected.
+
+* Lean model
+
+The proof owner is:
+
+- =packages/proofs/ASPProof/SearchRouteSafeReplayModeNegotiation.lean=
+
+The model defines:
+
+- =ReplayModeTag=;
+- =CollisionFreeEvidence= with =assumptionIdentity= and admitted-domain
+  collision freedom;
+- =CanonicalEqualityEvidence= and =DigestEqualityEvidence=;
+- =ReplayIdentityOutcome=, whose accepted constructors carry payload equality;
+- =fullFieldOrFallback=; and
+- =negotiateReplayIdentity=.
+
+The public negotiation definition uses explicit nested pattern matching.  The
+collision-free branch first distinguishes whether digest equality exists; only
+that =some/some= path constructs =acceptedDigest=.  All remaining paths call
+the independent =fullFieldOrFallback= function.
+
+* Logical defects discovered by Lean
+
+** Evidence carried by =Option= cannot remain proposition-only
+
+The first representation attempt treated proof witnesses as proposition-like
+claims.  Lean rejected that abstraction when a witness had to be stored in an
+=Option=.  The corrected structures explicitly inhabit =Type= and preserve the
+proof fields required by the result constructor.
+
+** A successful mode tag without a proof is too weak
+
+A result containing only =digestCompressed= would require downstream code to
+recover the collision and equality premises from external state.  The corrected
+=ReplayIdentityOutcome= constructors carry =left = right= directly.  Therefore
+an accepted result is locally auditable and cannot be detached from the proof
+that justified it.
+
+** Overlapping negotiation patterns polluted the axiom inventory
+
+An initial definition used one overlapping match:
+
+#+begin_example
+match collisionEvidence, digestEquality with
+| some collisionFree, some sameDigest => ...
+| _, _ => full field or fallback
+#+end_example
+
+The equations generated for that definition caused =propext= to appear in the
+axiom inventory of the negotiation function and every selection theorem that
+reduced it.  The two payload-equality subproofs were independently axiom-free,
+so the dependency came from equation compilation rather than from the digest
+logic.
+
+The constructive repair separates =fullFieldOrFallback= and uses non-overlapping
+nested matches.  Lean then reports the negotiation definition and all audited
+theorems as axiom-free.  This is a protocol-design lesson: apparently equivalent
+branch notation is not equivalent for proof-receipt quality when generated
+equations enter the trusted audit surface.
+
+** A weak agreement theorem ignored digest premises
+
+The first agreement theorem concluded payload equality only from canonical
+equality; collision evidence, admissions, and digest equality were unused.  It
+was true but did not establish mode agreement.  The strengthened theorem proves
+all three conclusions together:
+
+1. the evidence-complete branch selects =digestCompressed=;
+2. the assumption-free branch selects =fullField=; and
+3. both branches identify the same payload.
+
+* Proof obligations and closures
+
+The Lean module closes these obligations without axioms:
+
+- missing collision evidence never selects digest mode;
+- collision evidence plus digest equality selects digest mode;
+- canonical equality without collision evidence selects full-field mode;
+- no pairwise identity evidence selects explicit fallback;
+- every negotiated digest result implies collision evidence existed;
+- every accepted outcome implies payload equality;
+- digest receipts expose the collision-assumption identity;
+- full-field receipts expose no collision-assumption identity;
+- full-field and digest evidence agree on payload identity;
+- the actual negotiated branches select their promised modes and agree; and
+- the abstract digest receipt costs fewer tokens than the full-field receipt.
+
+* Modular audit and receipt
+
+The audit surface is intentionally split from the proof model:
+
+- declaration audit:
+  =packages/proofs/ASPProof/Audit/SearchRouteSafeReplayModeNegotiation.lean=;
+- JSON generator:
+  =packages/proofs/audit/SearchRouteSafeReplayModeNegotiationAudit.lean=; and
+- generated receipt:
+  =packages/proofs/receipts/searchroute-safe-replay-mode-negotiation-audit-v1.json=.
+
+The receipt uses =asp.lean-proof-audit.v1= and binds theorem families to the
+seven =SRM-*= clauses.  The current focused receipt contains 11 declarations,
+11 axiom-free declarations, zero axiom-dependent declarations, an empty axiom
+inventory, and no =sorryAx=.
+
+An independent consumer must validate the schema ID, declaration counts,
+required theorem families, and required RFC clause IDs.  Generator success
+alone is not closure.
+
+* External verifier boundary
+
+This Lean module is not an executable byte comparator or cryptographic hash
+implementation.  An external verifier remains responsible for producing:
+
+- canonical equality evidence from exact canonical words;
+- digest equality evidence from exact digest bytes;
+- admitted-domain collision evidence and its stable assumption identity; and
+- admission proofs for both payloads.
+
+The protocol must fail closed if those artifacts cannot be replayed.  A matching
+digest string, a cache hit, or a green provider health check is not a substitute
+for the corresponding typed evidence.
+
+* SearchLoop implications
+
+Safe replay negotiation shortens the evidence-graph path only after proof
+obligations have been discharged.  Digest mode can reduce receipt transport;
+full-field mode can avoid an unjustified hash premise; fallback can request the
+next focused inspection without restarting the entire search.
+
+The router should therefore optimize a vector rather than a single scalar:
+
+- graph transitions to a decision-sufficient evidence state;
+- provider/tool turns;
+- serialized receipt bytes and tokenizer cost;
+- repeated search work avoided by identity-safe cache reuse; and
+- model inference cost affected by stable prompt-prefix caching.
+
+These dimensions must remain separately observable.  Combining them into one
+opaque =cacheHit= bit would prevent the RFC and Lean model from stating which
+cost was actually reduced and which identity proof remains necessary.
+
+* Next proof boundary
+
+Connect 01.20 shortcut-envelope admission, 01.21 canonical identity, and this
+01.22 negotiation into one end-to-end replay state machine.  The next Lean
+module should prove that no path from raw shortcut bytes to accepted replay can
+bypass envelope admission or identity-mode negotiation.  It should also define
+an internal transition and external interaction cost vector so a shortcut can
+be shown to reduce graph distance, provider/tool turns, and receipt tokens
+without treating model prefix-cache hits or search-cache hits as proofs.

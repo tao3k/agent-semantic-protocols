@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 * Problem
 ASP hooks must protect ASP-owned read-only search subagents without capturing user-owned subagents. A nickname such as =ASP search=, or a role that merely contains =search=, is not a sufficient ownership proof.
 The current failure mode is expensive:

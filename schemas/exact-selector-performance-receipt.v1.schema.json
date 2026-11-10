@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-selector-performance-receipt.v1.schema.json",
+  "title": "Exact Selector Performance Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scenario",
+    "fixtureAttachMicros",
+    "selectorResolveMicros",
+    "proofValidateMicros",
+    "renderMicros",
+    "totalMicros",
+    "subprocesses",
+    "dbOpens",
+    "sourceFilesRead",
+    "sourceBytesRead",
+    "manifestWrites",
+    "workspaceIdentityDigest",
+    "generationDigest",
+    "fixtureDigest",
+    "hit"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.exact-selector-performance-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scenario": {
+      "enum": [
+        "cold",
+        "warm",
+        "miss",
+        "parallel-read",
+        "generation-replacement",
+        "installed-active-command"
+      ]
+    },
+    "fixtureAttachMicros": {
+      "$ref": "#/$defs/micros"
+    },
+    "selectorResolveMicros": {
+      "$ref": "#/$defs/micros"
+    },
+    "proofValidateMicros": {
+      "$ref": "#/$defs/micros"
+    },
+    "renderMicros": {
+      "$ref": "#/$defs/micros"
+    },
+    "totalMicros": {
+      "$ref": "#/$defs/micros"
+    },
+    "subprocesses": {
+      "const": 0
+    },
+    "dbOpens": {
+      "const": 0
+    },
+    "sourceFilesRead": {
+      "const": 0
+    },
+    "sourceBytesRead": {
+      "const": 0
+    },
+    "manifestWrites": {
+      "const": 0
+    },
+    "workspaceIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "generationDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "fixtureDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "hit": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "micros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

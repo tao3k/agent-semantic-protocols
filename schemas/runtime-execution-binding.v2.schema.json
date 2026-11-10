@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-execution-binding.v2.schema.json",
+  "title": "Runtime Execution Binding V2",
+  "description": "One immutable Project Workspace, worktree, content, Runtime artifact, evaluator policy, publication receipt, and ABI product for Search and Query admission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectWorkspace",
+    "worktreeInstanceId",
+    "publicationNonce",
+    "contentBinding",
+    "runtimeArtifactDigest",
+    "evaluatorPolicyDigest",
+    "activeArtifactReceiptDigest",
+    "evaluatorAbiDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-execution-binding"},
+    "schemaVersion": {"const": "2"},
+    "projectWorkspace": {
+      "$ref": "project-workspace-binding.v1.schema.json"
+    },
+    "worktreeInstanceId": {"type": "string", "minLength": 1},
+    "publicationNonce": {"type": "string", "minLength": 1},
+    "contentBinding": {
+      "$ref": "https://agent.semantic.protocols/schemas/content-binding"
+    },
+    "runtimeArtifactDigest": {"$ref": "#/$defs/contentDigest"},
+    "evaluatorPolicyDigest": {"$ref": "#/$defs/contentDigest"},
+    "activeArtifactReceiptDigest": {"$ref": "#/$defs/contentDigest"},
+    "evaluatorAbiDigest": {"$ref": "#/$defs/contentDigest"}
+  },
+  "$defs": {
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

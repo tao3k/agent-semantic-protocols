@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Warm Publication Crash Recovery and Bounded Progress
+
+* Status
+
+This module specifies safety and bounded progress for Runtime Server warm
+workspace publication.  It precedes Rust implementation and does not alter the
+Agent Session lifecycle.
+
+* Observed liveness counterexample
+
+A main-session resident bootstrap used to route an exact publication-owner
+query remained running for approximately forty seconds without emitting a
+lifecycle receipt.  The caller terminated the wait.  This observation is a
+transport-liveness failure only.  It proves neither workspace absence nor
+resident absence.
+
+Every internal recovery attempt must produce one of three bounded outcomes:
+
+- a committed progress receipt;
+- an indexed terminal rejection with a retry condition; or
+- an explicit timeout receipt that preserves the existing stable key.
+
+An unbounded running process without an intent-indexed receipt is not an
+admissible lifecycle or publication state.
+
+* Publication recovery state machine
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Requirement
+  Requirement --> IntentOutboxDurable: revision CAS + atomic outbox
+  IntentOutboxDurable --> Dispatched: stable workspace key
+  Dispatched --> HostAccepted: idempotent publish accept
+  HostAccepted --> ReceiptIndexed: generation receipt by intent
+  ReceiptIndexed --> Delivered: aggregate CAS
+
+  IntentOutboxDurable --> IntentOutboxDurable: crash before dispatch / replay
+  Dispatched --> Dispatched: ambiguous accept / same-key retry
+  HostAccepted --> HostAccepted: crash before receipt index
+  ReceiptIndexed --> ReceiptIndexed: crash before delivered CAS
+
+  Requirement --> Rejected: stale revision
+  Dispatched --> Rejected: stale root digest
+  HostAccepted --> Rejected: dispatch key mismatch
+  Rejected --> Requirement: fresh requirement revision
+
+  note right of Delivered
+    Same requirement reaches Delivered
+    in at most five successful advances.
+  end note
+#+end_src
+
+* Mathematical contract
+
+#+begin_src typst :lint typst-eval
+#let advance = math.op("advance")
+#let phase = math.op("phase")
+#let key = math.op("key")
+#let rank = math.op("rank")
+#let delivered = math.op("delivered")
+#let index = math.op("index")
+#let receipt = math.op("receipt")
+#let emptyReceipt = math.op("empty-receipt")
+
+$ rank(advance(s)) >= rank(s) $
+
+$ key(advance(s)) = key(s) $
+
+$ phase(advance^5(s)) = delivered $
+
+$ index(index(emptyReceipt, r), r) = index(emptyReceipt, r) $
+#+end_src
+
+The bounded-progress equation assumes five successful effect advances.  It is
+not a claim that an unavailable Host must succeed.  Host unavailability must
+instead terminate the attempt with an indexed timeout receipt.
+
+Changing the root digest creates a different stable key.  A receipt from the
+old key cannot complete the new requirement.
+
+* Lean correspondence
+
+The executable model is maintained in:
+
+- =packages/proofs/ASPProof/ASPWorkspacePublicationRecovery.lean=
+- =packages/proofs/ASPProof/Audit/ASPWorkspacePublicationRecovery.lean=
+
+It proves:
+
+- one recovery advance never regresses phase rank;
+- one and five advances preserve the stable dispatch key;
+- a timeout preserves the current publication phase and key;
+- five successful advances reach delivered from every phase;
+- duplicate receipt indexing keeps the first indexed receipt;
+- delivery preserves the aggregate key; and
+- a receipt for an old root digest is rejected after retargeting.
+
+* Runtime refinement gate
+
+The later Runtime Server implementation MUST persist the intent and outbox
+atomically before Host work.  Retries reuse the stable key
+=(workspace identity, root digest, projection requirement)=.  Host acceptance
+is idempotent, receipts are indexed by intent, and delivered state is committed
+through aggregate CAS.
+
+Every wait has a bounded deadline and returns a receipt.  Timeout does not
+archive or recreate a resident, does not restart the Runtime Server, and does
+not change the Agent Session generation.

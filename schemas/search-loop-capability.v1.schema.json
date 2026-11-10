@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-loop-capability.v1.schema.json",
+  "title": "Search Loop Capability v1",
+  "description": "State Home ledger record for one issued search-loop action. The raw bearer token is intentionally outside this persisted contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "capabilityId",
+    "tokenDigest",
+    "commandId",
+    "residentIdentityRef",
+    "loopId",
+    "stateBinding",
+    "contextBindingDigest",
+    "subject",
+    "replayPolicy",
+    "status",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-loop-capability"
+    },
+    "schemaVersion": { "const": "1" },
+    "capabilityId": { "$ref": "#/$defs/typedId" },
+    "tokenDigest": { "$ref": "#/$defs/digest" },
+    "commandId": {
+      "enum": [
+        "asp.search.loop.advance.v1",
+        "asp.search.loop.poll.v1",
+        "asp.search.loop.receipt.v1"
+      ]
+    },
+    "residentIdentityRef": { "$ref": "#/$defs/typedId" },
+    "loopId": { "$ref": "#/$defs/typedId" },
+    "stateBinding": {
+      "$ref": "search-interactive-loop.v1.schema.json#/$defs/stateBinding"
+    },
+    "contextBindingDigest": { "$ref": "#/$defs/digest" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "replayPolicy": {
+      "enum": [
+        "one-shot",
+        "state-bound-idempotent",
+        "terminal-idempotent"
+      ]
+    },
+    "status": {
+      "enum": ["active", "consumed", "revoked"]
+    },
+    "issuedAtUnixMs": { "$ref": "#/$defs/nonNegativeInteger" },
+    "expiresAtUnixMs": { "$ref": "#/$defs/nonNegativeInteger" },
+    "consumedAtRevision": { "$ref": "#/$defs/nonNegativeInteger" },
+    "consumptionReceiptRef": { "$ref": "#/$defs/typedId" },
+    "revocationReasonRef": { "$ref": "#/$defs/typedId" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "commandId": { "const": "asp.search.loop.advance.v1" }
+        },
+        "required": ["commandId"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "$ref": "#/$defs/advanceSubject" },
+          "replayPolicy": { "const": "one-shot" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commandId": { "const": "asp.search.loop.poll.v1" }
+        },
+        "required": ["commandId"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "$ref": "#/$defs/pollSubject" },
+          "replayPolicy": { "const": "state-bound-idempotent" }
+        },
+        "not": {
+          "properties": {
+            "status": { "const": "consumed" }
+          },
+          "required": ["status"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commandId": { "const": "asp.search.loop.receipt.v1" }
+        },
+        "required": ["commandId"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "$ref": "#/$defs/receiptSubject" },
+          "replayPolicy": { "const": "terminal-idempotent" }
+        },
+        "not": {
+          "properties": {
+            "status": { "const": "consumed" }
+          },
+          "required": ["status"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "consumed" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["consumedAtRevision", "consumptionReceiptRef"]
+      },
+      "else": {
+        "allOf": [
+          {
+            "not": {
+              "required": ["consumedAtRevision"]
+            }
+          },
+          {
+            "not": {
+              "required": ["consumptionReceiptRef"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "revoked" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["revocationReasonRef"]
+      },
+      "else": {
+        "not": {
+          "required": ["revocationReasonRef"]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "typedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+    },
+    "digest": {
+      "$ref": "context-product-state.v1.schema.json#/$defs/digest"
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "subject": {
+      "oneOf": [
+        { "$ref": "#/$defs/advanceSubject" },
+        { "$ref": "#/$defs/pollSubject" },
+        { "$ref": "#/$defs/receiptSubject" }
+      ]
+    },
+    "advanceSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "panelId",
+        "choiceId",
+        "proposalRef",
+        "proposalDigest",
+        "executionGroupRef"
+      ],
+      "properties": {
+        "kind": { "const": "advance" },
+        "panelId": { "$ref": "#/$defs/typedId" },
+        "choiceId": { "$ref": "#/$defs/typedId" },
+        "proposalRef": { "$ref": "#/$defs/typedId" },
+        "proposalDigest": { "$ref": "#/$defs/digest" },
+        "executionGroupRef": { "$ref": "#/$defs/typedId" }
+      }
+    },
+    "pollSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "batchId",
+        "executionGroupRef"
+      ],
+      "properties": {
+        "kind": { "const": "poll" },
+        "batchId": { "$ref": "#/$defs/typedId" },
+        "executionGroupRef": { "$ref": "#/$defs/typedId" }
+      }
+    },
+    "receiptSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "closureReceiptRef",
+        "closureReceiptDigest"
+      ],
+      "properties": {
+        "kind": { "const": "receipt" },
+        "closureReceiptRef": { "$ref": "#/$defs/typedId" },
+        "closureReceiptDigest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

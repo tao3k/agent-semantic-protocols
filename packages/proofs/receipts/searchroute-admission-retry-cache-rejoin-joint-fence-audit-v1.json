@@ -1,0 +1,75 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryCacheRejoinJointFence.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state proposal →\n    proposal.expectedFence.sequence = state.fenceSequence ∧\n      proposal.expectedFence.admissionRevision = state.publication.bundle.admission.revision ∧\n        proposal.expectedFence.policyRevision = state.policy.revision ∧\n          proposal.expectedFence.policyDigest = state.policy.digest ∧\n            ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.CanCommitAcknowledgement verifier scheme\n              state.policy state.publication proposal.acknowledgement",
+   "theoremFamily": "composite-fence-gate",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-CONTENT", "ASP-RFC-10.05-CRJF-GATE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.committable_joint_acknowledgement_matches_all_heads",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme),\n  proposal.expectedFence.sequence < state.fenceSequence →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state\n        proposal",
+   "theoremFamily": "stale-fence-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-MISMATCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.stale_joint_fence_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme),\n  proposal.expectedFence.admissionRevision ≠ state.publication.bundle.admission.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state\n        proposal",
+   "theoremFamily": "admission-head-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-MISMATCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.mismatched_admission_head_cannot_commit_joint_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme),\n  proposal.expectedFence.policyRevision ≠ state.policy.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state\n        proposal",
+   "theoremFamily": "policy-head-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-MISMATCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.mismatched_policy_head_cannot_commit_joint_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme),\n  proposal.expectedFence.policyDigest ≠ state.policy.digest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state\n        proposal",
+   "theoremFamily": "policy-digest-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-MISMATCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.mismatched_policy_digest_cannot_commit_joint_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme)\n  (committable :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state\n      proposal),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.commitJointAcknowledgement verifier scheme state proposal\n            committable).committedFence.sequence =\n      state.fenceSequence + 1 ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.commitJointAcknowledgement verifier scheme state proposal\n                committable).acknowledgement.closedBundle.obligation.phase =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.acknowledged",
+   "theoremFamily": "joint-commit-successor",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-COMMIT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.joint_commit_advances_sequence_and_closes_obligation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointState Digest scheme)\n  (winner loser : ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.JointAcknowledgementProposal verifier scheme)\n  (winnerAllowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme state winner),\n  loser.expectedFence = ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.jointFence state →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.CanCommitJointAcknowledgement verifier scheme\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.commitJointAcknowledgement verifier scheme state winner\n            winnerAllowed).successor\n        loser",
+   "theoremFamily": "joint-one-winner",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRJF-ONE-WINNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.same_snapshot_second_joint_acknowledgement_loses",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 7,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 7,
+ "axiomDependentDeclarationCount": 0}

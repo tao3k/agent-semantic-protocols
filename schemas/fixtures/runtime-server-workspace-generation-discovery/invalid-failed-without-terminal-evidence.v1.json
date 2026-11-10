@@ -1,0 +1,13 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-discovery.v1",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-example",
+  "projectRoot": "/workspace/example",
+  "state": "failed",
+  "attempt": 1,
+  "startedAtUnixMs": 1000,
+  "deadlineUnixMs": 1800,
+  "finishedAtUnixMs": null,
+  "reasonKind": null,
+  "error": null
+}

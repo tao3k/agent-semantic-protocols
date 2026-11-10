@@ -1,0 +1,286 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Pareto frontier cost-vector completeness
+#+property: rfc_layer evidence-graph-routing
+
+* Status and authority
+
+This RFC is the canonical refinement for lifting a Pareto-minimal graph route
+from a visible frontier to the global candidate catalog.
+
+It composes:
+
+- [[file:01.08-searchroute-graph-router-pareto-cost-selection.org][Graph-router Pareto cost selection]]
+- [[file:01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]]
+- [[file:00.94-semantic-path-cache-execution-separation.org][Semantic path and cache execution separation]]
+
+The Lean implementation is
+[[file:../../../../packages/proofs/ASPProof/SearchRouteParetoFrontierVectorCompleteness.lean][SearchRouteParetoFrontierVectorCompleteness.lean]].
+The modular audit and admitted receipts are:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteParetoFrontierVectorCompleteness.lean][Lean JSON audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-pareto-frontier-vector-completeness-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-pareto-frontier-vector-completeness-axle-audit-v1.json][AXLE admission receipt]]
+
+* Lean-discovered design gap
+
+Hop completeness is necessary for a global shortest-hop claim, but it is not
+sufficient for a global Pareto-cost claim.
+
+Consider a visible route and an omitted global route:
+
+#+begin_example
+visible = {
+  semanticGraphHops: 1,
+  interactionRounds: 5,
+  projectedTokens: 100,
+  verificationOps: 2,
+  searchExecutions: 1,
+  modelPrefixRecomputations: 1
+}
+
+omitted = {
+  semanticGraphHops: 1,
+  interactionRounds: 1,
+  projectedTokens: 10,
+  verificationOps: 1,
+  searchExecutions: 1,
+  modelPrefixRecomputations: 1
+}
+#+end_example
+
+A frontier containing only =visible= is hop-complete for this two-route
+catalog: it contains a route whose hop count is no greater than every global
+route.  Nevertheless, =omitted= strictly dominates =visible= in the complete
+cost vector.
+
+Therefore:
+
+#+begin_example
+HopCovers(frontier, globalCatalog)
+  does not imply
+VectorCovers(frontier, globalCatalog)
+#+end_example
+
+* Cost-vector coverage
+
+Let =C(p)= be the route cost vector:
+
+#+begin_example
+C(p) = (
+  semanticGraphHops,
+  interactionRounds,
+  projectedTokens,
+  verificationOps,
+  searchExecutions,
+  modelPrefixRecomputations
+)
+#+end_example
+
+=NoWorse(left, right)= is componentwise order over all six dimensions.
+
+A frontier is vector-complete for a global catalog exactly when:
+
+#+begin_example
+for every global candidate g,
+there exists a visible candidate f such that
+NoWorse(C(f), C(g))
+#+end_example
+
+This is a coverage certificate, not a requirement to disclose every candidate.
+A hidden candidate may remain compressed behind a frontier witness whose cost
+vector is componentwise no worse.
+
+* Normative clauses
+
+** ASP-RFC-10.05-PFVC-VECTOR-IMPLIES-HOP
+
+Valid cost-vector coverage MUST imply hop coverage because semantic graph hops
+are one component of the canonical cost vector.  The reverse implication MUST
+NOT be assumed.
+
+** ASP-RFC-10.05-PFVC-STRICT-COMPOSE
+
+If =first= is componentwise no worse than =second= and =second= strictly
+dominates =third=, then =first= MUST strictly dominate =third=.  Frontier
+coverage certificates depend on this composition law.
+
+** ASP-RFC-10.05-PFVC-GLOBAL-LIFT
+
+A router MAY lift frontier Pareto minimality to global Pareto minimality only
+when:
+
+1. the chosen route belongs to the frontier;
+2. the frontier is a subset of the global candidate catalog;
+3. the frontier carries valid componentwise cost-vector coverage for the
+   global catalog;
+4. no frontier candidate strictly dominates the chosen route.
+
+** ASP-RFC-10.05-PFVC-HOP-COUNTERMODEL
+
+Hop-complete frontier evidence MUST NOT authorize a global Pareto-cost claim.
+It authorizes only the hop claim established by the corresponding hop
+certificate.
+
+** ASP-RFC-10.05-PFVC-FRONTIER-LOCAL
+
+Pareto minimality without a vector-coverage certificate MUST be labeled
+=frontier-local=.  The receipt MUST NOT serialize it as =global=.
+
+** ASP-RFC-10.05-PFVC-GLOBAL-COUNTERMODEL
+
+The router test corpus MUST retain an equal-hop omitted-route countermodel in
+which the omitted route strictly improves rounds, projected tokens, and
+verification work.
+
+* Router decision contract
+
+The router decision order becomes:
+
+1. validate route identity, freshness, capability, authorization, and
+   completion equivalence;
+2. validate semantic-path and execution-cost separation;
+3. validate the frontier coverage kind;
+4. compute Pareto minimality inside the disclosed frontier;
+5. emit =global-pareto= only for vector-complete coverage;
+6. otherwise emit =frontier-local-pareto= and a continuation that can refine
+   the missing cost dimensions.
+
+The coverage receipt requires at least:
+
+#+begin_example
+{
+  coverageKind: "cost-vector",
+  dimensions: [
+    "semanticGraphHops",
+    "interactionRounds",
+    "projectedTokens",
+    "verificationOps",
+    "searchExecutions",
+    "modelPrefixRecomputations"
+  ],
+  globalCatalogDigest: "...",
+  frontierDigest: "...",
+  policyDigest: "...",
+  lowerBoundCertificateDigest: "..."
+}
+#+end_example
+
+The router MUST fail closed if a claimed global dimension is absent from the
+coverage certificate.
+
+* Org-Babel Typst mathematical model
+
+Org owns this mathematical source.  The block is validated from standard input
+with =typst eval=; it does not require a standalone =.typ= file or a PDF side
+effect.
+
+#+name: pareto-frontier-vector-completeness-math
+#+begin_src typst
+#let visible = (
+  graph-hops: 1,
+  rounds: 5,
+  tokens: 100,
+  verification: 2,
+  search-executions: 1,
+  model-recomputations: 1,
+)
+
+#let omitted = (
+  graph-hops: 1,
+  rounds: 1,
+  tokens: 10,
+  verification: 1,
+  search-executions: 1,
+  model-recomputations: 1,
+)
+
+#let no-worse(left, right) = (
+  left.graph-hops <= right.graph-hops
+  and left.rounds <= right.rounds
+  and left.tokens <= right.tokens
+  and left.verification <= right.verification
+  and left.search-executions <= right.search-executions
+  and left.model-recomputations <= right.model-recomputations
+)
+
+#let hop-covered = visible.graph-hops <= omitted.graph-hops
+#let vector-covered = no-worse(visible, omitted)
+#let omitted-dominates-visible = (
+  no-worse(omitted, visible)
+  and (
+    omitted.rounds < visible.rounds
+    or omitted.tokens < visible.tokens
+    or omitted.verification < visible.verification
+  )
+)
+
+#metadata((
+  schema-id: "asp.searchroute.pareto-frontier-vector-completeness.v1",
+  hop-covered: hop-covered,
+  vector-covered: vector-covered,
+  omitted-dominates-visible: omitted-dominates-visible,
+  visible: visible,
+  omitted: omitted,
+)) <pareto-frontier-vector-completeness>
+
+$ C(p) =
+  (h(p), r(p), t(p), v(p), s(p), m(p)) $
+
+$ "VectorCovers"(F, G) =
+  forall g in G, exists f in F: C(f) ≼ C(g) $
+
+$ C(f) ≼ C(g) and C(g) ≺ C(p)
+  ⇒ C(f) ≺ C(p) $
+
+$ "ParetoMinimal"(p, F) and "VectorCovers"(F, G)
+  ⇒ "ParetoMinimal"(p, G) $
+#+end_src
+
+* Machine-checked consequences
+
+Lean proves:
+
+- cost-vector coverage implies hop coverage;
+- no-worse coverage composes with strict dominance;
+- vector-complete frontier Pareto minimality lifts to the global catalog;
+- hop coverage does not imply vector coverage;
+- a visible route can be frontier-local Pareto minimal while an omitted
+  equal-hop route globally dominates it.
+
+The Lean audit contains seven declarations: four axiom-free and three depending
+only on =Quot.sound= and =propext=.  No declaration contains =sorryAx=.
+
+* SearchLoop consequence
+
+When coverage is hop-only, SearchLoop should request refinement of the missing
+cost axes rather than enumerate the entire graph immediately.  A compact next
+action may ask for lower-bound certificates for rounds, token projection,
+verification work, search execution, and model-prefix recomputation.
+
+This preserves progressive search: the agent pays for additional graph evidence
+only when the current certificate cannot authorize a global decision.
+
+* Python Turbo Graph boundary
+
+The future Python graph router MUST represent coverage kind and covered
+dimensions explicitly.  A boolean =frontierComplete=true= is insufficient
+because it does not identify which order or dimensions were proven complete.
+
+No Python or Rust implementation is authorized in this RFC-only session.
+
+* Identity and generation-fence refinement
+
+The coverage certificate must bind semantic route identity separately from the
+publication generation fence.  Direct reuse and certified transition reuse are
+specified by
+[[file:01.11-searchroute-vector-coverage-identity-fence.org][Vector-coverage semantic identity and generation fence]].
+
+* Remaining proof boundary
+
+This theorem assumes one stable candidate identity and cost policy.  The next
+proof layer must bind vector-coverage certificates to the same workspace
+snapshot, graph generation, policy digest, and completion-equivalence key used
+by the selected route.

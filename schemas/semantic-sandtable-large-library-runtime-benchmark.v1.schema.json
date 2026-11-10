@@ -131,24 +131,63 @@
     "corpus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "language", "repository", "path", "revision"],
+      "required": [
+        "resourceId",
+        "scenarioId",
+        "providerId",
+        "language",
+        "repository",
+        "remote",
+        "path",
+        "expectedRevision",
+        "revision",
+        "artifactDigest",
+        "sourceMerkleRoot"
+      ],
       "properties": {
+        "resourceId": { "type": "string", "minLength": 1 },
         "scenarioId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
         "language": { "type": "string", "minLength": 1 },
         "repository": { "type": "string", "minLength": 1 },
+        "remote": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
-        "revision": { "type": "string", "minLength": 1 }
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "artifactDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sourceMerkleRoot": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "missingCorpus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "language", "repository", "path", "reason"],
+      "required": [
+        "resourceId",
+        "scenarioId",
+        "providerId",
+        "language",
+        "repository",
+        "remote",
+        "path",
+        "expectedRevision",
+        "reason"
+      ],
       "properties": {
+        "resourceId": { "type": "string", "minLength": 1 },
         "scenarioId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
         "language": { "type": "string", "minLength": 1 },
         "repository": { "type": "string", "minLength": 1 },
+        "remote": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "actualRevision": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1 }
       }
     },

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-projection.v1.schema.json",
+  "title": "Semantic Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectionKind",
+    "languageId",
+    "providerId",
+    "rootSelector",
+    "evidenceContextRef",
+    "payloadSchemaId",
+    "payloadDigest",
+    "payload"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-projection"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "projectionKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^asp-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "rootSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidenceContextRef": {
+      "$ref": "#/$defs/digest"
+    },
+    "payloadSchemaId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "payload": {
+      "anyOf": [
+        {"$ref": "callable-skeleton.schema.json"},
+        {}
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

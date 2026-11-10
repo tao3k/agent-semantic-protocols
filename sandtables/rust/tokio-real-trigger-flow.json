@@ -64,11 +64,9 @@
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe"
+            "search-playbook"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands",
             "read-loop-risk"
           ],
@@ -103,25 +101,22 @@
           "poll"
         ]
       },
-      "pipeFlow": {
+      "commandFlow": {
         "maxAspCommands": 5,
         "maxSearchCommands": 3,
         "maxQueryCommands": 1,
         "maxGuideCommands": 1,
         "maxRepeatedCommands": 0,
-        "maxSearchPipeCommands": 2,
-        "maxSearchPrimeCommands": 1,
+        "maxSearchPlaybookCommands": 1,
         "maxReadLoopDuplicateSelectors": 0,
         "maxReadLoopAdjacentRangeWindows": 0,
         "maxReadLoopSameOwnerScans": 0,
         "maxReadLoopMemorySuppressibleReads": 0,
         "requireTokenCost": true,
         "requiredStages": [
-          "search-prime",
-          "search-pipe"
+          "search-playbook"
         ],
         "forbiddenStages": [
-          "repeated-prime",
           "repeated-commands",
           "read-loop-risk",
           "read-loop-memory-risk"

@@ -1,0 +1,51 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "leanVersion": "4.32.2",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.PolyglotSearchEvidenceSufficiency",
+  "sourcePath": "packages/proofs/ASPProof/PolyglotSearchEvidenceSufficiency.lean",
+  "declarationCount": 6,
+  "axiomFreeDeclarationCount": 6,
+  "axiomDependentDeclarationCount": 0,
+  "declarations": [
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.reference_only_evidence_cannot_authorize_replacement",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "reference-only evidence cannot authorize replacement", "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.executable_candidate_alone_is_insufficient",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "an unbound executable candidate is insufficient", "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.paired_measurements_without_qualification_remain_blocked",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "paired measurements without qualification remain blocked", "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.complete_evidence_authorizes_qualification",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "complete evidence authorizes qualification", "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.authorization_exposes_every_prerequisite",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "authorization exposes executable artifact paired evidence and qualification prerequisites", "axioms": [], "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchEvidenceSufficiency.downstream_claim_without_prerequisites_is_inconsistent",
+      "kind": "theorem", "theoremFamily": "polyglot-search-evidence-sufficiency",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"],
+      "type": "a downstream qualification claim without prerequisites is inconsistent", "axioms": [], "hasSorryAx": false
+    }
+  ],
+  "axiomInventory": [],
+  "hasSorryAx": false
+}

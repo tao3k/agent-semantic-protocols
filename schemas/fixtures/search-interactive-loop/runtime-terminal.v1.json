@@ -1,0 +1,36 @@
+{
+  "schemaId": "agent.semantic-protocols.search-loop-runtime-binding",
+  "schemaVersion": "1",
+  "loopId": "loop:search-1",
+  "runId": "run:search-1",
+  "residentIdentityRef": "resident:asp-explore",
+  "dispatchRef": "dispatch:search-1",
+  "dispatchReceiptDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+  "contextBindingDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+  "openedAtRevision": 0,
+  "batches": [
+    {
+      "batchId": "batch:parallel-1",
+      "executionGroupRef": "group:parallel-1",
+      "programRef": "program:search-1",
+      "programDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+      "viewArtifact": {
+        "artifactRef": "artifact:execution-view-joined-1",
+        "artifactDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
+        "artifactSchemaId": "agent.semantic-protocols.search-execution-group-view"
+      },
+      "basedOnRevision": 8,
+      "status": "joined"
+    }
+  ],
+  "terminalBinding": {
+    "closureReceiptRef": "receipt:closure-12",
+    "closureReceiptDigest": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
+    "queryHandoffArtifact": {
+      "artifactRef": "artifact:query-handoff-12",
+      "artifactDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777",
+      "artifactSchemaId": "agent.semantic-protocols.search-query-handoff"
+    },
+    "finalizedAtRevision": 12
+  }
+}

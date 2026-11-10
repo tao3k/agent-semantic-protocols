@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/workspace-reference.v1.schema.json",
+  "title": "ASP Workspace Reference",
+  "description": "The canonical ProjectId/WorkspaceId isolation key. Paths are Runtime-owned evidence, never public routing authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["projectId", "workspaceId"],
+  "properties": {
+    "projectId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^repo-[a-z0-9]+$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^workspace-[a-z0-9]+$"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-workspace-execution-pointer.v1.schema.json",
+  "title": "Runtime Workspace Execution Pointer V1",
+  "description": "Single canonical pointer atomically binding a durable source generation to its immutable Runtime execution publication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "sourceRootDigest",
+    "executionPublicationDigest"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-workspace-execution-pointer"},
+    "schemaVersion": {"const": "1"},
+    "workspaceIdentity": {"type": "string", "minLength": 1},
+    "generationDigest": {"$ref": "#/$defs/contentDigest"},
+    "sourceRootDigest": {"$ref": "#/$defs/contentDigest"},
+    "executionPublicationDigest": {"$ref": "#/$defs/contentDigest"}
+  },
+  "$defs": {
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

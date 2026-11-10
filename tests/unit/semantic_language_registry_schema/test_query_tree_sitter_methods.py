@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Tree-sitter query method registry schema tests."""
 
 from .support import language_registry_errors, registry_with_descriptor

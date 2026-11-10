@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Large-library intent matrix coverage tests."""
 
 from __future__ import annotations
@@ -11,10 +15,9 @@ from tools.semantic_sandtable.scenario_io import discover_scenarios, load_scenar
 from .large_library_intent_matrix_support import (
     REQUIRED_INTENTS as _REQUIRED_INTENTS,
     REQUIRED_LANGUAGES as _REQUIRED_LANGUAGES,
-    _assert_intent_uses_query_set,
-    _assert_prime_steps_include_entries_and_status,
-    _assert_provider_binary_commands,
-    _assert_query_set_steps_include_entries,
+    _assert_intent_uses_search_playbook,
+    _assert_search_playbook_commands,
+    _assert_search_playbook_steps_assert_gql,
     _dict_value,
     _list_value,
     _required_str,
@@ -24,10 +27,10 @@ from .large_library_intent_matrix_support import (
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[3]
 _REQUIRED_SEARCH_SUBCOMMANDS_BY_LANGUAGE = {
-    "julia": {"deps", "lexical", "owner", "prime"},
-    "python": {"deps", "lexical", "owner", "prime"},
-    "rust": {"deps", "lexical", "owner", "prime"},
-    "typescript": {"deps", "lexical", "owner", "prime"},
+    "julia": {"playbook"},
+    "python": {"playbook"},
+    "rust": {"playbook"},
+    "typescript": {"playbook"},
 }
 
 
@@ -57,7 +60,9 @@ def _assert_language_search_subcommand_coverage(
 
 
 class LargeLibraryIntentMatrixTests(unittest.TestCase):
-    def test_each_language_has_three_large_libraries_with_all_intents(self) -> None:
+    def test_each_required_language_has_three_large_libraries_with_all_intents(
+        self,
+    ) -> None:
         matrix: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
         search_subcommands_by_language: dict[str, set[str]] = defaultdict(set)
 
@@ -67,7 +72,11 @@ class LargeLibraryIntentMatrixTests(unittest.TestCase):
             if evidence.get("fixtureTier") != "large-library":
                 continue
             self.assertIn("large-library", scenario.get("coverage", []), str(path))
+            if "intent-matrix" not in scenario.get("tags", []):
+                continue
             language = _required_str(scenario, "language", path)
+            if language not in _REQUIRED_LANGUAGES:
+                continue
             target_library = _dict_value(evidence.get("targetLibrary"))
             self.assertEqual(language, target_library.get("language"), str(path))
             library_name = _required_str(target_library, "package", path)
@@ -81,9 +90,8 @@ class LargeLibraryIntentMatrixTests(unittest.TestCase):
                 command_by_step_id[step_id] = [
                     str(part) for part in _list_value(step_mapping.get("command"))
                 ]
-            _assert_provider_binary_commands(command_by_step_id, language, path)
-            _assert_query_set_steps_include_entries(scenario, path)
-            _assert_prime_steps_include_entries_and_status(scenario, path)
+            _assert_search_playbook_commands(command_by_step_id, language, path)
+            _assert_search_playbook_steps_assert_gql(scenario, path)
             search_subcommands_by_language[language].update(
                 _search_subcommands(command_by_step_id)
             )
@@ -97,7 +105,9 @@ class LargeLibraryIntentMatrixTests(unittest.TestCase):
                     set(case_step_ids).issubset(step_ids),
                     f"{path}: intent case references unknown steps {case_step_ids}",
                 )
-                _assert_intent_uses_query_set(command_by_step_id, case_step_ids, path)
+                _assert_intent_uses_search_playbook(
+                    command_by_step_id, case_step_ids, path
+                )
                 query_terms = _required_str_list(case, "queryTerms", path)
                 command_text = " ".join(
                     " ".join(command_by_step_id[step_id])

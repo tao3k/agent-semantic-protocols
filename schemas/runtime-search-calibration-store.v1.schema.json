@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-search-calibration-store.v1.schema.json",
+  "title": "Runtime Search calibration store V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "entries"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-search-calibration-store"},
+    "schemaVersion": {"const": "1"},
+    "entries": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "lexicalBytesBucket", "ownerCountBucket", "changedRatioBucket"],
+      "properties": {
+        "strategy": {"type": "integer", "minimum": 0, "maximum": 1},
+        "lexicalBytesBucket": {"type": "integer", "minimum": 0},
+        "ownerCountBucket": {"type": "integer", "minimum": 0},
+        "changedRatioBucket": {"type": "integer", "minimum": 0, "maximum": 8}
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engineDigest", "effectiveCpu", "processMemoryBudgetBytes", "workload"],
+      "properties": {
+        "engineDigest": {"$ref": "#/$defs/digest"},
+        "effectiveCpu": {"type": "integer", "minimum": 1},
+        "processMemoryBudgetBytes": {"type": "integer", "minimum": 1},
+        "workload": {"$ref": "#/$defs/workload"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "workers",
+        "memoryBudgetBytes",
+        "observedOwnersPerSecond",
+        "sampleIdentity"
+      ],
+      "properties": {
+        "strategy": {"enum": ["single-segment-bulk", "parallel-segments"]},
+        "workers": {"type": "integer", "minimum": 1, "maximum": 8},
+        "memoryBudgetBytes": {"type": "integer", "minimum": 1},
+        "observedOwnersPerSecond": {"type": "integer", "minimum": 0},
+        "sampleIdentity": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "decision"],
+      "properties": {
+        "key": {"$ref": "#/$defs/key"},
+        "decision": {"$ref": "#/$defs/decision"}
+      }
+    }
+  }
+}

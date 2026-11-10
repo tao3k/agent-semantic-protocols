@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-client-server"
+version = "0.1.0"
+edition.workspace = true
+description = "Tokio client lifecycle and request contracts for ASP language servers."
+license.workspace = true
+
+[dependencies]
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-content-identity.workspace = true
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+bytes.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+prost.workspace = true
+tower.workspace = true
+hyper-util.workspace = true
+futures-util.workspace = true
+parking_lot.workspace = true
+
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[build-dependencies]
+agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
+asp-rust-project-harness-policy.workspace = true
+protoc-bin-vendored.workspace = true
+tonic-prost-build.workspace = true

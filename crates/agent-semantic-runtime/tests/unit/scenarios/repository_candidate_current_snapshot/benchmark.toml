@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "repository-candidate-current-snapshot-v1"
+scenario = "repository-candidate-current-snapshot"
+clock = "std::time::Instant"
+statistic = ["p50", "p95", "p99"]
+warmup_iterations = 3
+measure_iterations = 11
+
+[work_metrics]
+tracked_metadata_prepass_count = 0
+head_index_diff_count = 0
+index_worktree_status_count = 1
+full_workspace_content_read_count = 0
+
+[interpretation]
+timing_is_diagnostic = true
+work_metrics_are_acceptance_authority = true
+runtime_startup_is_outside_measurement = true

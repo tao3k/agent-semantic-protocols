@@ -1,57 +1,42 @@
-"""Validate document provider registry schema descriptors."""
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+"""Validate document provider identity and packet publication surfaces."""
 
 from __future__ import annotations
 
 import json
 import unittest
 
-from .helpers import REPO_ROOT, schema_validator_for
+from .helpers import REPO_ROOT
 
 
 class SemanticDocumentRegistrySchemaTests(unittest.TestCase):
-    def test_provider_registry_advertises_document_packet_schemas(self) -> None:
-        validator = schema_validator_for(
-            REPO_ROOT / "schemas" / "semantic-language-registry.v1.schema.json"
-        )
-        registry = json.loads(
+    def test_canonical_identity_and_dependency_publish_document_packets(self) -> None:
+        identity_schema = json.loads(
             (
                 REPO_ROOT
                 / "schemas"
-                / "semantic-language-registry.providers.v1.json"
+                / "canonical-provider-identity.v1.schema.json"
             ).read_text()
         )
+        identities = {
+            (
+                branch["properties"]["languageId"]["const"],
+                branch["properties"]["providerId"]["const"],
+            )
+            for branch in identity_schema["oneOf"]
+        }
+        self.assertIn(("org", "asp-org"), identities)
+        self.assertIn(("md", "asp-md"), identities)
 
-        self.assertEqual([], list(validator.iter_errors(registry)))
-        languages = {item["languageId"]: item for item in registry["languages"]}
-        self.assertIn("org", languages)
-        self.assertIn("md", languages)
-        for language_id in ["org", "md"]:
-            self.assertEqual("embedded", languages[language_id]["execution"])
-            self.assertNotIn("search/owner", languages[language_id]["methods"])
-            self.assertIn("search/toc", languages[language_id]["methods"])
-            packet_schemas = {
-                packet_schema
-                for descriptor in languages[language_id]["methodDescriptors"]
-                for packet_schema in descriptor.get("packetSchemas", [])
-            }
-            self.assertIn("semantic-document-search-packet.v1", packet_schemas)
-            self.assertIn("semantic-document-query-packet.v1", packet_schemas)
-            toc_search = next(
-                descriptor
-                for descriptor in languages[language_id]["methodDescriptors"]
-                if descriptor["method"] == "search/toc"
-            )
-            self.assertEqual("toc", toc_search["view"])
-            self.assertFalse(toc_search["requiresQuery"])
-            document_query = next(
-                descriptor
-                for descriptor in languages[language_id]["methodDescriptors"]
-                if descriptor["method"] == "query/document"
-            )
-            self.assertEqual(
-                ["selector", "term", "kind", "field", "metadata", "content"],
-                document_query["queryInputForms"],
-            )
+        packets = (
+            REPO_ROOT / "languages" / "orgize" / "src" / "document" / "packets.rs"
+        ).read_text()
+        self.assertNotIn("semantic-document-search-packet", packets)
+        self.assertIn("semantic-document-query-packet", packets)
+        self.assertIn('"method": "query/document"', packets)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,8 @@
-"""Cache command tests for the packaged ASP graph turbo CLI."""
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+"""Offline cache-evidence command tests for ASP Python Graphs."""
 
 from __future__ import annotations
 

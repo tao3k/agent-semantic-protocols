@@ -1,0 +1,31 @@
+{
+  "auditSha256": "86e5edd0cb1baa357b31973b8bcc60a6d2822ea4acaca9b7db8e02c9b7768e8d",
+  "axiomDependentDeclarationCount": 5,
+  "axiomFreeDeclarationCount": 2,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 7,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SCL-CLOSURE",
+    "ASP-RFC-10.05-SCL-COVERAGE",
+    "ASP-RFC-10.05-SCL-GLOBAL",
+    "ASP-RFC-10.05-SCL-NONIMPLICATION",
+    "ASP-RFC-10.05-SCL-SNAPSHOT",
+    "ASP-RFC-10.05-SCL-UNIVERSE",
+    "ASP-RFC-10.05-SCL-VISIBLE"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "counterexample",
+    "ledger-global-optimality",
+    "scheduler-boundary",
+    "snapshot-binding",
+    "trace-provenance",
+    "trace-realization",
+    "visible-optimality"
+  ]
+}

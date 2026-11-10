@@ -1,6 +1,12 @@
-use serde_json::{Value, json};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use crate::protocol::{DecisionKind, HookDecision};
+use serde_json::Value;
+use serde_json::json;
+
+use crate::protocol::DecisionKind;
+use crate::protocol::HookDecision;
 
 pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     if decision.decision != DecisionKind::Deny {
@@ -10,24 +16,6 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     let mut language_ids = decision.language_ids.clone();
     language_ids.sort();
     language_ids.dedup();
-    if matches!(
-        reason.as_str(),
-        Some(
-            "bulk-source-dump"
-                | "direct-source-read"
-                | "raw-broad-search"
-                | "source-directory-enumeration"
-        )
-    ) {
-        let key = json!({
-            "platform": decision.platform,
-            "replayFamily": "source-access-recovery",
-            "cwd": decision.fields.get("cwd").cloned().unwrap_or(Value::Null),
-            "sessionId": decision.fields.get("sessionId").cloned().unwrap_or(Value::Null),
-            "transcriptPath": decision.fields.get("transcriptPath").cloned().unwrap_or(Value::Null),
-        });
-        return serde_json::to_string(&key).ok();
-    }
     let routes = decision
         .routes
         .iter()
@@ -40,6 +28,20 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
             })
         })
         .collect::<Vec<_>>();
+    if is_source_access_replay_reason(reason.as_str()) {
+        let key = json!({
+            "platform": decision.platform,
+            "replayFamily": "source-access-recovery",
+            "reasonKind": reason,
+            "languageIds": language_ids,
+            "routes": routes,
+            "subject": decision.subject,
+            "cwd": decision.fields.get("cwd").cloned().unwrap_or(Value::Null),
+            "sessionId": decision.fields.get("sessionId").cloned().unwrap_or(Value::Null),
+            "transcriptPath": decision.fields.get("transcriptPath").cloned().unwrap_or(Value::Null),
+        });
+        return serde_json::to_string(&key).ok();
+    }
     let subject = if routes.is_empty() {
         serde_json::to_value(&decision.subject).unwrap_or(Value::Null)
     } else {
@@ -58,6 +60,32 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     });
     serde_json::to_string(&key).ok()
 }
+
+fn is_source_access_replay_reason(reason: Option<&str>) -> bool {
+    matches!(
+        reason,
+        Some(
+            "bulk-source-dump"
+                | "registered-source-route-required"
+                | "structured-source-read"
+                | "raw-broad-search"
+                | "source-directory-enumeration"
+        )
+    )
+}
+
+fn structured_source_read_repeated_message(
+    reason: &str,
+    configured_message: &str,
+    recovery_ref: &str,
+) -> Option<String> {
+    (reason == "structured-source-read")
+        .then(|| format!("{configured_message}\nrecoveryRef={recovery_ref}"))
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/event_replay.rs"]
+mod event_replay_tests;
 
 pub(crate) fn recovery_ref_for_replay_key(replay_key: &str) -> String {
     let prefix = if is_source_access_replay_key(replay_key) {
@@ -87,16 +115,13 @@ pub(crate) fn compact_source_access_deny_message(
 ) -> String {
     let reason = replay_reason_label(decision);
     if decision.fields.get("denyReplay").and_then(Value::as_str) == Some("repeated") {
-        if let Some(message) = render_compact_source_access_template(
-            decision,
-            "sourceAccessCompactRepeatedMessage",
-            &reason,
-            recovery_ref,
-        ) {
+        if let Some(message) =
+            structured_source_read_repeated_message(&reason, &decision.message, recovery_ref)
+        {
             return message;
         }
         return format!(
-            "ASP denied source access again (`{reason}`). Stay in the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access again (`{reason}`). Use `collaboration.spawn_agent` with the Config-resolved `agent_type`, then verify the canonical child with `collaboration.list_agents`.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -106,51 +131,13 @@ pub(crate) fn compact_source_access_deny_message(
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        if let Some(message) = render_compact_source_access_template(
-            decision,
-            "sourceAccessCompactSubagentMessage",
-            &reason,
-            recovery_ref,
-        ) {
-            return message;
-        }
         return format!(
-            "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP Search Playbook and return Search success as exactly one Org/GQL source block with `:profile search-evidence.v1 :eval never`; do not return prose, source bodies, snippets, a flat receipt, command grammar, or a prescribed next action.\nrecoveryRef={recovery_ref}"
         );
     }
 
-    if let Some(message) = render_compact_source_access_template(
-        decision,
-        "sourceAccessCompactMessage",
-        &reason,
-        recovery_ref,
-    ) {
-        return message;
-    }
     format!(
-        "ASP denied source access (`{reason}`). Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number, perform the native platform action, then re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
-    )
-}
-
-fn render_compact_source_access_template(
-    decision: &HookDecision,
-    field: &str,
-    reason: &str,
-    recovery_ref: &str,
-) -> Option<String> {
-    let template = decision.fields.get(field)?.as_str()?;
-    let resident_child_name = decision
-        .fields
-        .get("residentChildName")
-        .and_then(Value::as_str)
-        .unwrap_or("asp-explore");
-    Some(
-        template
-            .replace("{{reason}}", reason)
-            .replace("{{recoveryRef}}", recovery_ref)
-            .replace("{{residentChildName}}", resident_child_name)
-            .trim()
-            .to_string(),
+        "ASP denied source access (`{reason}`). Use `collaboration.spawn_agent` with the Config-resolved `agent_type`, then verify the canonical child with `collaboration.list_agents`.\nrecoveryRef={recovery_ref}"
     )
 }
 
@@ -168,7 +155,7 @@ pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
             .to_string(),
         String::new(),
         "## ASP Hook Recovery".to_string(),
-        "Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.".to_string(),
+        "Use `collaboration.spawn_agent` with the Config-resolved `agent_type`, then verify the canonical child with `collaboration.list_agents`.".to_string(),
         String::new(),
         "## Stop".to_string(),
         "Do not switch to another evidence channel. The hook has already denied this lane."

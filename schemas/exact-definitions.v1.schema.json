@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-definitions.v1.schema.json",
+  "title": "Exact Shared Definitions v1",
+  "type": "object",
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation",
+        "kind",
+        "symbol"
+      ],
+      "properties": {
+        "relation": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "symbol": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scopeList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scope" }
+    }
+  }
+}

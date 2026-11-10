@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+harness = "libtest"
+test = "asp_unit_scenarios_have_asp_rust_benchmark_toml_gates"
+snapshot = "asp_unit_scenarios_have_asp_rust_benchmark_toml_gates"
+target_total = "50ms"
+max_total = "250ms"
+observed_total = "10ms"
+regression_budget = "50ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 4194304
+target_rationale = "The hard gate only validates local scenario.toml and benchmark.toml metadata through rust-lang-project-harness."
+
+[observed_timings]
+discover = "4ms"
+validate = "4ms"

@@ -1,0 +1,104 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest)\n  (allowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.EdgeAuthorized\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.commitActivationWithOutbox current claim\n          allowed).admission\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.commitActivationWithOutbox current claim\n            allowed).obligation.edge ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.commitActivationWithOutbox current claim\n            allowed).obligation.phase =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.pending",
+   "theoremFamily": "atomic-pending-obligation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRPO-ATOMIC", "ASP-RFC-10.05-CRPO-AUTHORIZATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.atomic_activation_commit_creates_authorized_pending_obligation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest)\n  (allowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.commitActivationWithOutbox current claim allowed)",
+   "theoremFamily": "pending-crash-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-PENDING"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.pending_commit_is_recoverably_publishable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (publishable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle publishable).obligation.edge =\n      bundle.obligation.edge ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle publishable).obligation.phase =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.published",
+   "theoremFamily": "stable-edge-publication",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-RETRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publication_preserves_edge_and_marks_published",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (publishable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle publishable)",
+   "theoremFamily": "published-retry-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-RETRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.published_bundle_remains_retryable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (firstAllowed : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle)\n  (retryAllowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle firstAllowed)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle firstAllowed) retryAllowed =\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle firstAllowed",
+   "theoremFamily": "idempotent-publication-retry",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-RETRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publication_retry_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest),\n  bundle.obligation.edge.committedRevision < bundle.admission.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle",
+   "theoremFamily": "stale-obligation-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-AUTHORIZATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.stale_revision_obligation_cannot_publish",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (publishable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish bundle),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanAcknowledge\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.publish bundle publishable)",
+   "theoremFamily": "published-ack-admission",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-ACK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.published_bundle_can_be_acknowledged",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (acknowledgeable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanAcknowledge bundle),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledge bundle acknowledgeable).obligation.edge =\n      bundle.obligation.edge ∧\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledge bundle\n            acknowledgeable).obligation.phase =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationPhase.acknowledged",
+   "theoremFamily": "acknowledgement-closure",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-ACK", "ASP-RFC-10.05-CRPO-CLOSE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledgement_preserves_edge_and_closes_obligation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (acknowledgeable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanAcknowledge bundle),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanPublish\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledge bundle acknowledgeable)",
+   "theoremFamily": "post-ack-publication-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-CLOSE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledged_bundle_cannot_publish_again",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (bundle : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.PublicationBundle Digest)\n  (acknowledgeable : ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanAcknowledge bundle),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.CanAcknowledge\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledge bundle acknowledgeable)",
+   "theoremFamily": "duplicate-closure-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRPO-CLOSE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox.acknowledged_bundle_cannot_close_twice",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 10,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 0}

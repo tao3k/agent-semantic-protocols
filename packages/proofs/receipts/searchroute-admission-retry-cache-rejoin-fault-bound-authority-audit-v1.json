@@ -1,0 +1,67 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {MembershipDigest AuthorityId EpochId Attestation : Type}\n  (policy :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundAuthorityPolicy MembershipDigest\n      AuthorityId EpochId Attestation)\n  (snapshot :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshot MembershipDigest AuthorityId\n      EpochId Attestation),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshotValid policy snapshot →\n    policy.actualFaultWeight ≤ snapshot.declaredFaultBound",
+   "theoremFamily": "authorized-attestation-soundness",
+   "rfcClauseIds": ["FBAS-AUTHORITY", "FBAS-SOUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.valid_snapshot_bounds_actual_fault_weight",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest AuthorityId EpochId Attestation : Type}\n  (policy :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundAuthorityPolicy MembershipDigest\n      AuthorityId EpochId Attestation)\n  (snapshot :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshot MembershipDigest AuthorityId\n      EpochId Attestation),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshotValid policy snapshot →\n    snapshot.membershipDigest = policy.expectedMembershipDigest ∧ snapshot.epochId = policy.expectedEpochId",
+   "theoremFamily": "membership-epoch-scope",
+   "rfcClauseIds": ["FBAS-EPOCH", "FBAS-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.valid_snapshot_matches_membership_and_epoch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {MembershipDigest AuthorityId EpochId Attestation : Type}\n  (policy :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundAuthorityPolicy MembershipDigest\n      AuthorityId EpochId Attestation)\n  (snapshot :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshot MembershipDigest AuthorityId\n      EpochId Attestation),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshotValid policy snapshot →\n    snapshot.issuedAt ≤ policy.evaluationTime ∧ policy.evaluationTime < snapshot.expiresAt",
+   "theoremFamily": "temporal-validity",
+   "rfcClauseIds": ["FBAS-TIME"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.valid_snapshot_is_current_at_evaluation_time",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (membershipPolicy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.QuorumCertificate scheme)\n  (accounting :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.PairWeightAccounting membershipPolicy left.signers\n      right.signers)\n  {AuthorityId EpochId Attestation : Type}\n  (authorityPolicy :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundAuthorityPolicy scheme.Digest AuthorityId\n      EpochId Attestation)\n  (snapshot :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshot scheme.Digest AuthorityId\n      EpochId Attestation),\n  authorityPolicy.expectedMembershipDigest =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme membershipPolicy →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.FaultBoundSnapshotValid authorityPolicy snapshot →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.totalVotingWeight membershipPolicy +\n            snapshot.declaredFaultBound <\n          membershipPolicy.quorumWeight + membershipPolicy.quorumWeight →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme membershipPolicy\n            left →\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumRealization.AcceptsQuorumCertificate scheme\n              membershipPolicy right →\n            authorityPolicy.actualFaultWeight < accounting.intersectionWeight ∧\n              snapshot.membershipDigest =\n                ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme\n                  membershipPolicy",
+   "theoremFamily": "validated-bound-honest-overlap",
+   "rfcClauseIds": ["FBAS-COMPOSE", "FBAS-SOUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.authorized_current_bound_forces_actual_honest_overlap",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.ArithmeticThresholdPasses\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.unauthorizedLowBoundObservation ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.SnapshotAdmissionPasses\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.unauthorizedLowBoundObservation",
+   "theoremFamily": "unauthorized-low-bound-counterexample",
+   "rfcClauseIds": ["FBAS-AUTHORITY", "FBAS-REJECT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.unauthorized_low_bound_can_pass_arithmetic_but_not_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.ArithmeticThresholdPasses\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.staleLowBoundObservation ∧\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.SnapshotAdmissionPasses\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.staleLowBoundObservation",
+   "theoremFamily": "stale-low-bound-counterexample",
+   "rfcClauseIds": ["FBAS-REJECT", "FBAS-TIME"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.stale_low_bound_can_pass_arithmetic_but_not_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -26,7 +30,7 @@ def _python_provider_contract() -> dict[str, Any]:
         "schemaVersion": "1",
         "contractId": "python.provider-contract.v1",
         "languageId": "python",
-        "providerId": "python-lang-project-harness",
+        "providerId": "asp-python",
         "responsibilities": {
             "allowed": [
                 "native-parser-facts",
@@ -192,7 +196,7 @@ def test_provider_contract_v1_is_the_only_provider_contract_surface() -> None:
     assert offenders == []
 
 
-def test_python_harness_has_no_direct_source_read_compatibility_surface() -> None:
+def test_asp_python_has_no_direct_source_read_compatibility_surface() -> None:
     repo_root = SCHEMA_PATH.parents[1]
     forbidden_terms = (
         "_semantic_search_direct_read_render",
@@ -200,8 +204,8 @@ def test_python_harness_has_no_direct_source_read_compatibility_surface() -> Non
         "query/direct-source-read",
     )
     scan_roots = (
-        repo_root / "languages/python-lang-project-harness/src",
-        repo_root / "languages/python-lang-project-harness/tests/unit/harness",
+        repo_root / "languages/asp-python/src",
+        repo_root / "languages/asp-python/tests/unit/asp_python",
     )
     offenders: list[str] = []
     for root in scan_roots:

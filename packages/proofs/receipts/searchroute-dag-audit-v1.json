@@ -1,0 +1,78 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteDAG.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteDAG",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount} {hops : Nat},\n  SearchRouteDAG.Walk graph source target hops → graph.rank source + hops ≤ graph.rank target",
+   "theoremFamily": "ranked-dag",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-RANKED-DAG", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name": "SearchRouteDAG.walk_rank_progress",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {node : Fin graph.nodeCount} {hops : Nat},\n  SearchRouteDAG.Walk graph node node hops → hops = 0",
+   "theoremFamily": "ranked-dag",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-RANKED-DAG", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name": "SearchRouteDAG.ranked_dag_has_no_positive_cycle",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount} {hops : Nat},\n  SearchRouteDAG.Walk graph source target hops → hops + graph.rank source ≤ graph.maxRank",
+   "theoremFamily": "ranked-dag",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-RANKED-DAG", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name": "SearchRouteDAG.walk_hops_are_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount}\n  {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {generated : List SearchRouteDAG.GraphCandidate} {selected : SearchRouteDAG.GraphCandidate},\n  SearchRouteDAG.CandidateComplete graph source target requirement budget generated →\n    SearchRouteDAG.LocallyOptimal graph source target requirement budget generated selected →\n      SearchRouteDAG.Realizes graph source target selected ∧\n        ∀ (candidate : SearchRouteDAG.GraphCandidate),\n          SearchRouteDAG.Realizes graph source target candidate →\n            SearchRouteDAG.graphFeasibleB requirement budget candidate = true →\n              SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "candidate-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-CANDIDATE-COMPLETE",
+    "ASP-RFC-10.05-SRD-GLOBAL-OPTIMALITY"],
+   "name": "SearchRouteDAG.complete_generation_lifts_local_to_global",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchRouteCost.preferRoute SearchRouteDAG.shortInteractionLongGraph.route\n      SearchRouteDAG.longInteractionShortGraph.route =\n    SearchRouteDAG.shortInteractionLongGraph.route ∧\n  SearchRouteDAG.preferGraphCandidate SearchRouteDAG.shortInteractionLongGraph\n        SearchRouteDAG.longInteractionShortGraph =\n      SearchRouteDAG.longInteractionShortGraph ∧\n    SearchRouteDAG.longInteractionShortGraph.graphHops < SearchRouteDAG.shortInteractionLongGraph.graphHops",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-PATH-VALIDATION", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name":
+   "SearchRouteDAG.transition_minimization_can_choose_longer_graph_path",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchRouteDAG.chooseBestGraphCandidate SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n    [SearchRouteDAG.shortInteractionLongGraph, SearchRouteDAG.longInteractionShortGraph] =\n  some SearchRouteDAG.longInteractionShortGraph",
+   "theoremFamily": "graph-router",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-PATH-VALIDATION", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name":
+   "SearchRouteDAG.corrected_router_selects_shorter_validated_graph_path",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchRouteDAG.unvalidatedShortestGraph.graphHops < SearchRouteDAG.longInteractionShortGraph.graphHops ∧\n  SearchRouteDAG.graphFeasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n        SearchRouteDAG.unvalidatedShortestGraph =\n      false ∧\n    SearchRouteDAG.chooseBestGraphCandidate SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n        [SearchRouteDAG.unvalidatedShortestGraph, SearchRouteDAG.longInteractionShortGraph] =\n      some SearchRouteDAG.longInteractionShortGraph",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRD-PATH-VALIDATION", "ASP-RFC-10.05-SRD-SEPARATE-HOPS"],
+   "name": "SearchRouteDAG.unvalidated_graph_path_is_not_a_shortcut",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 7,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 3}

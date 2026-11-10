@@ -1,0 +1,12 @@
+{
+  "schemaId": "asp.provider-relation-generation.v1",
+  "schemaVersion": "1",
+  "generationDigest": "blake3-256:0000000000000000000000000000000000000000000000000000000000000000",
+  "relations": [
+    {
+      "from": { "kind": "item", "id": "item:caller" },
+      "kind": "calls",
+      "to": { "kind": "item", "id": "item:callee" }
+    }
+  ]
+}

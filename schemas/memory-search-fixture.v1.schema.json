@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/memory-search-fixture.v1.schema.json",
+  "title": "Memory Search Fixture v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "generation", "items"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.memory-search-fixture"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "generation": {
+      "$ref": "#/$defs/generation"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "ownerContentDigest"],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerContentDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generationId",
+        "rootDigest",
+        "rootDepth",
+        "leafCount",
+        "ownerCount",
+        "selectorCount",
+        "languageId",
+        "providerId",
+        "parserIdentityDigest",
+        "queryPackDigest",
+        "sourceLeaves"
+      ],
+      "properties": {
+        "generationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "rootDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parserIdentityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryPackDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceLeaves": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceLeaf"
+          }
+        }
+      }
+    },
+    "canonicalItemSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "languageId",
+        "kind",
+        "symbol",
+        "scopes",
+        "structuralSelector"
+      ],
+      "properties": {
+        "schemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "structuralSelector": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "ownerContentDigest",
+        "canonicalItemSelector"
+      ],
+      "properties": {
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerContentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "canonicalItemSelector": {
+          "$ref": "#/$defs/canonicalItemSelector"
+        }
+      }
+    }
+  }
+}

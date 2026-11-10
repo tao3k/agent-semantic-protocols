@@ -1,0 +1,126 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinReplayProtection.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain →\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.admissionClaimOfReadsChain chain).replicaId =\n        chain.stateInstalled.content.replicaId ∧\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.admissionClaimOfReadsChain chain).attemptEpoch =\n        chain.stateInstalled.content.attemptId",
+   "theoremFamily": "receipt-chain-epoch-bridge",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-EPOCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.supported_chain_claim_matches_root_scope",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (nextEpoch : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanBeginNewAttempt state nextEpoch →\n    state.currentAttemptEpoch <\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.beginNewAttempt state\n          nextEpoch).currentAttemptEpoch",
+   "theoremFamily": "monotone-attempt-advance",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRP-EPOCH", "ASP-RFC-10.05-CRRP-SUPERSESSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.permitted_new_attempt_advances_epoch",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (nextEpoch : Nat),\n  nextEpoch ≤ state.currentAttemptEpoch →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanBeginNewAttempt state nextEpoch",
+   "theoremFamily": "non-increasing-epoch-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRP-EPOCH", "ASP-RFC-10.05-CRRP-SUPERSESSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.non_increasing_epoch_cannot_begin",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanActivate state claim →\n    claim.replicaId = state.replicaId ∧ claim.attemptEpoch = state.currentAttemptEpoch",
+   "theoremFamily": "authority-current-activation",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-CURRENT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activatable_claim_is_authority_current",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  claim.replicaId ≠ state.replicaId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanActivate state claim",
+   "theoremFamily": "cross-replica-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-CURRENT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.cross_replica_claim_cannot_activate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  state.currentAttemptEpoch < claim.attemptEpoch →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanActivate state claim",
+   "theoremFamily": "future-epoch-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRP-CURRENT", "ASP-RFC-10.05-CRRP-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.future_unissued_attempt_cannot_activate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (oldClaim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest) (nextEpoch : Nat),\n  oldClaim.attemptEpoch = state.currentAttemptEpoch →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanBeginNewAttempt state nextEpoch →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanActivate\n          (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.beginNewAttempt state nextEpoch) oldClaim",
+   "theoremFamily": "stale-activation-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRP-NONIMPLICATION", "ASP-RFC-10.05-CRRP-SUPERSESSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.newer_attempt_rejects_old_chain_activation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanActivate\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activate state claim) claim",
+   "theoremFamily": "duplicate-activation-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRRP-IDEMPOTENCE", "ASP-RFC-10.05-CRRP-UNIQUE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activated_chain_cannot_activate_twice",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanObserveExisting\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activate state claim) claim",
+   "theoremFamily": "idempotent-observation",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-IDEMPOTENCE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activated_chain_is_idempotently_observable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (accepted conflicting : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  accepted.terminalDigest ≠ conflicting.terminalDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanObserveExisting\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.activate state accepted) conflicting",
+   "theoremFamily": "terminal-conflict-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-CONFLICT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.conflicting_terminal_digest_is_not_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest),\n  state.active = some left → state.active = some right → left = right",
+   "theoremFamily": "single-active-chain",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-UNIQUE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.active_chain_is_unique",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.ReplicaAdmissionState Digest)\n  (oldClaim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest) (nextEpoch : Nat),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.CanObserveExisting\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.beginNewAttempt state nextEpoch) oldClaim",
+   "theoremFamily": "stale-observation-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRRP-SUPERSESSION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.newer_attempt_supersedes_old_observation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 12,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 2}

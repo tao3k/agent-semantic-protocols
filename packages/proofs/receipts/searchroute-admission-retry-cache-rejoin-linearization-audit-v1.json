@@ -1,0 +1,87 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinLinearization.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.MutationProposal Digest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current proposal →\n    proposal.expectedRevision = current.revision ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.MutationAllowed current.state proposal.mutation",
+   "theoremFamily": "combined-commit-gate",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-GATE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.committable_proposal_has_exact_revision_and_allowed_mutation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.MutationProposal Digest)\n  (allowed : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current proposal),\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.commit current proposal allowed).revision =\n    current.revision + 1",
+   "theoremFamily": "single-revision-advance",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-CAS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.committed_mutation_advances_revision_once",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (proposal : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.MutationProposal Digest),\n  proposal.expectedRevision < current.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current proposal",
+   "theoremFamily": "stale-proposal-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-REVISION", "ASP-RFC-10.05-CRLA-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.stale_revision_proposal_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (winner loser : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.MutationProposal Digest)\n  (winnerAllowed : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current winner),\n  loser.expectedRevision = current.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.commit current winner winnerAllowed) loser",
+   "theoremFamily": "same-snapshot-one-winner",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRLA-NONIMPLICATION", "ASP-RFC-10.05-CRLA-ONE-WINNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.same_snapshot_second_proposal_loses_revision_race",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest) (nextEpoch : Nat)\n  (activationAllowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim)),\n  ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.commit current\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim)\n        activationAllowed)\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.beginAttemptProposal current.revision nextEpoch)",
+   "theoremFamily": "cross-mutation-one-winner",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-ONE-WINNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.concurrent_activation_and_epoch_advance_have_one_revision_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (claim : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest)\n  (allowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.EdgeAuthorized\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.commit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision claim) allowed)\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationEdge current claim)",
+   "theoremFamily": "winner-edge-binding",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-EDGE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activation_commit_authorizes_bound_graph_edge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (winner conflicting : ASPProof.SearchRouteAdmissionRetryCacheRejoinReplayProtection.AdmissionClaim Digest)\n  (allowed :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.CanCommit current\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision winner)),\n  winner.terminalDigest ≠ conflicting.terminalDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.EdgeAuthorized\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.commit current\n          (ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.activationProposal current.revision winner)\n          allowed)\n        { claim := conflicting, committedRevision := current.revision + 1 }",
+   "theoremFamily": "conflicting-edge-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRLA-EDGE", "ASP-RFC-10.05-CRLA-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.conflicting_claim_cannot_share_winner_edge",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (current : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.RevisionedAdmissionState Digest)\n  (edge : ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.PublishedAdmissionEdge Digest),\n  edge.committedRevision < current.revision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.EdgeAuthorized current edge",
+   "theoremFamily": "stale-edge-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRLA-EDGE", "ASP-RFC-10.05-CRLA-STALE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization.stale_revision_edge_is_not_authorized",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 8,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 8,
+ "axiomDependentDeclarationCount": 0}

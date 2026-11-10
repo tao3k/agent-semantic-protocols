@@ -50,26 +50,27 @@
       ],
       "command": [
         "asp",
-        "rust",
         "search",
-        "lexical",
+        "playbook",
+        "--language",
+        "rust",
+        "--rg",
+        "-n",
+        "-e",
         "codeql",
-        "owner",
-        "tests",
-        "--workspace",
         ".",
-        "--view",
-        "seeds"
+        "--tantivy",
+        "title:\"codeql evidence\"^2 OR body:codeql"
       ],
       "timeoutSeconds": 90,
       "expect": {
         "stdoutContains": [
-          "[graph-frontier]",
-          "profile=owner-query",
-          "registry_codeql.rs",
-          "frontier="
+          "#+begin_src gql :name result",
+          "(rust:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
         "stdoutNotContains": [
+          "MaterializationSet",
           "codeql-evidence/metadata",
           "databaseFingerprint",
           "databaseCacheStatus",

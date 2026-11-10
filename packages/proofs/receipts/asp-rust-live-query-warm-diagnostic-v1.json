@@ -1,0 +1,57 @@
+{
+  "schemaId": "agent.semantic-protocols.asp-rust-live-query-warm-diagnostic",
+  "schemaVersion": "1",
+  "status": "diagnostic-not-acceptance",
+  "mode": "retired-environment-escape-diagnostic",
+  "acceptanceEligible": false,
+  "command": "retired diagnostic; no executable command",
+  "workload": {
+    "resource": "rust.tokio",
+    "operation": "query",
+    "projection": "source",
+    "selector": "rust://tokio/src/runtime/runtime.rs#item/method/spawn/scope/implementation-owner/type/Runtime",
+    "sampleCountPerRun": 10,
+    "runs": 2,
+    "execution": "sequential"
+  },
+  "identity": {
+    "providerId": "asp-rust",
+    "generationDigest": "blake3-256:5cd28f6aabd1e6165869ffc830de654ea819431f90da38869d192cbeecd0eebf",
+    "rootDigest": "989714de6c1a14c6446098ca3bea6d0c7a204515a7da9afc7a44b48a909b0db4",
+    "selectorResolution": "parser-owned",
+    "semanticZeroDiffAcrossRuns": true
+  },
+  "runs": [
+    {
+      "run": 1,
+      "elapsedMicros": [6, 12, 14, 6, 12, 8, 13, 6, 5, 9],
+      "residentReadElapsedMicros": [5, 9, 10, 5, 9, 5, 9, 5, 5, 6],
+      "serviceElapsedMicros": [1, 3, 4, 1, 3, 3, 4, 1, 0, 3],
+      "statisticsMicros": {"p50": 8, "p95": 14, "p99": 14, "max": 14},
+      "allTerminalStates": "ready",
+      "allExitCodes": 0,
+      "workCounters": "all_zero"
+    },
+    {
+      "run": 2,
+      "elapsedMicros": [6, 5, 11, 11, 6, 5, 8, 12, 11, 12],
+      "residentReadElapsedMicros": [5, 5, 9, 9, 5, 4, 5, 9, 9, 9],
+      "serviceElapsedMicros": [1, 0, 2, 2, 1, 1, 3, 3, 2, 3],
+      "statisticsMicros": {"p50": 8, "p95": 12, "p99": 12, "max": 12},
+      "allTerminalStates": "ready",
+      "allExitCodes": 0,
+      "workCounters": "all_zero"
+    }
+  ],
+  "functionalEvidence": {
+    "normalCompactQuery": "passed",
+    "normalCompactQueryAcceptanceEligible": true,
+    "searchSelectorEmissionOnCurrentServingArtifact": "not_closed",
+    "mainWorkspaceQuery": "blocked_by_project_entry_invalid"
+  },
+  "limitations": [
+    "JSON receipts require non-agent automation mode",
+    "current serving artifact has not been replaced under the no-install constraint",
+    "cold, 32-concurrent, and three-round failure-injection matrices are not represented"
+  ]
+}

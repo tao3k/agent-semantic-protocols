@@ -1,0 +1,130 @@
+{"sourcePath": "ASPProof/ActivationRepairTransaction.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.ActivationRepairTransaction",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.baseRepairCapability\n  ASPProof.ActivationRepairTransaction.baseRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "repair-admission",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ART-IDENTITY",
+    "ASP-RFC-10.05-ART-INDEPENDENCE",
+    "ASP-RFC-10.05-ART-LEASE"],
+   "name": "ASPProof.ActivationRepairTransaction.base_repair_is_committable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.expiredCapability\n    ASPProof.ActivationRepairTransaction.baseRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "expired-capability-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-LEASE"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.expired_capability_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.revokedCapability\n    ASPProof.ActivationRepairTransaction.baseRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "revoked-capability-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-LEASE"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.revoked_capability_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.crossIdentityCapability\n    ASPProof.ActivationRepairTransaction.baseRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "cross-identity-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-IDENTITY"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.cross_identity_capability_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.baseRepairCapability\n    ASPProof.ActivationRepairTransaction.staleRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "stale-revision-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-CAS"],
+   "name": "ASPProof.ActivationRepairTransaction.stale_proposal_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.baseRepairCapability\n    ASPProof.ActivationRepairTransaction.regressionRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "generation-regression-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-GENERATION"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.generation_regression_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.baseRepairCapability\n    ASPProof.ActivationRepairTransaction.noRollbackRepairProposal ASPProof.ActivationRepairTransaction.baseRepairHead",
+   "theoremFamily": "missing-rollback-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-ROLLBACK"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.repair_without_rollback_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairTransaction.CanCommitRepair ASPProof.ActivationRepairTransaction.baseRepairCapability\n    ASPProof.ActivationRepairTransaction.unquarantinedAmbiguousProposal\n    ASPProof.ActivationRepairTransaction.ambiguousDispatchHead",
+   "theoremFamily": "dispatch-quarantine-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-DISPATCH"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.ambiguous_dispatch_requires_quarantine",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {capability : ASPProof.ActivationRepairTransaction.RepairCapability}\n  {proposal : ASPProof.ActivationRepairTransaction.RepairProposal}\n  {head : ASPProof.ActivationRepairTransaction.RepairHead}\n  (proof : ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal head),\n  (ASPProof.ActivationRepairTransaction.commitRepair capability proposal head proof).state.declaredGeneration =\n    proposal.targetGeneration",
+   "theoremFamily": "repair-generation-advance",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-GENERATION"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.committed_repair_advances_generation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {capability : ASPProof.ActivationRepairTransaction.RepairCapability}\n  {proposal : ASPProof.ActivationRepairTransaction.RepairProposal}\n  {head : ASPProof.ActivationRepairTransaction.RepairHead}\n  (proof : ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal head),\n  (ASPProof.ActivationRepairTransaction.commitRepair capability proposal head proof).authorityRevision =\n    head.authorityRevision + 1",
+   "theoremFamily": "authority-revision-linearization",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-CAS"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.committed_repair_increments_authority_revision",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {capability : ASPProof.ActivationRepairTransaction.RepairCapability}\n  {proposal : ASPProof.ActivationRepairTransaction.RepairProposal}\n  {head : ASPProof.ActivationRepairTransaction.RepairHead}\n  (proof : ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal head),\n  (ASPProof.ActivationRepairTransaction.commitRepair capability proposal head proof).canonicalIdentity =\n    head.canonicalIdentity",
+   "theoremFamily": "canonical-identity-preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-IDENTITY"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.committed_repair_preserves_canonical_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {capability : ASPProof.ActivationRepairTransaction.RepairCapability}\n  {proposal : ASPProof.ActivationRepairTransaction.RepairProposal}\n  {head : ASPProof.ActivationRepairTransaction.RepairHead}\n  (proof : ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal head),\n  (ASPProof.ActivationRepairTransaction.commitRepair capability proposal head proof).state.phase =\n    ASPProof.ActivationLifecycleAudit.ActivationPhase.activating",
+   "theoremFamily": "readiness-invalidation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-PUBLICATION"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.committed_repair_requires_fresh_readiness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {capability : ASPProof.ActivationRepairTransaction.RepairCapability}\n  {proposal : ASPProof.ActivationRepairTransaction.RepairProposal}\n  {head : ASPProof.ActivationRepairTransaction.RepairHead}\n  (proof : ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal head),\n  ¬ASPProof.ActivationRepairTransaction.CanCommitRepair capability proposal\n      (ASPProof.ActivationRepairTransaction.commitRepair capability proposal head proof)",
+   "theoremFamily": "linearized-one-winner",
+   "rfcClauseIds": ["ASP-RFC-10.05-ART-CAS"],
+   "name":
+   "ASPProof.ActivationRepairTransaction.committed_head_rejects_same_proposal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 13,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 13,
+ "axiomDependentDeclarationCount": 0}

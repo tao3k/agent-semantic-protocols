@@ -1,14 +1,38 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Materializes config-owned `ASP` project layout into runtime state directories.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use agent_semantic_config::{ProjectRuntimeLayout, project_cache_root, project_runtime_layout};
-
-/// Read-only ASP state paths derived from the config-owned project layout.
+/// Read-only ASP workspace/runtime paths derived through Artifacts.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectStatePaths {
-    pub layout: ProjectRuntimeLayout,
+pub struct WorkspaceRuntimePaths {
+    pub repo_id: crate::state_core::RepoId,
+    pub workspace_id: crate::state_core::WorkspaceId,
+    pub identity_basis: String,
+    pub persistence: crate::state_core::RepoPersistence,
+    pub protocol_home: PathBuf,
+    pub hook_cache_dir: PathBuf,
+    pub hook_state_dir: PathBuf,
+    pub activation_path: PathBuf,
+    pub client_cache_dir: PathBuf,
+    pub client_cache_manifest_path: PathBuf,
+    pub client_db_dir: PathBuf,
+    pub client_db_path: PathBuf,
+    pub artifacts_dir: PathBuf,
+    pub runtime_home: PathBuf,
+    pub runtime_bin_dir: PathBuf,
+    pub provider_bin_dir: PathBuf,
+    pub provider_lock_dir: PathBuf,
+}
+
+/// Materialized runtime state derived from State Core.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectRuntimeState {
     pub protocol_home: PathBuf,
     pub hook_cache_dir: PathBuf,
     pub hook_state_dir: PathBuf,
@@ -21,64 +45,123 @@ pub struct ProjectStatePaths {
     pub provider_lock_dir: PathBuf,
 }
 
-/// Materialized project runtime state derived from the config-owned layout.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectRuntimeState {
-    pub layout: ProjectRuntimeLayout,
-    pub protocol_home: PathBuf,
-    pub hook_cache_dir: PathBuf,
-    pub hook_state_dir: PathBuf,
-    pub activation_path: PathBuf,
-    pub client_cache_dir: PathBuf,
-    pub artifacts_dir: PathBuf,
-    pub runtime_home: PathBuf,
-    pub runtime_bin_dir: PathBuf,
-    pub provider_bin_dir: PathBuf,
-    pub provider_lock_dir: PathBuf,
+pub fn provider_state_root(protocol_home: impl AsRef<Path>) -> PathBuf {
+    agent_semantic_artifacts::RuntimeArtifactStateLayout::new(protocol_home).provider_staging()
+}
+
+pub fn provider_receipt_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
+    provider_state_root(protocol_home).join("receipts")
+}
+
+pub fn provider_package_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
+    provider_state_root(protocol_home).join("packages")
 }
 
 /// Resolve the ASP runtime state paths for a project without creating files.
-pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStatePaths, String> {
-    let layout = project_runtime_layout(project_root);
-    let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+pub fn project_state_paths(
+    project_root: impl AsRef<Path>,
+) -> Result<WorkspaceRuntimePaths, String> {
+    let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
+    Ok(project_state_paths_from_resolved(resolved))
+}
+
+/// Resolve ASP runtime paths against an explicit State Home without creating files.
+///
+/// This boundary is intended for callers that already own State Home resolution
+/// and for tests that must not mutate the process environment.
+pub fn project_state_paths_with_state_home(
+    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<WorkspaceRuntimePaths, String> {
+    let resolved =
+        crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
+    Ok(project_state_paths_from_resolved(resolved))
+}
+
+fn project_state_paths_from_resolved(
+    resolved: crate::state_core::ResolvedState,
+) -> WorkspaceRuntimePaths {
     let protocol_home = resolved.state_home.clone();
-    let hook_dir = protocol_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved.workspace.workspace_id.as_str());
+    let workspace = resolved
+        .workspace_state_paths()
+        .expect("resolved workspace identity always maps to canonical State Home paths");
+    let hook_dir = workspace.hook_root();
     let hook_cache_dir = hook_dir.join("cache");
     let hook_state_dir = hook_dir.join("state");
     let activation_path = hook_state_dir.join("activation.json");
-    let client_cache_dir = resolved.paths.client_dir.clone();
-    let artifacts_dir = resolved.paths.artifacts_dir.clone();
-    let runtime_home = protocol_home.join("runtime");
-    let runtime_bin_dir = runtime_home.join("bin");
-    let provider_lock_dir = runtime_home.join("provider-locks");
+    let client_cache_dir = workspace.root.clone();
+    let client_db_dir = workspace.root.clone();
+    let client_db_path = workspace.facts.clone();
+    let artifacts_dir = workspace.artifacts.clone();
+    let runtime_layout =
+        agent_semantic_artifacts::StateHomeLayout::new(&protocol_home).runtime_state();
+    let runtime_home = runtime_layout.root().to_path_buf();
+    let runtime_bin_dir = runtime_layout.artifacts().active_slot();
+    let provider_lock_dir = provider_receipt_dir(&protocol_home);
 
-    Ok(ProjectStatePaths {
-        layout,
+    WorkspaceRuntimePaths {
+        repo_id: resolved.repo.repo_id.clone(),
+        workspace_id: resolved.workspace.workspace_id.clone(),
+        identity_basis: resolved.repo.identity_basis.clone(),
+        persistence: resolved.repo.persistence,
         protocol_home,
         hook_cache_dir,
         hook_state_dir,
         activation_path,
         client_cache_dir,
+        client_cache_manifest_path: workspace.cache_manifest_path(),
+        client_db_dir,
+        client_db_path,
         artifacts_dir,
         runtime_home,
         runtime_bin_dir: runtime_bin_dir.clone(),
         provider_bin_dir: runtime_bin_dir,
         provider_lock_dir,
-    })
+    }
 }
 
 /// Resolve and create the ASP runtime state directories for a project.
 pub fn project_runtime_state(
     project_root: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
-    let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
+    resolved.ensure_workspace_state_layout()?;
+    let paths = project_state_paths_from_resolved(resolved);
+    materialize_project_runtime_state(paths)
+}
+
+/// Resolve and create project runtime state beneath an explicit State Home.
+pub fn project_runtime_state_with_state_home(
+    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<ProjectRuntimeState, String> {
+    let resolved =
+        crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
+    resolved.ensure_workspace_state_layout()?;
+    let paths = project_state_paths_from_resolved(resolved);
+    materialize_project_runtime_state(paths)
+}
+
+/// Materialize a temporary Git checkout as a workspace beneath an explicit owner project.
+pub fn temporary_workspace_runtime_state_with_owner_and_state_home(
+    temporary_root: impl AsRef<Path>,
+    owner_project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<ProjectRuntimeState, String> {
+    let resolved =
+        crate::state_core::ResolvedState::resolve_temporary_workspace_with_owner_and_state_home(
+            temporary_root,
+            owner_project_root,
+            state_home,
+        )?;
+    resolved.ensure_workspace_state_layout()?;
+    let paths = project_state_paths_from_resolved(resolved);
+    materialize_project_runtime_state(paths)
+}
+
+fn materialize_project_runtime_state(
+    paths: WorkspaceRuntimePaths,
+) -> Result<ProjectRuntimeState, String> {
     let protocol_home = ensure_dir(paths.protocol_home)?;
     let hook_cache_dir = ensure_dir(paths.hook_cache_dir)?;
     let hook_state_dir = ensure_dir(paths.hook_state_dir)?;
@@ -89,7 +172,6 @@ pub fn project_runtime_state(
     let provider_lock_dir = ensure_dir(paths.provider_lock_dir)?;
 
     Ok(ProjectRuntimeState {
-        layout: paths.layout,
         protocol_home,
         hook_cache_dir,
         hook_state_dir,
@@ -103,7 +185,7 @@ pub fn project_runtime_state(
     })
 }
 
-/// Resolve the project-local ASP protocol home.
+/// Resolve the State Core home used by this project identity.
 pub fn project_protocol_home_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_state_paths(project_root)?.protocol_home)
 }
@@ -120,7 +202,7 @@ pub fn discover_project_activation_path(project_root: impl AsRef<Path>) -> Optio
         .filter(|path| path.exists())
 }
 
-/// Compatibility predicate for callers that still receive activation paths.
+/// Return whether a path names an activation artifact.
 pub fn is_project_activation_path(path: impl AsRef<Path>) -> bool {
     path.as_ref().file_name().and_then(|name| name.to_str()) == Some("activation.json")
 }
@@ -132,10 +214,7 @@ pub fn project_root_for_activation_path(path: impl AsRef<Path>) -> Option<PathBu
     if !is_project_activation_path(path) {
         return None;
     }
-    if let Some(root) = project_root_for_state_activation_path(path) {
-        return Some(root);
-    }
-    project_root_for_legacy_activation_path(path)
+    project_root_for_state_activation_path(path)
 }
 
 fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
@@ -147,65 +226,17 @@ fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
     if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
         return None;
     }
-    let live_dir = hooks_dir.parent()?;
-    if live_dir.file_name().and_then(|name| name.to_str()) != Some("live") {
+    let observations_dir = hooks_dir.parent()?;
+    if observations_dir.file_name().and_then(|name| name.to_str()) != Some("observations") {
         return None;
     }
-    let workspace_dir = live_dir.parent()?;
-    let workspace_manifest = workspace_dir.join("workspace.json");
-    let manifest = std::fs::read_to_string(workspace_manifest).ok()?;
-    let manifest = serde_json::from_str::<serde_json::Value>(&manifest).ok()?;
-    let root = manifest.get("root")?.as_str()?;
-    if root.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(root))
-}
-
-fn project_root_for_legacy_activation_path(path: &Path) -> Option<PathBuf> {
-    let hooks_dir = path.parent()?;
-    if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
-        return None;
-    }
-    let protocol_dir = hooks_dir.parent()?;
-    if protocol_dir.file_name().and_then(|name| name.to_str()) != Some("agent-semantic-protocol") {
-        return None;
-    }
-    let cache_dir = protocol_dir.parent()?;
-    match cache_dir.file_name().and_then(|name| name.to_str()) {
-        Some(".cache") | Some(".agent-semantic-protocols") => cache_dir.parent().map(PathBuf::from),
-        _ => None,
-    }
-}
-
-/// Return the runtime bin directory below an already-resolved cache home.
-#[must_use]
-pub fn runtime_bin_dir_for_cache_home(cache_home: impl AsRef<Path>) -> PathBuf {
-    cache_home
-        .as_ref()
-        .join("agent-semantic-protocol")
-        .join("runtime")
-        .join("bin")
-}
-
-/// Resolve the cache root used by a project.
-pub fn project_cache_home(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    project_cache_root(project_root)
-}
-
-/// Resolve cache home for provider execution with activation-root fallback.
-pub fn project_cache_home_for_roots(
-    activation_root: &Path,
-    project_root: &Path,
-) -> Result<PathBuf, String> {
-    project_cache_home(project_root).or_else(|project_error| {
-        project_cache_home(activation_root).map_err(|activation_error| {
-            format!(
-                "{project_error}; failed to resolve activation-root cache home for {}: {activation_error}",
-                activation_root.display()
-            )
-        })
-    })
+    let binding_path = observations_dir.join(agent_semantic_artifacts::WORKSPACE_BINDING_FILE);
+    let binding = serde_json::from_slice::<agent_semantic_artifacts::ProjectBinding>(
+        &std::fs::read(binding_path).ok()?,
+    )
+    .ok()?;
+    binding.validate().ok()?;
+    Some(binding.workspace.canonical_root)
 }
 
 /// Resolve and create the managed hook activation directory.
@@ -220,17 +251,17 @@ pub fn ensure_project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<P
 
 /// Resolve and create the client cache directory.
 pub fn ensure_project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_workspace_state_layout()?;
     ensure_dir(paths.client_cache_dir)
 }
 
 /// Resolve and create the artifacts directory.
 pub fn ensure_project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_workspace_state_layout()?;
     ensure_dir(paths.artifacts_dir)
 }
 

@@ -1,0 +1,217 @@
+{"sourcePath": "ASPProof/ActivationRepairLiveness.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.ActivationRepairLiveness",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.ActivationRepairLiveness.AllGuarantees ASPProof.ActivationRepairLiveness.allAvailable",
+   "theoremFamily": "complete-guarantee-witness",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-NEXT"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.all_available_satisfies_guarantees",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees),\n  ASPProof.ActivationRepairLiveness.AllGuarantees guarantees →\n    ASPProof.ActivationRepairLiveness.Reachable guarantees ASPProof.ActivationRepairLiveness.RepairStage.needsRepair\n      ASPProof.ActivationRepairLiveness.RepairStage.retired",
+   "theoremFamily": "conditional-bounded-liveness",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-NEXT", "ASP-RFC-10.05-ARCL-RETIREMENT"],
+   "name": "ASPProof.ActivationRepairLiveness.complete_repair_is_reachable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees}\n  {before after : ASPProof.ActivationRepairLiveness.RepairStage},\n  ASPProof.ActivationRepairLiveness.Step guarantees before after →\n    ASPProof.ActivationRepairLiveness.remainingSteps after < ASPProof.ActivationRepairLiveness.remainingSteps before",
+   "theoremFamily": "strict-progress-ranking",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-NEXT"],
+   "name": "ASPProof.ActivationRepairLiveness.every_step_decreases_remaining",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees ASPProof.ActivationRepairLiveness.RepairStage.needsRepair →\n    guarantees.authorityAvailable = true",
+   "theoremFamily": "authority-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-AUTHORITY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.initial_progress_requires_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.capabilityIssued →\n    guarantees.capabilityStableUntilCommit = true",
+   "theoremFamily": "capability-stability-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-CAPABILITY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.capability_progress_requires_stability",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.capabilityIssued →\n    guarantees.winningWriterScheduled = true",
+   "theoremFamily": "writer-scheduling-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-SCHEDULER"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.capability_progress_requires_scheduling",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.candidateCommitted →\n    guarantees.durableOutboxAvailable = true",
+   "theoremFamily": "durable-outbox-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-OUTBOX"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.committed_progress_requires_durable_outbox",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.publicationEnqueued →\n    guarantees.publicationDeliveryFair = true",
+   "theoremFamily": "delivery-fairness-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-DELIVERY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.enqueued_progress_requires_delivery_fairness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.candidatePublished →\n    guarantees.hostObservationLeaseAvailable = true",
+   "theoremFamily": "host-lease-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-HOST-LEASE"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.published_progress_requires_host_lease",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees ASPProof.ActivationRepairLiveness.RepairStage.hostObserved →\n    guarantees.dispatchReconciliationFair = true",
+   "theoremFamily": "dispatch-reconciliation-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-DISPATCH"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.host_progress_requires_dispatch_reconciliation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees\n      ASPProof.ActivationRepairLiveness.RepairStage.dispatchReconciled →\n    guarantees.freshReadinessEvidenceAvailable = true",
+   "theoremFamily": "fresh-readiness-evidence-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-FRESHNESS"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.reconciled_progress_requires_fresh_evidence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees ASPProof.ActivationRepairLiveness.RepairStage.trustedReady →\n    guarantees.rollbackClockAdvances = true",
+   "theoremFamily": "rollback-clock-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-ROLLBACK"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.ready_progress_requires_rollback_clock",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {guarantees : ASPProof.ActivationRepairLiveness.ProgressGuarantees},\n  ASPProof.ActivationRepairLiveness.CanAdvance guarantees ASPProof.ActivationRepairLiveness.RepairStage.rollbackClosed →\n    guarantees.retirementStoreAvailable = true",
+   "theoremFamily": "retirement-store-necessity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-RETIREMENT"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.closed_rollback_requires_retirement_store",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.noAuthority\n    ASPProof.ActivationRepairLiveness.RepairStage.needsRepair",
+   "theoremFamily": "missing-authority-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-AUTHORITY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.missing_authority_blocks_initial_progress",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unstableCapability\n    ASPProof.ActivationRepairLiveness.RepairStage.capabilityIssued",
+   "theoremFamily": "unstable-capability-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-CAPABILITY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.unstable_capability_blocks_commit_progress",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unscheduledWriter\n    ASPProof.ActivationRepairLiveness.RepairStage.capabilityIssued",
+   "theoremFamily": "unscheduled-writer-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-SCHEDULER"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.unscheduled_writer_blocks_commit_progress",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unavailableOutbox\n    ASPProof.ActivationRepairLiveness.RepairStage.candidateCommitted",
+   "theoremFamily": "unavailable-outbox-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-OUTBOX"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.unavailable_outbox_blocks_publication_enqueue",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unfairPublication\n    ASPProof.ActivationRepairLiveness.RepairStage.publicationEnqueued",
+   "theoremFamily": "unfair-delivery-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-DELIVERY"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.unfair_delivery_blocks_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unavailableHostLease\n    ASPProof.ActivationRepairLiveness.RepairStage.candidatePublished",
+   "theoremFamily": "missing-host-lease-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-HOST-LEASE"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.missing_host_lease_blocks_observation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unreconciledDispatch\n    ASPProof.ActivationRepairLiveness.RepairStage.hostObserved",
+   "theoremFamily": "unreconciled-dispatch-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-DISPATCH"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.missing_dispatch_fairness_blocks_reconciliation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unavailableFreshEvidence\n    ASPProof.ActivationRepairLiveness.RepairStage.dispatchReconciled",
+   "theoremFamily": "missing-fresh-evidence-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-FRESHNESS"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.missing_fresh_evidence_blocks_readiness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.frozenRollbackClock\n    ASPProof.ActivationRepairLiveness.RepairStage.trustedReady",
+   "theoremFamily": "frozen-rollback-clock-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-ROLLBACK"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.frozen_clock_blocks_retirement_window",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.ActivationRepairLiveness.CanAdvance ASPProof.ActivationRepairLiveness.unavailableRetirementStore\n    ASPProof.ActivationRepairLiveness.RepairStage.rollbackClosed",
+   "theoremFamily": "missing-retirement-store-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARCL-RETIREMENT"],
+   "name":
+   "ASPProof.ActivationRepairLiveness.missing_retirement_store_blocks_retirement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 23,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 23,
+ "axiomDependentDeclarationCount": 0}

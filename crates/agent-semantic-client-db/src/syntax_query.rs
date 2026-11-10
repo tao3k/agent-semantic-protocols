@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Normalized syntax-query row import and replay helpers for the client DB.
 
 use agent_semantic_client_core::{
@@ -120,7 +124,7 @@ fn validate_syntax_query_packet_for_rows(packet: &Value) -> Result<(), String> {
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        return Err("syntax query rows do not store --code packet output".to_string());
+        return Err("syntax query rows do not store exact source projection output".to_string());
     }
     Ok(())
 }

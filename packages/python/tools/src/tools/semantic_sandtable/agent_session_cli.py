@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """CLI adapter for agent-session observability artifacts."""
 
 from __future__ import annotations
@@ -91,6 +95,15 @@ def _add_session_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         "--session-id",
         default="agent-session",
         help="Session id for agent-session observability commands.",
+    )
+    parser.add_argument(
+        "--child-session-id",
+        dest="session_id",
+        default=argparse.SUPPRESS,
+        help=(
+            "Explicit child session id used by live and imported agent-session "
+            "receipts; overrides --session-id when supplied."
+        ),
     )
     parser.add_argument(
         "--agent",

@@ -1,0 +1,26 @@
+{
+  "auditSha256": "b47306b86b85d7d0172b6e2928268d0936d6a6ff377fa35edbb99801ebe29006",
+  "axiomDependentDeclarationCount": 4,
+  "axiomFreeDeclarationCount": 1,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 5,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SID-CLOSED-TRACE",
+    "ASP-RFC-10.05-SID-DECISION-TOTAL",
+    "ASP-RFC-10.05-SID-GLOBAL",
+    "ASP-RFC-10.05-SID-SAFETY-LIVENESS"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "bounded-liveness",
+    "counterexample",
+    "liveness-existence",
+    "liveness-global-optimality",
+    "selected-non-regression"
+  ]
+}

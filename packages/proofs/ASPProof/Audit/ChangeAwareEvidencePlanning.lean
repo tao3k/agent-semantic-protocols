@@ -1,0 +1,27 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.ChangeAwareEvidencePlanning
+
+open ASPProof.ChangeAwareEvidencePlanning
+
+#print axioms mapping_preserves_distinct_producer_receipts
+#print axioms same_source_mapping_requires_source_identity
+#print axioms mapped_source_evidence_never_enters_durable_database
+#print axioms generation_drift_without_relocation_cannot_retain
+#print axioms disappearance_alone_never_proves_absence
+#print axioms exact_semantic_identity_is_reusable
+#print axioms semantic_drift_without_stable_source_is_invalid
+#print axioms invalid_parent_invalidates_derived_evidence
+#print axioms sound_impact_requires_a_changed_predecessor
+#print axioms selected_reasoning_action_is_feasible
+#print axioms selected_reasoning_action_is_nondominated
+#print axioms preserved_pipe_branch_has_projected_witness
+#print axioms global_token_bound_does_not_preserve_every_pipe_branch
+#print axioms scheduling_cannot_change_semantic_result
+#print axioms scheduling_cannot_change_admitted_evidence
+#print axioms retained_evidence_bodies_are_not_repeated
+#print axioms model_rejection_of_code_trace_is_not_a_confirmed_code_bug
+#print axioms counterexample_without_reproduction_is_not_a_confirmed_code_bug
+#print axioms invariant_weakening_without_new_evidence_is_not_admitted

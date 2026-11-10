@@ -1,0 +1,593 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Runtime artifact catalog tests.
+
+use std::path::Path;
+use std::path::PathBuf;
+
+use agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactReceipt;
+use agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog;
+use agent_semantic_config::runtime_dev::ArtifactOrigin;
+use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
+
+fn runtime_config_path(state_home: &Path) -> PathBuf {
+    agent_semantic_artifacts::StateHomeLayout::new(state_home)
+        .control()
+        .asp_config()
+}
+
+fn write_runtime_config(state_home: &Path, contents: impl AsRef<[u8]>) {
+    let path = runtime_config_path(state_home);
+    std::fs::create_dir_all(path.parent().expect("runtime config parent"))
+        .expect("create runtime config parent");
+    std::fs::write(path, contents).expect("write runtime config");
+}
+
+#[tokio::test]
+async fn tokio_loader_constructs_one_dev_catalog_generation() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let checkout = tempfile::tempdir().expect("checkout");
+    write_runtime_config(
+        state_home.path(),
+        format!("[dev]\nenabled = true\nroot = {:?}\n", checkout.path()),
+    );
+    let catalog = load_runtime_artifact_catalog(state_home.path())
+        .await
+        .expect("runtime catalog");
+    assert_eq!(
+        catalog.mode(),
+        &RuntimeArtifactMode::Dev {
+            root: checkout.path().canonicalize().expect("canonical checkout")
+        }
+    );
+    assert_eq!(catalog.mode_label(), "dev");
+    assert!(catalog.digest().starts_with("blake3-256:"));
+    tokio::fs::remove_file(runtime_config_path(state_home.path()))
+        .await
+        .expect("remove config after load");
+
+    let receipt = RuntimeArtifactReceipt {
+        origin: ArtifactOrigin::DevelopWorkspace,
+        checkout_root: Some(checkout.path().canonicalize().expect("canonical checkout")),
+        reference: artifact_reference(
+            ArtifactOrigin::DevelopWorkspace,
+            checkout.path().join("target/debug/asp"),
+            Some(checkout.path().canonicalize().expect("canonical checkout")),
+        ),
+    };
+    assert!(catalog.admits(&receipt), "admission uses resident memory");
+}
+
+#[tokio::test]
+async fn enabled_dev_root_must_exist_when_the_daemon_catalog_is_loaded() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let missing = state_home.path().join("missing-checkout");
+    write_runtime_config(
+        state_home.path(),
+        format!("[dev]\nenabled = true\nroot = {:?}\n", missing),
+    );
+
+    let error = load_runtime_artifact_catalog(state_home.path())
+        .await
+        .expect_err("daemon must fail closed on a missing development checkout");
+    assert!(error.contains("canonicalize runtime [dev].root"));
+}
+
+#[tokio::test]
+async fn missing_config_selects_release_without_path_fallback() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let catalog = load_runtime_artifact_catalog(state_home.path())
+        .await
+        .expect("release catalog");
+    assert_eq!(catalog.mode(), &RuntimeArtifactMode::Release);
+    assert_eq!(catalog.mode_label(), "release");
+    assert!(catalog.digest().starts_with("blake3-256:"));
+    assert!(catalog.admits(&RuntimeArtifactReceipt {
+        origin: ArtifactOrigin::LockedRelease,
+        checkout_root: None,
+        reference: artifact_reference(
+            ArtifactOrigin::LockedRelease,
+            state_home.path().join("runtime/bin/asp"),
+            None,
+        ),
+    }));
+}
+
+fn artifact_reference(
+    origin: ArtifactOrigin,
+    executable_path: PathBuf,
+    checkout_root: Option<PathBuf>,
+) -> agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactReference {
+    agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactReference::new(
+        "asp",
+        origin,
+        executable_path,
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(&format!(
+            "blake3-256:{}",
+            "0".repeat(64)
+        ))
+        .expect("typed fixture digest"),
+        checkout_root,
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn release_retention_keeps_only_generations_reachable_from_bundle_selectors() {
+    let temporary = tempfile::tempdir().expect("temporary runtime state");
+    let runtime_root = temporary.path().join("runtime");
+    let artifact_root = runtime_root.join("artifacts");
+    let algorithm_root = artifact_root.join("generations");
+    let asp_digest = "1".repeat(64);
+    let provider_digest = "2".repeat(64);
+    let stale_digest = "3".repeat(64);
+    let asp_artifact = algorithm_root.join(&asp_digest).join("asp");
+    let provider_artifact = algorithm_root.join(&provider_digest).join("asp-rust");
+    let stale_artifact = algorithm_root.join(&stale_digest).join("asp-old");
+    for artifact in [&asp_artifact, &provider_artifact, &stale_artifact] {
+        std::fs::create_dir_all(artifact.parent().expect("artifact parent"))
+            .expect("create artifact generation");
+        std::fs::write(artifact, b"runtime artifact").expect("write artifact");
+    }
+    std::os::unix::fs::symlink(asp_artifact.parent().unwrap(), artifact_root.join("active"))
+        .expect("publish active generation");
+    std::os::unix::fs::symlink(
+        provider_artifact.parent().unwrap(),
+        artifact_root.join("healthy"),
+    )
+    .expect("publish healthy generation");
+
+    let receipt =
+        agent_semantic_artifacts::runtime_artifact_retention::prune_unreachable_runtime_artifacts(
+            &artifact_root,
+        )
+        .await
+        .expect("prune unreachable generations");
+
+    assert_eq!(receipt.scanned_generation_count, 3);
+    assert_eq!(receipt.retained_generation_count, 2);
+    assert_eq!(receipt.removed_generation_count, 1);
+    assert_eq!(receipt.retained_slots_per_binary, 2);
+    assert_eq!(receipt.protected_digests, vec![asp_digest, provider_digest]);
+    assert!(!algorithm_root.join(stale_digest).exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn developer_publication_rejects_a_source_outside_the_configured_checkout() {
+    let temporary = tempfile::tempdir().expect("temporary developer state");
+    let state_home = temporary.path().join("state");
+    let checkout = temporary.path().join("checkout");
+    let source = temporary.path().join("foreign/asp");
+    let runtime_root = state_home.join("runtime");
+    let artifact_root = runtime_root.join("artifacts");
+    std::fs::create_dir_all(&checkout).expect("create developer checkout");
+    std::fs::create_dir_all(source.parent().expect("source parent"))
+        .expect("create foreign build directory");
+    std::fs::create_dir_all(&state_home).expect("create state home");
+    std::fs::write(&source, b"foreign-runtime-artifact").expect("write foreign artifact");
+    write_runtime_config(
+        &state_home,
+        format!(
+            "[dev]\nenabled = true\nroot = {:?}\n",
+            checkout.display().to_string()
+        ),
+    );
+
+    let authority = QualifiedRuntimeArtifactSource::develop_state_home_staging(checkout)
+        .expect("developer staging authority");
+    let error = authority
+        .validate_source(&state_home, &source, "asp")
+        .expect_err("foreign source must fail closed");
+
+    assert!(error.contains("escapes provider staging"), "{error}");
+    assert!(!artifact_root.exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cross_process_publication_conflict_fails_without_waiting_or_moving_slots() {
+    let temporary = tempfile::tempdir().expect("temporary runtime state");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("release/asp");
+    let runtime_root = state_home.join("runtime");
+    let target = runtime_root.join("bin/asp");
+    let artifact_root = runtime_root.join("artifacts");
+    std::fs::create_dir_all(source.parent().expect("source parent"))
+        .expect("create release directory");
+    std::fs::create_dir_all(&artifact_root).expect("create artifact root");
+    std::fs::write(&source, b"release-v1").expect("write release artifact");
+    let lock_path = artifact_root.join("leases/artifact-mutation.lock");
+    std::fs::create_dir_all(lock_path.parent().expect("lock parent"))
+        .expect("create Runtime lock directory");
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .expect("open publication lock");
+    fs2::FileExt::try_lock_exclusive(&lock).expect("hold publication lock");
+
+    let error = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "release",
+    )
+    .await
+    .expect_err("a concurrent publisher must fail immediately");
+
+    assert!(
+        error.contains("reasonKind=artifact-publication-conflict"),
+        "{error}"
+    );
+    assert!(!runtime_root.join("profiles/asp/active").exists());
+    assert!(!runtime_root.join("profiles/asp/healthy").exists());
+    assert!(!artifact_root.join("blake3-256").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn developer_publication_is_tokio_owned_and_survives_checkout_cleanup() {
+    let temporary = tempfile::tempdir().expect("temporary developer state");
+    let state_home = temporary.path().join("state");
+    let checkout = temporary.path().join("checkout");
+    let source = checkout.join("target/debug/asp");
+    let runtime_root = state_home.join("runtime");
+    let target = runtime_root.join("bin/asp");
+    let artifact_root = runtime_root.join("artifacts");
+    std::fs::create_dir_all(source.parent().expect("source parent"))
+        .expect("create developer build directory");
+    std::fs::create_dir_all(&state_home).expect("create state home");
+    std::fs::write(&source, b"developer-v1").expect("write developer artifact");
+    write_runtime_config(
+        &state_home,
+        format!(
+            "[dev]\nenabled = true\nroot = {:?}\n",
+            checkout.display().to_string()
+        ),
+    );
+
+    let publication =
+        agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+            &state_home,
+            &source,
+            &target,
+            "dev",
+        )
+        .await
+        .expect("publish developer artifact");
+
+    assert_eq!(publication.path, target);
+    assert!(
+        std::fs::canonicalize(&publication.path)
+            .unwrap()
+            .starts_with(std::fs::canonicalize(artifact_root.join("generations")).unwrap())
+    );
+    assert!(artifact_root.join("generations").is_dir());
+    assert!(!artifact_root.join("blake3-256").exists());
+    assert_eq!(
+        std::fs::read_dir(artifact_root.join("generations"))
+            .unwrap()
+            .count(),
+        1,
+        "first publication stores one content-addressed generation"
+    );
+    std::fs::remove_dir_all(&checkout).expect("clean checkout target and source");
+    assert_eq!(std::fs::read(&publication.path).unwrap(), b"developer-v1");
+    std::fs::create_dir_all(source.parent().expect("source parent")).expect("recreate build dir");
+    std::fs::write(&source, b"developer-v2").expect("replace developer artifact");
+    let second = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "dev",
+    )
+    .await
+    .expect("publish second developer artifact");
+    assert_eq!(std::fs::read(&second.path).unwrap(), b"developer-v2");
+    assert!(!artifact_root.join("blake3-256").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn release_publication_retains_active_and_healthy_generations() {
+    let temporary = tempfile::tempdir().expect("temporary release state");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("build/asp");
+    let runtime_root = state_home.join("runtime");
+    let target = runtime_root.join("bin/asp");
+    let artifact_root = runtime_root.join("artifacts");
+    std::fs::create_dir_all(source.parent().expect("source parent"))
+        .expect("create release build directory");
+    std::fs::write(&source, b"release-v1").expect("write first release artifact");
+
+    let first = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "release",
+    )
+    .await
+    .expect("publish first release artifact");
+    std::fs::write(&source, b"release-v2").expect("write second release artifact");
+    let second = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "release",
+    )
+    .await
+    .expect("publish second release artifact");
+
+    assert_ne!(first.artifact_digest, second.artifact_digest);
+    assert_eq!(std::fs::read(&target).unwrap(), b"release-v2");
+    assert!(artifact_root.join("generations").is_dir());
+    assert!(!artifact_root.join("blake3-256").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn health_promotion_moves_only_the_healthy_slot_and_prunes_the_old_baseline() {
+    let temporary = tempfile::tempdir().expect("temporary release state");
+    let state_home = temporary.path().join("state");
+    let source = temporary.path().join("build/asp");
+    let runtime_root = state_home.join("runtime");
+    let target = runtime_root.join("bin/asp");
+    let artifact_root = runtime_root.join("artifacts");
+    std::fs::create_dir_all(source.parent().expect("source parent")).expect("create build dir");
+    std::fs::write(&source, b"release-v1").expect("write first artifact");
+    let first = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "release",
+    )
+    .await
+    .expect("publish baseline");
+    std::fs::write(&source, b"release-v2").expect("write active artifact");
+    let second = agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &source,
+        &target,
+        "release",
+    )
+    .await
+    .expect("publish candidate");
+
+    let stale_health = agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
+        &state_home, "asp", &first.artifact_digest,
+    )
+    .await
+    .expect_err("stale Runtime health must not qualify a newer active artifact");
+    assert!(stale_health.contains("does not qualify active bundle member"));
+
+    let promoted = agent_semantic_artifacts::runtime_artifact_store::promote_active_runtime_artifact_to_healthy(
+        &state_home, "asp", &second.artifact_digest,
+    )
+    .await
+    .expect("promote health-qualified generation");
+    assert_eq!(promoted, second.artifact_digest);
+    assert_eq!(
+        std::fs::read(artifact_root.join("healthy/asp")).unwrap(),
+        b"release-v2"
+    );
+    assert!(!artifact_root.join("blake3-256").exists());
+}
+
+#[test]
+fn developer_reference_requires_a_stable_runtime_slot() {
+    let root = PathBuf::from("/checkout/agent-semantic-protocols");
+    let catalog = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Dev { root: root.clone() });
+    let reference = artifact_reference(
+        ArtifactOrigin::DevelopWorkspace,
+        PathBuf::from("/runtime/bin/asp"),
+        Some(root.clone()),
+    );
+
+    catalog
+        .admit_reference(&reference, Path::new("/runtime"))
+        .expect("developer provenance is admitted through a stable runtime slot");
+    assert!(!reference.executable_path.starts_with(&root));
+}
+
+#[test]
+fn release_reference_requires_a_stable_runtime_slot() {
+    let catalog = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release);
+    let runtime_root = Path::new("/runtime");
+    let stable_binary = artifact_reference(
+        ArtifactOrigin::LockedRelease,
+        runtime_root.join("bin/asp"),
+        None,
+    );
+    catalog
+        .admit_reference(&stable_binary, runtime_root)
+        .expect("stable release binary slot");
+
+    let stable_profile = artifact_reference(
+        ArtifactOrigin::LockedRelease,
+        runtime_root.join("profiles/asp/bin/asp"),
+        None,
+    );
+    assert!(
+        catalog
+            .admit_reference(&stable_profile, runtime_root)
+            .is_err()
+    );
+
+    let content_store_reference = artifact_reference(
+        ArtifactOrigin::LockedRelease,
+        runtime_root.join("artifacts/generations/deadbeef/asp"),
+        None,
+    );
+    assert!(
+        catalog
+            .admit_reference(&content_store_reference, runtime_root)
+            .is_err()
+    );
+}
+
+#[test]
+fn receipt_rejects_reference_identity_drift() {
+    let root = PathBuf::from("/checkout/agent-semantic-protocols");
+    let catalog = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Dev { root: root.clone() });
+    let receipt = RuntimeArtifactReceipt {
+        origin: ArtifactOrigin::DevelopWorkspace,
+        checkout_root: Some(root.clone()),
+        reference: artifact_reference(
+            ArtifactOrigin::LockedRelease,
+            root.join("target/debug/asp"),
+            None,
+        ),
+    };
+    assert!(!catalog.admits(&receipt));
+}
+
+#[test]
+fn dev_catalog_rejects_release_and_foreign_checkout_receipts() {
+    let catalog = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Dev {
+        root: PathBuf::from("/checkout/agent-semantic-protocols"),
+    });
+    for receipt in [
+        RuntimeArtifactReceipt {
+            origin: ArtifactOrigin::LockedRelease,
+            checkout_root: None,
+            reference: artifact_reference(
+                ArtifactOrigin::LockedRelease,
+                PathBuf::from("/runtime/bin/asp"),
+                None,
+            ),
+        },
+        RuntimeArtifactReceipt {
+            origin: ArtifactOrigin::DevelopWorkspace,
+            checkout_root: Some(Path::new("/checkout/other").to_path_buf()),
+            reference: artifact_reference(
+                ArtifactOrigin::DevelopWorkspace,
+                PathBuf::from("/checkout/other/target/debug/asp"),
+                Some(PathBuf::from("/checkout/other")),
+            ),
+        },
+    ] {
+        assert!(!catalog.admits(&receipt));
+    }
+}
+
+#[test]
+fn catalog_identity_binds_mode_and_canonical_checkout() {
+    let first = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Dev {
+        root: PathBuf::from("/checkout/first"),
+    });
+    let second = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Dev {
+        root: PathBuf::from("/checkout/second"),
+    });
+    let release = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release);
+
+    assert_ne!(first.digest(), second.digest());
+    assert_ne!(first.digest(), release.digest());
+    assert_ne!(second.digest(), release.digest());
+}
+
+#[test]
+fn catalog_identity_binds_the_active_runtime_bundle() {
+    let first = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release)
+        .with_runtime_bundle_digest("blake3-256:first");
+    let second = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release)
+        .with_runtime_bundle_digest("blake3-256:second");
+
+    assert_ne!(first.digest(), second.digest());
+    assert_ne!(
+        first.digest(),
+        RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release).digest()
+    );
+}
+
+#[cfg(any())]
+#[tokio::test]
+async fn tokio_loader_admits_provider_catalog_generation_into_daemon_identity() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let provider_generation =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("provider catalog");
+
+    let loaded = load_runtime_artifact_catalog(state_home.path())
+        .await
+        .expect("runtime catalog with provider generation");
+    let expected = RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release)
+        .with_runtime_bundle_digest(provider_generation);
+    assert_eq!(loaded.digest(), expected.digest());
+}
+
+#[test]
+#[cfg(any())]
+fn provider_catalog_publication_enforces_expected_generation() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let first =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("first provider catalog");
+    let error = publish_runtime_provider_catalog_cas(
+        state_home.path(),
+        &format!("blake3-256:{}", "c".repeat(64)),
+        &registry_digest,
+        Some("blake3-256:stale"),
+    )
+    .expect_err("stale provider catalog writer must lose");
+    assert!(error.contains("publication conflict"), "{error}");
+    let refreshed = publish_runtime_provider_catalog_cas(
+        state_home.path(),
+        &format!("blake3-256:{}", "c".repeat(64)),
+        &registry_digest,
+        Some(&first),
+    )
+    .expect("fresh provider catalog writer");
+    assert_ne!(refreshed, first);
+}
+
+#[test]
+#[cfg(any())]
+fn provider_catalog_publication_replaces_obsolete_bytes_without_weakening_readers() {
+    let state_home = tempfile::tempdir().expect("state home");
+    let runtime_root = state_home.path().join("runtime");
+    std::fs::create_dir_all(&runtime_root).expect("runtime root");
+    let catalog_path = runtime_root.join("provider-catalog.v1.json");
+    let obsolete = br#"{
+  "schemaId": "agent.semantic-protocols.runtime-provider-catalog",
+  "schemaVersion": "1",
+  "providers": []
+}"#;
+    std::fs::write(&catalog_path, obsolete).expect("obsolete provider catalog");
+
+    let strict_error = load_runtime_provider_catalog_identity(state_home.path())
+        .expect_err("ordinary readers must reject obsolete provider catalog bytes");
+    assert!(
+        strict_error.contains("unknown field `providers`"),
+        "{strict_error}"
+    );
+
+    let binary_digest = format!("blake3-256:{}", "a".repeat(64));
+    let registry_digest = format!("sha256:{}", "b".repeat(64));
+    let published =
+        publish_runtime_provider_catalog(state_home.path(), &binary_digest, &registry_digest)
+            .expect("sole publication writer replaces the exact obsolete observation");
+    let identity = load_runtime_provider_catalog_identity(state_home.path())
+        .expect("strict provider catalog read")
+        .expect("published provider catalog identity");
+
+    assert_eq!(identity.catalog_generation, published);
+    assert_eq!(identity.binary_artifact_digest, binary_digest);
+    assert_eq!(identity.install_registry_digest, registry_digest);
+    assert!(
+        !String::from_utf8(std::fs::read(catalog_path).expect("published bytes"))
+            .expect("provider catalog utf8")
+            .contains("\"providers\""),
+        "obsolete provider membership must not survive the hard cut"
+    );
+}

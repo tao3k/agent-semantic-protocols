@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Progressive projection and cost
+#+property: rfc_layer progressive-projection-cost
+
+* Ownership
+
+This layer owns token-aware projection, plan-cost forecasts, Pareto scheduling,
+and admission rules that shorten the evidence path without hiding the
+uncertainty or cost paid by the agent.
+
+It does not own cache identity or audit receipt transport.
+
+* Canonical RFCs
+
+- [[file:00.23-searchroute-costed-inspect-trace.org][SearchRoute costed inspect trace]]
+- [[file:00.24-searchroute-realized-trace-catalog-global-driver.org][SearchRoute realized trace catalog and global driver]]
+- [[file:00.79-forecast-bound-pareto-batch-scheduling.org][Forecast-bound Pareto batch scheduling]]

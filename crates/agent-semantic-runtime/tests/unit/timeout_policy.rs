@@ -1,4 +1,9 @@
-use crate::{RuntimeOperationTimeoutPolicy, runtime_operation_timeout_receipt};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use crate::RuntimeOperationTimeoutPolicy;
+use crate::runtime_operation_timeout_receipt;
 
 #[test]
 fn runtime_timeout_receipt_records_within_budget_operation() {

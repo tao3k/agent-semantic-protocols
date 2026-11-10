@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Coverage-reporting behavior tests for semantic sandtables."""
 
 from __future__ import annotations
@@ -86,7 +90,7 @@ class CoverageReportTests(unittest.TestCase):
             self.assertIn("search-flow", report.surfaces)
             self.assertIn("deps-query", report.surfaces)
             self.assertEqual(["codex-hooks"], report.missing)
-            self.assertEqual({"python.search:deps"}, report.surfaces["deps-query"].step_ids)
+            self.assertEqual({"python.search:playbook"}, report.surfaces["deps-query"].step_ids)
 
     def test_coverage_report_applies_per_language_policy(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:

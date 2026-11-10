@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Parser-owned wrapper matching and Git snapshots
+
+* Status
+
+This document refines the v1 hook interception contract. It does not introduce
+a second schema version.
+
+* Problem
+
+An external command wrapper may be local, generated, or previously unknown to
+ASP. Enumerating wrapper executable names in Rust or in =config.toml= does not
+scale and creates two matcher implementations:
+
+1. a Bash parser with executable-specific unwrapping;
+2. a config matcher that sees only the declared inner command prefix.
+
+That split allows production routing and scenario tests to disagree.
+
+* V1 contract
+
+Each rule that admits wrapped commands owns the matcher policy locally:
+
+#+begin_src toml
+matcherPolicies = ["wrapped_command"]
+#+end_src
+
+When enabled, the Bash parser produces bounded command stages and recursively
+parses quoted shell literals. The command matcher may match a configured
+=commandAny= or =argvPrefixAny= at a bounded token window inside each stage.
+Wrapper executable names are not configuration identities and are not Rust
+branches.
+
+The rule remains the policy owner. For example, the testing lane declares
+=["cargo", "test"]= and its resident dispatch; it does not declare =direnv=,
+=timeout=, =rtk=, or any future wrapper.
+
+* Removed v1 surfaces
+
+The following executable-registry surfaces are removed rather than retained as
+compatibility aliases:
+
+- =commandWrappers=
+- =invocationShapeAny=
+- =wrapperMatchAny=
+- =flagPresenceAny=
+- =SemanticCommandInvocationV1= and its wrapper-specific normalization path
+
+Typed action, effect, subject, authority, AST stage, and configured argv-prefix
+facts remain.
+
+* Scenario snapshot contract
+
+Every compound hook/session route must have one Git-tracked scenario containing:
+
+- the exact shell command;
+- expected matched rule and decision;
+- expected resident name and receipt kind;
+- expected interactive-loop command prefix;
+- a matcher latency budget.
+
+The ASP Rust harness policy scenario macro registers the fixture and its replay
+commands. The same fixture is consumed by command-match, hook decision, session
+projection, schema validation, and the performance gate. A unit test that
+reconstructs expectations independently is not sufficient closure.
+
+The canonical initial scenario is
+=generic-wrapper-testing-role-dispatch=. It includes several unrelated
+wrapper names and proves that each wrapper around =cargo test= routes to
+=asp-testing= without a wrapper executable registry.
+
+* Repository-wide command sets
+
+Language toolchains remain under =commandProfiles= because their command
+families carry a real =languageIds= ownership relation. Repository-object
+inspection must not invent a language provider. It uses a separate, reusable
+=commandSets= declaration and a rule-local =commandSetAny= reference:
+
+#+begin_src toml
+[[commandSets]]
+id = "git-history-inspection"
+argvPrefixAny = [["git", "log"], ["git", "show"], ["git", "diff"]]
+
+[[rules]]
+id = "git-history-inspection-dispatch"
+matcherPolicies = ["wrapped_command"]
+intent = "git-history-inspection"
+
+[rules.match]
+commandSetAny = ["git-history-inspection"]
+#+end_src
+
+The command set supplies parser-owned argv facts only. =git diff= is included
+because it projects the current working-tree/index delta without assigning
+language-provider ownership to the inspected paths. The rule still owns
+intent, dominance, decision, dispatch, receipt, and message. Source-discovery
+commands such as =git grep= and =git ls-files= do not belong to the history
+set; they remain governed by registered-source search routing.
+
+When one command family contains both mutating and non-mutating forms, a prefix
+is insufficient. The rule composes the command profile with parser-owned exact
+argv tokens. Rust formatting verification, for example, requires both the
+=cargo fmt= family and =argvTokenAll = ["--check"]= in the same parsed command
+stage. Plain =cargo fmt= therefore never enters the read-only Testing lane.
+
+* Performance
+
+Wrapper matching is bounded by the existing command-candidate and stage-token
+budgets. The Git scenario stores =maxMatcherMicros= and the replay measures the
+average hot matcher latency over repeated iterations. Configuration freshness,
+binary synchronization, resident bootstrap, and test execution latency are
+separate measurements and must not be charged to this matcher gate.
+
+* Quoted-literal boundary
+
+=matcherPolicies = ["wrapped_command"]` scans only Bash AST command stages and their argv tokens.
+Quoted data carried by an argv token MUST NOT be recursively promoted into a
+new executable command stage. Therefore =echo 'asp search playbook --language rust ...'= and
+=bash -lc 'cargo test ...'= do not match the protected inner prefix merely
+because that prefix appears inside a string. A future shell-string execution
+contract, if needed, must be represented by an explicit typed parser fact
+rather than an executable-name list or raw quoted-text recursion.

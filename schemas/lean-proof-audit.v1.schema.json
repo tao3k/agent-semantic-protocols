@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/lean-proof-audit.v1.schema.json",
+  "title": "Lean proof audit v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "leanVersion",
+    "proofPackage",
+    "module",
+    "sourcePath",
+    "declarationCount",
+    "axiomFreeDeclarationCount",
+    "axiomDependentDeclarationCount",
+    "declarations",
+    "axiomInventory",
+    "hasSorryAx"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.lean-proof-audit.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "leanVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proofPackage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "module": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "declarationCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "axiomFreeDeclarationCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "axiomDependentDeclarationCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "declarations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/declaration"
+      }
+    },
+    "axiomInventory": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "hasSorryAx": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "theoremFamily",
+        "rfcClauseIds",
+        "type",
+        "axioms",
+        "hasSorryAx"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "theorem"
+        },
+        "theoremFamily": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rfcClauseIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^ASP-RFC-"
+          }
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "axioms": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hasSorryAx": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

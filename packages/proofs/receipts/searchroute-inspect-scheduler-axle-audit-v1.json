@@ -1,0 +1,30 @@
+{
+  "auditSha256": "e5832d85050086160203fdb5c5dfd85ac54429bf76a81718ee149f003938f484",
+  "axiomDependentDeclarationCount": 10,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 10,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SPR-COMPLETE",
+    "ASP-RFC-10.05-SPR-MONOTONE-EXTENSION",
+    "ASP-RFC-10.05-SPR-PARTIAL-BOUND",
+    "ASP-RFC-10.05-SPR-SCHEDULER"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "counterexample",
+    "executable-order",
+    "partial-cost-extension",
+    "partial-lower-bound",
+    "scheduler-completion",
+    "scheduler-global-optimality",
+    "scheduler-inspection",
+    "scheduler-partition",
+    "scheduler-pruning"
+  ]
+}

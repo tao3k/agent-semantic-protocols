@@ -84,22 +84,13 @@
       }
     },
     "illegal": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/prunedBranch"
-      }
+      "$ref": "#/$defs/prunedBranchList"
     },
     "validate": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/validationRef"
-      }
+      "$ref": "#/$defs/validationRefList"
     },
     "evidence": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/evidenceRef"
-      }
+      "$ref": "#/$defs/evidenceRefList"
     },
     "branchLegality": {
       "$ref": "#/$defs/branchLegality"
@@ -110,6 +101,24 @@
     }
   },
   "$defs": {
+    "validationRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/validationRef"
+      }
+    },
+    "prunedBranchList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prunedBranch"
+      }
+    },
+    "evidenceRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
     "activeFact": {
       "type": "object",
       "additionalProperties": false,
@@ -186,10 +195,7 @@
           "uniqueItems": true
         },
         "prunedBranches": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/prunedBranch"
-          }
+          "$ref": "#/$defs/prunedBranchList"
         },
         "evidenceGaps": {
           "type": "array",
@@ -242,10 +248,7 @@
           "minLength": 1
         },
         "evidence": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceRef"
-          }
+          "$ref": "#/$defs/evidenceRefList"
         },
         "stopCondition": {
           "type": "string",
@@ -301,10 +304,7 @@
           }
         },
         "validation": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/validationRef"
-          }
+          "$ref": "#/$defs/validationRefList"
         },
         "rollback": {
           "type": "string",

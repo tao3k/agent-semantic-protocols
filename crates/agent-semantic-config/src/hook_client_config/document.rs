@@ -1,0 +1,540 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Parses global `asp` hook client configuration from TOML.
+
+use figment::Figment;
+use figment::providers::Format;
+use figment::providers::Toml;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::path::Path;
+
+use super::routing::HookClientActionKind;
+use super::routing::HookClientCapabilityPolicyConfig;
+use super::routing::HookClientRuleConfig;
+
+/// Schema id for hook client config.
+pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
+/// Schema version for hook client config.
+pub const CLIENT_HOOK_CONFIG_SCHEMA_VERSION: &str = "1";
+
+pub(super) const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
+pub(super) const HOOK_PROTOCOL_VERSION: &str = "1";
+
+const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/hooks/config.toml");
+const REGISTERED_PROVIDER_ROUTE_IDENTITIES: &[(&str, &str)] =
+    include!(concat!(env!("OUT_DIR"), "/provider_route_identities.rs"));
+
+/// Parsed and validated project-local hook client config.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientConfigFile {
+    #[serde(default)]
+    pub schema_id: Option<String>,
+    #[serde(default)]
+    pub schema_version: Option<String>,
+    #[serde(default)]
+    pub protocol_id: Option<String>,
+    #[serde(default)]
+    pub protocol_version: Option<String>,
+    #[serde(default)]
+    pub contract_fingerprint: Option<String>,
+    #[serde(default)]
+    pub experimental: BTreeMap<String, BTreeMap<String, bool>>,
+    #[serde(default)]
+    pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
+    #[serde(default)]
+    pub agent_calling: HookClientAgentCallingConfig,
+    #[serde(default)]
+    pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
+    #[serde(default)]
+    pub command_sets: Vec<super::profiles::HookClientCommandSetConfig>,
+    /// Declarative command semantics compiled into the Hook policy bundle.
+    /// The shell parser supplies normalized argv stages; this configuration is
+    /// the sole authority that projects a stage to a semantic action.
+    #[serde(default)]
+    pub command_action_patterns: Vec<HookClientCommandActionPatternConfig>,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, HookClientProfileConfig>,
+    #[serde(default)]
+    pub provider_routes: Vec<HookClientProviderRouteIdentity>,
+    #[serde(default)]
+    pub capability_policies: Vec<HookClientCapabilityPolicyConfig>,
+    #[serde(default)]
+    pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// One declarative semantic command family.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientCommandActionPatternConfig {
+    pub action: HookClientActionKind,
+    #[serde(default)]
+    pub argv_pattern_any: Vec<Vec<String>>,
+}
+
+/// Host-native Agent calling-symbol DSL.
+///
+/// `{name}` is replaced with the registered route key. The default is Codex's
+/// native `@name` call; platforms with a different native token override only
+/// their pattern.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentCallingConfig {
+    #[serde(default = "default_agent_calling_pattern")]
+    pub default_pattern: String,
+    #[serde(default)]
+    pub platform_patterns: BTreeMap<String, String>,
+}
+
+impl Default for HookClientAgentCallingConfig {
+    fn default() -> Self {
+        Self {
+            default_pattern: default_agent_calling_pattern(),
+            platform_patterns: BTreeMap::new(),
+        }
+    }
+}
+
+impl HookClientAgentCallingConfig {
+    #[must_use]
+    pub fn symbol(&self, platform: &str, name: &str) -> String {
+        self.platform_patterns
+            .get(platform)
+            .unwrap_or(&self.default_pattern)
+            .replace("{name-kebab}", &name.replace('_', "-"))
+            .replace("{name}", name)
+    }
+}
+
+fn default_agent_calling_pattern() -> String {
+    "@{name}".to_owned()
+}
+
+/// Managed hook projection of provider-owned language source extensions.
+///
+/// Provider manifests remain the authority. ASP serializes this projection into
+/// the managed hook config so the hot matcher can load one audited TOML artifact.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientProfileConfig {
+    pub language_id: String,
+    pub provider_id: String,
+    pub extension_any: Vec<String>,
+    #[serde(default)]
+    pub source_root_any: Vec<String>,
+}
+
+/// Build-generated provider facade identity admitted for Hook search/query routing.
+///
+/// Source-extension policy remains in `profiles`; this identity list is derived
+/// from the canonical Provider Register so document and DSL providers do not
+/// require hand-maintained Hook branches.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientProviderRouteIdentity {
+    pub language_id: String,
+    pub provider_id: String,
+}
+
+fn registered_provider_routes_toml() -> String {
+    let mut rendered = String::new();
+    for (language_id, provider_id) in REGISTERED_PROVIDER_ROUTE_IDENTITIES {
+        writeln!(
+            rendered,
+            "[[providerRoutes]]\nlanguageId = {language_id:?}\nproviderId = {provider_id:?}\n"
+        )
+        .expect("render provider route identity TOML");
+    }
+    rendered
+}
+
+fn canonical_provider_route_identities() -> Vec<HookClientProviderRouteIdentity> {
+    REGISTERED_PROVIDER_ROUTE_IDENTITIES
+        .iter()
+        .map(
+            |(language_id, provider_id)| HookClientProviderRouteIdentity {
+                language_id: (*language_id).to_owned(),
+                provider_id: (*provider_id).to_owned(),
+            },
+        )
+        .collect()
+}
+
+pub(super) fn admit_canonical_provider_routes(
+    config: &mut HookClientConfigFile,
+) -> Result<(), String> {
+    let canonical = canonical_provider_route_identities();
+    if config.provider_routes.is_empty() {
+        config.provider_routes = canonical;
+        return Ok(());
+    }
+    if config.provider_routes != canonical {
+        return Err(
+            "hook providerRoutes drift from the build-admitted canonical Provider Register"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+/// Optional agent-facing hook decision text for session routing.
+/// Parsed ASP project config from `.agents/asp.toml`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AspProjectConfigFile {
+    #[serde(default)]
+    pub discovery: AspProjectDiscoveryConfig,
+    #[serde(default)]
+    pub hook: AspProjectHookConfig,
+}
+
+/// ASP-owned repository candidate policy from `[discovery]`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspProjectDiscoveryConfig {
+    #[serde(default)]
+    pub ignored_dir_names: Option<Vec<String>>,
+    #[serde(default)]
+    pub include_hidden_dir_names: Option<Vec<String>>,
+}
+
+/// Hook-owned ASP project config.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspProjectHookConfig {
+    #[serde(default)]
+    pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Merge project hook declarations over the managed v1 config by stable identity.
+///
+/// Rules replace complete rules with the same `id`. Agent identities are owned by
+/// `agents/config.toml` plus the platform projection files and cannot be overlaid here.
+pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<(), String> {
+    for rule in &mut config.rules {
+        materialize_native_matcher(rule);
+        materialize_rule_profiles(rule, &config.profiles)?;
+    }
+    Ok(())
+}
+
+fn materialize_native_matcher(rule: &mut HookClientRuleConfig) {
+    let Some(matcher) = &rule.matcher else {
+        return;
+    };
+    push_unique(&mut rule.match_config.native_matcher_any, matcher.clone());
+}
+
+fn materialize_rule_profiles(
+    rule: &mut HookClientRuleConfig,
+    profiles: &BTreeMap<String, HookClientProfileConfig>,
+) -> Result<(), String> {
+    for profile_id in rule.profiles_list.clone() {
+        let profile = profiles.get(&profile_id).ok_or_else(|| {
+            format!(
+                "rule {} profilesList references unknown profile {profile_id:?}",
+                rule.id
+            )
+        })?;
+        materialize_rule_profile(rule, profile);
+    }
+    Ok(())
+}
+
+fn materialize_rule_profile(rule: &mut HookClientRuleConfig, profile: &HookClientProfileConfig) {
+    if !rule.match_config.profile_any.contains(profile) {
+        rule.match_config.profile_any.push(profile.clone());
+    }
+    for extension in &profile.extension_any {
+        push_unique(
+            &mut rule.match_config.profile_extension_any,
+            extension.trim().to_ascii_lowercase(),
+        );
+    }
+    for source_root in &profile.source_root_any {
+        let source_root = source_root.trim().trim_end_matches('/').to_owned();
+        push_unique(&mut rule.match_config.path_any, source_root.clone());
+        push_unique(
+            &mut rule.match_config.path_glob_any,
+            format!("{source_root}/**"),
+        );
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, candidate: String) {
+    if !values.contains(&candidate) {
+        values.push(candidate);
+    }
+}
+
+impl HookClientConfigFile {
+    pub fn materialize_profile_rule_ir(&mut self) -> Result<(), String> {
+        materialize_profile_rule_ir(self)
+    }
+}
+
+/// Agent-facing Org artifact workflow guard from project-local hook config.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentOrgArtifactsConfig {
+    #[serde(default = "default_enabled")]
+    pub(crate) enabled: bool,
+    #[serde(default = "default_agent_org_artifacts_inactive_after_minutes")]
+    pub(crate) inactive_after_minutes: u64,
+    pub(crate) artifacts_path: String,
+    pub(crate) entry_skill_path: String,
+    #[serde(default)]
+    pub(crate) archive_warning: HookClientAgentOrgArtifactsArchiveWarningConfig,
+}
+
+impl HookClientAgentOrgArtifactsConfig {
+    /// Return whether Org artifact workflow checks are enabled.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Inactivity window in minutes before artifact warnings apply.
+    #[must_use]
+    pub fn inactive_after_minutes(&self) -> u64 {
+        self.inactive_after_minutes
+    }
+
+    /// Configured artifact root path.
+    #[must_use]
+    pub fn artifacts_path(&self) -> &str {
+        &self.artifacts_path
+    }
+
+    /// Configured entry skill path.
+    #[must_use]
+    pub fn entry_skill_path(&self) -> &str {
+        &self.entry_skill_path
+    }
+
+    /// Archive warning policy for active Org artifacts.
+    #[must_use]
+    pub fn archive_warning(&self) -> &HookClientAgentOrgArtifactsArchiveWarningConfig {
+        &self.archive_warning
+    }
+}
+
+/// Warning policy for active Org artifacts that should be archived.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentOrgArtifactsArchiveWarningConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_agent_org_artifacts_archive_warning_threshold")]
+    pub active_org_file_threshold: usize,
+    #[serde(default = "default_agent_org_artifacts_archives_dir")]
+    pub archives_dir: String,
+    #[serde(default = "default_agent_org_artifacts_archive_warning_max_reported_files")]
+    pub max_reported_files: usize,
+}
+
+/// Render the seed global hook config file.
+pub fn default_hook_client_config_template() -> String {
+    let provider_routes = registered_provider_routes_toml();
+    DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_ID@",
+            CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        )
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@",
+            CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        )
+        .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
+        .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
+        .replace(
+            "@HOOK_CLIENT_CONTRACT_FINGERPRINT@",
+            &hook_client_contract_fingerprint(),
+        )
+        .replace("@REGISTERED_PROVIDER_ROUTES@", &provider_routes)
+}
+
+/// Parse the embedded default hook config template.
+pub fn default_hook_client_config_file() -> Result<HookClientConfigFile, String> {
+    let mut config = toml::from_str(&default_hook_client_config_template())
+        .map_err(|error| format!("failed to parse default hook client config template: {error}"))?;
+    admit_canonical_provider_routes(&mut config)?;
+    Ok(config)
+}
+
+const HOOK_CLIENT_CONFIG_SCHEMA: &str =
+    include_str!("../../../../schemas/semantic-agent-hook-client-config.v1.schema.json");
+
+/// Stable identity for the parser-visible hook config contract embedded in ASP.
+pub fn hook_client_contract_fingerprint() -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    let provider_routes = registered_provider_routes_toml();
+    for component in [
+        CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        HOOK_PROTOCOL_ID,
+        HOOK_PROTOCOL_VERSION,
+        env!("CARGO_PKG_VERSION"),
+        HOOK_CLIENT_CONFIG_SCHEMA,
+        DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE,
+        provider_routes.as_str(),
+    ] {
+        for byte in component.as_bytes().iter().copied().chain([0]) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("hook-client-v1-{hash:016x}")
+}
+
+/// Render a hook client message template with `{{key}}` placeholders.
+pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str)]) -> String {
+    let mut rendered = template.to_string();
+    for (key, value) in values {
+        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
+    }
+    rendered.trim().to_string()
+}
+
+/// Load, parse, and validate project-local hook config.
+/// Load a managed hook config while taking agent identities from the canonical
+/// project agent-route registry projection.
+pub(super) fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
+    if !path.is_file() {
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
+    }
+    Figment::from(Toml::file(path))
+        .extract::<HookClientConfigFile>()
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
+/// Load an explicit hook config as a typed overlay on the embedded TOML
+/// defaults. Complete managed configs continue to use
+/// [`load_hook_client_config_file`] and remain strict about required tables.
+/// Load a hook overlay while taking agent identities from the canonical
+/// project agent-route registry projection.
+pub(super) fn parse_hook_client_config_overlay_file(
+    path: &Path,
+) -> Result<HookClientConfigFile, String> {
+    if !path.is_file() {
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
+    }
+    let mut merged = toml::from_str::<toml::Value>(&default_hook_client_config_template())
+        .map_err(|error| format!("failed to parse default hook client config template: {error}"))?;
+    let overlay_source = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let overlay = toml::from_str::<toml::Value>(&overlay_source)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    let overlay_declares_contract_fingerprint = overlay.get("contractFingerprint").is_some();
+    merge_toml_overlay(&mut merged, overlay);
+    if !overlay_declares_contract_fingerprint && let Some(document) = merged.as_table_mut() {
+        document.remove("contractFingerprint");
+    }
+    merged
+        .try_into::<HookClientConfigFile>()
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
+/// Read only the ownership-bearing contract fingerprint declared by a hook
+/// config. A missing fingerprint identifies a valid user overlay; a present
+/// fingerprint identifies an ASP-managed complete document.
+pub fn load_hook_client_config_declared_contract_fingerprint(
+    path: &Path,
+) -> Result<Option<String>, String> {
+    if !path.is_file() {
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
+    }
+    let source = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let document = toml::from_str::<toml::Value>(&source)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    match document.get("contractFingerprint") {
+        None => Ok(None),
+        Some(toml::Value::String(fingerprint)) => Ok(Some(fingerprint.clone())),
+        Some(_) => Err(format!(
+            "{} contractFingerprint must be a string",
+            path.display()
+        )),
+    }
+}
+
+fn merge_toml_overlay(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
+            for (key, value) in overlay {
+                if let Some(base_value) = base.get_mut(&key) {
+                    merge_toml_overlay(base_value, value);
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
+}
+
+/// Load the ASP project config. Unknown project sections are ignored here; each
+/// subsystem owns its own parsed subset.
+pub fn load_asp_project_config_file(path: &Path) -> Result<AspProjectConfigFile, String> {
+    if !path.is_file() {
+        return Ok(AspProjectConfigFile::default());
+    }
+    Figment::from(Toml::file(path))
+        .extract::<AspProjectConfigFile>()
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
+pub(super) fn default_enabled() -> bool {
+    true
+}
+
+fn default_agent_org_artifacts_inactive_after_minutes() -> u64 {
+    30
+}
+
+fn default_agent_org_artifacts_archive_warning_threshold() -> usize {
+    10
+}
+
+fn default_agent_org_artifacts_archives_dir() -> String {
+    "archives".to_string()
+}
+
+fn default_agent_org_artifacts_archive_warning_max_reported_files() -> usize {
+    5
+}
+
+impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            active_org_file_threshold: default_agent_org_artifacts_archive_warning_threshold(),
+            archives_dir: default_agent_org_artifacts_archives_dir(),
+            max_reported_files: default_agent_org_artifacts_archive_warning_max_reported_files(),
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+/// Controls whether wrapped commands participate in declarative matching.
+pub enum WrapperMatchMode {
+    /// Inspect wrapper layers and match the effective inner command.
+    #[default]
+    Enable,
+    /// Match only the direct command invocation.
+    Off,
+}

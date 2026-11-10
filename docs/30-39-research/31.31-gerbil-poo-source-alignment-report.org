@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Gerbil POO Source Alignment Report
 #+DATE: 2026-06-14
 #+OPTIONS: toc:2
@@ -31,26 +35,6 @@ This turns the prior audit into a milestone backlog. New implementation work
 should name its active milestone and should not pull isolated tasks from the
 research notes without a milestone exit condition.
 
-Current M3 receipt, 2026-06-17: the harness-local 11.08 ledger now records a
-real policy-warning repair loop. Adding the milestone guide surface triggered
-=GERBIL-SCHEME-MOD-R002= and =GERBIL-SCHEME-AGENT-R015= in
-=src/commands/guide.ss=; the repair followed =agentRepair.nextCommand=,
-collapsed M3 routing onto the existing source-backed typed-combinator exemplar
-branch, added the missing engineering boundary comment, and returned
-=asp gerbil-scheme check --full .= to =findings=0=.
-
-Current M4 receipt, 2026-06-17: structural call facts for =.ref=,
-=.ref/cached=, and =apply-slot-spec= now carry =sourceSelector= fields and
-=sourceSelector:gerbil-poo://object.ss#...= query keys. The slot-cache
-fixture therefore links local call facts back to the upstream object
-materialization selectors through owner-bounded structural JSON instead of
-through a policy warning or string-only guide note.
-
-Current M5 receipt, 2026-06-17: the slice closed with parser, search, policy,
-build, and Org gates before starting another source-research round:
-=asp gerbil-scheme check --full .=, =search-test=, =parser-test=,
-=agent-basic-policy-test=, =agent-repair-policy-test=, =gxi build.ss compile=,
-and Org lint for both the harness-local 11.08 ledger and this root report.
 * Evidence Scope
 
 The evidence was gathered from ASP-owned source windows and search evidence over
@@ -270,7 +254,7 @@ tests are the best source for adapter and real-project search examples.
 * Quality Dimensions
 
 This report and the harness-local
-~languages/gerbil-scheme-language-project-harness/docs/10-19-research/11.08-gerbil-poo-io-quality-consolidation.org~
+~languages/asp-gerbil-scheme/docs/10-19-research/11.08-gerbil-poo-io-quality-consolidation.org~
 must stay synchronized on the quality bar.  The bar is not just "short code" or
 "few warnings"; it is a set of parser-visible design dimensions.
 
@@ -402,7 +386,7 @@ and mixin-override slots.  Structural call facts now also classify ~.ref~,
 ~cacheOperation:~ query keys.  The rich slot-cache pattern now also exposes
 ~instantiate-object!~, ~compute-precedence-list!~, and ~compute-slot-funs!~ as
 source-owned materialization selectors with dedicated quality signals.
-External ~asp gerbil-scheme search pattern poo slot cache computed --view
+External ~asp search playbook --language gerbil-scheme pattern poo slot cache computed --view
 seeds~ now reaches the full ~:commands/search~ resolver through the search
 compatibility entrypoint, so pattern focus selection remains a CLI/search
 responsibility rather than a build-wrapper responsibility.  This boundary is
@@ -471,7 +455,7 @@ Validation:
 - Existing POO slot-cache and C3 snapshots.
 - ~poo-slot-cache-inheritance.ss~ structural owner facts.
 - ~poo-slot-cache-pattern.ss~ selector snapshot and search output assertions.
-- External ~asp gerbil-scheme search pattern poo slot cache computed --view
+- External ~asp search playbook --language gerbil-scheme pattern poo slot cache computed --view
   seeds~ facade output.
 - ~GERBIL-SCHEME-AGENT-R019~ package build responsibility policy.
 

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.schema.json",
+  "title": "Provider Language Projection Batch Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "workspaceIdentity",
+    "generationRootDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "owners"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-language-projection-batch-request"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationRootDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "parserIdentityDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "queryPackDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "baseGenerationRootDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {"$ref": "#/$defs/sourceOwner"}
+    },
+    "auxiliaryOwners": {
+      "description": "Provider-declared immutable config owners used only to restore parser and module-resolution context. Providers must not emit searchable items for these owners.",
+      "type": "array",
+      "maxItems": 128,
+      "items": {"$ref": "#/$defs/sourceOwner"}
+    }
+  },
+  "$defs": {
+    "sourceOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "sourceLeafDigest", "sourceEncoding"],
+      "oneOf": [
+        {
+          "properties": {"sourceEncoding": {"const": "utf8"}},
+          "required": ["sourceText"],
+          "not": {"required": ["sourceBytesBase64"]}
+        },
+        {
+          "properties": {"sourceEncoding": {"const": "base64"}},
+          "required": ["sourceBytesBase64"],
+          "not": {"required": ["sourceText"]}
+        }
+      ],
+      "properties": {
+        "ownerPath": {"type": "string", "minLength": 1},
+        "sourceLeafDigest": {"type": "string", "minLength": 32},
+        "sourceText": {"type": "string"},
+        "sourceEncoding": {"enum": ["utf8", "base64"]},
+        "sourceBytesBase64": {"type": "string", "contentEncoding": "base64"}
+      }
+    }
+  }
+}

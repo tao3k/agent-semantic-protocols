@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-artifact-identity",
+  "schemaVersion": "1",
+  "artifactKind": "asp",
+  "artifactMode": "dev",
+  "stablePath": "/home/user/.local/bin/asp",
+  "sourcePath": "/checkout/target/debug/asp",
+  "sourceGeneration": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sourceGenerationAlgorithm": "filesystem-generation-v1",
+  "artifactDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "identityKind": "content",
+  "identityValue": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "identityAlgorithm": "blake3-256"
+}

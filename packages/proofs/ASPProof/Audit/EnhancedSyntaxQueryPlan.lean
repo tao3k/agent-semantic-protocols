@@ -1,0 +1,21 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.EnhancedSyntaxQueryPlan
+
+namespace ASPProof.Audit.EnhancedSyntaxQueryPlan
+
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.provider_local_row_is_not_runtime_published
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.runtime_row_without_resident_value_is_not_published
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.admitted_context_has_exactly_one_resident_lookup
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.admitted_context_performs_no_parser_or_regex_work
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.admitted_context_performs_no_provider_storage_or_build_work
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.client_compilation_may_parse_without_server_parsing
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.generation_tampering_is_rejected
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.capability_tampering_is_rejected
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.admitted_plan_preserves_all_digest_bindings
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.provider_local_selected_field_is_rejected
+#print axioms ASPProof.EnhancedSyntaxQueryPlan.admitted_execution_performs_no_parser_or_regex_work
+
+end ASPProof.Audit.EnhancedSyntaxQueryPlan

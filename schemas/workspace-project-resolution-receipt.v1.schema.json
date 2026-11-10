@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-project-resolution-receipt.v1.schema.json",
+  "title": "Workspace project-resolution daemon receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "state",
+    "attachedSessionCount"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-project-resolution-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "$ref": "#/$defs/workspaceIdentity"
+    },
+    "state": {
+      "enum": [
+        "workspace-attached",
+        "candidate-generation-ready",
+        "project-entry-delta-classified",
+        "package-resolver-running",
+        "package-graph-ready",
+        "resolved-source-scope-ready",
+        "workspace-artifact-published",
+        "generation-serving",
+        "generation-retired",
+        "failed"
+      ]
+    },
+    "attachedSessionCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "generation": {
+      "$ref": "#/$defs/generation"
+    },
+    "failure": {
+      "$ref": "#/$defs/failure"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "workspace-artifact-published",
+              "generation-serving",
+              "generation-retired"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "generation"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "failure"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+      }
+    },
+    "workspaceIdentity": {
+      "$ref": "workspace-definitions.v1.schema.json#/$defs/workspaceIdentity"
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generationId",
+        "candidateGeneration",
+        "packageGraphDigest",
+        "resolvedSourceScopeDigest",
+        "projectResolutionArtifact",
+        "resolvedSourceScopeArtifact"
+      ],
+      "properties": {
+        "generationId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "candidateGeneration": {
+          "$ref": "#/$defs/digest"
+        },
+        "packageGraphDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resolvedSourceScopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectResolutionArtifact": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "resolvedSourceScopeArtifact": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasonKind",
+        "next"
+      ],
+      "properties": {
+        "reasonKind": {
+          "enum": [
+            "workspace-identity-mismatch",
+            "session-not-attached",
+            "candidate-generation-stale",
+            "project-entry-required",
+            "project-entry-parse-failed",
+            "package-graph-unavailable",
+            "resolved-source-scope-unavailable",
+            "artifact-publication-failed",
+            "daemon-unavailable"
+          ]
+        },
+        "next": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

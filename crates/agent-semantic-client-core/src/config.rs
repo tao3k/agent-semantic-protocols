@@ -1,6 +1,11 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! User and project configuration model for `agent-semantic-client`.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Backend mode selected outside the agent prompt command.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

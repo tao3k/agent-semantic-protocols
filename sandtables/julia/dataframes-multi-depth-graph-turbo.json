@@ -74,17 +74,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": true,
+          "requiresComplexCommandFlow": true,
           "requiresTokenCost": true
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -107,17 +105,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": false,
+          "requiresComplexCommandFlow": false,
           "requiresTokenCost": false
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -140,17 +136,15 @@
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
           "requiresHookEvents": true,
-          "requiresComplexPipeFlow": false,
+          "requiresComplexCommandFlow": false,
           "requiresTokenCost": false
         },
         "expectedAspFlow": {
           "requiredStages": [
-            "search-prime",
-            "search-pipe",
+            "search-playbook",
             "query-selector"
           ],
           "forbiddenStages": [
-            "repeated-prime",
             "repeated-commands"
           ]
         }
@@ -162,34 +156,30 @@
       "id": "lexical-query",
       "command": [
         "asp",
-        "julia",
         "search",
-        "lexical",
-        "--query",
-        "groupby",
-        "--query",
-        "DataFrame",
-        "--query",
-        "transform",
-        "--query",
-        "owner",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "julia",
+        "--rg",
+        "-n",
+        "-e",
+        "groupby|DataFrame|transform",
+        ".",
+        "--tantivy",
+        "title:\"groupby\"^2 OR body:\"DataFrame\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "groupby",
-          "DataFrame",
-          "transform",
-          "owner"
+          "#+begin_src gql :name result",
+          "(julia:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 5000,
-        "maxElapsedMsWarn": 4500
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

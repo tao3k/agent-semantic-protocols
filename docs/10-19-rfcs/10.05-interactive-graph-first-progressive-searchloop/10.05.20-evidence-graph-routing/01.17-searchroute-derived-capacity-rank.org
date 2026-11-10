@@ -1,0 +1,318 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Derived Capacity Rank
+#+subtitle: Constructing the bounded rank from finite candidates and Pareto descent
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module closes the certificate-construction gap left by
+[[file:01.16-searchroute-capacity-rank-certificate.org][01.16]].
+
+It is an RFC, Lean, and Typst proof stage only.  It does not authorize a Rust or
+Python implementation.
+
+* Result
+
+The capacity-rank certificate no longer needs to be assumed.
+
+For a finite ordered candidate universe =U=, define the normalized rank of a
+candidate =r= as the number of universe entries whose scalar total cost is
+strictly lower than the total cost of =r=.
+
+#+name: derived-capacity-rank-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "totalCost"(r) =
+  "graphHops"(r) +
+  "projectedTokens"(r) +
+  "interactionRounds"(r) +
+  "searchCacheMisses"(r) +
+  "modelCacheMisses"(r) $
+
+$ rho_U(r) =
+  |{x in U: "totalCost"(x) < "totalCost"(r)}| $
+
+$ r in U
+  quad "implies" quad
+  rho_U(r) < |U| $
+#+end_src
+
+If =findDominator U removed = witness=, its existing soundness theorem provides
+both:
+
+- =witness= constructively appears in =U=;
+- =witness= strictly Pareto-dominates =removed=.
+
+Strict Pareto dominance makes every cost dimension no worse and at least one
+dimension strictly better.  Therefore total cost strictly decreases.  Because
+the witness itself appears in =U=, it contributes to the removed candidate's
+lower-cost count but not to its own lower-cost count.
+
+#+name: derived-capacity-rank-descent
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "findDominator"(U, r) = w
+  quad "implies" quad
+  "totalCost"(w) < "totalCost"(r) $
+
+$ "findDominator"(U, r) = w
+  quad "implies" quad
+  rho_U(w) < rho_U(r) $
+
+$ r in U
+  quad "implies" quad
+  "status"("resolve"(U, |U|, r)) = "retained" $
+#+end_src
+
+This constructs all fields required by the 01.16
+=CapacityRankCertificate= and discharges the capacity-fuel theorem without a
+trusted provider rank.
+
+* Normative clauses
+
+** DCR-SCALAR: executable natural comparisons are connected to propositions
+
+The proof layer MUST connect the executable =natLe= and =natLt= functions to
+the corresponding natural-number relations.
+
+The current closure proves:
+
+- =natLe left right = true= implies =left <= right=;
+- =natLt left right = true= implies =left < right=;
+- =left < right= implies =natLt left right = true=;
+- executable =natLt= is transitive.
+
+These bridges are constructive and do not require proposition extensionality.
+
+** DCR-DESCENT: strict Pareto dominance lowers scalar total cost
+
+For the canonical five-dimensional cost vector:
+
+#+begin_example
+graphHops
+projectedTokens
+interactionRounds
+searchCacheMisses
+modelCacheMisses
+#+end_example
+
+strict dominance MUST imply strict descent of the sum of all five dimensions.
+
+This scalar is a proof measure.  It does not replace the Pareto policy used for
+route selection and MUST NOT be used to rank incomparable candidates.
+
+** DCR-MEMBER: selected witnesses carry constructive universe evidence
+
+The existing =findDominator_some_is_sound= theorem returns an =Appears=
+derivation for the selected witness.  The capacity proof MUST consume that
+derivation rather than trust a detached witness identifier.
+
+The proof also connects ordinary list membership to =Appears= so the initial
+candidate can enter the same constructive boundary.
+
+** DCR-RANK: normalized rank counts lower-cost universe entries
+
+The canonical derived proof rank is:
+
+#+begin_example
+lowerCostCount candidates candidate
+#+end_example
+
+It counts entries, not distinct identifiers.  Its required properties are:
+
+- it never exceeds the candidate list length;
+- increasing the scalar threshold cannot decrease the count;
+- a lower-cost candidate that appears in the universe has a strictly lower
+  normalized rank.
+
+The rank is intentionally proof-oriented.  A runtime MAY use a more efficient
+equivalent certificate, but equivalence must be replayable against this
+contract.
+
+** DCR-BOUND: every member rank is below candidate capacity
+
+If a candidate appears in =U=, that occurrence cannot satisfy
+=totalCost candidate < totalCost candidate=.  Its normalized rank is therefore
+strictly below =length U=.
+
+Duplicate list entries do not invalidate this mathematical bound; they increase
+the capacity and may weaken efficiency.  Identity uniqueness remains a
+separate evidence-quality requirement.
+
+** DCR-CERTIFICATE: construction replaces provider trust
+
+The proof package MUST construct the 01.16 certificate from:
+
+- the finite candidate list;
+- =findDominator_some_is_sound=;
+- strict-dominance total-cost descent;
+- normalized lower-cost counting.
+
+A provider-emitted rank without independent derivation is not equivalent to
+this closure.
+
+** DCR-RETAINED: finite-universe capacity fuel is unconditional
+
+For a start candidate that belongs to the finite universe, resolution with
+=length U= fuel returns =retained=.  No separately trusted rank premise remains
+in the public theorem.
+
+The theorem is unconditional relative to the executable candidate list and
+resolver definitions.  It does not claim that an adapter supplied the intended
+candidate universe; universe commitment remains an upstream evidence concern.
+
+** DCR-ENDPOINT: the derived proof reaches a Pareto-kept endpoint
+
+The derived certificate composes with the retained-endpoint theorem:
+
+#+begin_example
+keepCandidate U (resolve U (length U) start).endpoint = true
+#+end_example
+
+The SearchLoop may therefore return a compact endpoint receipt without exposing
+each internal witness edge by default.
+
+** DCR-CONSTRUCTIVE: audit closure excludes proposition extensionality
+
+An initial proof used standard Boolean conjunction/disjunction equivalences and
+thereby introduced =propext= into the axiom inventory.
+
+The accepted proof uses explicit four-case Boolean eliminators.  The JSON audit
+MUST report an empty axiom inventory for the derived certificate and both
+capacity-fuel conclusions.
+
+* SearchLoop consequences
+
+** Internal graph hops are not model turns
+
+The proof bounds internal dominance resolution by candidate capacity.  A public
+adapter SHOULD perform this resolution inside one SearchLoop transition and
+project:
+
+#+begin_example
+status
+endpointId
+steps
+candidateUniverseDigest
+derivedRankAlgorithmId
+proofReceiptDigest
+#+end_example
+
+The model does not need one tool call per dominance witness.
+
+** Explicit chains remain an audit projection
+
+The endpoint receipt is sufficient for the normal hot path when its universe
+and proof digests replay successfully.  Explicit witness chains remain useful
+for:
+
+- disputed routing decisions;
+- verifier diagnostics;
+- certificate-generation failures;
+- offline graph-quality analysis.
+
+** Cache dimensions remain separate
+
+The derived rank may be stored in a search cache keyed by the committed
+candidate universe and cost-vector semantics.  Stable endpoint receipts may
+improve model prefix-cache reuse.  These are different events and MUST retain
+separate measurements.
+
+** Construction complexity is not hidden
+
+A direct implementation of =lowerCostCount= for every candidate can be
+quadratic in candidate count.  This proof establishes logical sufficiency, not
+the preferred runtime algorithm.
+
+Runtime work must compare:
+
+- direct counting;
+- one stable sort plus rank projection;
+- incremental ranks attached to the evidence graph;
+- cache reuse under candidate-universe digests.
+
+Any optimization must preserve the derived certificate semantics.
+
+* Logic findings
+
+** Finding 1: topological sorting is not required for the capacity theorem
+
+01.16 proposed a topological or longest-path rank as the likely construction.
+Lean found a smaller proof boundary: finite membership plus strict scalar
+descent is sufficient to construct a bounded normalized rank.
+
+This removes a graph-wide topological-sort premise from the SearchLoop hot-path
+contract.
+
+** Finding 2: unique identifiers are not a termination premise
+
+Unique canonical route identifiers are required for unambiguous evidence,
+deduplication, digest replay, and useful capacity accounting.  They are not
+consumed by the mathematical termination proof.
+
+The RFC must not cite identity uniqueness as a theorem premise merely because
+the runtime should enforce it for other reasons.
+
+** Finding 3: full dominance transitivity is not required here
+
+The derived rank proof uses transitivity of scalar natural-number order, not a
+generic theorem that =StrictDominates= itself is transitive.
+
+Full dominance transitivity is still required before a router may:
+
+- replace a witness chain with a transitive dominance edge;
+- omit intermediate dominance evidence;
+- claim that an endpoint directly dominates every removed ancestor.
+
+It belongs to the shortcut/compression proof boundary, not the capacity-fuel
+boundary.
+
+** Finding 4: the scalar rank does not authorize scalar route selection
+
+Two incomparable Pareto candidates can have different total costs.  The scalar
+measure is valid for proving descent along an already certified dominance edge,
+but choosing the smaller total cost as the public route policy would silently
+replace Pareto semantics.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteDerivedCapacityRank.lean][SearchRouteDerivedCapacityRank.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteDerivedCapacityRank.lean][SearchRouteDerivedCapacityRank audit]]
+
+The machine-consumable receipt is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-derived-capacity-rank-audit-v1.json][searchroute-derived-capacity-rank-audit-v1.json]]
+
+The receipt covers sixteen declarations and MUST report:
+
+#+begin_example
+axiomDependentDeclarationCount = 0
+axiomInventory = []
+#+end_example
+
+* Next proof boundary
+
+The next module should prove generic =StrictDominates= transitivity and connect
+it to a safe transitive-shortcut projection:
+
+1. prove componentwise =NoWorse= transitivity;
+2. prove strict improvement survives composition with no-worse edges;
+3. prove =StrictDominates a b= and =StrictDominates b c= imply
+   =StrictDominates a c=;
+4. prove that replacing an explicit witness chain by a direct endpoint edge
+   preserves removal soundness;
+5. distinguish constant-shape shortcut receipts from explicit chain audit
+   receipts;
+6. retain the Pareto policy even though scalar total cost remains available as
+   a termination measure.
+
+Until this closure exists, the SearchLoop may summarize a chain by endpoint and
+proof digest, but MUST NOT claim a generic direct dominance edge that has not
+been independently proved.

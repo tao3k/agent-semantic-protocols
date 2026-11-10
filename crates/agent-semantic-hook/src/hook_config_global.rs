@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Optional user hook configuration location under the ASP state home.
 
 use std::env;
@@ -15,5 +19,9 @@ pub fn default_global_client_config_path() -> Option<PathBuf> {
                 .filter(|value| !value.is_empty())
                 .map(|home| PathBuf::from(home).join(DEFAULT_STATE_HOME_DIR))
         })?;
-    Some(state_home.join("hooks").join("config.toml"))
+    Some(
+        agent_semantic_artifacts::StateHomeLayout::new(state_home)
+            .control()
+            .hook_client_config(),
+    )
 }

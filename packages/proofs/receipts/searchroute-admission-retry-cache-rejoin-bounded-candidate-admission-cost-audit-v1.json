@@ -1,0 +1,158 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionState),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionAuthorized state →\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.admitOne state).admittedCount ≤\n      state.roundCapacity",
+   "theoremFamily": "global-admission-capacity-bound",
+   "rfcClauseIds": ["BCAC-ADMISSION", "BCAC-CAPACITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.authorized_admission_stays_within_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionState),\n  state.roundCapacity ≤ state.admittedCount →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionAuthorized state",
+   "theoremFamily": "full-round-admission-rejection",
+   "rfcClauseIds": ["BCAC-CAPACITY", "BCAC-TERMINAL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.full_round_blocks_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (principalAdmittedCount principalQuota : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.PrincipalQuotaAuthorized\n      principalAdmittedCount principalQuota →\n    principalAdmittedCount + 1 ≤ principalQuota",
+   "theoremFamily": "principal-quota-bound",
+   "rfcClauseIds": ["BCAC-PRINCIPAL", "BCAC-QUOTA"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.authorized_principal_admission_stays_within_quota",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RegistrationState),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RegistrationProcessingAuthorized state →\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.processOneRegistration\n          state).processedCount ≤\n      state.processingCapacity",
+   "theoremFamily": "registration-processing-capacity-bound",
+   "rfcClauseIds": ["BCAC-CAPACITY", "BCAC-REGISTRATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.authorized_registration_processing_stays_within_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RegistrationState),\n  state.processingCapacity ≤ state.processedCount →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RegistrationProcessingAuthorized state",
+   "theoremFamily": "registration-processing-terminal-bound",
+   "rfcClauseIds": ["BCAC-REGISTRATION", "BCAC-TERMINAL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.full_registration_processing_budget_blocks_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (proposedGlobalCapacity : Nat),\n  ∃ principalCount principalQuota, proposedGlobalCapacity < principalCount ∧ principalQuota = 1",
+   "theoremFamily": "quota-without-capacity-counterexample",
+   "rfcClauseIds": ["BCAC-CAPACITY", "BCAC-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.per_principal_quota_alone_does_not_bound_global_count",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (candidateCount : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.ComparisonCount candidateCount ≤\n    candidateCount",
+   "theoremFamily": "comparison-candidate-bound",
+   "rfcClauseIds": ["BCAC-COMPARISON", "BCAC-PROOF-SIZE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.comparison_count_is_bounded_by_candidate_count",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (admittedCount roundCapacity : Nat),\n  admittedCount ≤ roundCapacity →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.ComparisonCount admittedCount ≤\n      roundCapacity",
+   "theoremFamily": "comparison-capacity-bound",
+   "rfcClauseIds": ["BCAC-CAPACITY", "BCAC-COMPARISON"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.comparison_count_is_bounded_by_round_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (admittedCount roundCapacity fixedCost perComparisonCost : Nat),\n  admittedCount ≤ roundCapacity →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RoundProofCost admittedCount fixedCost\n        perComparisonCost ≤\n      fixedCost + roundCapacity * perComparisonCost",
+   "theoremFamily": "round-proof-cost-bound",
+   "rfcClauseIds": ["BCAC-COST", "BCAC-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.round_proof_cost_is_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (attempts maximumAttempts admittedCount roundCapacity fixedCost perComparisonCost : Nat),\n  attempts ≤ maximumAttempts →\n    admittedCount ≤ roundCapacity →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RecoveryProofCost attempts\n          admittedCount fixedCost perComparisonCost ≤\n        maximumAttempts * (fixedCost + roundCapacity * perComparisonCost)",
+   "theoremFamily": "end-to-end-recovery-proof-cost-bound",
+   "rfcClauseIds": ["BCAC-ATTEMPT", "BCAC-COST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.recovery_proof_cost_is_attempt_and_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (processedCount processingCapacity admittedCount admissionCapacity fixedCost perRegistrationCost perComparisonCost :\n    Nat),\n  processedCount ≤ processingCapacity →\n    admittedCount ≤ admissionCapacity →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RoundSearchCost processedCount\n          admittedCount fixedCost perRegistrationCost perComparisonCost ≤\n        fixedCost + processingCapacity * perRegistrationCost + admissionCapacity * perComparisonCost",
+   "theoremFamily": "round-search-dual-capacity-bound",
+   "rfcClauseIds": ["BCAC-COST", "BCAC-REGISTRATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.round_search_cost_is_dual_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (attempts maximumAttempts processedCount processingCapacity admittedCount admissionCapacity fixedCost\n    perRegistrationCost perComparisonCost : Nat),\n  attempts ≤ maximumAttempts →\n    processedCount ≤ processingCapacity →\n      admittedCount ≤ admissionCapacity →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.RecoverySearchCost attempts\n            processedCount admittedCount fixedCost perRegistrationCost perComparisonCost ≤\n          maximumAttempts *\n            (fixedCost + processingCapacity * perRegistrationCost + admissionCapacity * perComparisonCost)",
+   "theoremFamily": "end-to-end-recovery-search-cost-bound",
+   "rfcClauseIds": ["BCAC-ATTEMPT", "BCAC-CAPACITY", "BCAC-COST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.recovery_search_cost_is_globally_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId CostModelId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundKey TransitionId\n      CandidateSetDigest PolicyId CostModelId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundCompatible left right →\n    left.roundCapacity = right.roundCapacity",
+   "theoremFamily": "round-capacity-identity-binding",
+   "rfcClauseIds": ["BCAC-CAPACITY", "BCAC-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.admission_round_compatibility_binds_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId CostModelId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundKey TransitionId\n      CandidateSetDigest PolicyId CostModelId),\n  left.roundCapacity ≠ right.roundCapacity →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundCompatible left right",
+   "theoremFamily": "capacity-cache-invalidation",
+   "rfcClauseIds": ["BCAC-CACHE", "BCAC-CAPACITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.changed_capacity_invalidates_admission_round",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId CostModelId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundKey TransitionId\n      CandidateSetDigest PolicyId CostModelId)\n  (admittedCount : Nat),\n  left.roundCapacity ≠ right.roundCapacity →\n    admittedCount = admittedCount ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundCompatible left right",
+   "theoremFamily": "same-count-round-separation",
+   "rfcClauseIds": ["BCAC-COUNTEREXAMPLE", "BCAC-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.same_admitted_count_does_not_imply_round_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId CostModelId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundKey TransitionId\n      CandidateSetDigest PolicyId CostModelId),\n  left.admittedCandidateSetDigest ≠ right.admittedCandidateSetDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.AdmissionRoundCompatible left right",
+   "theoremFamily": "candidate-set-cache-invalidation",
+   "rfcClauseIds": ["BCAC-CACHE", "BCAC-CANDIDATES"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.changed_candidate_set_invalidates_admission_round",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 16,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 16,
+ "axiomDependentDeclarationCount": 0}

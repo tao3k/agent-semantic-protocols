@@ -1,0 +1,48 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.RuntimeArtifactAuthority
+
+namespace ASPProof.Audit.RuntimeArtifactAuthority
+
+open ASPProof.RuntimeArtifactAuthority
+open ASPProof.ASPActiveHealthyArtifactRetention
+
+#check dev_never_admits_locked_release
+#check dev_never_admits_path_fallback
+#check release_never_admits_develop_workspace
+#check dev_receipt_requires_develop_workspace_origin
+#check dev_receipt_requires_configured_root
+#check missing_dev_artifact_fails_closed
+#check release_candidate_fails_closed_in_dev_model
+#check disabled_dev_config_selects_release
+#check enabled_dev_config_selects_its_root
+#check dev_plain_install_uses_configured_root
+#check dev_plain_install_never_uses_locked_release
+#check reachable_generation_count_is_at_most_two
+#check empty_store_publication_seeds_both_slots
+#check later_publication_preserves_healthy
+#check missing_active_uses_healthy
+#check active_precedes_healthy
+#check matching_health_promotes_active
+#check stale_health_cannot_promote_new_active
+#check same_digest_uses_one_physical_generation
+#check checkout_build_is_provenance_not_execution
+#check local_path_is_not_runtime_authority
+#check runtime_alias_points_to_path_visible_install
+#check path_visible_install_points_to_immutable_artifact
+#check reverse_path_to_runtime_alias_is_rejected
+#check runtime_alias_cannot_point_directly_to_artifact
+#check canonical_protocol_binary_chain_is_admitted
+#check two_node_protocol_binary_cycle_is_rejected
+#check delegated_receipt_cannot_reenter_build
+#check checkout_domain_does_not_admit_staging_only
+#check staging_domain_does_not_admit_checkout_only
+#check provenance_uses_provider_owned_source_root
+#check canonical_warm_receipt_is_resident
+#check regular_provider_migration_invalidates_the_pre_switch_receipt
+#check provider_receipt_reconciliation_after_migration_closes_install
+#check external_non_store_entry_cannot_be_declared_ready
+
+end ASPProof.Audit.RuntimeArtifactAuthority

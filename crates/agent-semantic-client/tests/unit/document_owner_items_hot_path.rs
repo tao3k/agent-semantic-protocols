@@ -1,0 +1,86 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
+
+#[test]
+fn removed_org_owner_items_route_fails_before_filesystem_work() {
+    let repo_root = repo_root();
+    let owner_path = "docs/10-19-rfcs/10.20-codebase-memory-mcp-code-search-research.org";
+    assert!(
+        repo_root.join(owner_path).is_file(),
+        "expected fixture owner path to exist: {}",
+        repo_root.join(owner_path).display()
+    );
+
+    let asp_bin = env!("CARGO_BIN_EXE_asp");
+    let warmup = org_owner_items_command(asp_bin, &repo_root, owner_path)
+        .output()
+        .unwrap_or_else(|error| panic!("failed to warm asp: {error}; asp_bin={asp_bin}"));
+    assert!(
+        !warmup.status.success(),
+        "removed route unexpectedly succeeded"
+    );
+    let mut command = org_owner_items_command(asp_bin, &repo_root, owner_path);
+
+    let started = Instant::now();
+    let output = command
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run asp: {error}; asp_bin={asp_bin}"));
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "removed Org route should fail before filesystem work; elapsed={elapsed:?}; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "removed route unexpectedly succeeded"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("language-first search was removed")
+            && stderr.contains("asp search playbook '<scheme-expression>'"),
+        "removed route must point to the sole Search Playbook: {stderr}"
+    );
+}
+
+fn org_owner_items_command(
+    asp_bin: &str,
+    repo_root: &Path,
+    owner_path: &str,
+) -> std::process::Command {
+    let mut command = std::process::Command::new(asp_bin);
+    command
+        .current_dir(repo_root)
+        .env_clear()
+        .env("HOME", std::env::var_os("HOME").unwrap_or_default())
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .arg("org")
+        .arg("search")
+        .arg("owner")
+        .arg(owner_path)
+        .arg("items")
+        .arg("--query")
+        .arg("Evidence Graph GraphRoute compact ranked evidence subagent receipt")
+        .arg("--workspace")
+        .arg(repo_root)
+        .arg("--view")
+        .arg("seeds");
+    command
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("protocol crate must live under crates/")
+        .to_path_buf()
+}

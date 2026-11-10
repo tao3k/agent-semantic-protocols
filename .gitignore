@@ -1,5 +1,9 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 .codex/harness-state
-.codex/rs-harness/
+.codex/asp-rust/
 .bin/
 .cache
 .data/
@@ -14,3 +18,6 @@ __pycache__/
 .env
 .claude/settings.local.json
 .pre-commit-config.yaml
+/.asp-artifacts/
+/.worktrees
+/.pnpm*

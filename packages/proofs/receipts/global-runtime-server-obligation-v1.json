@@ -1,0 +1,131 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-proof-obligation",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.formal-verification",
+  "protocolVersion": "1",
+  "obligationId": "proof-obligation:global-runtime-server:v1",
+  "project": "agent-semantic-protocols",
+  "kind": "architecture-invariant",
+  "status": "verified",
+  "claim": {
+    "summary": "One ASP State Home owns one hardened global server identity with authenticated, peer-UID-bound, replay-resistant socket admission.",
+    "why": "Identity drift, hint readiness, replay, insecure paths, unbounded resources, secret leakage, or cross-project dispatch would invalidate the runtime boundary.",
+    "mustHoldAt": "global-runtime-server-control-dispatch-and-socket-liveness-boundary",
+    "mustNotBeMovedTo": [
+      "workspace-server-owner",
+      "project-provider-process"
+    ]
+  },
+  "topology": {
+    "sliceId": "topology-slice:global-runtime-server",
+    "ownerSelectors": [
+      "lean:ASPProof.GlobalRuntimeServer",
+      "schema:semantic-proof-obligation.v1",
+      "schema:semantic-proof-receipt.v1"
+    ],
+    "hotEdges": [
+      "state-home->server-identity",
+      "request.project-id->internal-dispatch-partition",
+      "lifecycle.stopping->checkpoint-and-drain",
+      "endpoint-hint->authenticated-socket-handshake",
+      "operator-stop->no-runtime-mutation",
+      "kernel-peer-uid->secure-admission",
+      "owner-epoch-nonce->single-use-ledger",
+      "runtime-path->uid-mode-symlink-policy",
+      "resource-use->bounded-admission",
+      "sensitive-log-field->redaction"
+    ]
+  },
+  "branchEffects": {
+    "illegalBranches": [
+      {
+        "branchId": "workspace-or-project-server-identity",
+        "reason": "Workspace and project identifiers cannot allocate a server identity."
+      },
+      {
+        "branchId": "stop-with-active-requests-or-missing-checkpoint",
+        "reason": "The stopped state requires drain and checkpoint evidence."
+      },
+      {
+        "branchId": "provider-failure-mutates-global-lifecycle",
+        "reason": "Provider failure is isolated from the global server lifecycle."
+      },
+      {
+        "branchId": "endpoint-hint-or-file-implies-ready",
+        "reason": "Hint and socket-file presence are not authenticated liveness evidence."
+      },
+      {
+        "branchId": "mismatch-spawn-or-cleanup",
+        "reason": "Protocol or identity mismatch fails closed without endpoint mutation."
+      },
+      {
+        "branchId": "peer-uid-mismatch-admission",
+        "reason": "Kernel peer UID equality is necessary for secure admission."
+      },
+      {
+        "branchId": "nonce-replay-or-eviction",
+        "reason": "Replay and nonce-capacity exhaustion fail closed without ledger mutation or eviction."
+      },
+      {
+        "branchId": "insecure-runtime-path-permissions",
+        "reason": "Runtime directories require current UID, non-symlink status, and 0700/0600 private modes."
+      },
+      {
+        "branchId": "unbounded-socket-resource-admission",
+        "reason": "Frame, connection, hook-worker, and drain overrun are rejected."
+      },
+      {
+        "branchId": "secret-in-log-output",
+        "reason": "Sensitive log fields render only a redaction marker."
+      }
+    ],
+    "legalBranches": [
+      {
+        "branchId": "state-home-global-server",
+        "reason": "The State Home is the complete modeled server identity."
+      },
+      {
+        "branchId": "internal-project-dispatch",
+        "reason": "projectId selects only the internal queue and provider partition."
+      },
+      {
+        "branchId": "assumption-bounded-restart",
+        "reason": "Restart reaches ready only under explicit drain, checkpoint, and startup assumptions."
+      },
+      {
+        "branchId": "authenticated-socket-liveness",
+        "reason": "Connected, authenticated, protocol-matching, identity-matching handshake admits liveness."
+      },
+      {
+        "branchId": "missing-or-refused-election",
+        "reason": "Transport absence or refusal permits election unless operator stop has precedence."
+      },
+      {
+        "branchId": "uid-bound-single-use-nonce-admission",
+        "reason": "Secure admission binds kernel peer UID and fresh nonce to the owner epoch."
+      },
+      {
+        "branchId": "private-runtime-paths-and-bounded-resources",
+        "reason": "Private path modes and explicit resource ceilings guard the socket boundary."
+      },
+      {
+        "branchId": "redacted-security-evidence",
+        "reason": "Security receipts disclose status without rendering secret field values."
+      }
+    ]
+  },
+  "fields": {
+    "leanModule": "ASPProof.GlobalRuntimeServer",
+    "leanSourceSha256": "sha256:8880adc66587b99df2e1f7dc8ebe6ad00bb8c33d05e369ddbd3a0dc50a158285",
+    "leanAuditSha256": "sha256:181db878795f7148ad5af1fa90f26a79d4ab5a4cb5ee29b5be8ba9d15624fc6b",
+    "declarationCount": "40",
+    "restartAssumptions": [
+      "drain-completes",
+      "checkpoint-succeeds",
+      "startup-succeeds",
+      "kernel-peer-uid-is-os-authenticated",
+      "owner-epoch-is-monotone",
+      "resource-bounds-are-configured-positive-ceilings"
+    ]
+  }
+}

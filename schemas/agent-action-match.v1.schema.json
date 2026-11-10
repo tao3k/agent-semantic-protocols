@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-action-match.v1.schema.json",
+  "title": "Agent Action Match v1",
+  "description": "A declarative predicate over SemanticCapability and Subject facts.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "actionAny": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "agent-action.v1.schema.json#/$defs/semanticActionKind" }
+    },
+    "subjectKindAny": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "registered-language-source",
+          "registered-language-source-pattern",
+          "directory",
+          "structural-selector",
+          "other"
+        ]
+      }
+    }
+  }
+}

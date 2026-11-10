@@ -1,0 +1,70 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryPublicationKeyEncoding.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (key : ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.VersionedRetryPublicationKey),\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonicalDecode\n      (ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonicalEncode key) =\n    key",
+   "theoremFamily": "canonical round trip",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPKE-ROUNDTRIP"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonical_decode_encode_round_trip",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {left right : ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.VersionedRetryPublicationKey},\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonicalEncode left =\n      ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonicalEncode right →\n    left = right",
+   "theoremFamily": "canonical injectivity",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPKE-INJECTIVE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.canonical_encoding_is_injective",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterPairA ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterPairB ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterFreeEncode\n      ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterPairA =\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterFreeEncode\n      ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiterPairB",
+   "theoremFamily": "framing counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKE-FRAMING", "ASP-RFC-10.05-RPKE-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.delimiter_free_concatenation_is_not_injective",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(1, 2) ≠ (2, 1) ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.unorderedTwoFieldEncode 1 2 =\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.unorderedTwoFieldEncode 2 1",
+   "theoremFamily": "field-order counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKE-NONIMPLICATION", "ASP-RFC-10.05-RPKE-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.unordered_field_encoding_is_not_injective",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.schemaOneKey ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.schemaTwoKey ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.omitEncodingSchema\n      ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.schemaOneKey =\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.omitEncodingSchema\n      ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.schemaTwoKey",
+   "theoremFamily": "schema-identity counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKE-NONIMPLICATION", "ASP-RFC-10.05-RPKE-SCHEMA"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.omitting_encoding_schema_aliases_distinct_decoding_domains",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "1 ≠ 11 ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.lossyNormalize 1 =\n    ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.lossyNormalize 11",
+   "theoremFamily": "normalization counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPKE-NONIMPLICATION", "ASP-RFC-10.05-RPKE-NORMALIZATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationKeyEncoding.lossy_normalization_is_not_identity_preserving",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

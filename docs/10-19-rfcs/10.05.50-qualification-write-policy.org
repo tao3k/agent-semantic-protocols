@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: SearchLoop Qualification Gates and Write Policy
+#+OPTIONS: toc:3 num:nil
+#+STARTUP: overview
+#+PROPERTY: rfc_layer 10.05.50-qualification-write-policy
+
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
+* Qualification gates
+
+The architecture is qualified only when all applicable owner gates pass
+together:
+
+1. the current endpoint record resolves one bounded Runtime UDS and one public
+   ClientFrame gRPC service;
+2. production and public-route tests contain no HTTP/JSON or TCP fallback and
+   no fourth client socket;
+3. language clients, CLI, Hook, and Live Corpus use the shared typed client;
+4. concurrent requests coalesce one admitted generation attempt and every
+   attempt reaches exactly one terminal;
+5. exact source, callable-skeleton, resident search, zero-match, cancellation,
+   backpressure, and payload failure cases retain typed identity evidence;
+6. warm resident operations perform zero provider launch, filesystem scan,
+   database open, publication lock, retry, polling, or lifecycle mutation;
+7. OpenTelemetry and Live Corpus expose phase, service, transport, wall,
+   memory, work-counter, and terminal evidence without turning thresholds into
+   lifecycle correctness;
+8. Lean/AXLE audits refine the same single-route, bounded-stream,
+   cancellation, publication, and receipt invariants; and
+9. Org links resolve, each normative concern has one canonical owner, and the
+   root remains a compact dependency map rather than a second specification.
+
+Performance budgets are defined by the relevant child owner and executable
+qualification.  Compilation, installation, daemon startup, provider warmup,
+generation construction, transport time, service time, and whole-command wall
+time are reported separately.
+
+* Write policy
+
+Change the narrowest canonical child owner first.  Update this root only when a
+global decision, invariant, dependency, or owner changes.
+
+Do not append implementation diaries, superseded alternatives, compatibility
+notes, test transcripts, or historical snapshots here.  Git provides that
+history.  New detail belongs in an existing canonical child owner; a new child
+module is justified only when no current owner can express the concern without
+mixing responsibilities.

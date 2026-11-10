@@ -1,0 +1,17 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-db-owner-request.v1",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-root",
+  "transportContractDigest": "blake3-256:transport",
+  "ownerEpoch": 1,
+  "bindingToken": "binding-token",
+  "requestId": "cache-rebuild-1",
+  "operation": {
+    "kind": "cache-control",
+    "request": {
+      "action": "rebuild-source-index",
+      "projectRoot": "/workspace/root",
+      "mutationId": "session-root/cache-rebuild-1"
+    }
+  }
+}

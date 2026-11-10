@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Mutation Owner Delta Atomicity
+
+* Normative contract
+
+A mutation over an admitted resident generation MUST be refined as one owner-delta transaction. The Runtime resolves provider ownership from the admitted provider registry, projects only the changed owners, represents deleted owners as tombstones, and stages the complete delta before publication. It MUST NOT rediscover a repository candidate snapshot, enumerate every provider project scope, or publish one generation per owner. All changed owners and tombstones become visible in one target epoch while readers holding the previous epoch remain valid.
+
+* Candidate identity
+
+The mutation candidate identity is derived from the source root that was actually published, not from the mutation identifier, path strings, or a display-prefix rewrite. The v1 derivation is the domain-separated digest =blake3("workspace-mutation-candidate-v1\0" || publishedSourceRootDigest)=. This binds admission completion to the content authority while keeping repository-candidate and source-root digest domains distinct.
+
+* Terminal linearization
+
+Mutation admission MUST remain =Building= until the resident Memory Backend, durable generation segment, exact-projection segment, search-generation authority, and active pointer all refer to the same target epoch and generation digest. Only then may admission publish terminal =Ready=.
+
+Failure or budget exhaustion at owner projection, generation encoding, durable publication, search-authority publication, or pointer publication is a typed OpenTelemetry incident and MUST NOT be reported as a successful exact-query generation.
+
+* Required gates
+
+- A non-Git admitted workspace mutation completes without repository candidate rediscovery.
+- Multiple changed owners and tombstones publish exactly one target epoch.
+- The mutation candidate digest equals the v1 domain-separated digest of the published source root.
+- A terminal mutation receipt is observable only after the matching search-generation authority can be read.
+- A previous-epoch read lease remains valid throughout publication.

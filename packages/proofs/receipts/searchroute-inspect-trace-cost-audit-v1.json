@@ -1,0 +1,150 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteInspectTraceCost.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectTraceCost",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∃ steps, SearchRouteInspectLoop.InspectLoopTrace initial finalState steps ∧ costs.length = steps",
+   "theoremFamily": "trace-alignment",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-STEP", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name": "SearchRouteInspectTraceCost.costed_trace_length_matches_decisions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} (context : SearchRouteInspectTraceCost.TraceRouteContext)\n  (receipt : SearchRouteInspectTraceCost.CostedClosedTraceReceipt initial),\n  SearchRouteCost.transitionCount\n      (SearchRouteInspectTraceCost.CostedClosedTraceReceipt.toGraphCandidate context receipt).route =\n    receipt.costs.length",
+   "theoremFamily": "route-projection",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-STEP", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_transition_count_is_trace_length",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (costs : List SearchRouteInspectTraceCost.CostedInspectStep)\n  (closed : Bool),\n  SearchRouteCost.evidenceTokenCost (SearchRouteInspectTraceCost.projectRoute context costs closed) =\n    SearchRouteInspectTraceCost.traceActualEvidenceTokens costs",
+   "theoremFamily": "cost-fidelity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-FIDELITY", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_evidence_tokens_are_trace_actual",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (costs : List SearchRouteInspectTraceCost.CostedInspectStep)\n  (closed : Bool),\n  SearchRouteCost.promptTokenCost (SearchRouteInspectTraceCost.projectRoute context costs closed) =\n    SearchRouteInspectTraceCost.tracePromptTokens costs",
+   "theoremFamily": "cost-fidelity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-FIDELITY", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_prompt_tokens_are_trace_prompt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (costs : List SearchRouteInspectTraceCost.CostedInspectStep)\n  (closed : Bool),\n  SearchRouteCost.uncachedTokenCost (SearchRouteInspectTraceCost.projectRoute context costs closed) =\n    SearchRouteInspectTraceCost.traceUncachedTokenCost costs",
+   "theoremFamily": "cost-fidelity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-FIDELITY", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_uncached_tokens_are_trace_cost",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (costs : List SearchRouteInspectTraceCost.CostedInspectStep)\n  (closed : Bool),\n  SearchRouteCost.roundCost (SearchRouteInspectTraceCost.projectRoute context costs closed) =\n    SearchRouteInspectTraceCost.traceRoundCost costs",
+   "theoremFamily": "cost-fidelity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-FIDELITY", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name": "SearchRouteInspectTraceCost.projected_rounds_are_trace_cost",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (closed : Bool),\n      SearchRouteInspectTraceCost.traceSemanticBaselineTokens costs =\n        SearchRouteCost.evidenceTokenCost (SearchRouteInspectTraceCost.projectRoute context costs closed) +\n          SearchRouteInspectTraceCost.traceSemanticSearchCacheSavings costs",
+   "theoremFamily": "cache-accounting",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-SEPARATION", "ASP-RFC-10.05-SIT-COST-STEP"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_semantic_search_cache_accounting",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (closed : Bool),\n      SearchRouteCost.promptTokenCost (SearchRouteInspectTraceCost.projectRoute context costs closed) =\n        SearchRouteInspectTraceCost.traceUncachedPromptTokens costs +\n          SearchRouteInspectTraceCost.tracePrefixCacheSavings costs",
+   "theoremFamily": "cache-accounting",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-SEPARATION", "ASP-RFC-10.05-SIT-COST-STEP"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_model_prefix_cache_accounting",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial : SearchRouteInspectLoop.InspectLoopState} (context : SearchRouteInspectTraceCost.TraceRouteContext)\n  (receipt : SearchRouteInspectTraceCost.CostedClosedTraceReceipt initial),\n  (SearchRouteInspectTraceCost.CostedClosedTraceReceipt.toGraphCandidate context receipt).route.closed = true ∧\n    (SearchRouteInspectTraceCost.CostedClosedTraceReceipt.toGraphCandidate context receipt).pathValidated = true",
+   "theoremFamily": "projection-validity",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-COST-STEP", "ASP-RFC-10.05-SIT-PROJECTION"],
+   "name":
+   "SearchRouteInspectTraceCost.projected_closed_receipt_is_closed_and_path_validated",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∀ (cost : SearchRouteInspectTraceCost.CostedInspectStep), cost ∈ costs → SearchRouteInspectTraceCost.CostSound cost",
+   "theoremFamily": "cache-soundness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-SEPARATION", "ASP-RFC-10.05-SIT-COST-STEP"],
+   "name": "SearchRouteInspectTraceCost.costed_trace_all_steps_are_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (closed : Bool),\n      SearchRouteCost.prefixCacheSoundB (SearchRouteInspectTraceCost.projectRoute context costs closed) = true",
+   "theoremFamily": "cache-soundness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-SEPARATION", "ASP-RFC-10.05-SIT-COST-STEP"],
+   "name": "SearchRouteInspectTraceCost.projected_prefix_cache_is_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState}\n  {costs : List SearchRouteInspectTraceCost.CostedInspectStep},\n  SearchRouteInspectTraceCost.CostedInspectTrace initial finalState costs →\n    ∀ (context : SearchRouteInspectTraceCost.TraceRouteContext) (closed : Bool),\n      SearchRouteCost.semanticCacheSoundB (SearchRouteInspectTraceCost.projectRoute context costs closed) = true",
+   "theoremFamily": "cache-soundness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-SEPARATION", "ASP-RFC-10.05-SIT-COST-STEP"],
+   "name": "SearchRouteInspectTraceCost.projected_semantic_cache_is_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (decision : SearchRouteInspectLoop.LoopDecision),\n  SearchRouteInspectTraceCost.CostSound (SearchRouteInspectTraceCost.semanticOnlyCacheStep decision) ∧\n    SearchRouteInspectTraceCost.CostSound (SearchRouteInspectTraceCost.prefixOnlyCacheStep decision)",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-COLLISION",
+    "ASP-RFC-10.05-SIT-OPTIMALITY-BOUNDARY"],
+   "name": "SearchRouteInspectTraceCost.cache_layer_examples_are_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (decision : SearchRouteInspectLoop.LoopDecision),\n  have semanticCandidate :=\n    SearchRouteInspectTraceCost.projectGraphCandidate SearchRouteInspectTraceCost.cacheCollisionContext\n      [SearchRouteInspectTraceCost.semanticOnlyCacheStep decision] true true;\n  have prefixCandidate :=\n    SearchRouteInspectTraceCost.projectGraphCandidate SearchRouteInspectTraceCost.cacheCollisionContext\n      [SearchRouteInspectTraceCost.prefixOnlyCacheStep decision] true true;\n  SearchRouteDAG.graphLexNoWorse semanticCandidate prefixCandidate ∧\n    SearchRouteDAG.graphLexNoWorse prefixCandidate semanticCandidate ∧\n      SearchRouteInspectTraceCost.traceSemanticSearchCacheSavings\n            [SearchRouteInspectTraceCost.semanticOnlyCacheStep decision] =\n          8 ∧\n        SearchRouteInspectTraceCost.tracePrefixCacheSavings\n              [SearchRouteInspectTraceCost.semanticOnlyCacheStep decision] =\n            0 ∧\n          SearchRouteInspectTraceCost.traceSemanticSearchCacheSavings\n                [SearchRouteInspectTraceCost.prefixOnlyCacheStep decision] =\n              0 ∧\n            SearchRouteInspectTraceCost.tracePrefixCacheSavings\n                [SearchRouteInspectTraceCost.prefixOnlyCacheStep decision] =\n              8",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIT-CACHE-COLLISION",
+    "ASP-RFC-10.05-SIT-CACHE-SEPARATION",
+    "ASP-RFC-10.05-SIT-COST-STEP",
+    "ASP-RFC-10.05-SIT-OPTIMALITY-BOUNDARY"],
+   "name":
+   "SearchRouteInspectTraceCost.equal_total_cost_does_not_identify_cache_layer",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 14,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 13}

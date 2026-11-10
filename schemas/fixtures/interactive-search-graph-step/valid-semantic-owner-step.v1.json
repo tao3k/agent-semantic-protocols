@@ -1,0 +1,145 @@
+{
+  "schemaId": "agent.semantic-protocols.interactive-search-graph-step",
+  "schemaVersion": "1",
+  "sessionId": "session-owner-model",
+  "beforeState": {
+    "stateDigest": "state-7",
+    "graphGeneration": 7,
+    "workspaceGeneration": "workspace-generation-42",
+    "currentNode": "goal:model-owner",
+    "remainingBudget": 4,
+    "obligations": ["claim:effective-owner"],
+    "frontier": ["symbol:ModelConfig"],
+    "visited": ["goal:model-owner"],
+    "routeMeasure": {
+      "semanticGraphHops": 2,
+      "executedGraphHops": 1,
+      "toolRounds": 1,
+      "searchTokens": 180,
+      "uncachedModelTokens": 60
+    },
+    "routeBudget": {
+      "maxEvidenceTokens": 4096,
+      "maxRawTokens": 8192,
+      "maxUncachedTokens": 2048,
+      "maxRounds": 8,
+      "maxGraphHops": 4,
+      "maxTransitions": 8
+    }
+  },
+  "action": {
+    "actionId": "action:semantic-owner",
+    "kind": "semantic-provider-search",
+    "toolId": "tool:semantic-search",
+    "vertical": "semantic",
+    "queryIdentity": "query:effective-model-owner",
+    "anchors": ["symbol:ModelConfig"],
+    "budgetBefore": 4
+  },
+  "observation": {
+    "invocationId": "invocation:semantic-owner",
+    "toolId": "tool:semantic-search",
+    "providerId": "provider:semantic-search",
+    "authority": "provider",
+    "vertical": "semantic",
+    "workspaceGeneration": "workspace-generation-42",
+    "queryIdentity": "query:effective-model-owner",
+    "anchors": ["symbol:ModelConfig"],
+    "facts": [
+      {
+        "factId": "fact:registry-loads-model-config",
+        "predicate": "loads",
+        "arguments": ["symbol:AgentRegistry", "symbol:ModelConfig"],
+        "vertical": "configuration",
+        "provenanceIds": ["receipt:semantic-owner"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "edge:registry-loads-model-config",
+        "source": "symbol:AgentRegistry",
+        "target": "symbol:ModelConfig",
+        "relation": "loads",
+        "vertical": "configuration",
+        "provenanceIds": ["receipt:semantic-owner"]
+      }
+    ],
+    "supportsClaims": ["claim:effective-owner"],
+    "rejectsClaims": [],
+    "rejections": [],
+    "noHit": false,
+    "provenanceIds": ["receipt:semantic-owner"]
+  },
+  "delta": {
+    "nodesAdded": ["symbol:AgentRegistry"],
+    "factIdsAdded": ["fact:registry-loads-model-config"],
+    "edgeIdsAdded": ["edge:registry-loads-model-config"],
+    "evidenceAccepted": ["receipt:semantic-owner"],
+    "evidenceRejected": [],
+    "obligationsOpened": ["claim:runtime-owner"],
+    "obligationsDischarged": ["claim:effective-owner"],
+    "frontierAdded": ["symbol:AgentRegistry"],
+    "frontierRemoved": ["symbol:ModelConfig"],
+    "visitedAdded": ["symbol:ModelConfig"],
+    "branchReceipts": [],
+    "remainingBudget": 3
+  },
+  "afterState": {
+    "stateDigest": "state-8",
+    "graphGeneration": 8,
+    "workspaceGeneration": "workspace-generation-42",
+    "currentNode": "symbol:AgentRegistry",
+    "remainingBudget": 3,
+    "obligations": ["claim:runtime-owner"],
+    "frontier": ["symbol:AgentRegistry"],
+    "visited": ["goal:model-owner", "symbol:ModelConfig"],
+    "routeMeasure": {
+      "semanticGraphHops": 3,
+      "executedGraphHops": 1,
+      "toolRounds": 1,
+      "searchTokens": 196,
+      "uncachedModelTokens": 60
+    },
+    "routeBudget": {
+      "maxEvidenceTokens": 4096,
+      "maxRawTokens": 8192,
+      "maxUncachedTokens": 2048,
+      "maxRounds": 8,
+      "maxGraphHops": 4,
+      "maxTransitions": 8
+    }
+  },
+  "datalogDerivations": [
+    {
+      "derivationId": "derivation:configuration-owner",
+      "rulesetDigest": "ruleset:ownership-v1",
+      "factGeneration": 8,
+      "sourceFactIds": ["fact:registry-loads-model-config"],
+      "derivedFacts": [
+        {
+          "factId": "fact:configuration-owner",
+          "predicate": "configuration_owner",
+          "arguments": ["symbol:ModelConfig", "symbol:AgentRegistry"],
+          "vertical": "configuration",
+          "provenanceIds": ["derivation:configuration-owner"]
+        }
+      ]
+    }
+  ],
+  "recommendedTransitions": [
+    {
+      "choiceId": "choice:runtime-probe",
+      "kind": "runtime-probe",
+      "vertical": "runtime",
+      "anchor": "symbol:AgentRegistry",
+      "reasonKind": "open-runtime-owner-obligation"
+    }
+  ],
+  "receipt": {
+    "graphStepId": "graph-step:8",
+    "previousGraphStepId": "graph-step:7",
+    "continuationIdentity": "continuation:state-8-runtime-owner",
+    "transitionDigest": "transition:state-7-to-state-8",
+    "replayStatus": "not-replayed"
+  }
+}

@@ -1,0 +1,35 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryManifest
+
+namespace ASPProof.Audit.AgentSessionHostRegistryManifest
+
+open ASPProof.AgentSessionHostRegistryManifest
+
+#print axioms duplicate_manifest_constructible
+#print axioms orphan_entry_constructible
+#print axioms unaccounted_live_key_constructible
+#print axioms duplicate_pair_not_strictly_ordered
+#print axioms reverse_pair_not_strictly_ordered
+#print axioms live_accepted_record_is_accounted
+#print axioms present_tombstone_record_is_accounted
+#print axioms compacted_tombstone_record_is_accounted
+#print axioms orphan_entry_not_accounted
+#print axioms live_key_without_entry_not_accounted
+#print axioms canonical_live_snapshot_constructible
+#print axioms canonical_manifest_has_ordering
+#print axioms canonical_manifest_has_accounting
+#print axioms duplicate_snapshot_not_canonical
+#print axioms orphan_snapshot_not_canonical
+#print axioms unaccounted_live_snapshot_not_canonical
+#print axioms canonical_input_binds_records
+#print axioms canonical_input_binds_entries
+#print axioms canonical_input_binds_revision_and_floor
+#print axioms tombstone_compaction_preserves_record
+#print axioms compacted_tombstone_snapshot_is_canonical
+#print axioms stale_manifest_revision_cannot_commit
+#print axioms canonical_same_head_manifest_commits_are_unique
+
+end ASPProof.Audit.AgentSessionHostRegistryManifest

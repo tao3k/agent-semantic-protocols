@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-server-scenario.v1.schema.json",
+  "title": "ASP Client Server Scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scenarioId",
+    "qualificationMode",
+    "authority",
+    "transport",
+    "steps",
+    "invariants",
+    "expectedTerminalState",
+    "otel"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-server-scenario"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]*$"
+    },
+    "qualificationMode": {
+      "enum": ["native-fixture", "live-corpus"]
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "transport": {
+      "enum": ["runtime-ipc", "http-json", "in-process"]
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "unique-operation-authority",
+          "terminal-receipt-immutable",
+          "cancellation-is-terminal",
+          "cache-authority-exact",
+          "single-flight-by-authority",
+          "ready-query-does-not-launch-provider"
+        ]
+      }
+    },
+    "expectedTerminalState": {
+      "enum": ["ready", "failed", "stopped", "cancelled"]
+    },
+    "otel": {
+      "$ref": "#/$defs/otel"
+    },
+    "liveCorpusEvidence": {
+      "$ref": "#/$defs/liveCorpusEvidence"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "qualificationMode": {
+            "const": "live-corpus"
+          }
+        },
+        "required": ["qualificationMode"]
+      },
+      "then": {
+        "required": ["liveCorpusEvidence"]
+      },
+      "else": {
+        "not": {
+          "required": ["liveCorpusEvidence"]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceIdentity",
+        "generationDigest",
+        "rootDigest",
+        "providerCatalogDigest",
+        "languageId",
+        "providerId"
+      ],
+      "properties": {
+        "workspaceIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generationDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerCatalogDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "enum": ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "md"]
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinal", "eventKind", "operationId", "budgetMicros"],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eventKind": {
+          "enum": [
+            "hook-admitted",
+            "lazy-load-started",
+            "ready",
+            "lease-acquired",
+            "request-admitted",
+            "cancellation-requested",
+            "request-terminal",
+            "lease-released",
+            "idle-closed"
+          ]
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leaseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "terminalStatus": {
+          "enum": ["ready", "failed", "stopped", "cancelled"]
+        },
+        "budgetMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["traceId", "requiredEventKinds", "terminalEventObserved"],
+      "properties": {
+        "traceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredEventKinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "terminalEventObserved": {
+          "const": true
+        }
+      }
+    },
+    "liveCorpusEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceId",
+        "revision",
+        "generationDigest",
+        "rootDigest",
+        "positiveCandidateCount",
+        "exactQueryStatus",
+        "zeroMatchCount",
+        "terminalTelemetryDigest"
+      ],
+      "properties": {
+        "resourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generationDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "positiveCandidateCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exactQueryStatus": {
+          "const": "hit"
+        },
+        "zeroMatchCount": {
+          "const": 0
+        },
+        "terminalTelemetryDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

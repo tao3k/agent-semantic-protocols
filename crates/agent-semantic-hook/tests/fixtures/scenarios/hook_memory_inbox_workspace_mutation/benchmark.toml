@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "hook-memory-inbox-workspace-mutation-v1"
+scenario = "hook-memory-inbox-workspace-mutation-v1"
+clock = "std::time::Instant"
+statistic = "append-elapsed-nanos"
+
+[work_metrics]
+encoded_event_byte_count = "measured"
+workspace_owner_count = "excluded"
+workspace_byte_count = "excluded"
+runtime_socket_count = 0
+runtime_process_start_count = 0
+filesystem_tree_walk_count = 0
+fsync_count = 0
+mmap_record_append_count = 1
+
+[interpretation]
+compile_link_wall_time_is_separate = true
+hook_process_startup_is_separate = true
+append_latency_is_the_measurement_boundary = true
+runtime_reconcile_latency_is_separate = true
+search_latency_is_separate = true

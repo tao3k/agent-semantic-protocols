@@ -1,0 +1,16 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+syntax = "proto3";
+
+package asp.python.graphs;
+
+// JSON remains schema-owned; protobuf owns only the efficient gRPC envelope.
+message GraphsEnvelope {
+  bytes json = 1;
+}
+
+service AspPythonGraphs {
+  rpc Session(stream GraphsEnvelope) returns (stream GraphsEnvelope);
+}

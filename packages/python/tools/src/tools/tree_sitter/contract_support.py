@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Shared support for tree-sitter rollout contract gates."""
 
 from __future__ import annotations
@@ -96,7 +100,7 @@ def pure_code(value: str, signature: str, label: str) -> None:
 
 
 def search_frontier(value: str, label: str) -> None:
-    contains(value, "[search-lexical]", label)
+    contains(value, "[search-playbook]", label)
     contains(value, "legend:", label)
     contains(value, "frontier ID.next", label)
     contains(value, "frontier=", label)

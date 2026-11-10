@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "first-call-single-flight-terminal-v1"
+scenario = "first-call-single-flight-terminal"
+clock = "std::time::Instant"
+statistic = "p95"
+warmup_iterations = 16
+measure_iterations = 128
+
+[work_metrics]
+search_computation_claim_count = 1
+query_computation_claim_count = 1
+terminal_waiter_count = 64
+generation_owned_task_count = 2
+caller_retry_count = 0
+public_building_terminal_count = 0
+
+[interpretation]
+timing_is_diagnostic = true
+work_metrics_are_acceptance_authority = true
+first_computation_budget_is_not_derived_from_this_microbenchmark = true

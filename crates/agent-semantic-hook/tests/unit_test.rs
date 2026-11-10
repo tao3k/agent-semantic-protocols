@@ -1,12 +1,18 @@
 #![deny(dead_code)]
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 #[path = "unit/classifier/mod.rs"]
 mod classifier;
 
+#[path = "unit/active_artifact_receipt.rs"]
+mod active_artifact_receipt;
+
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
-#[path = "unit/client_hook_config_asp_command_intent.rs"]
-mod client_hook_config_asp_command_intent;
+#[path = "unit/decision_message.rs"]
+mod decision_message;
 
 #[path = "unit/codex_config.rs"]
 mod codex_config;
@@ -17,20 +23,24 @@ mod command;
 mod command_apply_patch;
 #[path = "unit/command_shell.rs"]
 mod command_shell;
+#[path = "unit/search_playbook_pretool.rs"]
+mod search_playbook_pretool;
 
 #[path = "unit/event_state.rs"]
 mod event_state;
 #[path = "unit/event_state_subagent_model_drift.rs"]
 mod event_state_subagent_model_drift;
 
-#[path = "unit/provider_manifest/mod.rs"]
-mod provider_manifest;
+#[path = "unit/protocol_roundtrip.rs"]
+mod protocol_roundtrip;
 
-#[path = "unit/rust_harness_activation/mod.rs"]
-mod rust_harness_activation;
-#[path = "unit/rust_project_harness_gate.rs"]
-mod rust_project_harness_gate;
-#[path = "unit/source_access.rs"]
-mod source_access;
-#[path = "unit/source_dump_range.rs"]
-mod source_dump_range;
+#[path = "unit/hook_recovery_admission.rs"]
+mod hook_recovery_admission;
+#[path = "unit/hook_workspace_candidate.rs"]
+mod hook_workspace_candidate;
+#[path = "unit/match_policy_contract.rs"]
+mod match_policy_contract;
+#[path = "unit/test_process_env.rs"]
+mod test_process_env;
+#[path = "unit/tool_action.rs"]
+mod tool_action;

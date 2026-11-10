@@ -1,0 +1,89 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinReceiptBinding.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain →\n    chain.stateInstalled.content.step =\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReceiptStep.stateInstalled ∧\n      chain.stateInstalled.content.predecessorDigest = none",
+   "theoremFamily": "rooted-state-receipt",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCB-ROOT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.supported_reads_chain_has_rooted_state_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain →\n    chain.stateInstalled.content.attemptId = chain.tokenIssued.content.attemptId ∧\n      chain.tokenIssued.content.attemptId = chain.membershipPublished.content.attemptId ∧\n        chain.membershipPublished.content.attemptId = chain.readsEnabled.content.attemptId ∧\n          chain.stateInstalled.content.replicaId = chain.tokenIssued.content.replicaId ∧\n            chain.tokenIssued.content.replicaId = chain.membershipPublished.content.replicaId ∧\n              chain.membershipPublished.content.replicaId = chain.readsEnabled.content.replicaId",
+   "theoremFamily": "single-scope-chain",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCB-NONIMPLICATION", "ASP-RFC-10.05-CRCB-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.supported_reads_chain_has_single_attempt_and_replica",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain →\n    chain.tokenIssued.content.predecessorDigest = some chain.stateInstalled.digest ∧\n      chain.membershipPublished.content.predecessorDigest = some chain.tokenIssued.digest ∧\n        chain.readsEnabled.content.predecessorDigest = some chain.membershipPublished.digest",
+   "theoremFamily": "predecessor-digest-chain",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCB-LINK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.supported_reads_chain_is_predecessor_digest_linked",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  chain.stateInstalled.content.attemptId ≠ chain.tokenIssued.content.attemptId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain",
+   "theoremFamily": "cross-attempt-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCB-NONIMPLICATION", "ASP-RFC-10.05-CRCB-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.cross_attempt_receipts_cannot_support_reads",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  chain.tokenIssued.content.replicaId ≠ chain.membershipPublished.content.replicaId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain",
+   "theoremFamily": "cross-replica-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCB-NONIMPLICATION", "ASP-RFC-10.05-CRCB-SCOPE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.cross_replica_receipts_cannot_support_reads",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (chain : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.ReadsEnabledReceiptChain scheme),\n  chain.readsEnabled.content.predecessorDigest ≠ some chain.membershipPublished.digest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.SupportsReadsEnabled chain",
+   "theoremFamily": "detached-predecessor-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCB-LINK", "ASP-RFC-10.05-CRCB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.detached_predecessor_digest_cannot_support_reads",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DurableReceipt scheme),\n  left.digest = right.digest → left.content = right.content",
+   "theoremFamily": "injective-content-commitment",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCB-CONTENT", "ASP-RFC-10.05-CRCB-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.equal_receipt_digest_implies_equal_content",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DigestScheme}\n  (original changed : ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.DurableReceipt scheme),\n  original.content.resultDigest ≠ changed.content.resultDigest → original.digest ≠ changed.digest",
+   "theoremFamily": "result-substitution-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCB-CONTENT", "ASP-RFC-10.05-CRCB-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding.changed_result_cannot_reuse_receipt_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 8,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 8,
+ "axiomDependentDeclarationCount": 0}

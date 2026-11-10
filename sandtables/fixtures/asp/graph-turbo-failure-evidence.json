@@ -6,7 +6,7 @@
   "packetKind": "graph-turbo-request",
   "profile": "failure-evidence",
   "algorithm": "typed-ppr-diverse",
-  "seedIds": [
+  "entryNodeIds": [
     "failure:cache"
   ],
   "budget": 5,

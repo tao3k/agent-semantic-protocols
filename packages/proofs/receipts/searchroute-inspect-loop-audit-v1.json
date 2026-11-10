@@ -1,0 +1,148 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteInspectLoop.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteInspectLoop",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {state : SearchRouteInspectLoop.InspectLoopState} {decision : SearchRouteInspectLoop.LoopDecision},\n  SearchRouteInspectLoop.DecisionValid state decision →\n    SearchRouteInspectLoop.loopWork (SearchRouteInspectLoop.applyDecision state decision) <\n      SearchRouteInspectLoop.loopWork state",
+   "theoremFamily": "loop-work-decrease",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-DECISION", "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name": "SearchRouteInspectLoop.valid_decision_decreases_work",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {state : SearchRouteInspectLoop.InspectLoopState} {decision : SearchRouteInspectLoop.LoopDecision},\n  SearchRouteInspectLoop.LoopWellFormed state →\n    SearchRouteInspectLoop.DecisionValid state decision →\n      SearchRouteInspectLoop.LoopWellFormed (SearchRouteInspectLoop.applyDecision state decision)",
+   "theoremFamily": "loop-invariant",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-DECISION", "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name": "SearchRouteInspectLoop.valid_decision_preserves_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {state : SearchRouteInspectLoop.InspectLoopState} {decision : SearchRouteInspectLoop.LoopDecision},\n  SearchRouteInspectLoop.DecisionValid state decision →\n    SearchRouteDAG.graphLexNoWorse (SearchRouteInspectLoop.applyDecision state decision).selected state.selected",
+   "theoremFamily": "selected-non-regression",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-DECISION", "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name": "SearchRouteInspectLoop.valid_decision_selected_no_worse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {selected : SearchRouteDAG.GraphCandidate} {head : SearchRouteInspectLoop.WorkFrontier}\n  {rest : List SearchRouteInspectLoop.WorkFrontier},\n  SearchRouteInspectLoop.DecisionValid { selected := selected, pending := head :: rest }\n      SearchRouteInspectLoop.LoopDecision.prune →\n    ∀ (candidate : SearchRouteDAG.GraphCandidate),\n      candidate ∈ head.frontier.candidates → SearchRouteDAG.graphLexNoWorse selected candidate",
+   "theoremFamily": "safe-pruning",
+   "rfcClauseIds": ["ASP-RFC-10.05-SIL-COVERAGE", "ASP-RFC-10.05-SIL-TERMINAL"],
+   "name": "SearchRouteInspectLoop.valid_prune_is_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate} {state : SearchRouteInspectLoop.InspectLoopState}\n  {decision : SearchRouteInspectLoop.LoopDecision},\n  SearchRouteInspectLoop.LoopCovers candidateUniverse state →\n    SearchRouteInspectLoop.DecisionValid state decision →\n      SearchRouteInspectLoop.LoopCovers candidateUniverse (SearchRouteInspectLoop.applyDecision state decision)",
+   "theoremFamily": "coverage-conservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-SIL-COVERAGE", "ASP-RFC-10.05-SIL-TERMINAL"],
+   "name": "SearchRouteInspectLoop.valid_decision_preserves_coverage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteInspectLoop.loopWork finalState + steps ≤ SearchRouteInspectLoop.loopWork initial",
+   "theoremFamily": "trace-bound",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-TERMINAL", "ASP-RFC-10.05-SIL-TRACE-BOUND"],
+   "name": "SearchRouteInspectLoop.trace_work_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps → steps ≤ SearchRouteInspectLoop.loopWork initial",
+   "theoremFamily": "trace-bound",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-TERMINAL", "ASP-RFC-10.05-SIL-TRACE-BOUND"],
+   "name": "SearchRouteInspectLoop.trace_length_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteInspectLoop.LoopWellFormed initial → SearchRouteInspectLoop.LoopWellFormed finalState",
+   "theoremFamily": "trace-invariant",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-DECISION",
+    "ASP-RFC-10.05-SIL-TERMINAL",
+    "ASP-RFC-10.05-SIL-TRACE-BOUND",
+    "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name": "SearchRouteInspectLoop.trace_preserves_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate}\n  {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteInspectLoop.LoopCovers candidateUniverse initial →\n      SearchRouteInspectLoop.LoopCovers candidateUniverse finalState",
+   "theoremFamily": "trace-invariant",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-COVERAGE",
+    "ASP-RFC-10.05-SIL-TERMINAL",
+    "ASP-RFC-10.05-SIL-TRACE-BOUND"],
+   "name": "SearchRouteInspectLoop.trace_preserves_coverage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {state : SearchRouteInspectLoop.InspectLoopState},\n  SearchRouteInspectLoop.LoopWellFormed state →\n    SearchRouteInspectLoop.loopWork state = 0 → SearchRouteInspectLoop.LoopClosed state",
+   "theoremFamily": "terminal-closure",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-TERMINAL", "ASP-RFC-10.05-SIL-TRACE-BOUND"],
+   "name": "SearchRouteInspectLoop.zero_work_well_formed_is_closed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate} {state : SearchRouteInspectLoop.InspectLoopState},\n  SearchRouteInspectLoop.LoopClosed state →\n    SearchRouteInspectLoop.LoopCovers candidateUniverse state →\n      ∀ (candidate : SearchRouteDAG.GraphCandidate),\n        candidate ∈ candidateUniverse → SearchRouteDAG.graphLexNoWorse state.selected candidate",
+   "theoremFamily": "terminal-optimality",
+   "rfcClauseIds": ["ASP-RFC-10.05-SIL-COVERAGE", "ASP-RFC-10.05-SIL-TERMINAL"],
+   "name": "SearchRouteInspectLoop.closed_coverage_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate}\n  {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteInspectLoop.LoopWellFormed initial →\n      SearchRouteInspectLoop.LoopCovers candidateUniverse initial →\n        SearchRouteInspectLoop.loopWork finalState = 0 →\n          SearchRouteInspectLoop.LoopClosed finalState ∧\n            ∀ (candidate : SearchRouteDAG.GraphCandidate),\n              candidate ∈ candidateUniverse → SearchRouteDAG.graphLexNoWorse finalState.selected candidate",
+   "theoremFamily": "terminal-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-COVERAGE",
+    "ASP-RFC-10.05-SIL-TERMINAL",
+    "ASP-RFC-10.05-SIL-TRACE-BOUND"],
+   "name":
+   "SearchRouteInspectLoop.zero_work_trace_closes_and_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ {candidateUniverse : List SearchRouteDAG.GraphCandidate}\n  {initial finalState : SearchRouteInspectLoop.InspectLoopState} {steps : Nat},\n  SearchRouteInspectLoop.InspectLoopTrace initial finalState steps →\n    SearchRouteInspectLoop.LoopWellFormed initial →\n      SearchRouteInspectLoop.LoopCovers candidateUniverse initial →\n        steps = SearchRouteInspectLoop.loopWork initial →\n          SearchRouteInspectLoop.LoopClosed finalState ∧\n            ∀ (candidate : SearchRouteDAG.GraphCandidate),\n              candidate ∈ candidateUniverse → SearchRouteDAG.graphLexNoWorse finalState.selected candidate",
+   "theoremFamily": "bounded-global-optimality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-COVERAGE",
+    "ASP-RFC-10.05-SIL-DECISION",
+    "ASP-RFC-10.05-SIL-TERMINAL",
+    "ASP-RFC-10.05-SIL-TRACE-BOUND",
+    "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name":
+   "SearchRouteInspectLoop.full_budget_trace_closes_and_is_globally_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (selected : SearchRouteDAG.GraphCandidate) (frontier : SearchRouteInspectScheduler.CertifiedPartialFrontier),\n  SearchRouteInspectLoop.NonStrictCreditValid (SearchRouteInspectLoop.stutterWorkFrontier frontier)\n      [SearchRouteInspectLoop.stutterWorkFrontier frontier] ∧\n    SearchRouteInspectLoop.applyDecision (SearchRouteInspectLoop.stutterState selected frontier)\n          (SearchRouteInspectLoop.stutterDecision selected frontier) =\n        SearchRouteInspectLoop.stutterState selected frontier ∧\n      SearchRouteInspectLoop.loopWork\n          (SearchRouteInspectLoop.applyDecision (SearchRouteInspectLoop.stutterState selected frontier)\n            (SearchRouteInspectLoop.stutterDecision selected frontier)) =\n        SearchRouteInspectLoop.loopWork (SearchRouteInspectLoop.stutterState selected frontier)",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SIL-DECISION", "ASP-RFC-10.05-SIL-WORK-DECREASE"],
+   "name": "SearchRouteInspectLoop.non_strict_credit_allows_stutter",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 14,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 14}

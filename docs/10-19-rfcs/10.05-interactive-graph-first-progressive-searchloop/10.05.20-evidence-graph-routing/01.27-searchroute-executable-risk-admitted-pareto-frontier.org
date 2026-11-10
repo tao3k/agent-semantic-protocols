@@ -1,0 +1,214 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 01.27 — Executable Risk-Admitted Pareto Frontier
+#+startup: overview
+
+* Status and authority
+
+Draft research module.
+
+This RFC composes two existing authorities:
+
+- [[file:00.62-completion-equivalent-pareto-router.org][RFC 00.62]] defines completion equivalence and strict multi-dimensional cost dominance; and
+- [[file:01.26-searchroute-risk-feasible-graph-selection.org][RFC 01.26]] requires route feasibility and risk-envelope feasibility before any graph-cost optimization.
+
+Neither RFC currently owns an executable finite-catalog frontier algorithm. This module closes that gap without making executable Python the specification authority. The normative properties remain in Lean, the mathematical presentation remains inline Org-Babel Typst, and Python is a proof-local reference implementation and adversarial model checker.
+
+The owners are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteExecutableRiskAdmittedParetoFrontier.lean][Lean frontier certificate model]];
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteExecutableRiskAdmittedParetoFrontier.lean][modular Lean audit]];
+- [[file:../../../../packages/proofs/receipts/searchroute-executable-risk-admitted-pareto-frontier-audit-v1.json][Lean JSON receipt]];
+- [[file:../../../../packages/proofs/axle/SearchRouteExecutableRiskAdmittedParetoFrontier.lean][AXLE independent frontier model]];
+- [[file:../../../../packages/proofs/axle/SearchRouteUnsafeShorterDoesNotDominate.formal.lean][AXLE unsafe-short-route formal statement]];
+- [[file:../../../../packages/proofs/receipts/searchroute-executable-risk-admitted-pareto-frontier-axle-v1.json][AXLE normalized receipt]];
+- [[file:../../../../packages/proofs/src/asp_proofs/risk_feasible_router.py][Python executable reference model]];
+- [[file:../../../../packages/proofs/tests/test_risk_feasible_router.py][Python adversarial tests]];
+- [[file:../../../../packages/proofs/receipts/searchroute-executable-risk-admitted-pareto-frontier-python-v1.json][Python executable-model receipt]]; and
+- the inline Typst block below.
+
+This slice changes no Rust provider and no product package under =packages/python=. The Python implementation belongs to =packages/proofs= and cannot redefine admission, completion equivalence, or dominance.
+
+* Problem statement
+
+RFC 01.26 proves that optimization must be restricted to candidates satisfying both route and risk feasibility. RFC 00.62 proves that cost dominance is meaningful only between routes that realize the same completion obligation. A concrete router still needs an algorithm that turns a finite candidate catalog into a frontier.
+
+A superficially plausible implementation can violate the protocol in at least five ways:
+
+1. compare costs before filtering hard-infeasible candidates;
+2. compare routes from different completion classes;
+3. collapse a partial Pareto order into an undocumented total order;
+4. drop equal-cost but semantically distinct route identities; or
+5. return a frontier without proving that every omitted admitted candidate is dominated by a retained candidate.
+
+The executable model exists to find such algorithmic counterexamples. It is not evidence that the RFC is correct merely because its tests pass. Lean states the certificate obligations independently of Python execution.
+
+* Lean- and Python-discovered design gaps
+
+** Admission must precede dominance
+
+Let =A(c)= be composite admission: route feasibility and risk feasibility both hold. Strict dominance is defined only for two admitted candidates. An infeasible one-hop route therefore cannot dominate an admitted two-hop route, even when every displayed cost dimension is smaller.
+
+This is stronger than filtering only the final answer. If an infeasible candidate participates in an incremental frontier, it can incorrectly evict an admitted candidate before it is removed itself. The implementation must filter before every comparison.
+
+** Completion equivalence partitions the optimization domain
+
+Routes with different initial potential, final potential, generation, coverage digest, completion mode, or completion gap are not alternatives in one Pareto problem. They occupy different completion-equivalence classes.
+
+The executable frontier may process all classes in one catalog, but dominance edges may never cross a class boundary. A cheaper incomplete projection cannot prune a more expensive complete projection.
+
+** A Pareto frontier is not a single optimum
+
+Componentwise cost comparison is a partial order. Two admitted completion-equivalent routes may trade graph hops for tokens or interaction rounds. Neither dominates the other, so both must remain on the frontier unless a separate, identity-bound selection policy is introduced.
+
+The reference model returns a frontier, not one preferred route. Stable =route_id= ordering is serialization determinism only; it has no optimization authority.
+
+** Equal cost does not prove route interchangeability
+
+RFC 00.62 requires at least one strictly smaller dimension for dominance. Two distinct routes with identical cost vectors therefore do not dominate one another. Dropping one by lexical identifier would silently introduce a new equivalence relation that has not been certified.
+
+Equal-cost deduplication requires an explicit semantic route-equivalence certificate. Until that certificate exists, both identities remain. This may cost a few frontier tokens, but it prevents an unsound cache, coverage, or execution substitution.
+
+** Frontier coverage is an independent obligation
+
+Pairwise non-dominance of retained candidates proves only internal consistency. It does not prove that the router did not omit an unrelated admitted candidate.
+
+A finite-catalog frontier certificate must establish:
+
+1. every retained candidate belongs to the catalog and is admitted;
+2. no retained candidate strictly dominates another retained candidate; and
+3. every admitted catalog candidate is retained or is dominated by a retained completion-equivalent candidate.
+
+The third clause is the coverage obligation. Without it, an empty frontier vacuously satisfies the first two clauses.
+
+** Order independence is part of executable conformance
+
+Candidate discovery order may vary with graph traversal, provider latency, cache state, or agent scheduling. For a fixed catalog and identities, the mathematical frontier is order independent.
+
+The Python model therefore compares every candidate against the admitted catalog and serializes the result by stable =route_id=. Permuting the input must not change the returned set. An incremental production algorithm may be faster, but it must refine the same order-independent result.
+
+* Mathematical model
+
+#+name: executable-risk-admitted-pareto-frontier-math
+#+begin_src typst
+#let admitted(c) = c.route_feasible and c.risk_feasible
+
+#let completion_equivalent(a, b) = (
+  a.initial_potential == b.initial_potential and
+  a.final_potential == b.final_potential and
+  a.completion_key == b.completion_key
+)
+
+#let cost_no_worse(a, b) = (
+  a.cost.graph_hops <= b.cost.graph_hops and
+  a.cost.interaction_rounds <= b.cost.interaction_rounds and
+  a.cost.search_tokens <= b.cost.search_tokens and
+  a.cost.model_tokens <= b.cost.model_tokens
+)
+
+#let strict_cost_improvement(a, b) = (
+  a.cost.graph_hops < b.cost.graph_hops or
+  a.cost.interaction_rounds < b.cost.interaction_rounds or
+  a.cost.search_tokens < b.cost.search_tokens or
+  a.cost.model_tokens < b.cost.model_tokens
+)
+
+#let dominates(a, b) = (
+  admitted(a) and admitted(b) and
+  completion_equivalent(a, b) and
+  cost_no_worse(a, b) and
+  strict_cost_improvement(a, b)
+)
+
+#let frontier(catalog) = catalog.filter(a => (
+  admitted(a) and not catalog.any(b => dominates(b, a))))
+
+#let covered(catalog, result) = catalog.all(c => (
+  not admitted(c) or
+  result.any(f => f == c or dominates(f, c))))
+
+#let key = (generation: 7, coverage: "full", mode: "exact", gap: 0)
+#let safe = (
+  id: "safe-two-hop",
+  route_feasible: true,
+  risk_feasible: true,
+  initial_potential: 8,
+  final_potential: 0,
+  completion_key: key,
+  cost: (graph_hops: 2, interaction_rounds: 2, search_tokens: 80, model_tokens: 20),
+)
+#let unsafe = (
+  id: "unsafe-one-hop",
+  route_feasible: true,
+  risk_feasible: false,
+  initial_potential: 8,
+  final_potential: 0,
+  completion_key: key,
+  cost: (graph_hops: 1, interaction_rounds: 1, search_tokens: 60, model_tokens: 10),
+)
+#let result = frontier((unsafe, safe))
+
+#assert(result == (safe,))
+#assert(covered((unsafe, safe), result))
+#assert(not dominates(unsafe, safe))
+
+1
+#+end_src
+
+The example intentionally gives the unsafe route a better cost in every displayed dimension. Admission still removes it before comparison. The admitted two-hop route is the only frontier member.
+
+* Normative executable algorithm
+
+For a finite catalog =C=, the reference frontier is:
+
+#+begin_example
+admitted = [c for c in C if route_feasible(c) and risk_feasible(c)]
+frontier = [c for c in admitted
+            if not any(dominates(other, c) for other in admitted)]
+return stable_sort(frontier, key=route_id)
+#+end_example
+
+The stable sort is not a tie breaker for route quality. It only makes receipts reproducible.
+
+The Python model must be deterministic, standard-library-only, and side-effect free. It must not access source files, execute providers, consult mutable caches, estimate missing risk cells, or manufacture fallback candidates. Its inputs are already classified finite candidates.
+
+* Required validation properties
+
+The Python test surface must cover at least:
+
+- an unsafe one-hop route cannot evict an admitted two-hop route;
+- improving cache-related cost fields cannot create admission;
+- a dominated admitted route is pruned;
+- different completion classes remain incomparable;
+- equal-cost distinct route identities remain present;
+- input permutation does not change frontier membership;
+- every omitted admitted route is dominated by a retained route; and
+- an empty admitted catalog produces an empty frontier without fallback synthesis.
+
+Lean must independently prove the abstract certificate consequences:
+
+- frontier membership implies admission;
+- frontier membership implies catalog membership;
+- an omitted admitted catalog candidate has a retained dominator;
+- non-equivalent candidates cannot dominate one another;
+- mutual cost equality is insufficient for strict dominance; and
+- an empty admitted catalog cannot have a certified frontier member.
+
+* Receipt boundary
+
+Python test success is an executable-model receipt only. It does not replace:
+
+- the Lean axiom audit;
+- AXLE verification where a cross-model theorem is claimed;
+- the Org-Babel Typst evaluation; or
+- a future production-provider conformance receipt.
+
+Conversely, a Lean theorem over an abstract frontier predicate does not prove that a Python or Rust implementation enumerates the correct finite catalog. Executable permutation, coverage, and adversarial tests close that separate implementation obligation.
+
+* Consequences for SearchLoop
+
+The graph router can reduce agent/LLM search rounds only after hard admission and completion-equivalence partitioning. It may then expose a compact frontier rather than a complex CLI of speculative commands.
+
+If the frontier has one member, the router has a unique non-dominated route for that finite covered catalog. If it has several members, a later policy may choose among them, but that policy must be explicit and identity-bound. If it is empty, SearchLoop returns a fail-closed no-route receipt; it does not silently expand into repeated fallback searches.

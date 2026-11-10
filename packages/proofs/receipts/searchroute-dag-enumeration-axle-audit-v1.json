@@ -1,0 +1,39 @@
+{
+  "auditSha256": "d898d87fe64418abfd390853026c37946acec1b5f6b3af3dbcce547ee54446fa",
+  "axiomDependentDeclarationCount": 19,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 19,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG",
+    "ASP-RFC-10.05-SRE-TRANSITION-BOUND",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS",
+    "ASP-RFC-10.05-SRE-WALK-COMPLETENESS",
+    "ASP-RFC-10.05-SRE-WALK-ENUMERATOR",
+    "ASP-RFC-10.05-SRE-WALK-SOUNDNESS"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "constructive-candidate-completeness",
+    "cost-receipt",
+    "counterexample",
+    "metadata-enumeration-completeness",
+    "per-step-budget-bound",
+    "ranked-dag-fuel",
+    "route-catalog-construction",
+    "route-enumeration-completeness",
+    "step-catalog-construction",
+    "step-instance-coverage",
+    "transition-bound",
+    "two-stage-completeness",
+    "unconditional-bounded-completeness",
+    "walk-enumeration-completeness",
+    "walk-enumeration-soundness"
+  ]
+}

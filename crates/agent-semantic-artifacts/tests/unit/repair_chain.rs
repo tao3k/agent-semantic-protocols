@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use agent_semantic_artifacts::{
     ArtifactGeneration, ArtifactHash, ArtifactJson, ArtifactKind, ArtifactRepoId,
     ArtifactRootInput, ArtifactRootRef, ArtifactScopeId, ArtifactWorkspaceId,
-    RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef, build_repair_chain_frame,
-    hash_normalized_json,
+    RepairChainFrameIdentity, RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef,
+    build_repair_chain_frame, hash_normalized_json,
 };
 use serde_json::json;
 
@@ -23,19 +27,21 @@ fn test_root(root_kind: &str, generation: &str, seed: &[u8]) -> ArtifactRootRef 
     )
 }
 
-fn frame_input(
+fn frame_input<T: serde::Serialize>(
     frame_kind: RepairChainFrameKind,
     generation: &str,
-    content: serde_json::Value,
+    content: T,
     parents: Vec<RepairChainParentRef>,
 ) -> RepairChainFrameInput {
     RepairChainFrameInput::new(
-        frame_kind,
-        ArtifactRepoId::new("repo"),
-        ArtifactWorkspaceId::new("workspace"),
-        ArtifactScopeId::new("default"),
-        ArtifactGeneration::new(generation),
-        ArtifactJson::new(content),
+        RepairChainFrameIdentity {
+            frame_kind,
+            repo_id: ArtifactRepoId::new("repo"),
+            workspace_id: ArtifactWorkspaceId::new("workspace"),
+            scope_id: ArtifactScopeId::new("default"),
+            generation: ArtifactGeneration::new(generation),
+        },
+        ArtifactJson::from_serializable(&content).expect("repair frame content must serialize"),
         parents,
     )
 }
@@ -50,7 +56,9 @@ fn how_from_frame_links_search_sources_and_graph_roots() {
         "intent": "find owner evidence",
         "selectors": ["crates/agent-semantic-artifacts#repair-chain"],
     });
-    let expected_content_hash = hash_normalized_json(&ArtifactJson::new(content.clone()));
+    let expected_content_hash = hash_normalized_json(
+        &ArtifactJson::from_serializable(&content).expect("test artifact JSON should serialize"),
+    );
     let frame = build_repair_chain_frame(frame_input(
         RepairChainFrameKind::HowFromFrame,
         "how-from-1",

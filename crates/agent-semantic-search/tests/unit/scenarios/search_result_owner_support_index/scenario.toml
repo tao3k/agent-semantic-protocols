@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "search-result-owner-support-index"
+title = "Search fan-in admits only acquisition-supported owners"
+package = "agent-semantic-search"
+phase = "resident-fan-in"
+intent = "replace candidate-by-clause-by-owner rescans with one owner support index and reject graph-only owner promotion"
+
+[gate]
+policy = "SEARCH-RESULT-OWNER-SUPPORT-INDEX-001"
+support_index_builds_per_request = 1
+candidate_support_lookup_count = 1
+unrelated_owner_output_count = 0
+graph_is_independent_acquisition_vote = false
+deduplicate_before_support_index = true
+apply_evidence_limit_after_support_admission = true

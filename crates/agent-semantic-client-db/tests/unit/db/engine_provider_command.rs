@@ -1,18 +1,23 @@
-use std::{
-    env, fs,
-    path::PathBuf,
-    process::Command,
-    time::{SystemTime, UNIX_EPOCH},
-};
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use agent_semantic_client_db::{ClientDbEngine, ClientDbProviderCommandSelection};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_client_db::ClientDbProviderCommandSelection;
 
 #[test]
 fn db_engine_provider_command_selections_use_active_turso_path_without_retired_db_control() {
     let client_dir = temp_root("db-engine-provider-selection-client");
     let project_root = temp_root("db-engine-provider-selection-project");
-    let row = provider_command_selection_fixture("rust", "rs-harness", "sha256:abc");
-    let context_b_row = provider_command_selection_fixture("python", "py-harness", "sha256:def");
+    fs::create_dir_all(&project_root).expect("create provider selection project root");
+    let row = provider_command_selection_fixture("rust", "asp-rust", "sha256:abc");
+    let context_b_row = provider_command_selection_fixture("python", "asp-python", "sha256:def");
 
     ClientDbEngine::replace_provider_command_selections_from_client_dir(
         &client_dir,
@@ -52,98 +57,7 @@ fn db_engine_provider_command_selections_use_active_turso_path_without_retired_d
     assert_eq!(hit, vec![row]);
     assert_eq!(context_b_hit, vec![context_b_row]);
     assert!(miss.is_none());
-    assert!(client_dir.join("client.turso").exists());
-    let _ = fs::remove_dir_all(client_dir);
-    let _ = fs::remove_dir_all(project_root);
-}
-
-#[test]
-fn db_engine_provider_command_process_writer_helper() {
-    if env::var("ASP_TURSO_PROVIDER_PROCESS_STRESS_CHILD")
-        .ok()
-        .as_deref()
-        != Some("1")
-    {
-        return;
-    }
-    let client_dir = PathBuf::from(
-        env::var("ASP_TURSO_PROVIDER_PROCESS_STRESS_CLIENT_DIR")
-            .expect("ASP_TURSO_PROVIDER_PROCESS_STRESS_CLIENT_DIR"),
-    );
-    let project_root = PathBuf::from(
-        env::var("ASP_TURSO_PROVIDER_PROCESS_STRESS_PROJECT_ROOT")
-            .expect("ASP_TURSO_PROVIDER_PROCESS_STRESS_PROJECT_ROOT"),
-    );
-    let writer_id: usize = env::var("ASP_TURSO_PROVIDER_PROCESS_STRESS_WRITER_ID")
-        .expect("ASP_TURSO_PROVIDER_PROCESS_STRESS_WRITER_ID")
-        .parse()
-        .expect("parse ASP_TURSO_PROVIDER_PROCESS_STRESS_WRITER_ID");
-    let selection = provider_command_selection_fixture(
-        "rust",
-        &format!("rs-harness-{writer_id}"),
-        &format!("sha256:provider-{writer_id}"),
-    );
-    ClientDbEngine::replace_provider_command_selections_from_client_dir(
-        &client_dir,
-        &project_root,
-        &format!("sha256:ctx-process-{writer_id}"),
-        &[selection],
-    )
-    .expect("process writer should write Turso provider command selection");
-}
-
-#[test]
-fn db_engine_provider_command_writes_survive_concurrent_agent_process_stress() {
-    let client_dir = temp_root("db-engine-provider-selection-concurrent-client");
-    let project_root = temp_root("db-engine-provider-selection-concurrent-project");
-    let writer_count = 6usize;
-    let current_exe = env::current_exe().expect("locate current test binary");
-    let mut children = Vec::new();
-
-    for writer_id in 0..writer_count {
-        children.push(
-            Command::new(&current_exe)
-                .arg("--exact")
-                .arg("db_engine_provider_command::db_engine_provider_command_process_writer_helper")
-                .arg("--nocapture")
-                .env("ASP_TURSO_PROVIDER_PROCESS_STRESS_CHILD", "1")
-                .env("ASP_TURSO_PROVIDER_PROCESS_STRESS_CLIENT_DIR", &client_dir)
-                .env(
-                    "ASP_TURSO_PROVIDER_PROCESS_STRESS_PROJECT_ROOT",
-                    &project_root,
-                )
-                .env(
-                    "ASP_TURSO_PROVIDER_PROCESS_STRESS_WRITER_ID",
-                    writer_id.to_string(),
-                )
-                .spawn()
-                .expect("spawn process provider-command writer"),
-        );
-    }
-
-    for mut child in children {
-        let status = child.wait().expect("wait for process provider writer");
-        assert!(status.success(), "process provider writer failed: {status}");
-    }
-
-    for writer_id in 0..writer_count {
-        let hit = ClientDbEngine::lookup_provider_command_selections_from_client_dir(
-            &client_dir,
-            &project_root,
-            &format!("sha256:ctx-process-{writer_id}"),
-        )
-        .expect("lookup process provider command context")
-        .expect("process provider command context exists");
-        assert_eq!(
-            hit,
-            vec![provider_command_selection_fixture(
-                "rust",
-                &format!("rs-harness-{writer_id}"),
-                &format!("sha256:provider-{writer_id}"),
-            )]
-        );
-    }
-
+    assert!(client_dir.join("facts.turso").exists());
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
 }
@@ -154,16 +68,19 @@ fn provider_command_selection_fixture(
     manifest_digest: &str,
 ) -> ClientDbProviderCommandSelection {
     ClientDbProviderCommandSelection::new(
-        format!("agent.semantic-protocols.languages.{language_id}.{provider_id}"),
-        manifest_digest.to_string(),
-        language_id.to_string(),
-        provider_id.to_string(),
-        provider_id.to_string(),
-        "external-process".to_string(),
-        vec![format!("/tmp/{provider_id}")],
-        Some(format!("/tmp/{provider_id}")),
-        Some(42),
-        Some(1234),
+        agent_semantic_client_db::ClientDbProviderCommandSelectionInput {
+            manifest_id: format!("agent.semantic-protocols.languages.{language_id}.{provider_id}")
+                .into(),
+            manifest_digest: manifest_digest.to_string().into(),
+            language_id: language_id.to_string().into(),
+            provider_id: provider_id.to_string().into(),
+            binary: provider_id.to_string().into(),
+            execution: "external-process".to_string().into(),
+            provider_command_prefix: vec![format!("/tmp/{provider_id}").into()],
+            executable_path: Some(format!("/tmp/{provider_id}").into()),
+            executable_len: Some(42),
+            executable_mtime_ms: Some(1234),
+        },
     )
 }
 

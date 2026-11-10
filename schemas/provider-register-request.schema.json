@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-register-request.schema.json",
+  "title": "ASP Provider Register Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "request"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-register.request"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "expectedGeneration": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation", "providers"],
+          "properties": {
+            "operation": { "const": "initialize" },
+            "providers": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/providerIdentityRegistration" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation", "provider"],
+          "properties": {
+            "operation": { "const": "register" },
+            "provider": { "$ref": "#/$defs/liveProviderRegistration" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation", "providerId"],
+          "properties": {
+            "operation": { "const": "unregister" },
+            "providerId": { "$ref": "#/$defs/identity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation"],
+          "properties": {
+            "operation": { "const": "list" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "providerIdentityRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "registration"],
+      "properties": {
+        "languageId": { "$ref": "#/$defs/identity" },
+        "providerId": { "$ref": "#/$defs/identity" },
+        "registration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["languageId", "providerId"],
+          "properties": {
+            "languageId": { "$ref": "#/$defs/identity" },
+            "providerId": { "$ref": "#/$defs/identity" }
+          }
+        }
+      }
+    },
+    "liveProviderRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "registration"],
+      "properties": {
+        "languageId": { "$ref": "#/$defs/identity" },
+        "providerId": { "$ref": "#/$defs/identity" },
+        "registration": { "$ref": "provider-registration.schema.json" }
+      }
+    },
+    "providerRegistration": {
+      "oneOf": [
+        { "$ref": "#/$defs/providerIdentityRegistration" },
+        { "$ref": "#/$defs/liveProviderRegistration" }
+      ]
+    }
+  }
+}

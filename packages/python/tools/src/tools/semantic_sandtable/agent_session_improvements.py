@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Build reporting-oriented improvement data from agent-session analysis."""
 
 from __future__ import annotations
@@ -166,8 +170,8 @@ def _finding_metric(
         return "answer.present", bool(answer.get("present")), True
     if finding_id == "answer.weak-grounding":
         return "answer.groundingStatus", str(answer.get("groundingStatus")), "grounded"
-    if finding_id == "search.missing-prime":
-        return "searchPrimeCommands", 0, ">=1-before-followup"
+    if finding_id == "search.missing-playbook":
+        return "searchPlaybookCommands", 0, ">=1-before-query"
     if finding_id == "read.direct-risk":
         return "directReadRiskCommands", metrics["directReadRiskCommands"], 0
     if finding_id == "command.repeated":
@@ -212,7 +216,7 @@ def _finding_expected_impact(finding_id: str) -> str:
     return {
         "answer.missing": "Improve completion quality and answer auditability.",
         "answer.weak-grounding": "Make final answers easier to defend from evidence.",
-        "search.missing-prime": "Reduce low-quality search starts and wasted follow-up.",
+        "search.missing-playbook": "Reduce low-quality search starts and wasted follow-up.",
         "read.direct-risk": "Reduce broad source reads before parser-owned evidence.",
         "command.repeated": "Reduce repeated command rounds through query-set guidance.",
         "hook.denied": "Improve hook-follow behavior after denied commands.",

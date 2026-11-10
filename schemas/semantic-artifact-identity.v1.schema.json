@@ -30,21 +30,7 @@
   },
   "$defs": {
     "artifactHash": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "algorithm",
-        "value"
-      ],
-      "properties": {
-        "algorithm": {
-          "const": "blake3"
-        },
-        "value": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      }
+      "$ref": "semantic-artifact-definitions.v1.schema.json#/$defs/artifactHash"
     },
     "artifactRoot": {
       "type": "object",

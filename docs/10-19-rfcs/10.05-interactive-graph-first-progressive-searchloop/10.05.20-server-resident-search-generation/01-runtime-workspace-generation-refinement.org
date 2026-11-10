@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Runtime Workspace Generation Refinement
+
+* Status
+
+Normative refinement of the single-writer authority defined by
+=ASP-RFC-10.05-SRSG-AUTHORITY=.  The corresponding proof model is
+=packages/proofs/ASPProof/RuntimeWorkspaceGeneration.lean=.
+
+* Unique contract authority
+
+=ASP-RFC-10.05-SRSG-SCHEMA-AUTHORITY=: Root JSON Schema version 1 is the only
+wire-contract authority.  Rust types, provider output, runtime receipts, and
+Lean admission statements MUST refine that schema.  They MUST NOT independently
+copy optional compatibility fields.
+
+Activation declares only stable provider capability, provider artifact identity,
+and the admitted provider-schema digest.  Activation MUST NOT contain resolved
+workspace paths, repository candidate generations, project-resolution results,
+source roots, selectors, or an active workspace generation.
+
+A language provider reads its distributed JSON Schema and returns a typed project
+scope and source-snapshot evidence.  It MUST NOT choose, activate, invalidate, or
+publish a workspace generation.
+
+For package-manager-owned scopes, the provider MUST implement the package
+manager's complete membership semantics before publishing source roots.  For
+Cargo this includes explicit =[workspace].members= and non-excluded path
+dependencies located below the workspace root, including paths declared by
+=[workspace.dependencies]= and their transitive in-workspace path dependencies.
+ASP MUST NOT reconstruct this closure from extensions or directory heuristics.
+Every package admitted by that closure contributes its parser-owned target
+roots to the same project-scope digest and generation transaction.  Omitting a
+live package from that closure is a generation-production failure; exact query
+MUST NOT compensate with a filesystem or provider fallback.
+
+* Server-owned generation identity
+
+For one canonical workspace identity, the Runtime Server derives one generation
+identity from all of the following inputs:
+
+- admitted provider schema digest;
+- typed project-scope digest;
+- committed source root and live-overlay root;
+- module-graph digest;
+- canonical selector-set digest;
+- MemoryBackend digest.
+
+The selector set is not a derived side cache.  It participates in the same
+generation identity and publication transaction as source bytes, graph facts,
+and owner envelopes.
+
+* Publication transaction
+
+=ASP-RFC-10.05-SRSG-ATOMIC-PUBLICATION=: A generation becomes readable only
+through one publication receipt binding workspace identity, generation identity,
+provider-schema digest, project-scope digest, source roots, module graph,
+selector set, MemoryBackend segment, and durable Turso commit.
+
+The active state MUST be represented as one committed receipt.  A pointer-only,
+segment-only, selector-only, or database-only active state is invalid.  The
+previous committed generation remains readable until the new receipt has been
+durably committed and atomically installed.
+
+* Reconciliation and query purity
+
+Supervisor reconciliation may stage a replacement generation while the current
+generation remains readable.  Failure, cancellation, or writer unavailability
+MUST discard or retain only the staged generation; it MUST NOT invalidate the
+last committed generation.
+
+Search and exact query acquire a generation-pinned read lease.  They MUST NOT
+load, synchronize, repair, rebuild, activate, or publish configuration or index
+state.  A resident read receipt is admissible only when it reports a memory hit
+and zero database opens.
+
+The read lease authority and the writer admission authority are distinct
+runtime cells.  Acquiring a read lease reads only the atomically published
+active-generation pointer and its immutable resident segment.  It MUST NOT
+lock, inspect, subscribe to, or await the workspace writer catalog, staged
+generation, build task, terminal receipt, retry state, or provider process.
+Consequently, a permanently Building, failed, cancelled, or draining writer is
+observationally irrelevant to reads of the last committed generation.
+
+Publication is ordered in one direction only: a validated writer commit may
+atomically replace the active-generation pointer, but no writer transition may
+clear, revoke, or replace that pointer before the complete generation is
+durable and its resident segment is ready.  Writer task state and pending
+generation memory are bounded per workspace and are released on terminal,
+cancellation, supersession, and shutdown.
+
+The query data plane MUST NOT connect to the Runtime Server control endpoint,
+including when the workspace admission catalog, generation pointer, or mmap
+segment is absent or invalid.  Those states return a typed
+=active-workspace-generation-required= receipt.  Hook lifecycle admission owns
+the explicit =--workspace= target before an ASP tool executes, and the
+supervisor writer lane owns asynchronous construction and reconciliation.  A
+query MUST therefore never turn a missing generation into an implicit repair
+round trip.
+
+Graph-Turbo remains an algorithm/profile identity, but the only current
+implementation authority is the ASP Server-owned asp-python-graphs service.
+Search may consume a lease from the already-admitted Runtime generation, but it
+MUST NOT start a standalone graph-turbo executable, materialize an independent
+receipt, or reconcile a provider-private resident from the request path.  A
+missing asp-python-graphs service produces typed degradation or fail-closed
+evidence according to the requested rank contract; it never converts the read
+into an independent lifecycle.
+
+Canonical selector relocation is part of the immutable generation segment.
+When an owner path changes, exact lookup MUST resolve the language-provider
+identity through the active generation's relocation index before reporting
+=selector-stale=.  A selector produced by the same generation but absent from
+that index is an atomic-publication failure, not a query fallback opportunity.
+
+* Multi-workspace isolation
+
+Each canonical workspace owns an independent writer lane and read-lease set.
+Changing one workspace MUST NOT change the active generation, staged generation,
+leases, or provider readiness of another workspace.  There is no cross-workspace
+publication lock.
+
+* Verification boundary
+
+Lean proves the state-machine safety invariants:
+
+- deterministic generation identity for equal inputs;
+- single-writer staging and publication;
+- atomic publication-field agreement;
+- writer failure and stale reconciliation preserve the active generation;
+
+Repository candidate identity is the immutable Git baseline plus a scoped
+worktree overlay digest.  The overlay is derived with =gix status= and hashes
+only changed, staged, removed, or untracked files inside the admitted workspace
+scope.  Hashing candidate paths alone is forbidden: a same-path tracked edit
+must advance the candidate generation and schedule the workspace writer lane.
+Unrelated workspace changes MUST NOT invalidate this workspace.  This keeps the
+root-depth ={1,0}= model: committed Git identity supplies the stable root while
+the small dynamic overlay supplies unbiased live coding state.
+- read leases do not mutate the active generation;
+- transitions are isolated by workspace identity.
+
+Rust refinement gates MUST additionally demonstrate:
+
+- every runtime transition emits the schema-valid receipt represented in Lean;
+- Tokio tasks implement the server, workspace writer lanes, read leases, and
+  shutdown lifecycle without blocking filesystem or process management on the
+  data plane;
+- concurrent multi-workspace and multi-session stress never observes a torn
+  generation or a Turso lock failure;
+- resident query fixtures report zero database opens;
+- a permanently pending writer cannot delay or change 256 concurrent reads of
+  an already active generation, and no-active reads fail within the read-plane
+  budget without submitting or waiting for a build;
+- repeated reads do not increase writer task count, retained pending bytes,
+  process count, or resident RSS beyond the declared read-plane budget;
+- installed cold-workspace and warm-query latency satisfy their separate
+  percentile budgets.

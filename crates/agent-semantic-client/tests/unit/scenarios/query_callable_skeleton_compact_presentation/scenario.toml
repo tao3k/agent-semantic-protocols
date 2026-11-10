@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "query-callable-skeleton-compact-presentation"
+title = "Human Query presents callable skeletons without the wire envelope"
+package = "agent-semantic-client"
+phase = "resident-presentation"
+intent = "bind V1 projection identity to one distinct human renderer while preserving complete machine JSON"
+
+[gate]
+policy = "SEARCH-QUERY-CALLABLE-SKELETON-PRESENTATION-001"
+stable_schema_version = "1"
+human_callable_renderer = "compact-skeleton"
+human_source_renderer = "native-source"
+machine_renderer = "complete-wire-frame"
+mixed_projection_receipt = "reject"
+human_wire_authority_copy_count = 0
+runtime_or_provider_process_count = 0

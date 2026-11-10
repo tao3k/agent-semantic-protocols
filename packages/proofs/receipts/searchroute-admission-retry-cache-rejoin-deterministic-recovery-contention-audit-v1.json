@@ -1,0 +1,113 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Candidate : Type} (rank : Candidate → Nat) (left right : Candidate),\n  ∃ winner,\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.DeterministicWinner\n      (fun candidate => candidate = left ∨ candidate = right) rank winner",
+   "theoremFamily": "bounded-contention-winner-existence",
+   "rfcClauseIds": ["DRC-EXISTENCE", "DRC-WINNER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.two_candidate_winner_exists",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Candidate : Type} (eligible : Candidate → Prop) (rank : Candidate → Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.InjectiveRank rank →\n    ∀ (leftWinner rightWinner : Candidate),\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.DeterministicWinner eligible rank\n          leftWinner →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.DeterministicWinner eligible rank\n            rightWinner →\n          leftWinner = rightWinner",
+   "theoremFamily": "injective-rank-single-winner",
+   "rfcClauseIds": ["DRC-RANK", "DRC-UNIQUENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.injective_rank_makes_winner_unique",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ eligible rank,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.DeterministicWinner eligible rank false ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.DeterministicWinner eligible rank\n        true ∧\n      false ≠ true",
+   "theoremFamily": "rank-collision-counterexample",
+   "rfcClauseIds": ["DRC-COUNTEREXAMPLE", "DRC-RANK"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.noninjective_rank_can_admit_two_distinct_winners",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Candidate : Type}\n  (commit : ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.WinnerCommit Candidate),\n  commit.committedLeaseEpoch = commit.previousLeaseEpoch + 1 ∧\n    commit.committedPublicationRevision = commit.previousPublicationRevision + 1",
+   "theoremFamily": "winner-generation-advance",
+   "rfcClauseIds": ["DRC-COMMIT", "DRC-EPOCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.winner_commit_advances_generation",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Candidate : Type}\n  (commit : ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.WinnerCommit Candidate),\n  commit.previousLeaseEpoch ≠ commit.committedLeaseEpoch",
+   "theoremFamily": "previous-epoch-fence",
+   "rfcClauseIds": ["DRC-EPOCH", "DRC-FENCE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.previous_epoch_is_fenced_after_winner_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Candidate LeaseId RoundId : Type}\n  (redirect :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.LoserRedirect Candidate LeaseId\n      RoundId),\n  redirect.loser ≠ redirect.winner",
+   "theoremFamily": "loser-winner-separation",
+   "rfcClauseIds": ["DRC-LOSER", "DRC-REDIRECT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.loser_redirect_names_a_distinct_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId SnapshotId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundKey TransitionId\n      CandidateSetDigest PolicyId SnapshotId),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundCompatible left right →\n    left.candidateSetDigest = right.candidateSetDigest",
+   "theoremFamily": "round-candidate-set-binding",
+   "rfcClauseIds": ["DRC-IDENTITY", "DRC-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.contention_round_compatibility_binds_candidate_set",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId SnapshotId : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundKey TransitionId\n      CandidateSetDigest PolicyId SnapshotId),\n  left.candidateSetDigest ≠ right.candidateSetDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundCompatible left right",
+   "theoremFamily": "candidate-set-cache-invalidation",
+   "rfcClauseIds": ["DRC-CACHE", "DRC-CANDIDATES"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.changed_candidate_set_invalidates_contention_round",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {TransitionId CandidateSetDigest PolicyId SnapshotId Candidate : Type}\n  (left right :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundKey TransitionId\n      CandidateSetDigest PolicyId SnapshotId)\n  (winner : Candidate),\n  left.candidateSetDigest ≠ right.candidateSetDigest →\n    winner = winner ∧\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionRoundCompatible left right",
+   "theoremFamily": "same-winner-round-separation",
+   "rfcClauseIds": ["DRC-COUNTEREXAMPLE", "DRC-ROUND"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.same_winner_does_not_imply_round_compatibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision : Nat),\n  expectedLeaseEpoch ≠ currentLeaseEpoch →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionCommitFence\n        expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision",
+   "theoremFamily": "stale-epoch-commit-rejection",
+   "rfcClauseIds": ["DRC-COMMIT", "DRC-EPOCH"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.stale_epoch_blocks_contention_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision : Nat),\n  expectedRevision ≠ currentRevision →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.ContentionCommitFence\n        expectedLeaseEpoch currentLeaseEpoch expectedRevision currentRevision",
+   "theoremFamily": "stale-revision-commit-rejection",
+   "rfcClauseIds": ["DRC-COMMIT", "DRC-REVISION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention.stale_revision_blocks_contention_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 11,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 11,
+ "axiomDependentDeclarationCount": 0}

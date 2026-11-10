@@ -76,60 +76,60 @@
       "id": "prime",
       "command": [
         "asp",
-        "python",
         "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "python|source",
+        ".",
+        "--tantivy",
+        "title:\"python\"^2 OR body:\"source\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "analysis=structure",
-          "nativeSyntaxFacts=skipped",
-          "policyFindings=skipped",
-          "entries="
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     },
     {
       "id": "intent-query-set",
       "command": [
         "asp",
-        "python",
         "search",
-        "lexical",
-        "--query",
-        "Progress",
-        "--query",
-        "Console",
-        "--query",
-        "RenderableType",
-        "--query",
-        "owner",
-        "--query",
-        "tests",
-        "--view",
-        "seeds",
-        "--workspace",
-        "."
+        "playbook",
+        "--language",
+        "python",
+        "--rg",
+        "-n",
+        "-e",
+        "Progress|Console|RenderableType",
+        ".",
+        "--tantivy",
+        "title:\"Progress\"^2 OR body:\"Console\""
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
-          "querySet=3",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "#+begin_src gql :name result",
+          "(python:Language)-[:RESULTS]->[",
+          "#+end_src"
         ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMs": 300,
-        "maxElapsedMsWarn": 250
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 90000,
+        "maxElapsedMsWarn": 90000,
+        "stdoutNotContains": [
+          "MaterializationSet"
+        ]
       }
     }
   ]

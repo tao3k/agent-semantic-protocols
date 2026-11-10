@@ -1,11 +1,15 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph, rank_frontier
-from asp_graph_turbo.query_adjustments import (
+from asp_python_graphs import TypedGraph, rank_frontier
+from asp_python_graphs.query_adjustments import (
     query_adjustment_summary,
     query_adjustments_by_node,
 )
-from asp_graph_turbo.query_topology_membership import topology_membership_adjustment
+from asp_python_graphs.query_topology_membership import topology_membership_adjustment
 
 
 def test_topology_membership_prefers_owner_in_workspace_cluster() -> None:
@@ -28,21 +32,21 @@ def test_topology_membership_prefers_owner_in_workspace_cluster() -> None:
                     "id": "submodule:graph-turbo",
                     "kind": "submodule",
                     "role": "workspace-member",
-                    "value": "packages/python/asp_graph_turbo",
-                    "path": "packages/python/asp_graph_turbo",
+                    "value": "packages/python/asp_python_graphs",
+                    "path": "packages/python/asp_python_graphs",
                 },
                 {
                     "id": "owner:ranking",
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/ranking.py"
                     ),
                     "path": (
-                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/ranking.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking.py"
+                        "packages/python/asp_python_graphs/src/asp_python_graphs/ranking.py"
                     ),
                 },
                 {
@@ -145,15 +149,15 @@ def test_topology_membership_prefers_local_anchor_over_workspace_root() -> None:
                     "id": "submodule:typescript",
                     "kind": "submodule",
                     "role": "workspace-member",
-                    "value": "languages/typescript-lang-project-harness",
+                    "value": "languages/asp-typescript",
                 },
                 {
                     "id": "owner:submodule",
                     "kind": "owner",
                     "role": "path",
                     "value": (
-                        "languages/typescript-lang-project-harness/src/cli/"
-                        "semantic-search/workspace-ranking.ts"
+                        "languages/asp-typescript/src/cli/"
+                        "semantic-search/playbook-ranking.ts"
                     ),
                 },
                 {

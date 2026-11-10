@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "asp-mixed-gerbil-org-resident-search"
+title = "Mixed Gerbil and embedded Org search stays resident"
+policy_ids = ["RUST-AGENT-ASP-PERF-SUBCOMMAND-MIXED-DOCUMENT-SEARCH-001"]
+agent_goal = "A V1 Search playbook combining an installed Gerbil provider with the embedded Orgize document producer must require no asp-org artifact or process and repeat through the resident Runtime in less than one millisecond."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "(producers (language gerbil-scheme) (documents org))",
+  "runtime-dispatch-timing",
+  "state=ready",
+]
+inputs = "inputs"
+expected = "expected"

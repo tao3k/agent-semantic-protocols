@@ -1,0 +1,16 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.PolyglotSearchEvidenceSufficiency
+
+namespace ASPProof.Audit.PolyglotSearchEvidenceSufficiency
+
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.reference_only_evidence_cannot_authorize_replacement
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.executable_candidate_alone_is_insufficient
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.paired_measurements_without_qualification_remain_blocked
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.complete_evidence_authorizes_qualification
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.authorization_exposes_every_prerequisite
+#print axioms ASPProof.PolyglotSearchEvidenceSufficiency.downstream_claim_without_prerequisites_is_inconsistent
+
+end ASPProof.Audit.PolyglotSearchEvidenceSufficiency

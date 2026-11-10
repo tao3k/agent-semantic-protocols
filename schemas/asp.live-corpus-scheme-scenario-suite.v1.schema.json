@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-scheme-scenario-suite.v1.schema.json",
+  "title": "ASP Live Corpus Scheme Scenario Suite V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "lock_path", "required_languages", "client_protocol", "resident_sample_count", "sequential_sample_count", "concurrent_sample_count", "failure_injections", "cache_states", "cases"],
+  "properties": {
+    "schema_id": { "const": "agent.semantic-protocols.live-corpus-scheme-scenario-suite" },
+    "schema_version": { "const": "1" },
+    "lock_path": { "type": "string", "minLength": 1 },
+    "required_languages": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "resident_sample_count": { "type": "integer", "minimum": 128 },
+    "sequential_sample_count": { "const": 10 },
+    "concurrent_sample_count": { "const": 32 },
+    "failure_injections": { "const": ["cancel-before-terminal", "bounded-mailbox-saturation", "stale-content-binding"] },
+    "client_protocol": { "$ref": "#/$defs/clientProtocolContract" },
+    "cache_states": {
+      "const": [
+        { "state": "cold-build", "prepare_action": "new-isolated-workspace-generation", "mutation_scope": "benchmark-workspace-generation", "sample_count": 1 },
+        { "state": "cold-load", "prepare_action": "evict-resident-generation-only", "mutation_scope": "benchmark-workspace-generation", "sample_count": 10 },
+        { "state": "warm-read", "prepare_action": "reuse-exact-resident-generation", "mutation_scope": "none", "sample_count": 128 },
+        { "state": "released", "prepare_action": "release-exact-benchmark-generation", "mutation_scope": "benchmark-workspace-generation", "sample_count": 1 }
+      ]
+    },
+    "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } }
+  },
+  "$defs": {
+    "requiredClientProtocolTelemetryEvents": {
+      "const": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"]
+    },
+    "clientProtocolContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_id", "protocol_version", "transport", "workspace_scheduling", "phases", "required_telemetry_events", "applies_to_case_count", "maximum_resident_micros", "session_policy", "ready_effects", "forbidden_ready_effects", "non_ready_dispatch_count", "residual_task_count", "p50_maximum_micros", "p99_maximum_micros", "max_maximum_micros"],
+      "properties": {
+        "protocol_id": { "const": "agent.semantic-protocols.client" },
+        "protocol_version": { "const": "1" },
+        "transport": { "const": "grpc-tokio-streams" },
+        "workspace_scheduling": { "const": "tokio-join-set" },
+        "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
+        "required_telemetry_events": { "$ref": "#/$defs/requiredClientProtocolTelemetryEvents" },
+        "applies_to_case_count": { "const": 17 },
+        "maximum_resident_micros": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "session_policy": { "const": "one-initialize-per-session" },
+        "ready_effects": { "const": ["mpsc", "oneshot", "cancel", "response"] },
+        "forbidden_ready_effects": { "const": ["process", "filesystem", "dbWrite", "generationMutation", "providerActivation", "controlPoll"] },
+        "non_ready_dispatch_count": { "const": 0 },
+        "residual_task_count": { "const": 0 },
+        "p50_maximum_micros": { "const": 250 },
+        "p99_maximum_micros": { "const": 700 },
+        "max_maximum_micros": { "const": 1000 }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "resource_id", "scenario_id", "language_id", "provider_id", "scenario_classes", "minimum_candidates", "maximum_search_micros", "maximum_resident_query_micros", "required_telemetry_events", "search", "zero_match_search", "source_query", "callable_skeleton_query"],
+      "properties": {
+        "case_id": { "type": "string", "minLength": 1 },
+        "resource_id": { "type": "string", "minLength": 1 },
+        "scenario_id": { "type": "string", "minLength": 1 },
+        "language_id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "scenario_classes": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "prefixItems": [
+            { "enum": ["regex-truth", "ranked-text", "structural-syntax", "topology-membership", "explicit-conjunction"] },
+            { "const": "exact-parser-owner" },
+            { "const": "zero-match" }
+          ],
+          "items": false
+        },
+        "minimum_candidates": { "type": "integer", "minimum": 1 },
+        "maximum_search_micros": { "type": "integer", "minimum": 1, "maximum": 500000 },
+        "maximum_resident_query_micros": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "required_telemetry_events": { "const": ["runtime_resident_search_terminal", "runtime_query_playbook_terminal"] },
+        "search": { "type": "string", "pattern": "^\\(search " },
+        "zero_match_search": { "type": "string", "pattern": "^\\(search " },
+        "source_query": { "type": "string", "pattern": "^\\(query .+\\{\\{selector\\}\\}.+\\(projection source\\)" },
+        "callable_skeleton_query": { "type": "string", "pattern": "^\\(query .+\\{\\{selector\\}\\}.+\\(projection callable-skeleton\\)" }
+      }
+    }
+  }
+}

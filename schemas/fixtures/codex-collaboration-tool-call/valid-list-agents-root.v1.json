@@ -1,0 +1,7 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-collaboration-tool-call",
+  "schemaVersion": "1",
+  "namespace": "collaboration",
+  "toolName": "list_agents",
+  "toolInput": { "path_prefix": "/root" }
+}

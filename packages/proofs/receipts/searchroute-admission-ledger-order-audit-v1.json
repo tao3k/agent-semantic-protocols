@@ -1,0 +1,77 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionLedgerOrder.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionLedgerOrder",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type u} {first second third : ASPProof.SearchRouteAdmissionLedgerOrder.LedgerStamp Identity},\n  ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore first second →\n    ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore second third →\n      ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore first third",
+   "theoremFamily": "ledger-order law",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALO-LEDGER-ORDER"],
+   "name": "ASPProof.SearchRouteAdmissionLedgerOrder.happens_before_trans",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type u} (stamp : ASPProof.SearchRouteAdmissionLedgerOrder.LedgerStamp Identity),\n  ¬ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore stamp stamp",
+   "theoremFamily": "ledger-order law",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALO-LEDGER-ORDER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.happens_before_irreflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Token : Type v} {Identity : Type u} {verifyToken issuedByLedger : Token → Prop}\n  {baselineToken extensionToken : ASPProof.SearchRouteAdmissionLedgerOrder.StampedToken Token Identity}\n  {publication : ASPProof.SearchRouteAdmissionLedgerOrder.StampedPublication Identity},\n  ASPProof.SearchRouteAdmissionLedgerOrder.SequencedPublicationCertificate verifyToken issuedByLedger baselineToken\n      extensionToken publication →\n    issuedByLedger baselineToken.token ∧ issuedByLedger extensionToken.token",
+   "theoremFamily": "token authenticity",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALO-AUTHENTICITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.sequenced_certificate_tokens_are_authoritatively_issued",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Token : Type v} {Identity : Type u} {verifyToken issuedByLedger : Token → Prop}\n  {baselineToken extensionToken : ASPProof.SearchRouteAdmissionLedgerOrder.StampedToken Token Identity}\n  {publication : ASPProof.SearchRouteAdmissionLedgerOrder.StampedPublication Identity},\n  ASPProof.SearchRouteAdmissionLedgerOrder.SequencedPublicationCertificate verifyToken issuedByLedger baselineToken\n      extensionToken publication →\n    ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore baselineToken.stamp publication.stamp ∧\n      ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore extensionToken.stamp publication.stamp",
+   "theoremFamily": "sequenced publication",
+   "rfcClauseIds": ["ASP-RFC-10.05-ALO-PUBLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.sequenced_certificate_orders_both_tokens_before_publication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.wallClockTokenEvent.wallTime <\n    ASPProof.SearchRouteAdmissionLedgerOrder.wallClockPublicationEvent.wallTime ∧\n  ¬ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore\n      ASPProof.SearchRouteAdmissionLedgerOrder.wallClockTokenEvent.stamp\n      ASPProof.SearchRouteAdmissionLedgerOrder.wallClockPublicationEvent.stamp",
+   "theoremFamily": "ordering counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ALO-LEDGER-ORDER", "ASP-RFC-10.05-ALO-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.wall_clock_order_does_not_imply_ledger_order",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.previousGenerationTokenStamp.sequence <\n    ASPProof.SearchRouteAdmissionLedgerOrder.currentGenerationPublicationStamp.sequence ∧\n  ¬ASPProof.SearchRouteAdmissionLedgerOrder.HappensBefore\n      ASPProof.SearchRouteAdmissionLedgerOrder.previousGenerationTokenStamp\n      ASPProof.SearchRouteAdmissionLedgerOrder.currentGenerationPublicationStamp",
+   "theoremFamily": "generation counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ALO-GENERATION", "ASP-RFC-10.05-ALO-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.previous_generation_sequence_does_not_imply_happens_before",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.allowAll true ∧\n  ¬ASPProof.SearchRouteAdmissionLedgerOrder.issuedNone true ∧\n    ¬ASPProof.SearchRouteAdmissionLedgerOrder.VerifierSound ASPProof.SearchRouteAdmissionLedgerOrder.allowAll\n        ASPProof.SearchRouteAdmissionLedgerOrder.issuedNone",
+   "theoremFamily": "authenticity counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ALO-AUTHENTICITY", "ASP-RFC-10.05-ALO-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionLedgerOrder.permissive_verifier_does_not_establish_authenticity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 7,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 3}

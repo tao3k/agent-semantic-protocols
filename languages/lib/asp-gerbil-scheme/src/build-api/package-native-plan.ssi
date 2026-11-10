@@ -1,0 +1,55 @@
+prelude: :gerbil/core
+package: asp-gerbil-scheme/src/build-api
+namespace: asp-gerbil-scheme/src/build-api/package-native-plan
+
+(%#begin (%#import (spec: (:std/srfi/1) (0 append-map 0 append-map)))
+         (%#export
+          (spec:
+           0
+           asp-gerbil-scheme-package-api-spec
+           asp-gerbil-scheme-package-api-spec)
+          (spec:
+           0
+           asp-gerbil-scheme-package-api-stage-specs
+           asp-gerbil-scheme-package-api-stage-specs))
+         (%#define-runtime
+          +package-api-prologue-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-prologue-stages+)
+         (%#define-runtime
+          +package-api-policy-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-policy-stages+)
+         (%#define-runtime
+          +package-api-epilogue-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-epilogue-stages+)
+         (%#define-runtime
+          +package-api-command-prologue-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-command-prologue-stages+)
+         (%#define-runtime
+          +package-api-building-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-building-stages+)
+         (%#define-runtime
+          +package-api-build-api-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-build-api-stages+)
+         (%#define-runtime
+          +package-api-directory-stages+
+          asp-gerbil-scheme/src/build-api/package-native-plan#+package-api-directory-stages+)
+         (%#define-runtime
+          flatten-stages
+          asp-gerbil-scheme/src/build-api/package-native-plan#flatten-stages)
+         (%#define-runtime
+          package-api-stage-specs-cache
+          asp-gerbil-scheme/src/build-api/package-native-plan#package-api-stage-specs-cache)
+         (%#define-runtime
+          package-api-spec-cache
+          asp-gerbil-scheme/src/build-api/package-native-plan#package-api-spec-cache)
+         (%#define-runtime
+          package-api-stage-specs/fresh
+          asp-gerbil-scheme/src/build-api/package-native-plan#package-api-stage-specs/fresh)
+         (%#define-runtime
+          asp-gerbil-scheme-package-api-stage-specs
+          asp-gerbil-scheme/src/build-api/package-native-plan#asp-gerbil-scheme-package-api-stage-specs)
+         (%#define-runtime
+          asp-gerbil-scheme-package-api-spec
+          asp-gerbil-scheme/src/build-api/package-native-plan#asp-gerbil-scheme-package-api-spec))
+(%#call (%#ref load-module)
+        (%#quote "asp-gerbil-scheme/src/build-api/package-native-plan~0"))

@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+version = 1
+
+[[annotations]]
+path = [
+  ".envrc",
+  "LICENSE",
+  "LICENSES/**",
+  "packages/proofs/LICENSE",
+  "packages/python/**/LICENSE",
+  "**/*.json",
+  "**/*.jsonl",
+  "*.lock",
+  "**/*.lock",
+  "**/*.typed",
+  "**/*.txt",
+  "**/*.cfg",
+  "**/*.st",
+  "**/.gitkeep",
+  "**/fixture/**",
+  "**/fixtures/**",
+  "**/generated/**",
+  "**/snapshot/**",
+  "**/snapshots/**",
+  "**/testdata/**",
+  "**/expected-output/**",
+  "**/scenarios/**/inputs/**",
+  "**/scenarios/**/expected/**",
+  "packages/proofs/lean-toolchain",
+  "crates/agent-semantic-artifacts/tests/unit/runtime_artifact_activation_migration.rs",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 tao3k team and Contributors"
+SPDX-License-Identifier = "Apache-2.0 AND LGPL-2.1-or-later"

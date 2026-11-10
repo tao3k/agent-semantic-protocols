@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+name: Data Search composition
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  search-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MRR_NATIVE_PROGRESS: "1"
+      GERBIL_BUILD_VERBOSE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: tao3k/gerbil-scheme-rust/.github/actions/setup-gerbil@f61643b3a787d005612dc5021b4941612f3e1f68
+        with:
+          release-root: ${{ github.workspace }}/.ci/gerbil-release
+      - name: Initialize committed provider descriptors
+        run: |
+          git submodule update --init --depth 1 languages/asp-rust languages/orgize languages/asp-gerbil-scheme languages/asp-typescript languages/asp-python languages/AspJulia.jl org
+      - name: Fetch the committed built-in Orgize FFI bundle
+        uses: ./.github/actions/orgize-ffi
+        with:
+          install-toolchain: 'false'
+      - name: Prepare the declared MRR search owner
+        uses: ./.github/actions/mrr-search-owner
+        with:
+          install-toolchain: 'false'
+      - name: Qualify the consumer bridge and Runtime Server
+        run: |
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-SEARCH-BUILD -- cargo test -vv --locked -p agent-semantic-mrr --features mrr-data-search-composition --no-run
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-SEARCH-TEST -- cargo test --locked -p agent-semantic-mrr --features mrr-data-search-composition data_search_composition -- --nocapture --test-threads=1
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-RUNTIME-BUILD -- cargo check -vv --locked -p agent-semantic-runtime-server --features mrr-data-search-composition
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-PRODUCER-AXES-BUILD -- cargo test -vv --locked -p agent-semantic-runtime-server --features mrr-data-search-composition --lib runtime_asp_client::resolved_route::tests --no-run
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-PRODUCER-AXES-TEST -- cargo test --locked -p agent-semantic-runtime-server --features mrr-data-search-composition --lib runtime_asp_client::resolved_route::tests -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-FFI-LINK -- cargo build -vv --locked -p agent-semantic-client --bin asp --bin asp-live-corpus-test --features live-corpus-test,mrr-data-search-composition
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-FFI-SMOKE -- target/debug/asp --help
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-ORG-STARTUP-BUILD -- cargo test -vv --locked -p agent-semantic-client --test embedded_org_ffi_startup --features mrr-data-search-composition --no-run
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-ORG-STARTUP-TEST -- cargo test --locked -p agent-semantic-client --test embedded_org_ffi_startup --features mrr-data-search-composition -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 1800 --label ASP-LIVE-CORPUS-BUNDLE-BUILD -- cargo test -vv --locked -p agent-semantic-client --lib --features live-corpus-test,mrr-data-search-composition live_corpus_test --no-run
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-LIVE-CORPUS-BUNDLE-TEST -- cargo test --locked -p agent-semantic-client --lib --features live-corpus-test,mrr-data-search-composition live_corpus_test -- --nocapture
+          python3 -m mrr_proof_validation.process_runner --total 45 --label ASP-LIVE-CORPUS-CONTRACT-TEST -- cargo test --locked -p agent-semantic-client --lib --features live-corpus-test,mrr-data-search-composition repository_corpus_lock_is_the_materializer_contract -- --nocapture

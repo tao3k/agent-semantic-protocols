@@ -1,0 +1,23 @@
+{
+  "auditSha256": "5fe7d2f97a951b15d07277ff449e8c53a97d2d80b439347c7f1fa29cd61114ee",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 20,
+  "axiomInventory": [],
+  "declarationCount": 20,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-ASBR-BOUND",
+    "ASP-RFC-10.05-ASBR-EQUIVALENCE",
+    "ASP-RFC-10.05-ASBR-INCOMPATIBILITY",
+    "ASP-RFC-10.05-ASBR-REFINEMENT"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "bounded-refinement",
+    "monotone-refinement",
+    "outcome-entailment",
+    "root-preservation",
+    "semantic-equivalence",
+    "semantic-incompatibility"
+  ]
+}

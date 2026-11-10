@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Turso Merkle artifact graph adapter.
 
 use std::path::Path;
@@ -8,14 +12,12 @@ use crate::types::{
 };
 
 use super::turso::connect_turso_client_db;
-use super::turso_operation_lock::acquire_turso_operation_lock;
 use super::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
-async fn bootstrap_turso_artifact_graph_schema(
-    connection: &turso::Connection,
+pub(super) async fn bootstrap_turso_artifact_graph_schema(
+    connection: &mrr_data_backend::turso_driver::Connection,
 ) -> Result<(), String> {
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_artifact_root (
@@ -79,7 +81,7 @@ async fn bootstrap_turso_artifact_graph_schema(
         "CREATE INDEX IF NOT EXISTS asp_proof_receipt_root_idx
             ON asp_proof_receipt(root_hash, okay)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso artifact graph schema",
@@ -96,7 +98,6 @@ pub async fn upsert_turso_artifact_roots(
     if roots.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "artifact-root-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
     for root in roots {
@@ -112,7 +113,6 @@ pub async fn upsert_turso_artifact_edges(
     if edges.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "artifact-edge-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
     for edge in edges {
@@ -122,7 +122,7 @@ pub async fn upsert_turso_artifact_edges(
             .map_err(|error| format!("failed to encode Turso artifact edge parent: {error}"))?;
         let child_json = serde_json::to_string(&edge.child)
             .map_err(|error| format!("failed to encode Turso artifact edge child: {error}"))?;
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -177,7 +177,6 @@ pub async fn upsert_turso_repair_chain_frames(
     if frames.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "repair-chain-frame-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
     for frame in frames {
@@ -186,7 +185,7 @@ pub async fn upsert_turso_repair_chain_frames(
             .map_err(|error| format!("failed to encode Turso repair-chain root: {error}"))?;
         let parents_json = serde_json::to_string(&frame.parents)
             .map_err(|error| format!("failed to encode Turso repair-chain parents: {error}"))?;
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -230,14 +229,13 @@ pub async fn upsert_turso_proof_receipts(
     if receipts.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "proof-receipt-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
     for receipt in receipts {
         upsert_turso_artifact_root_with_connection(&connection, &receipt.root).await?;
         let root_json = serde_json::to_string(&receipt.root)
             .map_err(|error| format!("failed to encode Turso proof receipt root: {error}"))?;
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -296,7 +294,7 @@ pub async fn lookup_turso_artifact_edges(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -339,7 +337,7 @@ pub async fn lookup_turso_repair_chain_frames(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -377,7 +375,7 @@ pub async fn lookup_turso_proof_receipts(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_artifact_graph_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -414,10 +412,10 @@ pub async fn lookup_turso_proof_receipts(
 }
 
 async fn upsert_turso_artifact_root_with_connection(
-    connection: &turso::Connection,
+    connection: &mrr_data_backend::turso_driver::Connection,
     root: &ClientDbArtifactRoot,
 ) -> Result<(), String> {
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -481,7 +479,9 @@ async fn upsert_turso_artifact_root_with_connection(
     Ok(())
 }
 
-fn turso_artifact_edge_from_row(row: &turso::Row) -> Result<ClientDbArtifactEdge, String> {
+fn turso_artifact_edge_from_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<ClientDbArtifactEdge, String> {
     let ordinal = row
         .get::<i64>(3)
         .map_err(|error| format!("failed to read Turso artifact edge ordinal: {error}"))?
@@ -515,7 +515,7 @@ fn turso_artifact_edge_from_row(row: &turso::Row) -> Result<ClientDbArtifactEdge
 }
 
 fn turso_repair_chain_frame_from_row(
-    row: &turso::Row,
+    row: &mrr_data_backend::turso_driver::Row,
 ) -> Result<ClientDbArtifactRepairChainFrame, String> {
     let root_json = row
         .get::<String>(1)
@@ -542,7 +542,9 @@ fn turso_repair_chain_frame_from_row(
     })
 }
 
-fn turso_proof_receipt_from_row(row: &turso::Row) -> Result<ClientDbProofReceipt, String> {
+fn turso_proof_receipt_from_row(
+    row: &mrr_data_backend::turso_driver::Row,
+) -> Result<ClientDbProofReceipt, String> {
     let root_json = row
         .get::<String>(8)
         .map_err(|error| format!("failed to read Turso proof receipt root JSON: {error}"))?;

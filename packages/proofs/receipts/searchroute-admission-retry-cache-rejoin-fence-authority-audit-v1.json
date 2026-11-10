@@ -1,0 +1,67 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinFenceAuthority.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (command : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme)\n  (committable :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme state\n      command),\n  ∃ receipt,\n    (ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.commitAuthorityCommand verifier scheme state command\n            committable).receiptLedger =\n        receipt :: state.receiptLedger ∧\n      receipt.term = state.term ∧\n        receipt.leaderId = state.leaderId ∧\n          receipt.observedFence = ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.jointFence state.joint ∧\n            receipt.committedFence =\n              ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.jointFence\n                (ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.commitAuthorityCommand verifier scheme\n                    state command committable).joint",
+   "theoremFamily": "durable-fence-receipt",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.authority_commit_records_bound_durable_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (command : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme),\n  command.term < state.term →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme state command",
+   "theoremFamily": "stale-term-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-TERM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.stale_term_command_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (command : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme),\n  command.leaderId ≠ state.leaderId →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme state command",
+   "theoremFamily": "nonleader-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-LEADER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.nonleader_command_cannot_commit",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (oldCommand : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme)\n  (newLeader : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.LeaderId),\n  oldCommand.term = state.term →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.electLeader state newLeader) oldCommand",
+   "theoremFamily": "leader-change-fencing",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-LEADER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.leader_change_fences_old_term",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (command : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme)\n  (committable :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme state\n      command),\n  ∃ receipt,\n    receipt ∈\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.commitAuthorityCommand verifier scheme state\n            command committable).receiptLedger ∧\n      receipt.observedFence = ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence.jointFence state.joint",
+   "theoremFamily": "lost-response-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.committed_receipt_is_queryable_after_lost_response",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {Digest : Type} (verifier : ASPProof.SearchRouteAdmissionRetryCacheRejoinVerifierLifecycle.LifecycleVerifier Digest)\n  (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot.PolicyDigestScheme)\n  (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceAuthorityState Digest scheme)\n  (command : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.AuthorityCommand verifier scheme)\n  (committable :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.CanCommitAuthorityCommand verifier scheme state command)\n  (existing : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceCommitReceipt scheme.Digest),\n  existing ∈ state.receiptLedger →\n    existing ∈\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.commitAuthorityCommand verifier scheme state command\n          committable).receiptLedger",
+   "theoremFamily": "append-only-receipt-ledger",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRFA-LEDGER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.later_commit_preserves_existing_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 2}

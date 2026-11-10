@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 #+TITLE: Agent Compact Code Graph Literature Review
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-03
@@ -85,7 +89,7 @@ ID=<nodeKind>:<targetRole>(<target>)!<nextAction>
 Examples:
 
 #+begin_src text
-O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
+O=owner:path(src/asp_python/verification/model.py)!owner
 Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 T=test:path(tests/verification/test_model.py)!tests

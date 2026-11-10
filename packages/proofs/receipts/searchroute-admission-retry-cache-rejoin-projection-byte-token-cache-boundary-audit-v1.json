@@ -1,0 +1,140 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (fixedBytes candidateReceiptBytes comparisonReceiptBytes : Nat),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EncodedProjectionBytes fixedBytes 0\n      candidateReceiptBytes 0 comparisonReceiptBytes =\n    fixedBytes",
+   "theoremFamily": "zero-candidate-fixed-projection",
+   "rfcClauseIds": ["PBTC-BYTES", "PBTC-EMPTY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.zero_candidate_projection_has_only_fixed_bytes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedBytes candidateCount candidateCapacity candidateReceiptBytes comparisonCount comparisonReceiptBytes : Nat),\n  candidateCount ≤ candidateCapacity →\n    comparisonCount ≤ candidateCount →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EncodedProjectionBytes fixedBytes\n          candidateCount candidateReceiptBytes comparisonCount comparisonReceiptBytes ≤\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EncodedProjectionBytes fixedBytes\n          candidateCapacity candidateReceiptBytes candidateCapacity comparisonReceiptBytes",
+   "theoremFamily": "encoded-projection-byte-bound",
+   "rfcClauseIds": ["PBTC-BYTES", "PBTC-CAPACITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.projection_bytes_are_bounded_by_candidate_capacity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (tokenizer : ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.TokenizerUpperBound)\n  (promptFixedTokens encodedBytes encodedByteCapacity : Nat),\n  encodedBytes ≤ encodedByteCapacity →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ProjectedPromptTokens tokenizer\n        promptFixedTokens encodedBytes ≤\n      promptFixedTokens + (tokenizer.overhead + encodedByteCapacity * tokenizer.tokensPerEncodedByte)",
+   "theoremFamily": "tokenizer-contract-bound",
+   "rfcClauseIds": ["PBTC-ENCODED", "PBTC-TOKENS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.projected_tokens_are_bounded_by_encoded_bytes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (attempts maxAttempts fixedBytes candidateCount candidateCapacity candidateReceiptBytes comparisonCount\n    comparisonReceiptBytes : Nat),\n  attempts ≤ maxAttempts →\n    candidateCount ≤ candidateCapacity →\n      comparisonCount ≤ candidateCount →\n        attempts *\n            ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EncodedProjectionBytes\n              fixedBytes candidateCount candidateReceiptBytes comparisonCount comparisonReceiptBytes ≤\n          maxAttempts *\n            ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EncodedProjectionBytes\n              fixedBytes candidateCapacity candidateReceiptBytes candidateCapacity comparisonReceiptBytes",
+   "theoremFamily": "retry-projection-byte-bound",
+   "rfcClauseIds": ["PBTC-CAPACITY", "PBTC-RETRY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.recovery_projection_bytes_are_attempt_and_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (rawBytes : Nat),\n  rawBytes <\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.EscapedJsonStringBytes rawBytes",
+   "theoremFamily": "json-escape-expansion",
+   "rfcClauseIds": ["PBTC-COUNTEREXAMPLE", "PBTC-JSON"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.escaped_json_size_exceeds_raw_size",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (rawCapacity encodedCapacity : Nat), ∃ rawBytes encodedBytes, rawBytes ≤ rawCapacity ∧ encodedCapacity < encodedBytes",
+   "theoremFamily": "raw-cap-insufficient",
+   "rfcClauseIds": ["PBTC-ENCODER-CONTRACT", "PBTC-JSON"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.raw_cap_without_encoder_contract_does_not_bound_encoded_bytes",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ProjectionIdentity),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ProjectionCompatible identity identity",
+   "theoremFamily": "projection-identity-reflexive",
+   "rfcClauseIds": ["PBTC-IDENTITY", "PBTC-PROJECTION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.unchanged_projection_identity_is_compatible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (graphDigest rendererVersion changedRendererVersion projectionPolicyDigest schemaDigest : Nat),\n  rendererVersion ≠ changedRendererVersion →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ProjectionCompatible\n        { graphDigest := graphDigest, rendererVersion := rendererVersion,\n          projectionPolicyDigest := projectionPolicyDigest, schemaDigest := schemaDigest }\n        { graphDigest := graphDigest, rendererVersion := changedRendererVersion,\n          projectionPolicyDigest := projectionPolicyDigest, schemaDigest := schemaDigest }",
+   "theoremFamily": "renderer-version-invalidates-projection",
+   "rfcClauseIds": ["PBTC-PROJECTION", "PBTC-RENDERER"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.renderer_change_invalidates_projection_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (key : ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.SearchResultCacheKey),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.SearchResultCacheCompatible key key",
+   "theoremFamily": "search-cache-key-reflexive",
+   "rfcClauseIds": ["PBTC-IDENTITY", "PBTC-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.unchanged_search_result_cache_key_is_compatible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (_renderedPrefixDigest workspaceSnapshotDigest changedWorkspaceSnapshotDigest queryDigest searchPolicyDigest\n    providerSchemaDigest : Nat),\n  workspaceSnapshotDigest ≠ changedWorkspaceSnapshotDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.SearchResultCacheCompatible\n        { workspaceSnapshotDigest := workspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, providerSchemaDigest := providerSchemaDigest }\n        { workspaceSnapshotDigest := changedWorkspaceSnapshotDigest, queryDigest := queryDigest,\n          searchPolicyDigest := searchPolicyDigest, providerSchemaDigest := providerSchemaDigest }",
+   "theoremFamily": "render-prefix-not-search-validity",
+   "rfcClauseIds": ["PBTC-SEARCH-CACHE", "PBTC-SNAPSHOT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.same_rendered_prefix_does_not_validate_changed_search_snapshot",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (key : ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ModelPrefixCacheKey),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ModelPrefixCacheCompatible key key",
+   "theoremFamily": "model-prefix-key-reflexive",
+   "rfcClauseIds": ["PBTC-IDENTITY", "PBTC-MODEL-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.unchanged_model_prefix_cache_key_is_compatible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (modelDigest changedModelDigest systemPromptDigest toolSchemaDigest renderedPrefixDigest prefixBoundaryDigest : Nat),\n  modelDigest ≠ changedModelDigest →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ModelPrefixCacheCompatible\n        { modelDigest := modelDigest, systemPromptDigest := systemPromptDigest, toolSchemaDigest := toolSchemaDigest,\n          renderedPrefixDigest := renderedPrefixDigest, prefixBoundaryDigest := prefixBoundaryDigest }\n        { modelDigest := changedModelDigest, systemPromptDigest := systemPromptDigest,\n          toolSchemaDigest := toolSchemaDigest, renderedPrefixDigest := renderedPrefixDigest,\n          prefixBoundaryDigest := prefixBoundaryDigest }",
+   "theoremFamily": "render-prefix-not-model-validity",
+   "rfcClauseIds": ["PBTC-MODEL", "PBTC-MODEL-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.same_rendered_prefix_does_not_validate_changed_model",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ searchLeft searchRight modelLeft modelRight,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.SearchResultCacheCompatible searchLeft\n      searchRight ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ModelPrefixCacheCompatible modelLeft\n        modelRight",
+   "theoremFamily": "search-cache-not-model-cache",
+   "rfcClauseIds": ["PBTC-MODEL-CACHE", "PBTC-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.search_result_cache_validity_does_not_imply_model_prefix_cache_validity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ modelLeft modelRight searchLeft searchRight,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.ModelPrefixCacheCompatible modelLeft\n      modelRight ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.SearchResultCacheCompatible\n        searchLeft searchRight",
+   "theoremFamily": "model-cache-not-search-cache",
+   "rfcClauseIds": ["PBTC-MODEL-CACHE", "PBTC-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinProjectionByteTokenCacheBoundary.model_prefix_cache_validity_does_not_imply_search_result_cache_validity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 14,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 14,
+ "axiomDependentDeclarationCount": 0}

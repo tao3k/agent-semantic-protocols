@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-dev-config.v1.schema.json",
+  "title": "Runtime Dev Configuration",
+  "description": "The ASP_STATE_HOME/asp.toml [dev] table. This is a subsection schema, not the project-local .agents/asp.toml contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "enabled",
+    "root"
+  ],
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "root": {
+      "type": "string",
+      "minLength": 2,
+      "pattern": "^/[^\\u0000]*$"
+    }
+  }
+}

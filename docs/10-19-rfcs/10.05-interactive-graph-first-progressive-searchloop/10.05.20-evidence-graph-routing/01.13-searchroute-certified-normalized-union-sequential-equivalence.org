@@ -1,0 +1,209 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Certified Normalized Union and Sequential Equivalence
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status
+
+This RFC is a proof-driven refinement of
+=01.12-searchroute-deterministic-frontier-merge-fanout-fanin.org=.
+
+It lifts the associative, commutative, and idempotent canonical-membership
+algebra into a certified finite normalization context. It proves the semantic
+condition under which normalized fan-in is extensionally equivalent to
+sequential insertion and constructs a counterexample for premature destructive
+provenance pruning.
+
+This RFC changes no Rust or Python runtime code.
+
+* Scope and non-claim
+
+The proof model deliberately separates two obligations:
+
+1. merge algebra under one certified keep mask;
+2. soundness and completeness of the keep mask against the real multiobjective
+   Pareto dominance relation.
+
+This RFC proves the first obligation. It does not claim that an arbitrary mask
+is a correct Pareto frontier. The second obligation remains explicit and is the
+next proof boundary.
+
+This separation prevents the RFC from silently assuming the hardest part of the
+graph-router algorithm.
+
+* Certified finite normalization context
+
+A normalization identity binds:
+
+- evaluation identity from 01.12;
+- committed candidate-universe root;
+- canonical cost-vector root;
+- dominance-certificate root;
+- keep-mask root.
+
+The keep mask is finite because the committed candidate universe is
+capacity-bounded. For each canonical route identity it records whether the
+route survives normalization.
+
+The mask MUST be reused only when the complete normalization identity matches.
+A matching query with a changed universe, cost vector, dominance certificate,
+or mask is not the same normalization problem.
+
+* Normalized union
+
+Let =U= be canonical membership union and =N_K= be normalization under certified
+keep mask =K=:
+
+#+name: certified-normalized-union-equivalence
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ N_K(F_1 union F_2)
+  = N_K(N_K(F_1) union F_2) $
+
+$ N_K((F_1 union F_2) union F_3)
+  = N_K(N_K(N_K(F_1) union F_2) union F_3) $
+
+$ N_K(N_K(F)) = N_K(F) $
+
+$ N_K((F_1 union F_2) union F_3)
+  = N_K(F_1 union (F_2 union F_3)) $
+#+end_src
+
+These equations are pointwise over canonical route identities. They establish:
+
+- normalization idempotence;
+- normalized union versus sequential insertion equivalence;
+- three-way fan-in versus sequential insertion equivalence;
+- parallel versus sequential equivalence under one fixed mask.
+
+The fixed-mask condition is essential. Recomputing a different mask after every
+partial branch is a different operation and does not inherit these laws.
+
+* Provenance counterexample
+
+For one canonical route, let =E_early= contain evidence =e_0= and =E_late=
+contain evidence =e_1=. Correct duplicate handling unions both evidence sets.
+Premature destructive pruning discards =E_early= before the later duplicate
+arrives.
+
+#+name: premature-pruning-provenance-counterexample
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ E_"correct" = E_"early" union E_"late" $
+
+$ E_"pruned" = emptyset union E_"late" $
+
+$ e_0 in E_"correct"
+  quad "and" quad e_0 "not in" E_"pruned" $
+
+$ E_"correct" != E_"pruned" $
+#+end_src
+
+This is not only a serialization difference. The two results are not
+extensionally equal because membership differs for =e_0=.
+
+Therefore an implementation MUST NOT physically discard duplicate provenance
+merely because the route is absent from an intermediate visible Pareto
+frontier. It may instead:
+
+- retain canonical candidate/provenance state behind the visible frontier;
+- retain a lossless provenance accumulator;
+- prove that discarded provenance can never affect later duplicate resolution.
+
+Without one of these conditions, sequential insertion can diverge from
+normalized union.
+
+* Relation to evidence graph routing
+
+The evidence graph has two different projections:
+
+1. the canonical candidate/provenance state required for correct normalization;
+2. the compact visible Pareto frontier shown to the agent.
+
+The visible frontier is not a lossless replacement for canonical graph state.
+This distinction is important for token-efficient search: the agent receives
+only the compact frontier, while the router retains roots and inspectable
+provenance needed for correct later fan-in.
+
+The graph router therefore minimizes projection tokens without deleting
+semantic state required by subsequent normalization.
+
+* Receipt contract
+
+The compact normalization receipt MUST contain:
+
+- complete normalization identity;
+- input membership roots;
+- canonical union root;
+- keep-mask root;
+- normalized frontier root;
+- provenance accumulator root;
+- candidate capacity and examined count;
+- kept and removed counts;
+- explicit certification status;
+- progressive inspect continuation for candidate-level decisions.
+
+An explicit candidate-by-candidate normalization disclosure is bounded only by
+the committed candidate capacity:
+
+#+begin_example
+fixedBytes + bytesPerCandidate * candidateCapacity
+#+end_example
+
+Without a capacity, no fixed disclosure bound exists. The default
+root-and-count summary remains independent of candidate count.
+
+* Proof-discovered design corrections
+
+1. ACI membership merge is insufficient unless normalization uses one stable,
+   certified context.
+2. An intermediate visible frontier is not lossless canonical state.
+3. Destructive pruning can lose evidence that a later duplicate must merge.
+4. A matching evaluation identity is insufficient when the candidate universe
+   or dominance certificate changed.
+5. Parallel/sequential equivalence is extensional membership equality, not
+   byte-for-byte branch completion order.
+6. The keep-mask proof obligation cannot be hidden inside the merge theorem.
+
+* Lean realization
+
+The executable proof model is:
+
+- =packages/proofs/ASPProof/SearchRouteCertifiedNormalizedUnionSequentialEquivalence.lean=
+- =packages/proofs/ASPProof/Audit/SearchRouteCertifiedNormalizedUnionSequentialEquivalence.lean=
+- =packages/proofs/audit/SearchRouteCertifiedNormalizedUnionSequentialEquivalenceAudit.lean=
+- =packages/proofs/receipts/searchroute-certified-normalized-union-sequential-equivalence-audit-v1.json=
+
+The audit covers normalized-union equivalence, sequential and parallel
+equivalence, provenance-set union, the destructive-pruning counterexample,
+normalization identity fences, explicit disclosure bounds, and compact summary
+size.
+
+* Protocol requirements
+
+1. Frontier normalization MUST bind one complete normalization identity.
+2. Fan-in and sequential insertion MUST be extensionally equivalent under that
+   identity.
+3. Visible-frontier pruning MUST NOT destroy canonical provenance needed by
+   later duplicate resolution.
+4. Cross-universe and cross-dominance-certificate reuse MUST fail closed.
+5. The receipt MUST distinguish canonical union state from visible normalized
+   frontier state.
+6. Explicit normalization details MUST be capacity-bounded and progressively
+   inspectable.
+7. Parallel execution MUST remain an optional accelerator whose semantic result
+   equals the sequential protocol.
+
+* Next proof boundary
+
+The next refinement must derive the keep mask from a finite set of canonical
+multiobjective cost vectors. It should prove:
+
+- every kept route is undominated;
+- every removed route has a retained dominating witness;
+- equal-cost distinct canonical routes are both preserved;
+- the computed mask is deterministic under candidate permutation;
+- the dominance-witness receipt is bounded by candidate capacity.
+
+Only that proof can discharge the current certified-mask assumption.

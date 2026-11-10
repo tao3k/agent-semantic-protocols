@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 10.06.11 Selector-seed typed topology
+#+subtitle: One graph authority for exact-selector SearchLoop entry and Compact Render
+#+options: toc:2 num:t
+
+* Status
+
+This module is normative under [[file:../10.06-agent-search-projection.org][10.06 Agent Search Projection]].
+It owns selector-seeded graph admission and its compact projection boundary.
+
+* Shared projection
+
+A selector-seeded SearchLoop entry uses the existing Graph Turbo =node=,
+=edge=, and =actionFrontierEntry= definitions.  It MUST NOT define a
+selector-specific packet family.
+
+Canonical validation admits the =owner= and =item= nodes once, then derives:
+
+- =serves_owner= from the language/provider root to the owner;
+- =owns_item= from the owner to the canonical selector;
+- =targets_item= from the query intent to that selector; and
+- =materializes= from a typed action to its target node.
+
+Presentation ordinals such as =A1= are not durable graph identities.  Stable
+node ids are derived from node kind and semantic value.
+
+* Fail-closed selector admission
+
+A malformed or cross-language selector retains only an unresolved
+=selector-input= node.  It MUST NOT create an owner node, item node, owner/item
+edge, or executable exact-query action.  This preserves the invalid input for
+explanation without promoting it into evidence.
+
+* Compact Render
+
+Compact =ownerSeed=, =symbolSeed=, =actionFrontier=, and =recommendedNext=
+lines are projections of the admitted graph.  Compact Render MUST NOT parse the
+selector again or independently choose an action.  An action is renderable only
+while its =materializes= edge exists.
+
+Exact commands use =--projection source=, =--projection content=, or another
+schema-admitted projection.  Removed =--code= and =--names-only= flags never
+reappear in a materialized action.
+
+* Runtime reuse
+
+The projection is owned by =agent-semantic-search= rather than the CLI adapter.
+Graph Turbo, the protocol facade, and the interactive SearchLoop therefore
+consume the same node ids and edges.  A later session cursor may resume one of
+these materialized nodes without replaying selector parsing or provider
+discovery.
+
+Cursor admission and history-jump conservation are owned by
+[[file:10.06.12-materialized-graph-cursor.org][10.06.12 Materialized graph cursor]].
+
+* Verification
+
+Required tests prove:
+
+- stable nodes and edges for identical selector requests;
+- absence of false owner/item facts for invalid or cross-language selectors;
+- typed action-frontier fields contain no materialized command or argv;
+- Compact Render emits only actions backed by a =materializes= edge; and
+- exact next commands contain explicit =--projection= and no removed flag.

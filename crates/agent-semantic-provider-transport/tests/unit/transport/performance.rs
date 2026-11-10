@@ -1,12 +1,19 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 use std::fs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use crate::run_provider_process;
+use crate::ProviderProcessSupervisor;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
-#[test]
-fn provider_process_hot_path_stays_inside_performance_gate() {
+#[tokio::test]
+async fn provider_process_hot_path_stays_inside_performance_gate() {
     let root = temp_dir("hot-path-performance");
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf ok\n");
     let iterations = 8;
@@ -14,20 +21,29 @@ fn provider_process_hot_path_stays_inside_performance_gate() {
     let batch_gate = Duration::from_secs(8);
     let started_at = Instant::now();
     let mut run_times = Vec::with_capacity(iterations);
+    let mut admission_times = Vec::with_capacity(iterations);
+    let supervisor = ProviderProcessSupervisor::default();
 
     for _ in 0..iterations {
-        let output =
-            run_provider_process(spec(program.clone(), root.clone())).expect("run provider");
+        let output = supervisor
+            .run(spec(program.clone(), root.clone()))
+            .await
+            .expect("run provider");
         assert!(output.status.success());
         assert_eq!(output.stdout.as_ref(), b"ok");
-        run_times.push(output.receipt.elapsed);
+        admission_times.push(output.receipt.admission_wait());
+        run_times.push(output.receipt.elapsed());
     }
+    supervisor.shutdown().await;
 
     let elapsed = started_at.elapsed();
     let mut sorted_run_times = run_times.clone();
     sorted_run_times.sort();
     let median = sorted_run_times[sorted_run_times.len() / 2];
     let slowest = sorted_run_times[sorted_run_times.len() - 1];
+    eprintln!(
+        "[provider-process-performance] batch={elapsed:?} runs={run_times:?} admissions={admission_times:?}"
+    );
     assert!(
         median < median_gate,
         "provider process median exceeded {median_gate:?}; median={median:?}; slowest={slowest:?}; runs={run_times:?}"

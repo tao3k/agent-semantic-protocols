@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-project-resolution-scenario-receipt.v1.schema.json",
+  "title": "Provider project-resolution scenario receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "packageManager",
+    "scenarioId",
+    "state",
+    "dimensions",
+    "projectResolutionDigest",
+    "metrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-project-resolution-scenario-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageManager": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "state": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "workspace-membership",
+          "workspace-exclusion",
+          "explicit-targets",
+          "default-targets",
+          "path-dependencies",
+          "external-dependencies",
+          "custom-source-paths",
+          "manifest-delta",
+          "lockfile-delta",
+          "candidate-outside-scope",
+          "missing-project-entry",
+          "malformed-project-entry",
+          "non-git-explicit-entry",
+          "warm-unchanged"
+        ]
+      }
+    },
+    "projectResolutionDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wallMicros",
+        "fullWorkspaceReads",
+        "databaseOpens"
+      ],
+      "properties": {
+        "wallMicros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fullWorkspaceReads": {
+          "const": 0
+        },
+        "databaseOpens": {
+          "const": 0
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasonKind",
+        "next"
+      ],
+      "properties": {
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "next": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "failure"
+        ]
+      }
+    }
+  ]
+}

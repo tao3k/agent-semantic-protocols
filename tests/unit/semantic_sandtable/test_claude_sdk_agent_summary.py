@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate Claude SDK message summarization for sandtable audits."""
 
 from __future__ import annotations
@@ -5,7 +9,7 @@ from __future__ import annotations
 from tools.semantic_sandtable.agent_observations import summarize_agent_messages
 
 
-def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
+def test_agent_summary_extracts_token_cost_and_current_command_flow() -> None:
     summary = summarize_agent_messages(
         [
             {
@@ -14,14 +18,14 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                     {
                         "name": "Bash",
                         "input": {
-                            "command": "asp rust search prime --workspace . --view seeds",
+                            "command": "asp search playbook --language rust --rg --files . --tantivy term source",
                         },
                     },
                     {
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust search pipe 'Vec scalar' --workspace . --view seeds"
+                                "asp search playbook --language rust --rg -n -e 'Vec scalar' . --tantivy term 'Vec scalar'"
                             ),
                         },
                     },
@@ -29,8 +33,8 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust search reasoning owner-query "
-                                "--owner src/lib.rs --query 'Vec scalar' --workspace . --view seeds"
+                                "asp query playbook --language rust --dependency serde "
+                                "--workspace . --view seeds"
                             ),
                         },
                     },
@@ -38,7 +42,7 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --selector src/lib.rs:1:12 "
+                                "asp query playbook --language rust --selector src/lib.rs:1:12 "
                                 "--treesitter-query '(function_item)' --code ."
                             ),
                         },
@@ -67,16 +71,13 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
     assert summary["tokenCost"]["outputTokens"] == 25
     assert summary["tokenCost"]["cacheReadInputTokens"] == 50
     assert summary["tokenCost"]["costUsd"] == 0.0123
-    assert summary["pipeFlow"]["aspCommands"] == 5
-    assert summary["pipeFlow"]["searchCommands"] == 3
-    assert summary["pipeFlow"]["queryCommands"] == 1
-    assert summary["pipeFlow"]["guideCommands"] == 1
-    assert summary["pipeFlow"]["searchPipeCommands"] == 1
-    assert summary["pipeFlow"]["searchReasoningCommands"] == 1
-    assert summary["pipeFlow"]["searchPrimeCommands"] == 1
-    assert summary["pipeFlow"]["querySelectorCommands"] == 1
-    assert summary["pipeFlow"]["treesitterQueryCommands"] == 1
-    assert summary["pipeFlow"]["complexPipeFlow"]
+    assert summary["commandFlow"]["aspCommands"] == 5
+    assert summary["commandFlow"]["searchCommands"] == 2
+    assert summary["commandFlow"]["queryCommands"] == 2
+    assert summary["commandFlow"]["guideCommands"] == 1
+    assert summary["commandFlow"]["searchPlaybookCommands"] == 2
+    assert summary["commandFlow"]["querySelectorCommands"] == 1
+    assert summary["commandFlow"]["treesitterQueryCommands"] == 1
     assert summary["finalAnswer"]["present"] is False
 
 
@@ -88,7 +89,7 @@ def test_agent_summary_extracts_final_answer_after_last_tool_use() -> None:
                 "content": [
                     {
                         "name": "Bash",
-                        "input": {"command": "asp rust search prime --workspace . --view seeds"},
+                        "input": {"command": "asp search playbook --language rust --rg --files . --tantivy term source"},
                     }
                 ],
             },
@@ -121,7 +122,7 @@ def test_agent_summary_extracts_result_message_as_final_answer() -> None:
                 "content": [
                     {
                         "name": "Bash",
-                        "input": {"command": "asp rust search prime --workspace . --view seeds"},
+                        "input": {"command": "asp search playbook --language rust --rg --files . --tantivy term source"},
                     }
                 ],
             },
@@ -151,7 +152,7 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector src/lib.rs:1:10 --code ."
                             ),
                         },
@@ -160,7 +161,7 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector src/lib.rs:11:20 --code ."
                             ),
                         },
@@ -169,7 +170,7 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector src/lib.rs:11:20 --code ."
                             ),
                         },
@@ -178,7 +179,7 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector src/lib.rs:30:35 --code ."
                             ),
                         },
@@ -187,7 +188,7 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector tests/test_lib.rs:1:4 --code ."
                             ),
                         },
@@ -197,15 +198,15 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
         ]
     )
 
-    assert summary["pipeFlow"]["directReadCommands"] == 5
-    assert summary["pipeFlow"]["directReadBoundedCommands"] == 5
-    assert summary["pipeFlow"]["directReadBroadCommands"] == 0
-    assert summary["pipeFlow"]["directReadUnboundedCommands"] == 0
-    assert summary["pipeFlow"]["directReadRiskCommands"] == 0
-    assert summary["pipeFlow"]["readLoopDirectCodeCommands"] == 5
-    assert summary["pipeFlow"]["readLoopDuplicateSelectors"] == 1
-    assert summary["pipeFlow"]["readLoopAdjacentRangeWindows"] == 1
-    assert summary["pipeFlow"]["readLoopSameOwnerScans"] == 2
+    assert summary["commandFlow"]["directReadCommands"] == 5
+    assert summary["commandFlow"]["directReadBoundedCommands"] == 5
+    assert summary["commandFlow"]["directReadBroadCommands"] == 0
+    assert summary["commandFlow"]["directReadUnboundedCommands"] == 0
+    assert summary["commandFlow"]["directReadRiskCommands"] == 0
+    assert summary["commandFlow"]["readLoopDirectCodeCommands"] == 5
+    assert summary["commandFlow"]["readLoopDuplicateSelectors"] == 1
+    assert summary["commandFlow"]["readLoopAdjacentRangeWindows"] == 1
+    assert summary["commandFlow"]["readLoopSameOwnerScans"] == 2
 
 
 def test_agent_summary_classifies_broad_direct_reads_as_risk() -> None:
@@ -218,7 +219,7 @@ def test_agent_summary_classifies_broad_direct_reads_as_risk() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read "
+                                "asp query playbook --language rust --from-hook direct-source-read "
                                 "--selector src/lib.rs:1:120 --code ."
                             ),
                         },
@@ -227,7 +228,7 @@ def test_agent_summary_classifies_broad_direct_reads_as_risk() -> None:
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust query --from-hook direct-source-read --code ."
+                                "asp query playbook --language rust --from-hook direct-source-read --code ."
                             ),
                         },
                     },
@@ -236,8 +237,8 @@ def test_agent_summary_classifies_broad_direct_reads_as_risk() -> None:
         ]
     )
 
-    assert summary["pipeFlow"]["directReadCommands"] == 2
-    assert summary["pipeFlow"]["directReadBoundedCommands"] == 0
-    assert summary["pipeFlow"]["directReadBroadCommands"] == 1
-    assert summary["pipeFlow"]["directReadUnboundedCommands"] == 1
-    assert summary["pipeFlow"]["directReadRiskCommands"] == 2
+    assert summary["commandFlow"]["directReadCommands"] == 2
+    assert summary["commandFlow"]["directReadBoundedCommands"] == 0
+    assert summary["commandFlow"]["directReadBroadCommands"] == 1
+    assert summary["commandFlow"]["directReadUnboundedCommands"] == 1
+    assert summary["commandFlow"]["directReadRiskCommands"] == 2

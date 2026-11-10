@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "asp.activated-ranker.v1",
+  "title": "ASP Activated Ranker V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "rankerId",
+    "capabilityId",
+    "protocolVersion",
+    "entrypoint",
+    "contentDigest",
+    "artifactMetadataDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.activated-ranker.v1"
+    },
+    "rankerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilityId": {
+      "const": "graph-turbo"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "entrypoint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contentDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "artifactMetadataDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

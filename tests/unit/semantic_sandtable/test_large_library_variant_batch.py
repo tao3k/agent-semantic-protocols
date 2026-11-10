@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Large-library optimization variant batch tests."""
 
 from __future__ import annotations
@@ -5,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 from tools.semantic_sandtable.cli import semantic_sandtable_main as main
 from tools.semantic_sandtable.large_library_optimization_analysis import (
@@ -90,7 +94,7 @@ def test_large_library_variant_batch_derives_metrics_from_sandtable_receipt() ->
     assert first_packet["receiptMetrics"]["searchCommandCount"] == 2
     assert first_packet["receiptMetrics"]["queryCommandCount"] == 2
     assert first_packet["receiptMetrics"]["repeatedCommandCount"] == 1
-    assert first_packet["receiptMetrics"]["commandsToFirstUsefulLocator"] == 2
+    assert first_packet["receiptMetrics"]["commandsToFirstUsefulLocator"] == 1
     assert first_packet["receiptMetrics"]["frontierFollowRate"] == 1.0
     assert first_packet["receiptMetrics"]["elapsedMs"] == 123
     assert first_packet["receiptMetrics"]["stdoutBytes"] == 456
@@ -322,27 +326,27 @@ def _sandtable_receipt(scenario_id: object) -> dict[str, object]:
                 },
                 "steps": [
                     {
-                        "id": "prime",
+                        "id": "search-playbook",
                         "status": "pass",
-                        "command": ["rs-harness", "search", "prime"],
+                        "command": ["asp", "rust", "query", "--dependency", "tokio"],
                         "errors": [],
                     },
                     {
                         "id": "intent-query-set",
                         "status": "pass",
-                        "command": ["rs-harness", "search", "lexical"],
+                        "command": ["asp", "search", "playbook", "--language", "rust"],
                         "errors": [],
                     },
                     {
                         "id": "selector-query",
                         "status": "pass",
-                        "command": ["rs-harness", "query", "--selector", "src/lib.rs:1"],
+                        "command": ["asp-rust", "query", "--selector", "src/lib.rs:1"],
                         "errors": [],
                     },
                     {
                         "id": "repeat-query",
                         "status": "pass",
-                        "command": ["rs-harness", "query", "--selector", "src/lib.rs:1"],
+                        "command": ["asp-rust", "query", "--selector", "src/lib.rs:1"],
                         "errors": [],
                     },
                 ],
@@ -367,7 +371,7 @@ def _variant_sandtable_receipt(scenario_id: object) -> dict[str, object]:
         {
             "id": "variant-owner",
             "status": "pass",
-            "command": ["rs-harness", "search", "owner"],
+            "command": ["asp", "search", "playbook", "--language", "rust"],
             "errors": [],
         }
     )
@@ -392,4 +396,8 @@ def _validate_variant_schema(packet: dict[str, object]) -> None:
             )
         ).read_text(encoding="utf-8")
     )
-    Draft202012Validator(schema).validate(packet)
+    schema_validator_for(
+        _ROOT
+        / "schemas"
+        / "semantic-sandtable-large-library-optimization-variant-result.v1.schema.json"
+    ).validate(packet)

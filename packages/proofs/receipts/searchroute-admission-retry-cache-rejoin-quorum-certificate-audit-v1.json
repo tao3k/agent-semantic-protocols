@@ -1,0 +1,60 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumSystem)\n  (ledger : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.VoteLedger system PolicyDigest)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumCertificate system PolicyDigest),\n  left.term = right.term →\n    left.index = right.index →\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.CertificateValid system ledger left →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.CertificateValid system ledger right →\n          left.receipt = right.receipt",
+   "theoremFamily": "same-slot-certificate-uniqueness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRQC-INTERSECTION", "ASP-RFC-10.05-CRQC-UNIQUENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.valid_same_slot_certificates_bind_same_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumSystem)\n  (ledger : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.VoteLedger system PolicyDigest)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumCertificate system PolicyDigest),\n  ¬system.isQuorum certificate.signers →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.CertificateValid system ledger certificate",
+   "theoremFamily": "nonquorum-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRQC-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.nonquorum_certificate_is_not_valid",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumSystem)\n  (ledger : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.VoteLedger system PolicyDigest)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumCertificate system PolicyDigest)\n  (node : system.Node),\n  node ∈ certificate.signers →\n    ledger node certificate.term certificate.index ≠ some certificate.receipt →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.CertificateValid system ledger certificate",
+   "theoremFamily": "inconsistent-vote-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRQC-VOTE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.inconsistent_signer_vote_invalidates_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumSystem)\n  (ledger : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.VoteLedger system PolicyDigest)\n  (certificate : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumCertificate system PolicyDigest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.CertificateValid system ledger certificate →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.RecoverableCommittedReceipt system ledger\n      certificate.term certificate.index certificate.receipt",
+   "theoremFamily": "certified-recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRQC-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.valid_certificate_makes_receipt_recoverable",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {PolicyDigest : Type} (system : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.QuorumSystem)\n  (ledger : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.VoteLedger system PolicyDigest)\n  (term : ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.ConsensusTerm)\n  (index : ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.LogIndex)\n  (leftReceipt rightReceipt :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority.FenceCommitReceipt PolicyDigest),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.RecoverableCommittedReceipt system ledger term index\n      leftReceipt →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.RecoverableCommittedReceipt system ledger term index\n        rightReceipt →\n      leftReceipt = rightReceipt",
+   "theoremFamily": "recoverable-receipt-uniqueness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRQC-RECOVERY", "ASP-RFC-10.05-CRQC-UNIQUENESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate.recoverable_same_slot_receipts_are_equal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

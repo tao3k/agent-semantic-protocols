@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """P2/P3 tests for ASP graph turbo path, flow, cache, and trace evidence."""
 
 from __future__ import annotations
 
-from asp_graph_turbo import TypedGraph, rank_frontier
-from asp_graph_turbo.cache import _BACKEND_CACHE
+from asp_python_graphs import TypedGraph, rank_frontier
+from asp_python_graphs.cache import _BACKEND_CACHE
 
 
 def _sample_path_packet() -> dict[str, object]:

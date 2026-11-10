@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the root-owned agent hook decision schema."""
 
 from __future__ import annotations
@@ -8,6 +12,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from tests.unit.semantic_search_action_fixture import complete_search_playbook_argv
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -25,26 +30,20 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
         "languageIds": ["typescript"],
         "subject": {
             "toolName": "Bash",
-            "command": "ts-harness search lexical location.path owner tests --json .",
+            "command": "asp search playbook --language typescript --rg -n -e location.path . --tantivy term location.path",
         },
         "routes": [
             {
                 "languageId": "typescript",
-                "providerId": "ts-harness",
-                "binary": "ts-harness",
-                "kind": "lexical",
-                "argv": [
-                    "ts-harness",
-                    "search",
-                    "lexical",
-                    "location.path",
-                    "owner",
-                    "tests",
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "seeds",
-                ],
+                "providerId": "asp-typescript",
+                "binary": "asp-typescript",
+                "kind": "playbook",
+                "argv": complete_search_playbook_argv(
+                    language="typescript",
+                    term="location.path owner tests",
+                    path_hint="*.ts|*.tsx",
+                    globs=("*.ts", "*.tsx"),
+                ),
             }
         ],
         "message": "Use compact search output for agent exploration.",
@@ -78,7 +77,7 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
     def test_source_directory_enumeration_reason_kind_is_valid(self) -> None:
         decision = minimal_decision("source-directory-enumeration")
         decision["fields"] = {"operationIntent": "directory-read"}
-        decision["routes"][0]["kind"] = "ingest"  # type: ignore[index]
+        decision["routes"][0]["kind"] = "playbook"  # type: ignore[index]
 
         self.assertEqual([], self.validation_errors(decision))
 
@@ -86,11 +85,11 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
             "languageId": "typescript",
-            "providerId": "ts-harness",
-            "binary": "ts-harness",
+            "providerId": "asp-typescript",
+            "binary": "asp-typescript",
             "kind": "read",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -157,11 +156,11 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
             "languageId": "typescript",
-            "providerId": "ts-harness",
-            "binary": "ts-harness",
+            "providerId": "asp-typescript",
+            "binary": "asp-typescript",
             "kind": "query",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -186,12 +185,12 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
             / "semantic-agent-hook-decision.v1.schema.json",
             _REPO_ROOT
             / "languages"
-            / "typescript-lang-project-harness"
+            / "asp-typescript"
             / "schemas"
             / "semantic-agent-hook-decision.v1.schema.json",
             _REPO_ROOT
             / "languages"
-            / "python-lang-project-harness"
+            / "asp-python"
             / "schemas"
             / "semantic-agent-hook-decision.v1.schema.json",
         ):

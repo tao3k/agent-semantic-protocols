@@ -1,0 +1,154 @@
+{"sourcePath": "ASPProof/SearchRouteShortcutCommitmentReplay.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteShortcutCommitmentReplay",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : Nat), ASPProof.SearchRouteShortcutCommitmentReplay.natEq left right = true → left = right",
+   "theoremFamily": "executable-commitment-word-equality-soundness",
+   "rfcClauseIds": ["SCR-EQUALITY"],
+   "name": "ASPProof.SearchRouteShortcutCommitmentReplay.natEq_true_implies_eq",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (value : Nat), ASPProof.SearchRouteShortcutCommitmentReplay.natEq value value = true",
+   "theoremFamily": "executable-commitment-word-equality-reflexivity",
+   "rfcClauseIds": ["SCR-EQUALITY"],
+   "name": "ASPProof.SearchRouteShortcutCommitmentReplay.natEq_is_reflexive",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected actual : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment),\n  ASPProof.SearchRouteShortcutCommitmentReplay.shortcutCommitmentMatches expected actual = true → expected = actual",
+   "theoremFamily": "nine-field-commitment-match-soundness",
+   "rfcClauseIds": ["SCR-COMMITMENT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.commitment_match_true_implies_equal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (commitment : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment),\n  ASPProof.SearchRouteShortcutCommitmentReplay.shortcutCommitmentMatches commitment commitment = true",
+   "theoremFamily": "nine-field-commitment-match-completeness",
+   "rfcClauseIds": ["SCR-COMMITMENT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.equal_commitments_match",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected actual : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment),\n  expected ≠ actual → ASPProof.SearchRouteShortcutCommitmentReplay.shortcutCommitmentMatches expected actual = false",
+   "theoremFamily": "commitment-mismatch-fails-closed",
+   "rfcClauseIds": ["SCR-FAIL-CLOSED"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.commitment_mismatch_fails_closed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutReplayContext →\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate) →\n    ASPProof.SearchRouteDominanceTransitiveShortcut.TransitiveShortcut start endpoint →\n      ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint",
+   "theoremFamily": "proof-carrying-shortcut-cache-construction",
+   "rfcClauseIds": ["SCR-CACHE"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.cacheTransitiveShortcut",
+   "kind": "definition",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (context : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutReplayContext)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (shortcut : ASPProof.SearchRouteDominanceTransitiveShortcut.TransitiveShortcut start endpoint),\n  ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts\n      (ASPProof.SearchRouteShortcutCommitmentReplay.expectedShortcutCommitment context start endpoint\n        shortcut.chainLength.succ)\n      (ASPProof.SearchRouteShortcutCommitmentReplay.cacheTransitiveShortcut context start endpoint shortcut) =\n    true",
+   "theoremFamily": "fresh-shortcut-cache-acceptance",
+   "rfcClauseIds": ["SCR-ACCEPT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.freshly_cached_shortcut_is_accepted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = true → expected = cached.commitment",
+   "theoremFamily": "accepted-replay-exact-commitment",
+   "rfcClauseIds": ["SCR-ACCEPT", "SCR-COMMITMENT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.accepted_replay_has_exact_commitment",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  expected ≠ cached.commitment → ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = false",
+   "theoremFamily": "mismatched-shortcut-replay-rejection",
+   "rfcClauseIds": ["SCR-FAIL-CLOSED"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.mismatched_replay_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = true →\n    ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.StrictDominates endpoint start = true",
+   "theoremFamily": "accepted-replay-removal-soundness",
+   "rfcClauseIds": ["SCR-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.accepted_replay_preserves_removal_soundness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  expected.candidateUniverseDigest ≠ cached.commitment.candidateUniverseDigest →\n    ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = false",
+   "theoremFamily": "universe-digest-mismatch-rejection",
+   "rfcClauseIds": ["SCR-UNIVERSE"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.universe_digest_mismatch_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  expected.costSemanticsDigest ≠ cached.commitment.costSemanticsDigest →\n    ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = false",
+   "theoremFamily": "cost-semantics-mismatch-rejection",
+   "rfcClauseIds": ["SCR-SEMANTICS"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.cost_semantics_mismatch_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  expected.selectionPolicyDigest ≠ cached.commitment.selectionPolicyDigest →\n    ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = false",
+   "theoremFamily": "selection-policy-mismatch-rejection",
+   "rfcClauseIds": ["SCR-SELECTION"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.selection_policy_mismatch_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected : ASPProof.SearchRouteShortcutCommitmentReplay.ShortcutCommitment)\n  (start endpoint : ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness.Candidate)\n  (cached : ASPProof.SearchRouteShortcutCommitmentReplay.CachedShortcut start endpoint),\n  expected.auditReceiptDigest ≠ cached.commitment.auditReceiptDigest →\n    ASPProof.SearchRouteShortcutCommitmentReplay.replayAccepts expected cached = false",
+   "theoremFamily": "audit-receipt-mismatch-rejection",
+   "rfcClauseIds": ["SCR-AUDIT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.audit_receipt_mismatch_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.cachedReplayTokens = 9",
+   "theoremFamily": "cached-shortcut-replay-constant-shape",
+   "rfcClauseIds": ["SCR-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.cached_replay_receipt_is_constant_shape",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (chainLength : Nat),\n  ASPProof.SearchRouteShortcutCommitmentReplay.cachedReplayTokens <\n    ASPProof.SearchRouteShortcutCommitmentReplay.explicitReplayTokens chainLength.succ",
+   "theoremFamily": "cached-replay-beats-explicit-nonempty-replay",
+   "rfcClauseIds": ["SCR-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteShortcutCommitmentReplay.cached_replay_beats_nonempty_explicit_replay",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 16,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 16,
+ "axiomDependentDeclarationCount": 0}

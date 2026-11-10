@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate RFC 012 relation, flow-lite, and CodeQL evidence schemas."""
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ def native_relation_plan() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "packageName": "example",
         "relationPlanId": "relation-plan:src/lib.rs:parse",
@@ -67,7 +71,7 @@ def unavailable_codeql_flow_lite() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "flowId": "flow-lite:src/lib.rs:parse",
         "flowKind": "local-source-sink",
@@ -105,7 +109,7 @@ def codeql_evidence_artifact() -> dict[str, Any]:
         "queryVersion": "2026-06-05.v1",
         "generatedAt": "2026-06-05T12:00:00Z",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "inputHandles": ["param:input", "call:parse_inner"],
         "rowCount": 2,
@@ -145,7 +149,7 @@ def unavailable_codeql_evidence_artifact() -> dict[str, Any]:
         "queryVersion": "2026-06-05.v1",
         "generatedAt": "2026-06-05T12:00:00Z",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "inputHandles": ["param:input", "call:parse_inner"],
         "rowCount": 0,

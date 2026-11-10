@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-work-counters.schema.json",
+  "title": "ASP Client Work Counters",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "databaseReadCount",
+    "filesystemReadCount",
+    "providerProcessCount",
+    "schedulerTaskCount",
+    "socketOperationCount"
+  ],
+  "properties": {
+    "databaseReadCount": { "type": "integer", "minimum": 0 },
+    "filesystemReadCount": { "type": "integer", "minimum": 0 },
+    "providerProcessCount": { "type": "integer", "minimum": 0 },
+    "schedulerTaskCount": { "type": "integer", "minimum": 0 },
+    "socketOperationCount": { "type": "integer", "minimum": 0 }
+  }
+}

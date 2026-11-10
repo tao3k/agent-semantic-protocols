@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "parser-artifact-content-reuse-v1"
+scenario = "parser-artifact-content-reuse"
+clock = "std::time::Instant"
+statistic = "p95"
+warmup_iterations = 16
+measure_iterations = 128
+
+[work_metrics]
+auxiliary_owner_hash_count = 2
+affected_owner_count = 1
+unrelated_owner_invalidation_count = 0
+provider_process_count = 0
+
+[interpretation]
+timing_is_diagnostic = true
+work_metrics_are_acceptance_authority = true

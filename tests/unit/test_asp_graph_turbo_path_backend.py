@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Typed path backend selection tests."""
 
 from __future__ import annotations
@@ -10,9 +14,9 @@ from ._asp_graph_turbo_common import (
     sample_packet,
     schema_validator_for,
 )
-from asp_graph_turbo import SourceSinkFrontier
-from asp_graph_turbo.path_scipy import graph_turbo_scipy_yen_path_candidates
-from asp_graph_turbo.profiles import resolve_profile
+from asp_python_graphs import SourceSinkFrontier
+from asp_python_graphs.path_scipy import graph_turbo_scipy_yen_path_candidates
+from asp_python_graphs.profiles import resolve_profile
 
 
 def test_small_graph_keeps_python_bfs_path_backend() -> None:

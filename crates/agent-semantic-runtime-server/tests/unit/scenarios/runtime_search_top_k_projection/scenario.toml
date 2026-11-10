@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[scenario]
+id = "runtime-search-top-k-projection"
+title = "Complete retrieval feeds bounded Agent semantic projection"
+package = "agent-semantic-runtime-server"
+phase = "resident-first-computation"
+intent = "prove that Scheme retrieval completeness is preserved while implicit parser and Topology work are bounded by the V1 Agent evidence budget"
+
+[model]
+retrieval_owner_count = 144
+evidence_top_k = 30
+retrieval_must_remain_complete = true
+ranking_signals = ["retrieval-branch-support", "rg-grounding-strength", "reciprocal-rank-fusion", "stable-owner-identity"]
+future_ranking_signals = ["resident-graph-rank", "tantivy-score"]
+
+[model.graph_rank_admission]
+same_generation_required = true
+complete_fused_scope_coverage_required = true
+partial_overlay_must_not_demote_uncovered_owners = true
+
+[model.complexity]
+full_frontier_sort_forbidden = true
+owner_frontier_clone_forbidden = true
+rank_work = "O(sum(branch owner counts) + retrieval owner count)"
+rank_memory = "O(retrieval owner count)"
+
+[gate]
+policy = "SEARCH-RUNTIME-TOP-K-PROJECTION-001"
+max_implicit_parser_owner_count = 30
+max_implicit_topology_owner_count = 30
+explicit_structural_scope_is_not_implicitly_cut = true
+normal_process_count = 0
+normal_filesystem_operation_count = 0

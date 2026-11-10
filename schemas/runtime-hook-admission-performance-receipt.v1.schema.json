@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-hook-admission-performance-receipt.v1.schema.json",
+  "title": "Runtime Hook Admission Performance Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "mode",
+    "gitDiscoveries",
+    "packageScopeResolutions",
+    "canonicalizeCalls",
+    "endpointJsonReads",
+    "locatorMemoryOpens"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-hook-admission-performance-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "mode": {
+      "enum": ["cold", "reused-pressure"]
+    },
+    "elapsedNanos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "p99Nanos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "workspaces": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sessions": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "gitDiscoveries": {
+      "const": 0
+    },
+    "packageScopeResolutions": {
+      "const": 0
+    },
+    "canonicalizeCalls": {
+      "const": 0
+    },
+    "endpointJsonReads": {
+      "const": 0
+    },
+    "locatorMemoryOpens": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "cold" }
+        }
+      },
+      "then": {
+        "required": ["elapsedNanos"],
+        "properties": {
+          "locatorMemoryOpens": { "const": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "reused-pressure" }
+        }
+      },
+      "then": {
+        "required": ["p99Nanos", "workspaces", "sessions"],
+        "properties": {
+          "locatorMemoryOpens": { "const": 0 }
+        }
+      }
+    }
+  ]
+}

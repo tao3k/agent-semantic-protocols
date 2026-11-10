@@ -1,69 +1,126 @@
-use std::fs;
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+use std::fs;
+use std::time::Duration;
+use std::time::Instant;
+
+use crate::DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES;
 #[cfg(target_os = "macos")]
 use crate::ProviderProcessError;
-use crate::{StdinMode, run_provider_process};
+use crate::ProviderProcessLimits;
+use crate::ProviderProcessSupervisor;
+use crate::StdinMode;
 
-use super::support::{script, spec, temp_dir};
+use super::support::script;
+use super::support::spec;
+use super::support::temp_dir;
 
 #[test]
-fn captures_stdout_stderr_and_exit_status() {
+fn default_limits_use_the_machine_adaptive_provider_process_group_ceiling() {
+    assert_eq!(
+        ProviderProcessLimits::default().memory_limit_bytes(),
+        Some(crate::process_contract::adaptive_provider_memory_limit_bytes())
+    );
+    assert_eq!(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, 2 * 1024 * 1024 * 1024);
+}
+
+#[tokio::test]
+async fn captures_stdout_stderr_and_exit_status() {
     let root = temp_dir("capture-status");
     let program = script(
         &root,
         "provider.sh",
         "#!/bin/sh\nprintf 'out'\nprintf 'err' >&2\nexit 7\n",
     );
-    let output = run_provider_process(spec(program, root.clone())).expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run(spec(program, root.clone()))
+        .await
+        .expect("run provider");
 
     assert_eq!(output.status.code(), Some(7));
     assert_eq!(output.stdout.as_ref(), b"out");
     assert_eq!(output.stderr.as_ref(), b"err");
     assert_eq!(output.stdout_lossy(), "out");
     assert_eq!(output.stderr_lossy(), "err");
-    assert_eq!(output.receipt.status_code, Some(7));
-    assert!(!output.receipt.status_success);
-    assert_eq!(output.receipt.stdout_bytes, 3);
-    assert_eq!(output.receipt.stderr_bytes, 3);
+    assert_eq!(output.receipt.status_code(), Some(7));
+    assert!(!output.receipt.status_success());
+    assert_eq!(output.receipt.stdout_bytes(), 3);
+    assert_eq!(output.receipt.stderr_bytes(), 3);
     assert_eq!(
-        output.receipt.stdout_sha256.as_deref(),
+        output.receipt.stdout_sha256(),
         Some("762069bc07a6e1b5df123a5ae7bd91c10daa04694fbaa17fba0cd6a8dcce8f22")
     );
     assert_eq!(
-        output.receipt.stderr_sha256.as_deref(),
+        output.receipt.stderr_sha256(),
         Some("d9eb253e06987fa74a5d3189f73d9f7a8104cca786fafbb52bc9555972f5477f")
     );
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn writes_bytes_to_stdin() {
+#[cfg(unix)]
+#[tokio::test]
+async fn completed_provider_invocation_kills_background_descendants_before_returning() {
+    let root = temp_dir("provider-orphan-descendant");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nsleep 10 &\nprintf orphan\nexit 0\n",
+    );
+    let started = Instant::now();
+
+    let output = ProviderProcessSupervisor::default()
+        .run(spec(program, root.clone()))
+        .await
+        .expect("run provider");
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout.as_ref(), b"orphan");
+    assert!(output.receipt.process_group_isolation_enforced());
+    assert!(output.receipt.descendant_cleanup_required());
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(7),
+        "provider output collection waited for an orphan descendant: observed={elapsed:?}"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn writes_bytes_to_stdin() {
     let root = temp_dir("stdin-bytes");
     let program = script(&root, "provider.sh", "#!/bin/sh\ncat\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes("payload");
-    let output = run_provider_process(process).expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"payload");
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn stdin_broken_pipe_still_reports_provider_output() {
+#[tokio::test]
+async fn stdin_broken_pipe_still_reports_provider_output() {
     let root = temp_dir("stdin-broken-pipe");
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf 'ready'\nexit 0\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes(vec![b'x'; 1024 * 1024]);
-    let output = run_provider_process(process).expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"ready");
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn passes_cwd_and_env() {
+#[tokio::test]
+async fn passes_cwd_and_env() {
     let root = temp_dir("cwd-env");
     let program = script(
         &root,
@@ -72,7 +129,10 @@ fn passes_cwd_and_env() {
     );
     let mut process = spec(program, root.clone());
     process.env.insert("ASP_TEST_VALUE".into(), "ok".into());
-    let output = run_provider_process(process).expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
     let stdout = output.stdout_lossy();
 
     assert!(
@@ -83,43 +143,109 @@ fn passes_cwd_and_env() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn records_signal_termination_with_memory_limit_context() {
-    let root = temp_dir("signal-memory-receipt");
-    let program = script(&root, "provider.sh", "#!/bin/sh\nkill -SEGV $$\n");
+#[tokio::test]
+async fn removes_declared_inherited_environment() {
+    let root = temp_dir("removed-env");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nif [ -z \"${ASP_TEST_REMOVED+x}\" ]; then printf 'removed'; else printf 'present'; fi\n",
+    );
+    unsafe {
+        std::env::set_var("ASP_TEST_REMOVED", "parent-value");
+    }
     let mut process = spec(program, root.clone());
-    process.limits.memory_limit_bytes = Some(512 * 1024 * 1024);
+    process.remove_env.insert("ASP_TEST_REMOVED".into());
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
+    unsafe {
+        std::env::remove_var("ASP_TEST_REMOVED");
+    }
 
-    let output = run_provider_process(process).expect("run provider");
-
-    assert!(!output.status.success());
-    assert_eq!(output.receipt.exit_signal, Some(libc::SIGSEGV));
-    assert_eq!(output.receipt.memory_limit_bytes, Some(512 * 1024 * 1024));
-    assert!(output.receipt.memory_limit_enforced);
-    assert!(output.receipt.abnormal_termination);
-    assert_eq!(output.receipt.termination_reason, "memory-limit-suspected");
+    assert_eq!(output.stdout.as_ref(), b"removed");
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn records_success_with_enforced_memory_limit() {
+#[tokio::test]
+async fn removes_declared_inherited_environment_prefix() {
+    let root = temp_dir("removed-env-prefix");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nif [ -z \"${ASP_PREFIX_TEST_VALUE+x}\" ]; then printf 'removed'; else printf 'present'; fi\n",
+    );
+    unsafe {
+        std::env::set_var("ASP_PREFIX_TEST_VALUE", "parent-value");
+    }
+    let mut process = spec(program, root.clone());
+    process
+        .remove_env_prefixes
+        .insert("ASP_PREFIX_TEST_".into());
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
+    unsafe {
+        std::env::remove_var("ASP_PREFIX_TEST_VALUE");
+    }
+
+    assert_eq!(output.stdout.as_ref(), b"removed");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn records_signal_termination_with_memory_limit_context() {
+    let root = temp_dir("signal-memory-receipt");
+    let program = script(&root, "provider.sh", "#!/bin/sh\nkill -SEGV $$\n");
+    let mut process = spec(program, root.clone());
+    process.limits = process
+        .limits
+        .with_memory_limit_bytes(Some(512 * 1024 * 1024));
+
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
+
+    assert!(!output.status.success());
+    assert_eq!(output.receipt.exit_signal(), Some(libc::SIGSEGV));
+    assert_eq!(output.receipt.memory_limit_bytes(), Some(512 * 1024 * 1024));
+    assert!(output.receipt.memory_limit_enforced());
+    assert!(output.receipt.abnormal_termination());
+    assert_eq!(
+        output.receipt.termination_reason(),
+        "memory-limit-suspected"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn records_success_with_enforced_memory_limit() {
     let root = temp_dir("success-memory-receipt");
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf ok\n");
     let mut process = spec(program, root.clone());
-    process.limits.memory_limit_bytes = Some(512 * 1024 * 1024);
+    process.limits = process
+        .limits
+        .with_memory_limit_bytes(Some(512 * 1024 * 1024));
 
-    let output = run_provider_process(process).expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
-    assert_eq!(output.receipt.termination_reason, "success");
-    assert!(!output.receipt.abnormal_termination);
-    assert!(output.receipt.memory_limit_enforced);
+    assert_eq!(output.receipt.termination_reason(), "success");
+    assert!(!output.receipt.abnormal_termination());
+    assert!(output.receipt.memory_limit_enforced());
+    assert!(!output.receipt.descendant_cleanup_required());
     let _ = fs::remove_dir_all(root);
 }
 
 #[cfg(target_os = "macos")]
-#[test]
-fn macos_parent_kills_provider_after_rss_limit() {
+#[tokio::test]
+async fn macos_parent_kills_provider_after_rss_limit() {
     let root = temp_dir("macos-rss-limit");
     let program = script(
         &root,
@@ -127,9 +253,14 @@ fn macos_parent_kills_provider_after_rss_limit() {
         "#!/bin/sh\nexec /usr/bin/perl -e '$x = \"x\" x (128 * 1024 * 1024); sleep 2'\n",
     );
     let mut process = spec(program, root.clone());
-    process.limits.memory_limit_bytes = Some(32 * 1024 * 1024);
+    process.limits = process
+        .limits
+        .with_memory_limit_bytes(Some(32 * 1024 * 1024));
 
-    let error = run_provider_process(process).expect_err("memory limit must terminate provider");
+    let error = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect_err("memory limit must terminate provider");
     let ProviderProcessError::MemoryLimit {
         limit_bytes,
         receipt,
@@ -138,8 +269,40 @@ fn macos_parent_kills_provider_after_rss_limit() {
         panic!("expected memory-limit receipt");
     };
     assert_eq!(limit_bytes, 32 * 1024 * 1024);
-    assert!(receipt.memory_limit_exceeded);
-    assert!(receipt.abnormal_termination);
-    assert_eq!(receipt.termination_reason, "memory-limit-exceeded");
+    assert!(receipt.memory_limit_exceeded());
+    assert!(receipt.abnormal_termination());
+    assert_eq!(receipt.termination_reason(), "memory-limit-exceeded");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_limit() {
+    let root = temp_dir("macos-process-group-rss-limit");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\n/usr/bin/perl -e '$x = \"x\" x (128 * 1024 * 1024); sleep 2' &\nwait $!\n",
+    );
+    let mut process = spec(program, root.clone());
+    process.limits = process
+        .limits
+        .with_memory_limit_bytes(Some(32 * 1024 * 1024));
+
+    let error = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect_err("process-group memory must terminate provider");
+    let ProviderProcessError::MemoryLimit {
+        limit_bytes,
+        receipt,
+    } = error
+    else {
+        panic!("expected process-group memory-limit receipt");
+    };
+    assert_eq!(limit_bytes, 32 * 1024 * 1024);
+    assert!(receipt.memory_limit_enforced());
+    assert!(receipt.memory_limit_exceeded());
+    assert_eq!(receipt.termination_reason(), "memory-limit-exceeded");
     let _ = fs::remove_dir_all(root);
 }

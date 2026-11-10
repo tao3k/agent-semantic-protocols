@@ -1,0 +1,15 @@
+{
+  "auditSha256": "eb7761083c9cfa8faa4066a4ead3482269841318125c0b4693ebc7b5ee6f7497",
+  "axiomDependentDeclarationCount": 0,
+  "axiomFreeDeclarationCount": 6,
+  "axiomInventory": [],
+  "declarationCount": 6,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05.01.37-EVIDENCE-SUFFICIENCY"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "polyglot-search-evidence-sufficiency"
+  ]
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Guide-quality plain text graph output tests."""
 
 from __future__ import annotations
@@ -39,51 +43,6 @@ class RealTriggerPlainTextGraphGuideTests(unittest.TestCase):
                                     "guideQuality": {
                                         "outputContains": ["|catalog reasoningProfiles="],
                                         "outputNotContains": ["profiles=", "owner-items"],
-                                    }
-                                },
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = run_scenario(repo_root, scenario_path)
-
-        self.assertEqual("pass", result.status)
-
-    def test_guide_quality_accepts_graph_alias_declaration_for_typed_entries(
-        self,
-    ) -> None:
-        entries = "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
-        output = (
-            "[search-prime] root=. alg=budgeted-prime-frontier-v1 budget=handles:12\n"
-            "aliases: graph:{G=search,O=owner}\n"
-            f"{entries}\n"
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            scenario_path = repo_root / "scenario.json"
-            scenario_path.write_text(
-                json.dumps(
-                    {
-                        "id": "rust.graph-alias-entry",
-                        "language": "rust",
-                        "workdir": ".",
-                        "steps": [
-                            {
-                                "id": "prime",
-                                "command": [
-                                    "python",
-                                    "-c",
-                                    f"print({output!r}, end='')",
-                                ],
-                                "expect": {
-                                    "guideQuality": {
-                                        "primeOutput": {
-                                            "requiresTypedEntryAliases": True,
-                                            "entries": [entries],
-                                        }
                                     }
                                 },
                             }

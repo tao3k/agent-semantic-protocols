@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+id = "runtime-query-process-cold-exact-owner-replay"
+title = "Process-cold Query replays one exact durable owner without full generation admission"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-RUNTIME-QUERY-PROCESS-COLD-EXACT-OWNER-001",
+]
+agent_goal = "Return a usable exact-selector Query receipt on the first process-cold call when the durable source generation, Runtime bundle, workspace identity, and current owner bytes still agree."
+inputs = "One real immutable exact-projection mmap segment, its active generation pointer, one source-bound Runtime execution publication, and one Rust exact selector."
+expected = "The first call returns a ready V1 Query receipt through one resource-bounded blocking pipeline, copies no complete owner snapshot during mmap preflight, starts no provider, performs no full-generation admission, tolerates an unrelated file change, and rejects replay after the requested owner changes."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-runtime-server/src/runtime_asp_client_query_playbook.rs",
+  "crates/agent-semantic-runtime-server/tests/unit/runtime_asp_client_query_playbook/mod.rs",
+  "crates/agent-semantic-runtime-server/tests/unit/runtime_asp_client_query_playbook/cases.rs",
+  "crates/agent-semantic-runtime-server/tests/unit/runtime_asp_client_query_playbook/terminal_materialization.rs",
+  "docs/10-19-rfcs/10.05.12-exact-selector-provider-generation-authority.org",
+]

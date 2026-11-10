@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-hook-host-acceptance.v1.schema.json",
+  "title": "Semantic Hook normal-task Host acceptance receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "pluginLoaded",
+    "probeCallObserved",
+    "hookEventObserved",
+    "generationBoundDenyObserved",
+    "sourceBytesReturned"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-host-acceptance" },
+    "schemaVersion": { "const": "1" },
+    "state": { "enum": ["accepted", "rejected"] },
+    "reasonKind": {
+      "enum": [
+        "normal-task-hook-policy-bundle-bound-deny-observed",
+        "plugin-not-loaded",
+        "probe-call-missing",
+        "source-bytes-leaked",
+        "hook-event-missing",
+        "hook-deny-missing",
+        "hook-deny-publication-identity-missing"
+      ]
+    },
+    "pluginLoaded": { "type": "boolean" },
+    "probeCallObserved": { "type": "boolean" },
+    "hookEventObserved": { "type": "boolean" },
+    "generationBoundDenyObserved": { "type": "boolean" },
+    "sourceBytesReturned": { "type": "boolean" }
+  }
+}

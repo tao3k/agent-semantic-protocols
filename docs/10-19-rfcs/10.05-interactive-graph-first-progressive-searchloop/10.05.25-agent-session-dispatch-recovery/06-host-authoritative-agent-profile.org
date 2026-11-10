@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: 10.05.25.06 Host-authoritative agent profile without ASP Manager Projection
+#+filetags: :asp:rfc:agent-session:lifecycle:projection:
+
+* Status
+
+Proposed and implementation-driving.
+
+* Problem
+
+The legacy ASP Manager Projection copies host agent profiles into ASP state,
+records a second expected model and reasoning value, and later admits a live
+resident by comparing host receipts with that shadow copy.  The copy can drift
+from the host registry even when the live typed child is valid.  A subsequent
+=asp agent config sync= may repair the copy, but requiring that repair before a
+parser-owned query creates a control-plane deadlock.
+
+The same shadow publication also makes ASP appear to own a lifecycle decision
+which belongs to the host that created the typed child.
+
+* Decision
+
+Remove ASP Manager Projection as an authority and as a published artifact.
+
+1. The host agent registry/profile selected by =agent_type= owns model,
+   reasoning, sandbox, and tool policy.
+2. The live =SubagentStart= receipt owns the observed child identity and binds
+   it to the canonical collaboration path.
+3. ASP owns only protocol role requirements, session routing, receipt
+   validation, and bounded recovery state.
+4. ASP MUST NOT copy host profiles into =$ASP_STATE_HOME/agents=, render a
+   second host profile, or compare live model/reasoning against an ASP-managed
+   shadow projection.
+5. =asp agent config sync= MUST NOT be a prerequisite for bootstrap, dispatch,
+   parser-owned source access, Hook enforcement, or Runtime Server recovery.
+
+* Authority split
+
+| Concern | Sole authority |
+|-
+| Agent type and host profile | Host registry |
+| Live child identity and canonical path | Host lifecycle receipt |
+| ASP protocol role and receipt kind | ASP protocol schema |
+| Hook matching | Content-addressed Hook Policy Snapshot |
+| Parser/runtime availability | Workspace Runtime Server |
+
+No row may be reconstructed from another row's cached projection.
+
+* Admission
+
+A resident is routable when the host receipt proves the requested typed role,
+the canonical path is unique, and the live binding is fresh.  A diagnostic
+model or reasoning observation may be emitted, but it is not an ASP admission
+predicate.  Missing host evidence blocks only the resident-routed command; it
+does not deny unrelated tools and does not authorize an inline substitute.
+
+* Migration
+
+1. Stop publishing ASP-managed Codex/Claude profile copies.
+2. Remove =resolved_model= and rendered profile content from the subagent
+   manager projection contract.
+3. Remove bootstrap =model-mismatch= and =reasoning-mismatch= branches whose
+   expectation comes from ASP state.
+4. Retain host profile discovery only as a read-only diagnostic locator.
+5. Garbage-collect legacy state artifacts only through an explicit, recoverable
+   migration after no executable reader remains.
+
+* Required tests
+
+1. A live typed child remains Ready after the host profile changes without
+   running =asp agent config sync=.
+2. Deleting or corrupting =$ASP_STATE_HOME/agents= cannot change admission.
+3. Two live children cannot bind the same canonical resident path.
+4. Missing host receipt blocks only resident dispatch; Hook classification and
+   unrelated tools remain available.
+5. No production code writes a host agent profile below ASP state.
+
+* Counterexample excluded
+
+Let ASP state expect model =A= while the host registry creates the requested
+typed child with model =B=.  The legacy design reports =model-mismatch= and
+blocks parser-owned work.  Under this RFC, ASP validates typed role and live
+identity only; model selection remains the host's responsibility, so the valid
+child is routable without a sync repair.

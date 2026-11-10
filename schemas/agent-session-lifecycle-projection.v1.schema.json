@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-session-lifecycle-projection.v1.schema.json",
+  "title": "Agent Session Lifecycle Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceServer",
+    "session",
+    "hostBinding",
+    "dispatch",
+    "requiredDispatchAction",
+    "durableDispatchAuthorized"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-session-lifecycle-projection"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceServer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceIdentity", "health"],
+      "properties": {
+        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "health": {
+          "enum": ["unobserved", "ready", "repairing", "unavailable"]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "generation", "phase"],
+      "properties": {
+        "sessionId": { "type": ["string", "null"], "minLength": 1 },
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "declared",
+            "active",
+            "interrupted",
+            "completed",
+            "failed"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "phase": { "const": "unobserved" } },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": {
+              "sessionId": { "type": "null" },
+              "generation": { "type": "null" }
+            }
+          },
+          "else": {
+            "properties": {
+              "sessionId": { "type": "string", "minLength": 1 },
+              "generation": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "hostBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "phase", "pathObserved"],
+      "properties": {
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": { "enum": ["unobserved", "unbound", "fresh", "stale"] },
+        "childSessionId": { "type": ["string", "null"] },
+        "canonicalMessageTarget": { "type": ["string", "null"] },
+        "pathObserved": { "type": ["boolean", "null"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "phase": { "const": "fresh" } },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": { "pathObserved": { "const": true } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "phase": { "const": "unobserved" } },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": { "pathObserved": { "type": "null" } }
+          }
+        }
+      ]
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "phase"],
+      "properties": {
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "idle",
+            "claimed",
+            "running",
+            "quarantined",
+            "completed",
+            "rejected"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "not": {
+              "properties": { "phase": { "const": "unobserved" } },
+              "required": ["phase"]
+            }
+          },
+          "then": {
+            "properties": { "generation": { "type": "integer", "minimum": 0 } }
+          }
+        }
+      ]
+    },
+    "requiredDispatchAction": {
+      "enum": ["unavailable", "spawn-agent", "followup-task"]
+    },
+    "durableDispatchAuthorized": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "const": true } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "followup-task" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "const": false } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "spawn-agent" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "hostBinding": {
+            "properties": { "pathObserved": { "type": "null" } },
+            "required": ["pathObserved"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "requiredDispatchAction": { "const": "unavailable" }
+        }
+      }
+    }
+  ]
+}

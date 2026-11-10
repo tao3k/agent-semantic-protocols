@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.client-db.turso-encryption-file-receipt.v1",
+  "title": "Turso Encryption File Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "cipher",
+    "databaseBytes",
+    "walBytes",
+    "shmBytes",
+    "plaintextProbeLen",
+    "plaintextProbePresent"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-db.turso-encryption-file-receipt.v1"
+    },
+    "cipher": { "enum": ["aegis256", "aes256-gcm", "aes128-gcm"] },
+    "databaseBytes": { "type": "integer", "minimum": 0 },
+    "walBytes": { "type": "integer", "minimum": 0 },
+    "shmBytes": { "type": "integer", "minimum": 0 },
+    "plaintextProbeLen": { "type": "integer", "minimum": 0 },
+    "plaintextProbePresent": { "type": "boolean" }
+  }
+}

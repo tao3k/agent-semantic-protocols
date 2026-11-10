@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "candidate-topology-owner-scope-v1"
+scenario = "candidate-topology-owner-scope"
+clock = "std::time::Instant"
+statistic = "p95"
+warmup_iterations = 16
+measure_iterations = 128
+
+[work_metrics]
+workspace_owner_count = 4096
+requested_owner_count = 2
+returned_owner_count = 2
+unrequested_owner_projection_count = 0
+entry_node_lookup_count = 2
+request_workspace_scan_count = 0
+
+[interpretation]
+timing_is_diagnostic = true
+work_metrics_are_acceptance_authority = true

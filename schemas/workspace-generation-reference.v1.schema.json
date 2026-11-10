@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/workspace-generation-reference.v1.schema.json",
+  "title": "ASP Workspace Generation Reference v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectId",
+    "workspaceId",
+    "generation",
+    "sourceSnapshotDigest",
+    "protocolInterfaceCatalogDigest",
+    "providerRegistrationRefs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-generation-reference"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceSnapshotDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "protocolInterfaceCatalogDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "providerRegistrationRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^(blake3-256|sha256):[0-9a-f]{64}$"
+    }
+  }
+}

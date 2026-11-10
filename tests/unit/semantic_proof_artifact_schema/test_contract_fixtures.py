@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate minimal formal proof artifact schema fixtures."""
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ class SemanticProofArtifactFixtureTests(unittest.TestCase):
             },
             "topology": {
                 "sliceId": "topology-slice:search-packet-rendering",
-                "ownerSelectors": ["schema:semantic-search-packet.v1"],
+                "ownerSelectors": ["schema:semantic-query-packet.v1"],
             },
             "branchEffects": {
                 "illegalBranches": [

@@ -1,22 +1,33 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Client project config install helpers for asp hook.
 
-use crate::codex_trust::{
-    TRUST_BLOCK_END, codex_project_trusted, codex_trust_block_begin,
-    merge_codex_project_trust_config, merge_codex_trust_config, toml_basic_string,
-};
+use crate::codex_trust::TRUST_BLOCK_END;
+use crate::codex_trust::codex_project_trusted;
+use crate::codex_trust::codex_trust_block_begin;
+use crate::codex_trust::merge_codex_project_trust_config;
+use crate::codex_trust::merge_codex_trust_config;
+use crate::codex_trust::toml_basic_string;
 use agent_semantic_runtime::project_activation_path;
-use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
+use agent_semantic_runtime::state_core::resolve_state_home;
+use serde_json::Map;
+use serde_json::Value;
+use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Start marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_BEGIN: &str = "# BEGIN agent-semantic-protocol agent hooks";
 /// End marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_END: &str = "# END agent-semantic-protocol agent hooks";
 
-const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
+pub(super) const ALL_TOOL_ACTION_MATCHER: &str = "*";
 const ASP_EXPLORER_ROLE_NAME: &str = "asp_explorer";
 
 #[derive(Debug)]
@@ -38,6 +49,7 @@ pub struct CodexUserTrustStatus {
 
 #[derive(Debug, Clone, Copy)]
 struct CodexHookEvent {
+    config_name: &'static str,
     state_label: &'static str,
     matcher: Option<&'static str>,
     status: &'static str,
@@ -52,12 +64,12 @@ struct ClaudeHookEvent {
     hook_event: &'static str,
 }
 
-/// Render the managed Codex hook block that dispatches through `asp hook`.
+/// Render the managed Codex hook block that dispatches through `asp-hook`.
 pub fn codex_hook_block(project_root: &Path) -> String {
     codex_hook_block_with_binary(project_root, None)
 }
 
-/// Render the managed Codex hook block that dispatches through `asp hook`.
+/// Render the managed Codex hook block that dispatches through `asp-hook`.
 pub fn codex_hook_block_with_binary(project_root: &Path, asp_binary: Option<&Path>) -> String {
     let events = codex_hook_events();
     let body = events
@@ -213,51 +225,45 @@ pub fn remove_codex_managed_hook_config(existing: &str) -> String {
     }
 }
 
-fn codex_hook_events() -> [CodexHookEvent; 8] {
+fn codex_hook_events() -> [CodexHookEvent; 6] {
     [
         CodexHookEvent {
+            config_name: "SessionStart",
             state_label: "session_start",
             matcher: Some("startup|resume|clear|compact"),
             status: "Loading semantic agent hook activation",
             hook_event: "session-start",
         },
         CodexHookEvent {
+            config_name: "UserPromptSubmit",
             state_label: "user_prompt_submit",
             matcher: None,
             status: "Planning semantic search flow",
             hook_event: "user-prompt",
         },
         CodexHookEvent {
+            config_name: "PreToolUse",
             state_label: "pre_tool_use",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic search flow",
             hook_event: "pre-tool",
         },
         CodexHookEvent {
+            config_name: "PermissionRequest",
             state_label: "permission_request",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic approval flow",
             hook_event: "permission-request",
         },
         CodexHookEvent {
+            config_name: "PostToolUse",
             state_label: "post_tool_use",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },
         CodexHookEvent {
-            state_label: "subagent_start",
-            matcher: Some(TOOL_SURFACE_MATCHER),
-            status: "Preparing semantic subagent context",
-            hook_event: "subagent-start",
-        },
-        CodexHookEvent {
-            state_label: "subagent_stop",
-            matcher: Some(TOOL_SURFACE_MATCHER),
-            status: "Checking semantic subagent evidence",
-            hook_event: "subagent-stop",
-        },
-        CodexHookEvent {
+            config_name: "Stop",
             state_label: "stop",
             matcher: None,
             status: "Checking semantic changed files",
@@ -277,8 +283,8 @@ fn codex_hook_event_block(
         .unwrap_or_else(|| "\n".to_string());
     let command = codex_hook_command(event.hook_event, project_root, asp_binary);
     format!(
-        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
-        event_name = event.state_label,
+        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 1\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
+        event_name = event.config_name,
         status = event.status,
     )
 }
@@ -286,11 +292,16 @@ fn codex_hook_event_block(
 fn codex_hook_command(hook_event: &str, project_root: &Path, asp_binary: Option<&Path>) -> String {
     let activation_path = project_activation_path(project_root)
         .expect("State Core activation path should resolve for Codex hook config");
+    let asp_binary = asp_binary.map(Path::to_path_buf).unwrap_or_else(|| {
+        resolve_state_home()
+            .expect("State Home should resolve for Codex hook config")
+            .join("runtime")
+            .join("bin")
+            .join("asp")
+    });
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
-    let asp_binary = asp_binary
-        .map(|path| shell_single_quoted(&path.display().to_string()))
-        .unwrap_or_else(|| "\"$repo_root/.bin/asp\"".to_string());
+    let asp_binary = shell_single_quoted(&asp_binary.display().to_string());
     format!(
         "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec direnv exec \"$repo_root\" {asp_binary} hook {hook_event} --client codex --activation \"$activation\"\n"
     )
@@ -460,12 +471,12 @@ fn claude_hook_events() -> [ClaudeHookEvent; 7] {
         },
         ClaudeHookEvent {
             event: "PreToolUse",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             hook_event: "pre-tool",
         },
         ClaudeHookEvent {
             event: "PostToolUse",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             hook_event: "post-tool",
         },
         ClaudeHookEvent {
@@ -508,7 +519,7 @@ fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec asp hook {hook_event} --client claude --activation \"$activation\"\n"
+        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nhook_bin=\"${{ASP_STATE_HOME:-${{HOME}}/.agent-semantic-protocols}}/runtime/artifacts/active/asp-hook\"\nexec \"$hook_bin\" {hook_event} --client claude --activation \"$activation\"\n"
     )
 }
 
@@ -542,10 +553,7 @@ fn is_managed_claude_group(group: &Value) -> bool {
 fn is_managed_claude_hook(hook: &Value) -> bool {
     hook.get("command")
         .and_then(Value::as_str)
-        .is_some_and(|command| {
-            command.contains(CLAUDE_MANAGED_COMMAND_MARKER)
-                || (command.contains("asp hook") && command.contains("--client claude"))
-        })
+        .is_some_and(|command| command.contains(CLAUDE_MANAGED_COMMAND_MARKER))
 }
 
 fn canonical_json(value: Value) -> Value {

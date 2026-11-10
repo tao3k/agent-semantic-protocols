@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 from pathlib import Path
 
 
@@ -11,6 +15,7 @@ ACTIVE_SURFACES = [
     REPO_ROOT / "crates" / "agent-semantic-protocol" / "src" / "state_cli.rs",
     REPO_ROOT / "schemas" / "semantic-db-engine-report.v1.schema.json",
     REPO_ROOT / "schemas" / "semantic-db-engine-manifest.v1.schema.json",
+    REPO_ROOT / "schemas" / "semantic-db-definitions.v1.schema.json",
     REPO_ROOT / "schemas" / "agent-semantic-client-receipt.v1.schema.json",
     REPO_ROOT / "schemas" / "semantic-state-locate-report.v1.schema.json",
     REPO_ROOT / "schemas" / "semantic-state-locate-report.v2.schema.json",

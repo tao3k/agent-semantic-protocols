@@ -1,0 +1,16 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.MultiAgentV2CollaborationAuthority
+
+open ASPProof.MultiAgentV2CollaborationAuthority
+
+#check collaboration_is_the_only_codex_namespace
+#check foreign_namespace_fails_closed
+#check runtime_registration_requires_the_exact_host_fact
+#check void_followup_result_alone_does_not_prove_a_turn
+#check followup_requires_separate_host_activity_evidence
+#check send_message_never_becomes_dispatch_from_activity_evidence
+#check parent_task_is_not_child_identity_authority
+#check parent_cannot_interpolate_child_identity

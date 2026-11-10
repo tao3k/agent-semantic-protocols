@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-workspace-scheduler"
+version.workspace = true
+edition.workspace = true
+description = "Lightweight Tokio scheduling, resource admission, and deterministic task ownership for ASP runtimes."
+license.workspace = true
+
+[dependencies]
+libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { version = "1", default-features = false, features = [
+  "macros",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[dev-dependencies]
+asp-rust-project-harness-policy = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

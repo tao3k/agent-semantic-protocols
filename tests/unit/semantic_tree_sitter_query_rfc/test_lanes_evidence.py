@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Provider lane and real-project evidence checks for RFC 011."""
 
 from .helpers import RFC_PATH, missing_terms
@@ -60,12 +64,12 @@ def test_tree_sitter_query_rfc_records_current_native_projection_lanes() -> None
 
     required_terms = [
         "Current native-projection v1 lane records:",
-        "[syntax-lane] language=rust provider=rs-harness lane=R",
+        "[syntax-lane] language=rust provider=asp-rust lane=R",
         "queryInputForms=selector,code-shaped,catalog-id,s-expression",
         "renderProfile=compact-graph-frontier",
-        "[syntax-lane] language=typescript provider=ts-harness lane=T",
+        "[syntax-lane] language=typescript provider=asp-typescript lane=T",
         "renderProfile=corpus-locator",
-        "[syntax-lane] language=python provider=py-harness lane=P",
+        "[syntax-lane] language=python provider=asp-python lane=P",
         "pending=real-project-benchmark",
         "do not claim cache replay speedup",
         "arbitrary S-expression support for TypeScript/Python",
@@ -83,7 +87,7 @@ def test_tree_sitter_query_rfc_defines_real_project_evidence_gate() -> None:
         "representative Rust workspace",
         "representative TypeScript workspace",
         "[syntax-real-evidence] language=<id> provider=<id> project=<name>",
-        "commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery",
+        "commands=search-playbook,syntax-frontier,exact-selector-code,hook-recovery",
         "metrics=commandCount=<n>,providerProcessCount=<n>,packetBytes=<n>,coldElapsedMs=<n>,warmElapsedMs=<n>",
         "metrics=syntaxQueryCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>",
         "outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus",

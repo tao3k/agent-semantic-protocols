@@ -1,0 +1,348 @@
+{
+  "schemaId": "agent.semantic-protocols.searchloop-triad-handoff",
+  "schemaVersion": "1",
+  "handoffId": "searchroute-scipy-triad-handoff-v1",
+  "receiptChainId": "sha256:6b565dac30706aa39e10b36ef09d74a8d8bedcbf16510adf24b565e22dd319c6",
+  "receiptChainCanonicalization": "json-sort-keys-compact-utf8-omit-receipt-chain-id-v1",
+  "selectorGate": {
+    "languageId": "python",
+    "ownerPath": "packages/python/asp_python_graphs/src/asp_python_graphs/path_scipy_searchloop.py",
+    "structuralSelector": "python://src/asp_python_graphs/path_scipy_searchloop.py#item/function/searchloop_scipy_route"
+  },
+  "pythonGate": {
+    "projectPath": "packages/python/asp_python_graphs",
+    "testPath": "packages/python/asp_python_graphs/tests/unit/test_path_scipy_searchloop.py",
+    "conformanceModule": "asp_python_graphs.searchloop_scipy_conformance",
+    "resultSchemaId": "agent.semantic-protocols.searchloop-scipy-conformance",
+    "expectedCases": 3,
+    "expectedPassed": 9
+  },
+  "leanGate": {
+    "projectPath": "packages/proofs",
+    "buildModules": [
+      "ASPProof.SearchRouteScipyMixedRadix",
+      "ASPProof.SearchRoutePythonLeanSubagentTriad",
+      "ASPProof.SearchRouteTriadHandoffIdentity",
+      "ASPProof.SearchRouteTriadRfcCommitment"
+    ],
+    "auditSources": [
+      "audit/SearchRouteScipyMixedRadixAudit.lean",
+      "audit/SearchRoutePythonLeanSubagentTriadAudit.lean",
+      "audit/SearchRouteTriadHandoffIdentityAudit.lean",
+      "audit/SearchRouteTriadRfcCommitmentAudit.lean"
+    ],
+    "generatorSources": [
+      "audit/SearchRouteScipyMixedRadixJson.lean",
+      "audit/SearchRoutePythonLeanSubagentTriadJson.lean",
+      "audit/SearchRouteTriadHandoffIdentityJson.lean",
+      "audit/SearchRouteTriadRfcCommitmentJson.lean"
+    ]
+  },
+  "goldenEncodings": [
+    {"caseId": "shorter-hop", "winner": 904, "alternative": 1608},
+    {"caseId": "fewer-round", "winner": 1211, "alternative": 1313},
+    {"caseId": "cache-domain", "winner": 19, "alternative": 21}
+  ],
+  "auditCoverageMode": "exact-set-equality",
+  "auditGates": [
+    {
+      "generatorSource": "audit/SearchRouteScipyMixedRadixJson.lean",
+      "receiptPath": "packages/proofs/receipts/searchroute-scipy-mixed-radix-audit-v1.json",
+      "declarationCount": 15,
+      "axiomDependentDeclarationCount": 0,
+      "theoremFamilies": [
+        "cache-domain-separation",
+        "float64-exactness",
+        "lexicographic-priority",
+        "mixed-radix-bound",
+        "python-lean-conformance"
+      ],
+      "rfcClauseIds": [
+        "ASP-RFC-10.05.64-BOUNDED-RADIX",
+        "ASP-RFC-10.05.64-COST-VECTOR",
+        "ASP-RFC-10.05.64-FLOAT64-EXACTNESS",
+        "ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER",
+        "ASP-RFC-10.05.64-PYTHON-LEAN-CONFORMANCE"
+      ],
+      "auditSha256": "813e0ad39e674a8cb8ea8b47845aa1673af7bc03443436c736e5b63753edfe74"
+    },
+    {
+      "generatorSource": "audit/SearchRoutePythonLeanSubagentTriadJson.lean",
+      "receiptPath": "packages/proofs/receipts/searchroute-python-lean-subagent-triad-audit-v1.json",
+      "declarationCount": 6,
+      "axiomDependentDeclarationCount": 0,
+      "theoremFamilies": ["subagent-triad-admission"],
+      "rfcClauseIds": ["ASP-RFC-10.05.64-SUBAGENT-TRIAD-ADMISSION"],
+      "auditSha256": "9edd98aeb214eb5b1aaf47972d8d030d8df45a8e42177f5134b39d212baf2015"
+    },
+    {
+      "generatorSource": "audit/SearchRouteTriadHandoffIdentityJson.lean",
+      "receiptPath": "packages/proofs/receipts/searchroute-triad-handoff-identity-audit-v1.json",
+      "declarationCount": 13,
+      "axiomDependentDeclarationCount": 0,
+      "theoremFamilies": ["triad-handoff-identity"],
+      "rfcClauseIds": [
+        "ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY",
+        "ASP-RFC-10.05.64-TRIAD-PREFLIGHT-VALIDITY"
+      ],
+      "auditSha256": "cd050815dd5e4ee24a33acb97479eff83d14a2038c2b626230b80ed5c34d533a"
+    },
+    {
+      "generatorSource": "audit/SearchRouteTriadRfcCommitmentJson.lean",
+      "receiptPath": "packages/proofs/receipts/searchroute-triad-rfc-commitment-audit-v1.json",
+      "declarationCount": 10,
+      "axiomDependentDeclarationCount": 0,
+      "theoremFamilies": [
+        "coverage-subset-counterexample",
+        "exact-audit-coverage",
+        "exact-rfc-binding",
+        "frontier-local-reuse",
+        "identifier-only-counterexample",
+        "org-contract-rfc-binding",
+        "rfc-dependency-invalidation",
+        "rfc-semantic-invalidation"
+      ],
+      "rfcClauseIds": ["ASP-RFC-10.05.64-RFC-COMMITMENT"],
+      "auditSha256": "8df5de1937060efdc4a17dc876eb527178c20e644c2394cd486fee03fc92c706"
+    }
+  ],
+  "relationshipContract": {
+    "authority": {
+      "sourcePath": "org/relationships/searchloop-scipy-triad.v1.org",
+      "contractPath": "org/contracts/relationship.v1.org",
+      "contractId": "relationship.document.v1",
+      "relationshipContractId": "searchloop.scipy-triad.v1",
+      "canonicalization": "org-contract-source-raw-lf-utf8-v1",
+      "sourceSha256": "7f41e5e48f1e5f1abd9ad9effb617d85bb959381cec4fca5ae67997275388f10"
+    },
+    "artifacts": [
+      {
+        "artifactId": "doc.relationship-contract-rfc",
+        "artifactKind": "org-document",
+        "artifactPath": "docs/10-19-rfcs/10.25.02-org-native-relationship-contracts.org",
+        "canonicalization": "org-source-raw-lf-utf8-v1",
+        "expectedSha256": "3aeef7d121bde9da83517d916ac2485e9ca5fb63044982d488a42d95082ebd05"
+      },
+      {
+        "artifactId": "doc.searchloop-relationship-binding",
+        "artifactKind": "org-section",
+        "artifactPath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "artifactSelector": "Normative contract / Relationship contract binding",
+        "canonicalization": "orgize-section-source-raw-lf-utf8-v1",
+        "expectedSha256": "faa73bb3203181905e8f925ea34fc689989e57a4abed442e603c47cfd0071af4"
+      },
+      {
+        "artifactId": "code.searchloop-scipy-router",
+        "artifactKind": "source-file",
+        "artifactPath": "packages/python/asp_python_graphs/src/asp_python_graphs/path_scipy_searchloop.py",
+        "canonicalization": "source-raw-lf-utf8-v1",
+        "expectedSha256": "4bedf1bd1f0c6276f65f6a621e74faa813a9aebf63c750de7457fcc50cc0281e"
+      },
+      {
+        "artifactId": "proof.searchloop-triad-relationship",
+        "artifactKind": "proof-module",
+        "artifactPath": "packages/proofs/ASPProof/SearchRouteTriadRelationshipContract.lean",
+        "canonicalization": "source-raw-lf-utf8-v1",
+        "expectedSha256": "7201565f746b60ba2325687dca111fe923244226dfbd07851e6513294ecfc5c1"
+      },
+      {
+        "artifactId": "receipt.searchloop-triad-relationship-audit",
+        "artifactKind": "receipt",
+        "artifactPath": "packages/proofs/receipts/searchroute-triad-relationship-contract-audit-v1.json",
+        "canonicalization": "json-sort-keys-compact-utf8-v1",
+        "expectedSha256": "2343dafb91659a20bef2eaab2d6c48fc15a716a4188f0a56988da675935c208b"
+      },
+      {
+        "artifactId": "contract.searchloop-scipy-routing",
+        "artifactKind": "org-contract",
+        "artifactPath": "org/contracts/relationship.searchloop.scipy-bounded-lexicographic-routing.v1.org",
+        "canonicalization": "org-source-raw-lf-utf8-v1",
+        "expectedSha256": "21844924d2e699f88f9ab1ebe0cb1265aa6e6ef5088269b4d7437653f54a2816"
+      }
+    ],
+    "relationships": [
+      {
+        "relationshipId": "searchloop-relationship-conforms-v1",
+        "subject": "doc.searchloop-relationship-binding",
+        "predicate": "conforms-to",
+        "object": "doc.relationship-contract-rfc",
+        "impact": "invalidates-subject",
+        "evidenceGates": ["relationship-schema-and-org-contract"]
+      },
+      {
+        "relationshipId": "searchloop-requirement-governed-v1",
+        "subject": "doc.searchloop-relationship-binding",
+        "predicate": "governed-by",
+        "object": "contract.searchloop-scipy-routing",
+        "impact": "invalidates-subject",
+        "evidenceGates": ["org-contract-trace"]
+      },
+      {
+        "relationshipId": "searchloop-python-realizes-v1",
+        "subject": "code.searchloop-scipy-router",
+        "predicate": "realizes",
+        "object": "doc.searchloop-relationship-binding",
+        "impact": "invalidates-subject",
+        "evidenceGates": ["python-scipy-conformance"]
+      },
+      {
+        "relationshipId": "searchloop-lean-proves-v1",
+        "subject": "proof.searchloop-triad-relationship",
+        "predicate": "proves",
+        "object": "doc.searchloop-relationship-binding",
+        "impact": "invalidates-subject",
+        "evidenceGates": ["lean-axiom-audit"]
+      },
+      {
+        "relationshipId": "searchloop-receipt-audits-v1",
+        "subject": "receipt.searchloop-triad-relationship-audit",
+        "predicate": "audits",
+        "object": "proof.searchloop-triad-relationship",
+        "impact": "invalidates-subject",
+        "evidenceGates": ["normalized-lean-audit"]
+      }
+    ],
+    "evidenceGates": [
+      "relationship-schema-and-org-contract",
+      "org-contract-trace",
+      "python-scipy-conformance",
+      "lean-axiom-audit",
+      "normalized-lean-audit"
+    ],
+    "applicationProfiles": {
+      "sectionCommitments": {
+        "canonicalization": "orgize-section-source-raw-lf-utf8-v1",
+        "orgContract": {
+          "targetPath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+          "contractId": "relationship.searchloop.scipy-bounded-lexicographic-routing.v1",
+          "contractPath": "org/contracts/relationship.searchloop.scipy-bounded-lexicographic-routing.v1.org",
+          "canonicalization": "org-contract-source-raw-lf-utf8-v1",
+          "contractSha256": "21844924d2e699f88f9ab1ebe0cb1265aa6e6ef5088269b4d7437653f54a2816",
+          "assertionCount": 26
+        },
+        "commitments": [
+          {
+        "clauseId": "ASP-RFC-10.05.64-COST-VECTOR",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Cost vector"],
+        "sourceSha256": "c383885ebf321abc9430b65dc3afee78ee8d6a111aac73db45557ddc4c437218",
+        "dependsOn": [],
+        "dependencySetSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Objective order"],
+        "sourceSha256": "64b2546b21c951b098f487b4b4d6b71c934b64fea061afdced54b88b0b41d62d",
+        "dependsOn": ["ASP-RFC-10.05.64-COST-VECTOR"],
+        "dependencySetSha256": "a2798e6f1e6c07311effc85699211159fc0f10313225cf0cf99af84a65786f47"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-BOUNDED-RADIX",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Bounded scalarization"],
+        "sourceSha256": "5c6894dceff40236f5e333785f3ce7869e4ba08b185fb5d99f73fc574e0f185f",
+        "dependsOn": [
+          "ASP-RFC-10.05.64-COST-VECTOR",
+          "ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER"
+        ],
+        "dependencySetSha256": "b7d2f980b1e5a3e4d612c9e8258a980683614558445806e6ff422834fdc35577"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-FLOAT64-EXACTNESS",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Exact float transport"],
+        "sourceSha256": "d5657d0a011b9c70eec66b8a85a2a750bf023bebc42581b5a21bc29b04c0bfcb",
+        "dependsOn": ["ASP-RFC-10.05.64-BOUNDED-RADIX"],
+        "dependencySetSha256": "d7857f3b6c203e576af94e368279c5e4b9eabb67d6bee8f6149300b92b5d99be"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-NO-FALLBACK",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "No hidden fallback"],
+        "sourceSha256": "2bb901faf403713fd10417a7eb8818c8a13949c99d344160d4e42c03b7c91471",
+        "dependsOn": [
+          "ASP-RFC-10.05.64-COST-VECTOR",
+          "ASP-RFC-10.05.64-FLOAT64-EXACTNESS"
+        ],
+        "dependencySetSha256": "29260bd46ae3a4c7c536a9ad4b9ebc986fb60cc3497478e868fc865786964b8a"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-AUDITED-RECONSTRUCTION",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Audited reconstruction"],
+        "sourceSha256": "6f99c0e25e5a221f273ce88b6fb388e6f6e870ca34408870bd76f417f790f24a",
+        "dependsOn": [
+          "ASP-RFC-10.05.64-COST-VECTOR",
+          "ASP-RFC-10.05.64-BOUNDED-RADIX",
+          "ASP-RFC-10.05.64-FLOAT64-EXACTNESS"
+        ],
+        "dependencySetSha256": "c20ce2a582198b1f2cbdae7cece7aeec98dbfc6ba2228e0645c321999d74a894"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-PYTHON-LEAN-CONFORMANCE",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Python-Lean-subagent conformance"],
+        "sourceSha256": "75ae15845841855aef76bdd4c682eb5f8b3fc6eee2562b3fba639075d6d2fefb",
+        "dependsOn": [
+          "ASP-RFC-10.05.64-COST-VECTOR",
+          "ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER",
+          "ASP-RFC-10.05.64-BOUNDED-RADIX",
+          "ASP-RFC-10.05.64-FLOAT64-EXACTNESS"
+        ],
+        "dependencySetSha256": "e70ad7163745abf2de97af3d4355d9f28ecc331eb940da96d1aaba6416997574"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-SUBAGENT-TRIAD-ADMISSION",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Delegated subagent triad admission"],
+        "sourceSha256": "757a4386929cd24deef7f99d5675f0938a79ebb57cc2f2517884e9ec06f4b357",
+        "dependsOn": ["ASP-RFC-10.05.64-PYTHON-LEAN-CONFORMANCE"],
+        "dependencySetSha256": "908eea4211a3dcd72398f7ad7d51c91fa86579f7b42e334e96256bcee234ab27"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Authenticated handoff identity"],
+        "sourceSha256": "3acdc81b05854bc05799963d697effb8be82c1f8abc2d3f079aa156cd15765b2",
+        "dependsOn": ["ASP-RFC-10.05.64-SUBAGENT-TRIAD-ADMISSION"],
+        "dependencySetSha256": "0ca57a057cfa1c93fc129fe2c90a48911db01a77ca92e326d6f0a14fcc1c8335"
+      },
+      {
+        "clauseId": "ASP-RFC-10.05.64-TRIAD-PREFLIGHT-VALIDITY",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+        "outlinePath": ["Normative contract", "Preflight validity"],
+        "sourceSha256": "4994c24513b2e0f30ce3e0999ffa324b5f4b66dda9f5da78e16f087c966e4ba9",
+        "dependsOn": ["ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY"],
+        "dependencySetSha256": "6b8fd9609162f6192f6627928705df0ea72e51e9fb5c91b5809b953a266f7d2b"
+      },
+      {
+      "clauseId": "ASP-RFC-10.05.64-RELATIONSHIP-CONTRACT",
+        "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
+      "outlinePath": ["Normative contract", "Relationship contract binding"],
+        "sourceSha256": "faa73bb3203181905e8f925ea34fc689989e57a4abed442e603c47cfd0071af4",
+        "dependsOn": [
+          "ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY",
+          "ASP-RFC-10.05.64-TRIAD-PREFLIGHT-VALIDITY"
+        ],
+        "dependencySetSha256": "e2bbc2b1cfcf60ed8491c5aa412fadf4f70b20cd0bfc03a68b5c22e551a16c11"
+      }
+        ]
+      }
+    }
+  },
+  "preflightGates": [
+    "hook-config-valid",
+    "python-project-resolved",
+    "lean-project-resolved",
+    "lean-json-generators-resolved",
+    "lean-audit-normalizer-resolved",
+    "org-contract-trace-verified",
+    "relationship-contract-verified"
+  ],
+  "executionAuthority": {
+    "explorerRole": "asp_explorer",
+    "testingRole": "asp_testing",
+    "delegationRequired": true
+  }
+}

@@ -1,0 +1,374 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+//! Immutable Runtime projection of SchemaManager-owned language bundles.
+
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use agent_semantic_client_protocol::ClientResponsePayload;
+use agent_semantic_client_protocol::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID;
+use agent_semantic_client_protocol::SchemaBundleDocument;
+use agent_semantic_client_protocol::SchemaBundleEntry;
+use agent_semantic_client_protocol::SchemaBundleReceipt;
+use agent_semantic_client_protocol::SchemaBundleRequest;
+use agent_semantic_client_protocol::SchemaBundleResponse;
+use agent_semantic_client_protocol::protocol_identity::SCHEMA_VERSION;
+use agent_semantic_schema_manager::SchemaManager;
+use serde::Deserialize;
+
+const EMBEDDED_SCHEMA_CATALOG: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/runtime-schema-bundles.v1.json"));
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EmbeddedSchemaCatalog {
+    schema_id: String,
+    schema_version: u64,
+    bundles: Vec<EmbeddedLanguageBundle>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EmbeddedLanguageBundle {
+    language_id: String,
+    search_producer_axes: Vec<agent_semantic_schema_manager::SearchProducerAxis>,
+    root_set_ids: Vec<String>,
+    bundle_digest: String,
+    entries: Vec<EmbeddedSchemaEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EmbeddedSchemaEntry {
+    family_id: String,
+    schema_id: String,
+    schema_version: String,
+    name: String,
+    digest: String,
+    document: serde_json::Value,
+}
+
+#[derive(Clone)]
+struct VerifiedLanguageBundle {
+    search_producer_axes: Arc<[agent_semantic_schema_manager::SearchProducerAxis]>,
+    root_set_ids: Arc<[String]>,
+    bundle_digest: String,
+    ready: ClientResponsePayload,
+    unchanged: ClientResponsePayload,
+    profile_mismatch: ClientResponsePayload,
+}
+
+/// Startup-built, immutable projection used by the public ClientFrame route.
+#[derive(Clone, Default)]
+pub struct RuntimeSchemaBundleCatalog {
+    bundles: Arc<HashMap<String, VerifiedLanguageBundle>>,
+}
+
+impl RuntimeSchemaBundleCatalog {
+    pub(crate) fn search_producer_axes(
+        &self,
+        language_id: &str,
+    ) -> Option<&[agent_semantic_schema_manager::SearchProducerAxis]> {
+        self.bundles
+            .get(language_id)
+            .map(|bundle| bundle.search_producer_axes.as_ref())
+    }
+
+    /// Decode the build-verified catalog embedded in the Runtime artifact.
+    /// Runtime startup never scans, materializes, or verifies the mutable
+    /// source checkout; changing any schema changes the enclosing binary
+    /// digest and therefore requires a new active bundle publication.
+    pub fn load_embedded() -> Result<Self, String> {
+        let embedded: EmbeddedSchemaCatalog = serde_json::from_slice(EMBEDDED_SCHEMA_CATALOG)
+            .map_err(|error| format!("decode embedded Runtime schema catalog: {error}"))?;
+        if embedded.schema_id != "agent.semantic-protocols.runtime-schema-bundle-catalog"
+            || embedded.schema_version != 1
+            || embedded.bundles.is_empty()
+        {
+            return Err("invalid embedded Runtime schema catalog authority".to_owned());
+        }
+        let mut bundles = HashMap::with_capacity(embedded.bundles.len());
+        for bundle in embedded.bundles {
+            let mut entries = Vec::with_capacity(bundle.entries.len());
+            let mut documents = Vec::with_capacity(bundle.entries.len());
+            for embedded_entry in bundle.entries {
+                let entry = SchemaBundleEntry {
+                    family_id: embedded_entry.family_id,
+                    schema_id: embedded_entry.schema_id,
+                    schema_version: embedded_entry.schema_version,
+                    name: embedded_entry.name,
+                    digest: embedded_entry.digest,
+                };
+                documents.push(SchemaBundleDocument {
+                    entry: entry.clone(),
+                    document: embedded_entry.document,
+                });
+                entries.push(entry);
+            }
+            let receipt = SchemaBundleReceipt {
+                language_id: bundle.language_id.clone(),
+                root_set_ids: bundle.root_set_ids.clone(),
+                bundle_digest: bundle.bundle_digest.clone(),
+            };
+            let ready = SchemaBundleResponse::Ready {
+                schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+                schema_version: SCHEMA_VERSION.to_owned(),
+                receipt: receipt.clone(),
+                entries: entries.clone(),
+                documents,
+            };
+            let unchanged = SchemaBundleResponse::Unchanged {
+                schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+                schema_version: SCHEMA_VERSION.to_owned(),
+                receipt: receipt.clone(),
+                entries,
+            };
+            let profile_mismatch = failed(
+                &bundle.language_id,
+                "schema-bundle-profile-mismatch",
+                serde_json::json!({"action": "use-registered-root-set-profile"}),
+                serde_json::json!({"registeredRootSetIds": bundle.root_set_ids}),
+            );
+            let ready = verified_payload(ready)?;
+            let unchanged = verified_payload(unchanged)?;
+            let profile_mismatch = verified_payload(profile_mismatch)?;
+            if bundles
+                .insert(
+                    bundle.language_id.clone(),
+                    VerifiedLanguageBundle {
+                        search_producer_axes: Arc::from(bundle.search_producer_axes),
+                        root_set_ids: Arc::from(receipt.root_set_ids),
+                        bundle_digest: receipt.bundle_digest,
+                        ready,
+                        unchanged,
+                        profile_mismatch,
+                    },
+                )
+                .is_some()
+            {
+                return Err(format!(
+                    "duplicate embedded Runtime schema bundle: {}",
+                    bundle.language_id
+                ));
+            }
+        }
+        Ok(Self {
+            bundles: Arc::new(bundles),
+        })
+    }
+
+    /// Bind exactly the language schema bundles required by one workspace.
+    pub fn binding_digest<'a>(
+        &self,
+        language_ids: impl IntoIterator<Item = &'a str>,
+    ) -> Result<String, String> {
+        let mut language_ids = language_ids.into_iter().collect::<Vec<_>>();
+        language_ids.sort_unstable();
+        language_ids.dedup();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"agent.semantic-protocols.runtime-schema-bundle-binding.v1\0");
+        for language_id in language_ids {
+            let bundle = self.bundles.get(language_id).ok_or_else(|| {
+                format!("Runtime schema bundle is absent for required language `{language_id}`")
+            })?;
+            hasher.update(language_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(bundle.bundle_digest.as_bytes());
+            hasher.update(b"\0");
+        }
+        Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
+    }
+
+    /// Project the same immutable bundle identities served by the public V1
+    /// route into Runtime artifact execution-closure entries.
+    pub fn execution_closure_entries(
+        &self,
+    ) -> Result<
+        Vec<agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry>,
+        String,
+    >{
+        let mut language_ids = self.bundles.keys().collect::<Vec<_>>();
+        language_ids.sort_unstable();
+        language_ids
+            .into_iter()
+            .map(|language_id| {
+                let bundle = self
+                    .bundles
+                    .get(language_id)
+                    .expect("language identity came from this immutable catalog");
+                Ok(agent_semantic_artifacts::runtime_artifact_execution_closure::LanguageSchemaClosureEntry {
+                    language_id: language_id.clone(),
+                    schema_digest:
+                        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                            &bundle.bundle_digest,
+                        )?,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn load(workspace_root: impl Into<PathBuf>) -> Result<Self, String> {
+        let workspace_root = workspace_root.into();
+        let manager = SchemaManager::new(&workspace_root);
+        let profiles = manager.registered_language_profiles()?;
+        let responsibilities = manager
+            .responsibilities()
+            .await?
+            .into_iter()
+            .map(|responsibility| (responsibility.name, responsibility.family_id))
+            .collect::<BTreeMap<_, _>>();
+        let resolved_bundles = manager.resolve_bundles(&[]).await?;
+        let profiles = profiles
+            .into_iter()
+            .map(|profile| (profile.language_id.clone(), profile))
+            .collect::<HashMap<_, _>>();
+        let mut bundles = HashMap::new();
+        for bundle in resolved_bundles {
+            let profile = profiles.get(&bundle.language_id).ok_or_else(|| {
+                format!(
+                    "resolved schema bundle has no registered profile: {}",
+                    bundle.language_id
+                )
+            })?;
+            let mut entries = Vec::with_capacity(bundle.schemas.len());
+            let mut documents = Vec::with_capacity(bundle.schemas.len());
+            for owned in bundle.schemas {
+                let document: serde_json::Value =
+                    serde_json::from_slice(&owned.bytes).map_err(|error| {
+                        format!("decode canonical schema document {}: {error}", owned.name)
+                    })?;
+                let schema_id = document
+                    .get("$id")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| format!("schema document has no $id: {}", owned.name))?
+                    .to_owned();
+                let family_id = responsibilities.get(&owned.name).ok_or_else(|| {
+                    format!(
+                        "schema document has no SchemaManager family: {}",
+                        owned.name
+                    )
+                })?;
+                let entry = SchemaBundleEntry {
+                    family_id: family_id.clone(),
+                    schema_id,
+                    schema_version: SCHEMA_VERSION.to_owned(),
+                    name: owned.name,
+                    digest: owned.digest,
+                };
+                documents.push(SchemaBundleDocument {
+                    entry: entry.clone(),
+                    document,
+                });
+                entries.push(entry);
+            }
+            let projected_receipt = SchemaBundleReceipt {
+                language_id: bundle.language_id.clone(),
+                root_set_ids: profile.root_sets.clone(),
+                bundle_digest: bundle.bundle_digest,
+            };
+            let ready = SchemaBundleResponse::Ready {
+                schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+                schema_version: SCHEMA_VERSION.to_owned(),
+                receipt: projected_receipt.clone(),
+                entries: entries.clone(),
+                documents,
+            };
+            let unchanged = SchemaBundleResponse::Unchanged {
+                schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+                schema_version: SCHEMA_VERSION.to_owned(),
+                receipt: projected_receipt.clone(),
+                entries,
+            };
+            let profile_mismatch = failed(
+                &bundle.language_id,
+                "schema-bundle-profile-mismatch",
+                serde_json::json!({"action": "use-registered-root-set-profile"}),
+                serde_json::json!({"registeredRootSetIds": profile.root_sets}),
+            );
+            let ready = verified_payload(ready)?;
+            let unchanged = verified_payload(unchanged)?;
+            let profile_mismatch = verified_payload(profile_mismatch)?;
+            let projected = VerifiedLanguageBundle {
+                search_producer_axes: Arc::from(profile.search_producer_axes.clone()),
+                root_set_ids: Arc::from(profile.root_sets.clone()),
+                bundle_digest: projected_receipt.bundle_digest,
+                ready,
+                unchanged,
+                profile_mismatch,
+            };
+            if bundles
+                .insert(bundle.language_id.clone(), projected)
+                .is_some()
+            {
+                return Err(format!(
+                    "duplicate resolved schema bundle: {}",
+                    bundle.language_id
+                ));
+            }
+        }
+        Ok(Self {
+            bundles: Arc::new(bundles),
+        })
+    }
+
+    pub fn project(&self, request: &SchemaBundleRequest) -> ClientResponsePayload {
+        match self.bundles.get(&request.language_id) {
+            None => ClientResponsePayload::from(
+                serde_json::to_value(failed(
+                    &request.language_id,
+                    "schema-bundle-language-unregistered",
+                    serde_json::json!({"action": "select-registered-language-profile"}),
+                    serde_json::json!({"registeredLanguages": self.registered_languages()}),
+                ))
+                .expect("fixed schema bundle failure response is serializable"),
+            ),
+            Some(bundle) if request.root_set_ids.as_slice() != bundle.root_set_ids.as_ref() => {
+                bundle.profile_mismatch.clone()
+            }
+            Some(bundle)
+                if request.known_bundle_digest.as_deref()
+                    == Some(bundle.bundle_digest.as_str()) =>
+            {
+                bundle.unchanged.clone()
+            }
+            Some(bundle) => bundle.ready.clone(),
+        }
+    }
+
+    fn registered_languages(&self) -> Vec<&str> {
+        let mut languages = self.bundles.keys().map(String::as_str).collect::<Vec<_>>();
+        languages.sort_unstable();
+        languages
+    }
+}
+
+fn verified_payload(response: SchemaBundleResponse) -> Result<ClientResponsePayload, String> {
+    response.validate()?;
+    let value = serde_json::to_value(response)
+        .map_err(|error| format!("encode verified schema bundle response: {error}"))?;
+    Ok(ClientResponsePayload::from_shared(Arc::new(value)))
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/schema_bundle.rs"]
+mod binding_tests;
+
+fn failed(
+    language_id: &str,
+    reason_kind: &str,
+    recommended_next: serde_json::Value,
+    details: serde_json::Value,
+) -> SchemaBundleResponse {
+    SchemaBundleResponse::Failed {
+        schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        language_id: language_id.to_owned(),
+        reason_kind: reason_kind.to_owned(),
+        recommended_next,
+        details,
+    }
+}

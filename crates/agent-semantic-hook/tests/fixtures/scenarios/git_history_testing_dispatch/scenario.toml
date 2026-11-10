@@ -1,0 +1,18 @@
+schemaId = "agent.semantic-protocols.hook-match-scenario"
+schemaVersion = "v1"
+scenarioId = "git-history-testing-dispatch"
+commands = [
+  "git log --oneline -50",
+  "rtk --ultra-compact git show HEAD",
+  "rtk --ultra-compact git diff -- crates/agent-semantic-client-db/src/runtime_server_workspace/registry/projection_slots.rs",
+  "git blame src/lib.rs",
+]
+
+[expected]
+ruleId = "git-history-inspection-dispatch"
+decision = "deny"
+targetAgent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[performance]
+maxMatcherMicros = 1000

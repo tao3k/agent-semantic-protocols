@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-exact-query-request.schema.json",
+  "title": "ASP Client Exact Query Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "mode", "projection"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-exact-query-request"},
+    "schemaVersion": {"const": "1"},
+    "mode": {"enum": ["selector", "syntax", "playbook"]},
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A parser-owned exact structural selector resolved against the admitted CompleteGeneration."
+    },
+    "selectors": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "A parser-owned exact structural selector. Its producer scheme is the sole language or document authority."
+      }
+    },
+    "languages": {"$ref": "#/$defs/producerExpression"},
+    "documents": {"$ref": "#/$defs/producerExpression"},
+    "workspace": {"$ref": "#/$defs/identity"},
+    "syntax": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/producerNativeBlock"}
+    },
+    "projection": {"enum": ["matches", "source", "callable-skeleton"]}
+  },
+  "oneOf": [
+    {
+      "properties": {"mode": {"const": "selector"}},
+      "required": ["selector"],
+      "not": {"anyOf": [
+        {"required": ["languages"]}, {"required": ["documents"]},
+        {"required": ["syntax"]}
+      ]}
+    },
+    {
+      "properties": {"mode": {"const": "syntax"}},
+      "required": ["syntax"],
+      "allOf": [
+        {"anyOf": [{"required": ["languages"]}, {"required": ["documents"]}]},
+        {"not": {"required": ["selector"]}}
+      ]
+    },
+    {
+      "properties": {"mode": {"const": "playbook"}},
+      "required": ["selectors"],
+      "allOf": [
+        {"not": {"required": ["selector"]}},
+        {"not": {"required": ["languages"]}},
+        {"not": {"required": ["documents"]}},
+        {"not": {"required": ["syntax"]}}
+      ]
+    }
+  ],
+  "$defs": {
+    "identity": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "producerExpression": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*(\\|[A-Za-z0-9][A-Za-z0-9._+-]*)*$"
+    },
+    "nativeArgv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "producerNativeBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer", "argv"],
+      "properties": {
+        "producer": {"$ref": "#/$defs/identity"},
+        "argv": {"$ref": "#/$defs/nativeArgv"}
+      }
+    }
+  }
+}

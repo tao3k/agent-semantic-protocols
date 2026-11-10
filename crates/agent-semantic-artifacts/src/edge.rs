@@ -1,11 +1,19 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Queryable Merkle artifact root edges.
 //!
 //! Edge records are the stable handoff between artifact roots and DB/graph
 //! implementations. They let Turso, Python, Julia, and render receipts traverse
 //! provenance without embedding artifact payloads.
 
-use crate::identity::{ArtifactHash, ArtifactKind, ArtifactRootRef, EDGE_DOMAIN_V1};
-use serde::{Deserialize, Serialize};
+use crate::identity::ArtifactHash;
+use crate::identity::ArtifactKind;
+use crate::identity::ArtifactRootRef;
+use crate::identity::EDGE_DOMAIN_V1;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Schema id for queryable artifact root edges.
 pub const ARTIFACT_EDGE_SCHEMA_ID: &str = "semantic-artifact-edge";

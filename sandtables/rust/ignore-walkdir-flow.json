@@ -34,7 +34,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
@@ -69,7 +69,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-lexical]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",
@@ -103,7 +103,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-owner]",
+          "[search-playbook]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",

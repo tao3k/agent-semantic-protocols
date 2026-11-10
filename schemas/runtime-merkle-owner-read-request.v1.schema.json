@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-merkle-owner-read-request.v1.schema.json",
+  "title": "Runtime Merkle Owner Read Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectRoot",
+    "ownerPath"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-merkle-owner-read-request"
+    },
+    "schemaVersion": { "const": "1" },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "ownerPath": { "$ref": "#/$defs/ownerPath" }
+  },
+  "$defs": {
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

@@ -1,0 +1,208 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: ASP Schema Package and Lifecycle
+#+PROPERTY: ASP_SCHEMA_ID asp.schema-management.rfc.v1
+
+* Status
+
+Proposed and implemented as a Python-owned repository audit surface.
+
+* Problem
+
+The shared =schemas/= directory is a protocol authority, but repeated JSON
+Schema fragments, implicit Rust consumers, and undeclared retirement decisions
+make the authority expensive to review and unsafe to prune.  A schema that is
+not named directly by Rust may still be reachable through =$ref=, used by a
+provider, or retained by an explicit lifecycle decision.
+
+* Decision
+
+Schema Manager publication has one version-one public receipt identity:
+=schemaId=, =schemaVersion=, and =schemaDigest=.  The digest is the
+content-addressed digest of the deterministically ordered managed schema
+entries.  Language, profile, and membership details remain manager-owned
+verification material and are not protocol fields in the public receipt.
+Consumers MUST reject legacy string references and receipts carrying
+additional fields; a =schemaReference= is always the structured pair
+={schemaId,schemaVersion}=.
+
+The =asp-schema-manager= Python package owns deterministic, read-only schema analysis.
+It MUST:
+
+1. discover structurally equivalent validation fragments that can be extracted
+   behind local or cross-document references;
+2. validate identifiers and references, and distinguish direct Rust use from
+   transitive reference reachability;
+3. combine observed use with an explicit lifecycle manifest;
+4. emit =asp.schema-management-report.v1= without mutating or deleting schemas.
+
+The package MUST NOT infer deletion from absence of a Rust string alone.
+Removal candidates require no direct Rust evidence, no transitive Rust
+reachability, no inbound schema reference, and no lifecycle retention override.
+
+* Contractual filename namespace families
+
+A schema family is an explicit contract, not a filename heuristic.  The family
+registry declares a stable =familyId=, owner, rationale, priority, optional
+parent family, and a =namespace= containing filename and/or schema-identifier
+prefixes.  Filename namespaces are therefore contract inputs whose changes are
+reviewable registry changes; filenames alone never create authority.
+
+More-specific namespaces use a higher declared priority.  Equal-priority
+matches are errors.  Explicit include/exclude overrides handle exceptional
+members without weakening the namespace contract.  A family may nominate a
+=definitionSchemaPath= only when that shared definition contract exists.
+The owner also declares =definitionVisibility= as =family=, =descendants=, or
+=public=.  The Manager validates every reference edge against that visibility;
+cross-family reuse is therefore a reviewed contract decision rather than an
+accidental relative =$ref=.
+
+Reference candidates spanning one family may propose that family's definition
+owner.  Cross-family candidates require an explicit promotion decision and
+MUST NOT select an arbitrary existing schema as their owner.  Unclassified or
+mixed candidates must be classified before extraction.
+
+* Reference discovery
+
+Candidates use a canonical validation fingerprint.  Annotation keywords such
+as =title=, =description=, =$comment=, =examples=, and =default= do not affect
+the fingerprint because draft 2020-12 permits them beside =$ref=.  Candidate
+reports include every source JSON Pointer, an estimated byte saving, and either
+an existing local =$defs= anchor or an =extract-shared-definition=
+recommendation.  Cross-document candidates MUST NOT appoint the first matching
+schema as an implicit shared owner; their common contract owner is an explicit
+registry/lifecycle decision.
+The reported plan is greedily non-overlapping: once an ancestor fragment is
+selected, nested alternatives in the same schema are excluded from the byte
+total.  The tool never rewrites a schema automatically.
+
+Only definitions reachable from a registered schema root through =$ref= or
+=$dynamicRef= participate in extraction candidates.  Unreachable =$defs=
+entries are reported separately; they MUST NOT be promoted into a family
+definition contract merely because the same dead fragment appears repeatedly.
+
+* Logical projection and proof composition
+
+The Schema Manager MAY generate a deterministic logical projection from a
+registered JSON Schema.  This is a read-only derivation: it MUST identify the
+source schema and digest, select contract-visible facts, and bind each fact to
+its JSON Pointer and proof role.  It MUST NOT mutate the source schema, invent a
+second schema authority, or label an unchecked projection as a proof.
+
+The projection reuses
+=schemas/semantic-proof-definitions.v1.schema.json#/$defs/schemaProjection=.
+Schema Manager MUST NOT introduce an =asp-schema-logical-projection= structure
+that duplicates that definition.  If an independently transported top-level
+projection becomes necessary, its contract belongs to the =semantic-proof=
+family and references the existing definition; Schema Manager remains only the
+producer.
+
+Proof obligations are composed from
+=schemas/semantic-proof-obligation.v1.schema.json=.  A projection containing
+several obligations uses an ordered or explicitly keyed collection of those
+objects.  It MUST NOT duplicate the obligation fields in an
+=asp-schema-proof-obligation-set= contract.  A separately versioned obligation
+set is admitted only after an independent transport or lifecycle consumer is
+demonstrated, and its ownership remains =semantic-proof=.
+
+The verification result uses
+=schemas/semantic-proof-receipt.v1.schema.json=.  Schema Manager MUST NOT define
+an =asp-schema-proof-receipt= alias or private receipt.  The existing receipt's
+checker identity distinguishes =axle.verify_proof=, =axle.check=, =lean=, and
+other admitted checkers without changing receipt authority.
+
+Axle owns checker execution evidence and the binding from the generated
+projection and obligations to the checked Lean declarations.  A successful
+receipt MUST bind the exact source-schema digest, logical-projection digest,
+obligation identity, formal statement digest, candidate digest, checker
+environment, and relevant Lean proof/declaration identity.  Structural Axle
+audit receipts MAY accompany that evidence but do not replace the semantic
+proof receipt.
+
+Any change to the source schema, selected logical facts, obligation collection,
+formal statement, candidate, checker environment, or bound Lean declaration
+invalidates the derived projection/receipt chain unless all dependent digests
+are recomputed and verification is executed again.  Schema Manager MUST report
+digest drift as stale or invalid proof evidence; it MUST NOT silently carry a
+previous Ready/verified verdict forward.
+
+The ownership chain is therefore:
+
+#+begin_example
+Schema Manager read-only projection
+  -> semantic-proof schemaProjection
+  -> semantic-proof obligation composition
+  -> Axle/Lean checker evidence
+  -> semantic-proof receipt
+#+end_example
+
+The =asp-schema-manager= family owns management reports, filename-family policy,
+reference decisions, and lifecycle analysis.  It does not own language-neutral
+proof semantics.  The =semantic-proof= family owns projection, obligation, and
+receipt contracts; Axle owns checker-specific evidence.
+
+* Rust usage model
+
+- =direct=: Rust source names the schema file, =$id=, or protocol =schemaId=.
+- =transitive=: a direct schema reaches the schema through a resolvable =$ref=.
+- =unobserved=: neither form of Rust evidence exists.
+
+These are evidence states, not lifecycle states.
+
+* Lifecycle
+
+The manifest may declare =active=, =deprecated=, =retired=, or
+=removal-candidate= with owner, rationale, replacement, and sunset metadata.
+Contradictions are reported: a retired/removal candidate that remains directly
+used by Rust or referenced by another schema cannot pass the management gate.
+
+* Canonical root projection authority
+
+The repository =schemas/= tree is the sole byte authority for shared schemas.
+Language packages contain materialized projections only.  A projection is
+current exactly when its schema name and content digest equal the canonical
+root entry selected by the Rust Schema Manager registry.  Package-local bytes
+MUST NOT be used as a source when constructing or refreshing another bundle.
+
+The =provider-contract= root set includes
+=provider-manifest.schema.json=.  Every programming-language profile that
+inherits that root set therefore receives the same provider identity domain.
+Document surfaces such as Org and Markdown remain parser/schema consumers
+inside ASP and do not become provider registry entries, installable artifacts,
+processes, or CompleteGeneration participants.
+
+Materialization MUST replace a stale managed package copy atomically, update
+the bundle receipt and membership digest in the same operation, and make
+=verify= fail closed until all three agree.  Python tools may validate or
+render the Rust-produced receipt, but they do not implement a second Schema
+Manager or choose an alternate root closure.
+
+* Language policy packet and presentation ownership
+
+Language providers own parsing, language-specific policy evaluation, rule
+identity, source locations, evidence, and repair metadata.  They publish those
+facts as =semantic-language-policy-report.v1= JSON.  A provider MUST NOT define
+its own text, Org, terminal, or agent-line rendering contract, and a consumer
+MUST NOT infer policy semantics by parsing provider output strings.
+
+Unified ASP owns presentation after validating the shared packet.  Presentation
+is an internal consumer concern, not a public policy-rendering subcommand or a
+language-provider API.  Provider-specific report identities and legacy line
+protocols fail closed; they are not compatibility inputs.  Package-local
+=gxtest= integration may write the shared JSON packet when a policy gate fails,
+but it remains a data producer rather than a presentation owner.
+
+* CLI
+
+#+begin_src sh
+uv run --project packages/python asp-schema-manager audit --workspace-root .
+uv run --project packages/python asp-schema-manager references --workspace-root .
+uv run --project packages/python asp-schema-manager families --workspace-root .
+uv run --project packages/python asp-schema-manager rust-usage --workspace-root .
+uv run --project packages/python asp-schema-manager lifecycle --workspace-root .
+uv run --project packages/python asp-schema-manager check --workspace-root .
+#+end_src
+
+All JSON output is deterministic and repository-relative.

@@ -1,0 +1,25 @@
+{
+  "auditSha256": "4a64686fefd07261443ef4ec3c122d4dceaf57e6f4b378d37c8b3709af998d28",
+  "axiomDependentDeclarationCount": 13,
+  "axiomFreeDeclarationCount": 0,
+  "axiomInventory": [
+    "Quot.sound",
+    "propext"
+  ],
+  "declarationCount": 13,
+  "rfcClauseIds": [
+    "ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"
+  ],
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "theoremFamilies": [
+    "counterexample",
+    "ledger-independence",
+    "merge-algebra",
+    "merge-confluence",
+    "typed-conflict"
+  ]
+}

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Large-library benchmark snapshot helper.
 
 Builds the large-library report once and emits a deterministic, compact
@@ -46,7 +50,7 @@ def _arg_parser() -> argparse.ArgumentParser:
         help="Repository root to scan for sandtable scenario inputs.",
     )
     parser.add_argument(
-        "--languages",
+        "--language",
         default=None,
         help=(
             "Comma-separated language list to include, e.g. julia,python,rust,typescript."

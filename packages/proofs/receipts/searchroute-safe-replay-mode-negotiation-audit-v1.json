@@ -1,0 +1,111 @@
+{"sourcePath": "ASPProof/SearchRouteSafeReplayModeNegotiation.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteSafeReplayModeNegotiation",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (digestEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right))\n  (canonicalEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right)),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n      (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n        rightAdmitted none digestEquality canonicalEquality) ≠\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.digestCompressed",
+   "theoremFamily": "absent-collision-evidence-never-selects-digest",
+   "rfcClauseIds": ["SRM-ASSUMPTION", "SRM-MODE"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.absent_collision_evidence_never_selects_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (collisionEvidence : ASPProof.SearchRouteSafeReplayModeNegotiation.CollisionFreeEvidence digest admitted)\n  (digestEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right)\n  (canonicalEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right)),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n      (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n        rightAdmitted (some collisionEvidence) (some digestEquality) canonicalEquality) =\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.digestCompressed",
+   "theoremFamily": "collision-and-digest-evidence-select-digest",
+   "rfcClauseIds": ["SRM-DIGEST", "SRM-MODE"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.collision_and_digest_evidence_select_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (digestEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right))\n  (canonicalEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n      (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n        rightAdmitted none digestEquality (some canonicalEquality)) =\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.fullField",
+   "theoremFamily": "absent-collision-selects-full-field",
+   "rfcClauseIds": ["SRM-FULL-FIELD", "SRM-MODE"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.absent_collision_with_canonical_evidence_selects_full_field",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (collisionEvidence : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.CollisionFreeEvidence digest admitted)),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n      (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n        rightAdmitted collisionEvidence none none) =\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.explicitFieldFallback",
+   "theoremFamily": "missing-identity-evidence-selects-fallback",
+   "rfcClauseIds": ["SRM-FALLBACK", "SRM-MODE"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.no_identity_evidence_selects_fallback",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (collisionEvidence : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.CollisionFreeEvidence digest admitted))\n  (digestEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right))\n  (canonicalEquality : Option (ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right)),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n        (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n          rightAdmitted collisionEvidence digestEquality canonicalEquality) =\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.digestCompressed →\n    ∃ evidence, collisionEvidence = some evidence",
+   "theoremFamily": "negotiated-digest-has-collision-evidence",
+   "rfcClauseIds": ["SRM-ASSUMPTION", "SRM-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.negotiated_digest_has_collision_evidence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (outcome : ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayIdentityOutcome left right),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode outcome ≠\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.explicitFieldFallback →\n    left = right",
+   "theoremFamily": "accepted-mode-payload-identity",
+   "rfcClauseIds": ["SRM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.accepted_outcome_implies_payload_equality",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload) (assumptionIdentity : Nat)\n  (payloadEqual : left = right),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeAssumptionIdentity\n      (ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayIdentityOutcome.acceptedDigest assumptionIdentity\n        payloadEqual) =\n    some assumptionIdentity",
+   "theoremFamily": "digest-receipt-assumption-identity",
+   "rfcClauseIds": ["SRM-ASSUMPTION", "SRM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.digest_outcome_receipt_has_assumption_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (outcome : ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayIdentityOutcome left right),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode outcome =\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.fullField →\n    ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeAssumptionIdentity outcome = none",
+   "theoremFamily": "full-field-receipt-no-assumption",
+   "rfcClauseIds": ["SRM-FULL-FIELD", "SRM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.full_field_outcome_has_no_assumption_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (_collisionEvidence : ASPProof.SearchRouteSafeReplayModeNegotiation.CollisionFreeEvidence digest admitted)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n  admitted left →\n    admitted right →\n      ∀ (_digestEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right)\n        (canonicalEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right),\n        left = right",
+   "theoremFamily": "full-and-digest-evidence-agreement",
+   "rfcClauseIds": ["SRM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.full_and_digest_evidence_agree_on_payload_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop)\n  (collisionEvidence : ASPProof.SearchRouteSafeReplayModeNegotiation.CollisionFreeEvidence digest admitted)\n  (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload)\n  (leftAdmitted : admitted left) (rightAdmitted : admitted right)\n  (digestEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.DigestEqualityEvidence digest left right)\n  (canonicalEquality : ASPProof.SearchRouteSafeReplayModeNegotiation.CanonicalEqualityEvidence left right),\n  ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n        (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n          rightAdmitted (some collisionEvidence) (some digestEquality) none) =\n      ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.digestCompressed ∧\n    ASPProof.SearchRouteSafeReplayModeNegotiation.outcomeMode\n          (ASPProof.SearchRouteSafeReplayModeNegotiation.negotiateReplayIdentity digest admitted left right leftAdmitted\n            rightAdmitted none none (some canonicalEquality)) =\n        ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.fullField ∧\n      left = right",
+   "theoremFamily": "full-and-digest-mode-agreement",
+   "rfcClauseIds": ["SRM-MODE", "SRM-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.negotiated_full_and_digest_modes_agree_on_payload_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.replayIdentityReceiptTokenCost\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.digestCompressed <\n  ASPProof.SearchRouteSafeReplayModeNegotiation.replayIdentityReceiptTokenCost\n    ASPProof.SearchRouteSafeReplayModeNegotiation.ReplayModeTag.fullField",
+   "theoremFamily": "digest-mode-receipt-smaller",
+   "rfcClauseIds": ["SRM-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteSafeReplayModeNegotiation.digest_mode_receipt_token_cost_is_smaller",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 11,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 11,
+ "axiomDependentDeclarationCount": 0}

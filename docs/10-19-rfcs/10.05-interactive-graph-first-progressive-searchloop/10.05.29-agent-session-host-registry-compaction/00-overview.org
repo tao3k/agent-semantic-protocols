@@ -1,0 +1,339 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: RFC 10.05.29 — Agent Session Multi-Key Registry Compaction
+#+startup: overview
+
+* Status
+
+Draft for formal verification. This RFC refines
+[[file:../10.05.28-agent-session-host-registry-ledger/00-overview.org][RFC 10.05.28 — Agent Session Host Registry Authority Ledger]] from one
+intent-indexed canonical snapshot to atomic multi-key compaction and durable GC
+knowledge. It does not authorize Rust implementation in this session.
+
+* Problem
+
+A per-intent authority proof does not establish safety for one physical Host
+registry containing many dispatch keys. Compaction commonly rewrites the whole
+registry, so a partial rewrite may preserve key =k_0= while silently deleting
+the accepted receipt for key =k_1=. Both surviving records may remain locally
+well formed and the resulting file may still receive a valid digest.
+
+Garbage collection adds a second failure mode. Deleting a retired entry without
+preserving durable tombstone knowledge makes a delayed provider, resident
+process, cache, or replica copy appear importable again. RFC 00.87 identifies
+the GC floor as a durable tombstone summary and requires compaction to preserve
+it.
+
+A third defect is subtler: monotonicity alone does not make a GC floor safe. If
+the floor advances past a still-live =Accepted= entry, the entry remains in the
+file but delayed replay of its generation is classified as retired. Therefore
+every live =Empty= or =Accepted= entry must remain strictly above the new floor.
+
+* Design decision
+
+The canonical Host registry snapshot contains, and atomically publishes:
+
+- one snapshot revision;
+- the complete key-universe manifest;
+- the ordered entry collection;
+- the durable GC floor;
+- the canonical ledger revision selecting the snapshot.
+
+Safe compaction is structural. For each entry it has only two legal actions:
+
+1. preserve the exact entry; or
+2. delete an entry whose state is =Retired= and whose generation is covered by
+   the new GC floor.
+
+There is no constructor for deleting =Empty= or =Accepted=. The manifest is
+preserved exactly, the snapshot revision advances once, the GC floor is
+monotone, and every remaining live entry stays above that floor. The complete
+snapshot is then published through one canonical ledger CAS; per-key partial
+publication is not a legal protocol state.
+
+* Stateful architecture
+
+#+name: host-registry-compaction-architecture
+#+begin_src mermaid
+flowchart LR
+  H["Authority ledger\nstate: Head(r, multiKeySnapshot)"]
+  C["Compaction planner\nstate: Candidate(manifest, entries, newFloor)"]
+  P["Entry preservation verifier\nstate: Preserved | CoveredRetired | IllegalDrop"]
+  F["GC floor verifier\nstate: MonotoneAndLiveSafe | Unsafe"]
+  A["Atomic snapshot publisher\nstate: CAS(expectedRevision, completeSnapshot)"]
+  N["New authority head\nstate: Head(r + 1, compactedSnapshot)"]
+  Q["Quarantine\nstate: Closed(reason, candidateIdentity)"]
+  D["Delivered verifier\nstate: ContainsAccepted | Missing"]
+
+  H -->|"transition; state: Head -> Candidate; start complete-snapshot compaction"| C
+  C -->|"guard; state: Candidate -> PreservedOrRejected; check every entry"| P
+  C -->|"guard; state: Candidate -> FloorSafeOrUnsafe; validate new floor"| F
+  P -->|"capability; state: PreservedOrCoveredRetired -> CASPending; preserve manifest"| A
+  P -->|"prohibitedEffect; state: IllegalDrop -> Closed; never delete live entry"| Q
+  F -->|"capability; state: MonotoneAndLiveSafe -> CASPending; authorize floor"| A
+  F -->|"guard; state: Unsafe -> Closed; floor crosses live generation"| Q
+  A -->|"transition; state: CASPending -> Head(r + 1); publish all keys atomically"| N
+  N -->|"guard; state: Head -> ContainsAcceptedOrMissing; verify key receipt"| D
+  D -->|"prohibitedEffect; state: Missing -> Closed; delivered CAS denied"| Q
+#+end_src
+
+* Compaction state machine
+
+#+name: host-registry-compaction-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Original\nstate: Snapshot(v, manifest, entries, floor)" as Original
+  state "Scanning\nstate: EntryCursor(index, preservationWitnesses)" as Scanning
+  state "FloorChecked\nstate: Floor(newFloor, liveEntriesAbove = true)" as FloorChecked
+  state "ReadyToPublish\nstate: CompleteSnapshot(v + 1, sameManifest)" as ReadyToPublish
+  state "Committed\nstate: LedgerHead(r + 1, compactedSnapshot)" as Committed
+  state "Rejected\nstate: Quarantine(illegalDropOrUnsafeFloor)" as Rejected
+
+  Original --> Scanning: "transition; state: Original -> Scanning; enumerate complete manifest"
+  Scanning --> Scanning: "transition; state: Entry(i) -> Entry(i + 1); keep or covered-retired drop"
+  Scanning --> FloorChecked: "guard; state: ScanComplete -> FloorChecked; all entries accounted"
+  Scanning --> Rejected: "prohibitedEffect; state: IllegalLiveDrop -> Quarantine"
+  FloorChecked --> ReadyToPublish: "guard; state: FloorChecked -> CompleteSnapshot; floor monotone and live-safe"
+  FloorChecked --> Rejected: "guard; state: UnsafeFloor -> Quarantine"
+  ReadyToPublish --> Committed: "transition; state: CASPending -> LedgerHead(r + 1); atomic publish"
+#+end_src
+
+There is no state representing “left half published”. A crash before the ledger
+CAS leaves the old head authoritative; a successful CAS selects the complete
+new snapshot.
+
+* Mathematical model
+
+#+name: partial-compaction-counterexample
+#+begin_src typst
+#let Accepted(k, r) = $upright("Accepted")(#k, #r)$
+#let NaiveCompact(x, y) = $upright("NaiveCompact")(#x, #y)$
+#let Lost(k) = $upright("LostAcceptedKey")(#k)$
+
+$
+  S = [Accepted(k_0, r_0), Accepted(k_1, r_1)],
+  quad S' = [Accepted(k_0, r_0)].
+$
+
+$
+  NaiveCompact(S, S') => Lost(k_1).
+$
+
+Local validity of the surviving entry does not preserve the second key.
+#+end_src
+
+#+name: structural-compaction-law
+#+begin_src typst
+#let Keep(e) = $upright("Keep")(#e)$
+#let DropRetired(e, f) = $upright("DropRetired")(#e, #f)$
+#let State(e) = $upright("state")(#e)$
+#let Generation(e) = $upright("generation")(#e)$
+#let Retired = math.upright("Retired")
+#let Compact(f, entries) = $upright("Compact")(#f, #entries)$
+
+$
+  Compact(f, []) = [],
+  quad Compact(f, e :: E) = Keep(e) :: Compact(f, E),
+$
+
+$
+  State(e) = Retired and Generation(e) <= f
+  => Compact(f, e :: E) = DropRetired(e, f) + Compact(f, E).
+$
+
+No equation deletes a live empty or accepted entry.
+#+end_src
+
+#+name: gc-floor-live-safety-law
+#+begin_src typst
+#let Live(e) = $upright("Live")(#e)$
+#let Generation(e) = $upright("generation")(#e)$
+#let FloorSafe(f, entries) = $upright("FloorSafe")(#f, #entries)$
+#let Quarantine = math.upright("Quarantine")
+#let Import(e) = $upright("Import")(#e)$
+
+$
+  FloorSafe(f, E) <=> forall e in E,
+  Live(e) => f < Generation(e).
+$
+
+$
+  Generation(e) <= f => Import(e) = Quarantine.
+$
+
+Monotone floor movement without the first predicate is insufficient.
+#+end_src
+
+#+name: atomic-multikey-publication-law
+#+begin_src typst
+#let Commit(c, r, h, next) = $upright("Commit")(#c, #r, #h, #next)$
+#let Choice(c, r) = $upright("choice")(#c, #r)$
+#let SafeCompact(x, y) = $upright("SafeCompact")(#x, #y)$
+
+$
+  SafeCompact(S_r, Choice(c, r + 1))
+  => Commit(c, r, H_r, (r + 1, Choice(c, r + 1))).
+$
+
+$
+  Commit(c, r, H_r, H_l) and Commit(c, r, H_r, H_n)
+  => H_l = H_n.
+$
+#+end_src
+
+* Formal state model
+
+The Lean model uses arbitrary entry lists rather than a hard-coded two-key
+state. Two keys are used only for the minimum partial-loss counterexample.
+
+This module proves preservation of the declared manifest, not that an arbitrary
+input manifest is initially unique or complete. Treating those properties as
+implicit would repeat the same authority error at a different layer. Manifest
+integrity and entry/tombstone coverage remain an explicit successor obligation.
+
+- =RegistryEntry= binds key, generation, and =Empty | Accepted | Retired= state.
+- =MultiKeySnapshot= binds snapshot revision, manifest, entries, and GC floor.
+- =CompactsEntries floor= recursively preserves an exact entry or removes only
+  a covered retired entry.
+- =FloorSafeForEntries floor= requires every remaining live entry generation to
+  be strictly above the floor.
+- =SafeMultiKeyCompaction= preserves the manifest, advances snapshot revision,
+  preserves floor monotonicity, and carries both entry and floor witnesses.
+- =PartialAcceptedLoss= is the adversarial two-key counterexample.
+- =ImportAdmission= quarantines any delayed entry at or below the GC floor.
+- =CanonicalCompactionCas= atomically publishes the complete chosen snapshot.
+- =ContainsAccepted= and =MultiKeyDelivered= require the key/receipt to remain in
+  the authoritative compacted head.
+
+* Lean-discovered defects
+
+** D1: per-intent safety did not compose automatically
+
+Two individually valid accepted records do not imply that a bulk rewrite
+preserves both. Lean constructs a naive compaction that retains the left record
+and loses the right record.
+
+** D2: collection filtering was too permissive
+
+A generic filter predicate can accidentally encode deletion policy outside the
+proof boundary. The replacement is an inductive compaction relation whose only
+deletion constructor requires =Retired= and generation coverage.
+
+** D3: GC floor monotonicity was insufficient
+
+The first model required only =oldFloor <= newFloor=. Lean then allowed the new
+floor to pass a live accepted generation. =FloorSafeForEntries= closes this
+gap: every remaining live generation is strictly above the new floor.
+
+** D4: deleting tombstone knowledge resurrects delayed work
+
+An absent entry is not proof of retirement. The preserved manifest and durable
+GC floor keep the negative evidence needed to quarantine old-generation
+imports from caches, replicas, residents, or delayed transports.
+
+** D5: per-key publication permits hybrid snapshots
+
+If compacted records become visible before the head changes, recovery can
+observe a mixture of old and new states. Only one complete-snapshot ledger CAS
+is a legal publication point.
+
+** D6: a compacted head cannot authorize a missing receipt
+
+Successful file compaction is not delivered-CAS evidence. The selected head
+must still contain the exact accepted key and receipt.
+
+* Required invariants
+
+1. Every pre-compaction entry is either preserved exactly or is retired and
+   covered by the new GC floor.
+2. No accepted or empty entry may be deleted by compaction.
+3. The declared key-universe manifest is preserved exactly; its uniqueness and
+   completeness require the successor manifest-integrity proof.
+4. Snapshot revision advances exactly once.
+5. The GC floor never decreases.
+6. Every remaining live entry generation is strictly above the new floor.
+7. Entries at or below the floor cannot resume or reimport.
+8. Compaction publication uses one canonical CAS over the complete snapshot.
+9. A stale ledger revision cannot publish a compacted snapshot.
+10. Two successful compaction commits from the same head and canonical choice
+    have equal after-states.
+11. Crash before publication preserves the old authoritative head.
+12. Delivered verification requires the accepted key/receipt in the selected
+    compacted head.
+13. A missing accepted entry cannot finalize delivery.
+
+* Recovery and compaction sequence
+
+#+name: host-registry-compaction-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant L as "Authority Ledger [state: Head(r, oldSnapshot)]"
+  participant C as "Compactor [state: ScanningCompleteManifest]"
+  participant E as "Entry Verifier [state: Pending]"
+  participant F as "GC Floor Verifier [state: Pending]"
+  participant P as "Atomic Publisher [state: CASPending]"
+  participant H as "Host Runtime [state: ServingOldHead]"
+
+  C->>E: "transition; state: Scanning -> Verifying; submit all entry actions"
+  E-->>C: "guard; state: Verifying -> PreservedOrRejected; exact keep or covered retired drop"
+  C->>F: "transition; state: Candidate -> FloorPending; submit old/new floor and live entries"
+  F-->>C: "guard; state: FloorPending -> SafeOrUnsafe; monotone and live-safe"
+  alt all witnesses valid
+    C->>P: "transition; state: CompleteCandidate -> CASPending; submit complete snapshot"
+    P->>L: "transition; state: CASPending -> Head(r + 1); atomic canonical commit"
+    L-->>H: "transition; state: ServingOldHead -> ServingNewHead; expose complete snapshot"
+  else entry loss or unsafe floor
+    C-->>H: "prohibitedEffect; state: Rejected -> Quarantine; old head remains authoritative"
+  end
+#+end_src
+
+Compaction scanning, witness verification, and CAS publication are background
+protocol work. They do not require LLM control rounds.
+
+* Traceability
+
+| RFC claim | Lean declaration |
+|-
+| Naive compaction can lose one accepted key | =naive_partial_accepted_loss_constructible= |
+| Accepted singleton cannot disappear | =accepted_singleton_cannot_disappear= |
+| Two accepted entries cannot partially compact | =two_accepted_entries_cannot_partially_compact= |
+| Covered retired entry can be deleted | =covered_retired_entry_can_compact= |
+| Safe compaction preserves manifest | =safe_compaction_preserves_manifest= |
+| Safe compaction advances snapshot revision | =safe_compaction_advances_snapshot_revision= |
+| Safe compaction keeps GC floor monotone | =safe_compaction_preserves_gc_floor_monotonicity= |
+| Live accepted entry cannot sit below floor | =accepted_at_or_below_floor_not_safe= |
+| Covered generation quarantines | =covered_generation_quarantines= |
+| Covered generation cannot resume | =covered_generation_cannot_resume= |
+| Canonical retired compaction is constructible | =canonical_retired_compaction_constructible= |
+| Stale compaction revision cannot commit | =stale_compaction_revision_cannot_commit= |
+| Same-head canonical compactions are unique | =canonical_same_head_compactions_are_unique= |
+| Canonical compaction advances ledger revision | =canonical_compaction_advances_ledger_revision= |
+| Present accepted entry can finalize | =present_accepted_entry_can_finalize= |
+| Missing accepted entry cannot finalize | =missing_accepted_entry_cannot_finalize= |
+
+* Verification artifacts
+
+- =packages/proofs/ASPProof/AgentSessionHostRegistryCompaction.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryCompaction.lean=
+- =packages/proofs/audit/AgentSessionHostRegistryCompaction.lean=
+- =packages/proofs/receipts/agent-session-host-registry-compaction-v1.json=
+
+The Lean audit must remain axiom-free. Typst blocks are evaluated from stdin.
+Mermaid blocks are parsed from Org and rendered by the TypeScript docs runtime.
+
+* Implementation calibration boundary
+
+This RFC is not current Rust conformance evidence. Runtime status remains
+=Unverified= until executable receipts demonstrate complete-manifest scanning,
+covered-retired-only deletion, live-safe GC floor computation, crash-safe
+complete-snapshot publication, stale-CAS rejection, and accepted-receipt
+preservation across real compaction.
+
+The next formal gap is canonical manifest integrity: key uniqueness, ordered
+manifest commitment, entry-to-manifest coverage, and key-scoped tombstone
+commitments must be proven rather than assumed from a list of key identifiers.
+
+That boundary is refined by
+[[file:../10.05.30-agent-session-host-registry-canonical-manifest/00-overview.org][RFC 10.05.30 — Agent Session Canonical Registry Manifest]].

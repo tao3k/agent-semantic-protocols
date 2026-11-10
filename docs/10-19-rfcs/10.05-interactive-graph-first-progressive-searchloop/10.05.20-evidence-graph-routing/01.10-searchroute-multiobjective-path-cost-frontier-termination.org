@@ -1,0 +1,309 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: SearchRoute Multiobjective Path Cost and Frontier Termination
+#+subtitle: RFC 10.05.20 / Proof stage 01.10
+#+startup: overview
+
+* Status
+
+Draft proof-bearing RFC.
+
+This is the canonical stage 01.10 graph-routing owner. It combines the
+multiobjective route order from stage 01.08 with the proof-carrying paths from
+stage 01.09. It does not define a Rust or Python implementation.
+
+* Abstract
+
+Not every route-cost dimension is additive over graph edges.
+
+Graph hops are derived from path constructors. Encoded evidence bytes and
+verification operations can be accumulated when their receipt grammar is
+disjoint and canonical. Interaction rounds, projected tokens, semantic search
+executions, and model prefix recomputations belong to the execution schedule;
+they cannot be obtained by blindly summing edge-local observations.
+
+This stage separates those layers before proving:
+
+- path-local accumulation;
+- conditional cycle elimination;
+- Pareto-frontier coverage requirements;
+- bounded expansion termination.
+
+* Cost ownership split
+
+** Path-local additive cost
+
+The edge-local structure is:
+
+#+begin_example
+PathLocalCost =
+  (encodedReceiptBytes,
+   verificationOps)
+#+end_example
+
+The path fold starts at zero and adds one edge-local value at every =step=
+constructor.
+
+=graphHops= is not an edge-supplied cost. It is always derived from the number
+of =step= constructors in the evidence path.
+
+** Execution-schedule cost
+
+The schedule-owned structure is:
+
+#+begin_example
+ExecutionScheduleCost =
+  (interactionRounds,
+   projectedTokens,
+   searchExecutions,
+   modelPrefixRecomputations)
+#+end_example
+
+These values depend on batching, serialization, tokenizer behavior, cache
+validity, and agent/runtime scheduling.
+
+The final stage 01.08 vector is assembled as:
+
+#+name: multiobjective-path-cost-assembly
+#+begin_src typst
+#let assemble(hops, local, schedule) = (
+  hops: hops,
+  rounds: schedule.rounds,
+  tokens: schedule.tokens,
+  verify: local.verify,
+  search: schedule.search,
+  model: schedule.model,
+)
+
+#let local = (bytes: 40, verify: 7)
+#let schedule = (rounds: 2, tokens: 80, search: 1, model: 0)
+#let route = assemble(3, local, schedule)
+
+#assert(route.hops == 3)
+#assert(route.rounds == 2)
+#assert(route.tokens == 80)
+#assert(route.verify == 7)
+"ok"
+#+end_src
+
+Encoded bytes remain available in the projection receipt and feed the
+stage 01.06 tokenizer bound. They are not silently substituted for observed
+projected tokens.
+
+* Proof-discovered correction: projected token counts are not edge-additive
+
+For a saturating example tokenizer:
+
+#+begin_example
+T(nonempty bytes) = 1
+#+end_example
+
+Then:
+
+#+begin_example
+T(edgeA) + T(edgeB) = 2
+T(edgeA || edgeB)   = 1
+#+end_example
+
+Real tokenizers have different behavior, but the counterexample is sufficient:
+token additivity does not follow from the existence of edge-local strings.
+
+The router MUST tokenize or conservatively bound the canonical combined
+projection. It MUST NOT report the sum of independently tokenized edge values
+as an exact projected-token count.
+
+Interaction rounds and cache work have the same ownership issue:
+
+- several edges may be returned in one interaction;
+- one search execution may generate several evidence edges;
+- one model prefix recomputation may cover several inspections.
+
+* Cycle elimination
+
+Adding a cycle cannot reduce path-local bytes or verification work because
+those values are natural-number sums. Removing a positive-hop cycle strictly
+improves =graphHops=.
+
+However, full-vector dominance additionally requires:
+
+#+begin_example
+ExecutionNoWorse(scheduleWithoutCycle, scheduleWithCycle)
+#+end_example
+
+Without this contract, a shorter path may require more interaction rounds or a
+different projection schedule. For example:
+
+#+begin_example
+shorter route = (hops = 1, rounds = 10)
+longer route  = (hops = 2, rounds = 0)
+#+end_example
+
+The routes are Pareto incomparable. Path-local improvement alone does not prove
+full-route dominance.
+
+Therefore a cycle-removal receipt MUST contain:
+
+- path decomposition or equivalent cycle identity;
+- positive cycle hop count;
+- local additive-cost comparison;
+- execution-schedule monotonicity evidence;
+- assembled before/after route vectors.
+
+When schedule monotonicity is unavailable, the router MAY canonicalize the
+simple path identity but MUST recompute the schedule vector before claiming
+dominance.
+
+* Pareto frontier completeness
+
+A Pareto frontier has two independent obligations:
+
+1. antichain: no retained member dominates another retained member;
+2. coverage: every feasible candidate is dominated by or equal to at least one
+   retained member.
+
+A singleton frontier is automatically an antichain. It can still omit a cheaper
+route and fail coverage. Consequently:
+
+#+begin_example
+pairwise nondominating
+  does not imply
+Pareto frontier complete
+#+end_example
+
+#+name: pareto-frontier-and-termination-model
+#+begin_src typst
+#let generated-bound(fuel, branching) = fuel * branching
+#let local-no-worse(base, with-cycle) = (
+  base.bytes <= with-cycle.bytes
+  and base.verify <= with-cycle.verify
+)
+
+#let base = (bytes: 20, verify: 4)
+#let with-cycle = (bytes: 29, verify: 6)
+
+#assert(local-no-worse(base, with-cycle))
+#assert(generated-bound(5, 3) == 15)
+#assert(generated-bound(4, 3) <= generated-bound(5, 3))
+"ok"
+#+end_src
+
+A frontier-completeness receipt MUST bind the feasible candidate domain,
+deduplication identity, dominance relation, and coverage evidence.
+
+* Finiteness and termination assumptions
+
+A finite vertex set alone does not authorize termination. The router also
+needs:
+
+- finite branching under the active authorization and projection policy;
+- canonical route identity and deduplication;
+- cycle elimination or a finite hop bound;
+- bounded expansion fuel;
+- bounded candidates generated per expansion.
+
+Every authorized expansion consumes one unit of natural-number fuel. Zero fuel
+blocks expansion. With fuel =M= and branching maximum =B=, generated path
+candidates are conservatively bounded by =M B=.
+
+The exact runtime may generate fewer candidates through deduplication and
+dominance pruning. Those optimizations do not weaken the conservative bound.
+
+Fuel exhaustion produces a truncated frontier. It does not prove frontier
+coverage and does not authorize global optimality or unreachability.
+
+* Canonical route identity
+
+Deduplication MUST bind:
+
+#+begin_example
+(graphSnapshotDigest,
+ source,
+ target,
+ orderedEdgeIdentitySequence,
+ authorizationPolicyDigest,
+ projectionPolicyDigest)
+#+end_example
+
+Two paths with equal cost vectors but different evidence edges are not the same
+route. They may both remain relevant when their evidence provenance differs.
+
+Conversely, repeated discovery of the same canonical route MUST NOT consume an
+unbounded number of frontier entries.
+
+* Interactive SearchLoop consequences
+
+The default route receipt SHOULD expose:
+
+- derived hop count;
+- path-local encoded bytes and verification operations;
+- schedule-owned rounds, tokens, and cache work;
+- the assembled six-dimensional vector;
+- frontier antichain and coverage status;
+- remaining expansion fuel and branching cap;
+- typed completion state.
+
+Progressive =inspect= can retrieve one cycle-removal proof, one dominance edge,
+or one omitted-candidate coverage witness under the stage 01.07 budget.
+
+This keeps the router graph-first while preventing hidden schedule costs from
+being attributed to individual edges merely because edge records are easy to
+count.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteMultiobjectivePathCostFrontierTermination.lean
+#+end_example
+
+It proves:
+
+- stay and step constructors define path-local accumulation;
+- assembled graph hops are path-derived;
+- adding a cycle cannot improve local additive cost;
+- full-vector cycle removal requires schedule monotonicity;
+- positive-hop cycle removal strictly dominates when that contract holds;
+- local improvement alone can leave full routes Pareto incomparable;
+- projected token count is not generally edge-additive;
+- an antichain alone does not establish Pareto coverage;
+- positive expansion consumes fuel and zero fuel blocks expansion;
+- generated-candidate bounds are monotone in expansion fuel.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteMultiobjectivePathCostFrontierTermination.lean
+#+end_example
+
+The generated receipt MUST enumerate all stage theorems, report an empty axiom
+inventory, and report =hasSorryAx: false=.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and audit modules build;
+- every audited theorem is axiom-free;
+- the audit contains no =sorryAx=;
+- Org lint accepts the canonical RFC;
+- Orgize extracts both named Typst blocks;
+- both exact Typst bodies pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Next proof boundary
+
+Stage 01.11 should model incremental Pareto-frontier updates. It should prove
+that inserting one candidate and removing the routes it dominates preserves
+both the antichain and coverage invariants.
+
+The proof must also cover stable deterministic ordering, equal-cost routes with
+different evidence provenance, duplicate canonical route identities, and
+bounded decision-receipt deltas. A router MUST NOT drop an equal-cost route only
+because its scalar vector matches when the evidence identity differs.

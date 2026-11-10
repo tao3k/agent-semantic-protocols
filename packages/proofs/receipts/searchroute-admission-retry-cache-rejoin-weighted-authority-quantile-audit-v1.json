@@ -1,0 +1,68 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀\n  (totalCollectedWeight faultWeightBudget :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCollectedQuorum totalCollectedWeight\n      faultWeightBudget →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCutWindow totalCollectedWeight\n      faultWeightBudget (faultWeightBudget + 1)",
+   "theoremFamily": "weighted-quorum-canonical-cut",
+   "rfcClauseIds": ["WAQ-CUT", "WAQ-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.weighted_quorum_places_canonical_cut_in_window",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (totalCollectedWeight faultWeightBudget cutWeight actualFaultWeight liveUpperBound selected belowActualWeight\n    aboveLiveWeight : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCutWindow totalCollectedWeight\n      faultWeightBudget cutWeight →\n    belowActualWeight ≤ faultWeightBudget →\n      aboveLiveWeight ≤ faultWeightBudget →\n        (selected < actualFaultWeight → cutWeight ≤ belowActualWeight) →\n          (liveUpperBound < selected → totalCollectedWeight < cutWeight + aboveLiveWeight) →\n            actualFaultWeight ≤ selected ∧ selected ≤ liveUpperBound",
+   "theoremFamily": "weighted-cut-safety-liveness",
+   "rfcClauseIds": ["WAQ-CUT", "WAQ-LIVENESS", "WAQ-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.weighted_cut_certificate_is_safe_and_live",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀\n  (totalCollectedWeight faultWeightBudget cutWeight :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCutWindow totalCollectedWeight\n      faultWeightBudget cutWeight →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCollectedQuorum totalCollectedWeight\n      faultWeightBudget",
+   "theoremFamily": "weighted-collected-quorum-necessity",
+   "rfcClauseIds": ["WAQ-CUT", "WAQ-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.weighted_cut_window_implies_weighted_collected_quorum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ totalCollectedWeight faultWeightBudget totalAuthorityCount assumedFaultCount byzantineAuthorityCount\n  byzantineAggregateWeight,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCollectedQuorum totalCollectedWeight\n      faultWeightBudget ∧\n    2 * assumedFaultCount + 1 ≤ totalAuthorityCount ∧\n      assumedFaultCount < byzantineAuthorityCount ∧ byzantineAggregateWeight ≤ faultWeightBudget",
+   "theoremFamily": "weight-versus-count-budget-counterexample",
+   "rfcClauseIds": ["WAQ-COUNTEREXAMPLE", "WAQ-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.voting_weight_budget_does_not_imply_authority_count_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ totalCollectedWeight faultWeightBudget actualFaultWeight liveUpperBound selected,\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCollectedQuorum totalCollectedWeight\n      faultWeightBudget ∧\n    actualFaultWeight ≤ liveUpperBound ∧ selected < actualFaultWeight",
+   "theoremFamily": "count-selection-weighted-safety-counterexample",
+   "rfcClauseIds": ["WAQ-COUNTEREXAMPLE", "WAQ-SAFETY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.count_selected_value_can_violate_weighted_lower_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ reportCount assumedFaultCount totalCollectedWeight faultWeightBudget,\n  2 * assumedFaultCount + 1 ≤ reportCount ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.WeightedCollectedQuorum totalCollectedWeight\n        faultWeightBudget",
+   "theoremFamily": "count-quorum-weighted-quorum-counterexample",
+   "rfcClauseIds": ["WAQ-COUNTEREXAMPLE", "WAQ-QUORUM"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.unweighted_report_count_does_not_establish_weighted_quorum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

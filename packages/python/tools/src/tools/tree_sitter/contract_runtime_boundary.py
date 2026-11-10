@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Runtime dependency boundary gate for tree-sitter rollout."""
 
 from __future__ import annotations
@@ -9,9 +13,9 @@ from .contract_support import ContractFailure, ROOT, root_relative
 
 
 MANIFESTS_WITHOUT_TREE_SITTER_RUNTIME = (
-    ROOT / "languages/rust-lang-project-harness/Cargo.toml",
-    ROOT / "languages/typescript-lang-project-harness/package.json",
-    ROOT / "languages/python-lang-project-harness/pyproject.toml",
+    ROOT / "languages/asp-rust/Cargo.toml",
+    ROOT / "languages/asp-typescript/package.json",
+    ROOT / "languages/asp-python/pyproject.toml",
 )
 TREE_SITTER_DEPENDENCY_RE = re.compile(
     r'(^|["\s])(@?tree-sitter[^"\s]*|tree_sitter[^"\s]*)(["\s]*:|\s*=)',

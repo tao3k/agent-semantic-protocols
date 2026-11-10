@@ -1,0 +1,31 @@
+-- SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+import ASPProof.AgentSessionHostRegistryCrashSafeMaterializationRecovery
+
+namespace ASPProof.Audit.AgentSessionHostRegistryCrashSafeMaterializationRecovery
+
+open ASPProof.AgentSessionHostRegistryCrashSafeMaterializationRecovery
+
+#print axioms persisted_intent_authorizes_matching_invocation
+#print axioms unpersisted_intent_cannot_authorize
+#print axioms wrong_invocation_key_cannot_authorize
+#print axioms wrong_payload_cannot_authorize
+#print axioms append_fragment_is_append_only
+#print axioms empty_capture_is_append_only
+#print axioms append_only_capture_preserves_existing_prefix
+#print axioms first_seal_publishes_terminal
+#print axioms identical_seal_retry_is_idempotent
+#print axioms conflicting_terminal_quarantines
+#print axioms stale_revision_cannot_first_seal
+#print axioms different_terminal_cannot_be_second_seal
+#print axioms quarantined_slot_cannot_publish_seal
+#print axioms crash_preserves_recovery_snapshot
+#print axioms retry_preserves_durable_intent
+#print axioms retry_capture_is_append_only
+#print axioms generation_change_changes_invocation_key
+#print axioms same_key_different_terminal_forces_quarantine_target
+#print axioms invoke_before_intent_is_rejected
+
+end ASPProof.Audit.AgentSessionHostRegistryCrashSafeMaterializationRecovery

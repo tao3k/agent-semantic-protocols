@@ -1,6 +1,11 @@
+// SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+//
+// SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 //! Agent-session identity helpers shared by CLI and hook runtime code.
 
-use crate::agent_session_status::{codex_rollout_session_metadata, current_agent_runtime_session};
+use crate::agent_session_status::codex_rollout_session_metadata;
+use crate::agent_session_status::current_agent_runtime_session;
 
 /// Runtime-resolved identity for registering one agent session.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,17 +41,26 @@ pub fn has_current_agent_runtime_session() -> bool {
 #[must_use]
 pub fn current_agent_runtime_root_session_id() -> Option<String> {
     let session = current_agent_runtime_session()?;
-    codex_rollout_root_session_id(&session.id)
+    let runtime_session_id =
+        crate::agent_session_status::RuntimeSessionId::from(session.id.as_str());
+    codex_rollout_root_session_id(&runtime_session_id)
         .or_else(|| Some(session.recall_session_id().to_string()))
 }
 
 /// Resolve the root id recorded in Codex rollout metadata for `session_id`.
 #[must_use]
-pub(crate) fn codex_rollout_root_session_id(session_id: &str) -> Option<String> {
+pub(crate) fn codex_rollout_root_session_id(
+    session_id: &crate::agent_session_status::RuntimeSessionId,
+) -> Option<String> {
     codex_rollout_session_metadata(session_id)
         .ok()
         .flatten()
-        .and_then(|metadata| metadata.root_session_id.or(metadata.parent_thread_id))
+        .and_then(|metadata| {
+            metadata
+                .root_session_id()
+                .or_else(|| metadata.parent_thread_id())
+                .map(|session_id| session_id.as_str().to_owned())
+        })
 }
 
 /// Resolve register-time child/root identity from explicit args and host state.
@@ -59,13 +73,15 @@ pub fn agent_session_registration_identity(
         .map(str::to_string)
         .or_else(|| runtime_session.as_ref().map(|session| session.id.clone()))
         .ok_or_else(|| {
-            "asp agent session register requires --child-session-id or an agent session env"
+            "agent session registration requires a child session id or host session identity"
                 .to_string()
         })?;
+    let session_id_for_rollout =
+        crate::agent_session_status::RuntimeSessionId::from(session_id.as_str());
     let root_session_id = request
         .root_session_id
         .map(str::to_string)
-        .or_else(|| codex_rollout_root_session_id(&session_id))
+        .or_else(|| codex_rollout_root_session_id(&session_id_for_rollout))
         .or_else(|| {
             runtime_session
                 .as_ref()

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "search-result-owner-support-index"
+scenario = "search-result-owner-support-index"
+performance_owner = "fan_in_rejects_unrelated_syntax_owner_before_ranking_and_limit"
+runtime_or_provider_process_count = 0
+
+[cost_model]
+legacy = "candidate_count * owner_occurrence_count"
+indexed = "owner_occurrence_count + candidate_count * log2(unique_owner_count)"
+index_build_owner_visits_per_occurrence = 1
+candidate_full_clause_rescans = 0
+
+[observed_workload]
+clause_count = 8
+owner_occurrence_count = 1024
+candidate_count = 256
+legacy_membership_check_count = 262144
+indexed_owner_visit_and_lookup_count = 1280
+work_reduction_ratio = 204.8
+admitted_evidence_count = 30
+unrelated_owner_output_count = 0
+
+[invariants]
+semantic_ranking_is_preserved = true
+matched_by_order_is_preserved = true
+unbacked_candidate_is_removed_before_limit = true
+latency_threshold_is_not_a_semantic_gate = true

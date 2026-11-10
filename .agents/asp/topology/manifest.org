@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: Agent Semantic Protocols Project Workspace
+#+AUTHOR: ASP Maintainers
+#+DATE: 2026-09-08
+#+FILETAGS: :asp:workspace:topology:
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]
+:END:
+
+* Project Workspace
+:PROPERTIES:
+:PROJECT_WORKSPACE_ID: agent-semantic-protocols-root
+:PROJECT_WORKSPACE_IDENTITY: git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root
+:WORKSPACE_ROOT_PATH: .
+:PORTABILITY: cross-machine
+:REPOSITORY_ALIASES: []
+:END:
+
+** Authority
+
+This stable Git-tracked declaration owns Project Workspace identity and source
+containment only. Runtime receipts independently bind the current source,
+provider, parser, MRR, ABI, and Project Topology generations.

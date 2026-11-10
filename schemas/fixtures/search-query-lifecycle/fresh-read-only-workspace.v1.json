@@ -1,0 +1,27 @@
+{
+  "schemaId": "agent.semantic-protocols.search-query-lifecycle-fixture",
+  "schemaVersion": "1",
+  "caseId": "fresh-read-only-workspace-provider-available",
+  "initialState": {
+    "workspaceGeneration": "Missing",
+    "providerCatalog": "Available",
+    "agentSandbox": "read-only",
+    "directRuntimeIpc": "permission-denied"
+  },
+  "stimulus": {
+    "postToolMutation": true,
+    "languageIds": ["rust", "python", "typescript", "julia", "gerbil-scheme"],
+    "operations": ["search", "query"]
+  },
+  "expected": {
+    "terminalWorkspaceGeneration": "Ready",
+    "providerInstallCommands": 0,
+    "checkoutWrites": 0,
+    "materializationCount": 1,
+    "searchProjectionCount": 1,
+    "queryProjectionCount": 1,
+    "generationAuthority": "single-ready-publication",
+    "maxControlReceiptMicros": 1000,
+    "recommendedNextExecutable": true
+  }
+}

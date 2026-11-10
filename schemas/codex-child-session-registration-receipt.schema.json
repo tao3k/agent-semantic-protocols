@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/codex-child-session-registration-receipt.schema.json",
+  "title": "Codex Child Session Registration Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "platform",
+    "projectId",
+    "rootSessionId",
+    "parentThreadId",
+    "childThreadId",
+    "agentName",
+    "agentPath",
+    "routeKey",
+    "physicalGeneration",
+    "registryOwner",
+    "transport"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.codex-child-session-registration-receipt"
+    },
+    "schemaVersion": { "const": 1 },
+    "state": { "const": "registered" },
+    "platform": { "const": "codex" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "parentThreadId": { "type": "string", "minLength": 1 },
+    "childThreadId": { "type": "string", "minLength": 1 },
+    "agentName": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "agentPath": { "type": "string", "pattern": "^/root/[a-z0-9_]+$" },
+    "routeKey": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "physicalGeneration": { "type": "integer", "minimum": 1 },
+    "registryOwner": { "const": "runtime-server-agent-session-registry" },
+    "transport": { "const": "grpc-client-frame" }
+  }
+}

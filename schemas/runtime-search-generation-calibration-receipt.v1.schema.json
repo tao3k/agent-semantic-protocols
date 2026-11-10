@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-search-generation-calibration-receipt.v1.schema.json",
+  "title": "Runtime Search generation calibration observation receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "contentGenerationDigest",
+    "sampleIdentity",
+    "sampledOwnerCount",
+    "strategy",
+    "workers",
+    "memoryBudgetBytes",
+    "buildMicros",
+    "observedOwnersPerSecond"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-search-generation-calibration-receipt"
+    },
+    "schemaVersion": {"const": "1"},
+    "contentGenerationDigest": {"$ref": "#/$defs/digest"},
+    "sampleIdentity": {"$ref": "#/$defs/digest"},
+    "sampledOwnerCount": {"type": "integer", "minimum": 1, "maximum": 256},
+    "strategy": {"enum": ["single-segment-bulk", "parallel-segments"]},
+    "workers": {"type": "integer", "minimum": 1, "maximum": 8},
+    "memoryBudgetBytes": {"type": "integer", "minimum": 1},
+    "buildMicros": {"type": "integer", "minimum": 1},
+    "observedOwnersPerSecond": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    }
+  }
+}

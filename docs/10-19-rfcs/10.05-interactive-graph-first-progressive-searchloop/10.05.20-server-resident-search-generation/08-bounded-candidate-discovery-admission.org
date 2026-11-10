@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+title: Bounded Candidate Discovery Admission
+#+startup: overview
+
+* Status
+
+Normative. Candidate discovery is a Runtime Server lifecycle phase that precedes
+workspace-generation admission. It is not an unobservable helper task.
+
+* Problem
+
+The Runtime Server cannot construct a workspace-generation admission receipt
+until Git and provider project resolution have produced a candidate generation.
+If discovery is started as an unbounded background task before any typed state is
+published, clients can observe =generation-discovery-in-progress= forever while
+Runtime status reports no workspace entry. That state is neither progressive nor
+recoverable.
+
+* Lifecycle
+
+#+begin_src text
+Absent
+  -> Discovering
+  -> CandidateReady -> Building -> Ready
+  -> Failed
+  -> Cancelled
+#+end_src
+
+=Discovering= is published before any blocking Git or provider work begins.
+=CandidateReady= is an internal handoff: the validated candidate immediately
+enters the existing workspace-generation admission state machine.
+
+Discovery has a Runtime-owned deadline. Client cancellation cannot cancel the
+Runtime task. Runtime shutdown cancels it and publishes =Cancelled=. Deadline,
+provider failure, task panic, or invalid candidate publishes =Failed=. No branch
+may return to an unobservable =Absent= state after work started.
+
+* Shared receipt
+
+The language-neutral contract is
+=runtime-server-workspace-generation-discovery.v1=. It identifies the workspace
+and project root without inventing a candidate digest. A candidate digest belongs
+only to the subsequent admission receipt.
+
+For =Discovering=, terminal fields are null. For =Failed= and =Cancelled=,
+=finishedAtUnixMs=, =reasonKind=, and =error= are required. A repeated request
+returns the current receipt. A terminal discovery receipt is not rendered as
+=in-progress=.
+
+* Runtime invariants
+
+1. At most one discovery task exists for a workspace identity and normalized
+   project root.
+2. The =Discovering= receipt is visible before blocking work begins.
+3. Every started task reaches CandidateReady, Failed, or Cancelled within its
+   deadline plus scheduler tolerance.
+4. A guard releases the single-flight key on success, error, panic, timeout, and
+   shutdown cancellation.
+5. Candidate discovery never runs inside the client 800 ms request budget.
+6. Exact query remains read-only; it may request discovery but cannot publish a
+   fabricated Ready generation.
+7. No synthetic candidate generation is permitted to encode pre-candidate
+   failure.
+
+* Bounded generation build
+
+Candidate discovery success transfers authority to the existing generation
+admission receipt. Its =Building= state is also bounded: the Runtime Server must
+run materialization and publication under an 800 ms wall deadline. Deadline
+expiry publishes the same admission as =Failed= with
+=workspace-generation-build-deadline-exceeded=, clears its building flag, wakes
+all waiters, and records the measured elapsed time. Runtime shutdown remains a
+distinct =Cancelled= transition.
+
+The client never waits for this deadline inside its own request budget. It first
+receives compact =Building= evidence and, after the Runtime-owned transition,
+receives either Ready or one terminal failure. Repeating =Building= after its
+deadline is a protocol violation.
+
+** Shared absolute deadline and staged admission failure
+
+Workspace generation admission MUST create one monotonic absolute deadline before
+the builder task is scheduled.  Every generation stage consumes that same
+deadline; no child stage may restart a relative budget.
+
+The builder operation deadline is the shared absolute deadline minus a 20 ms
+terminal-publication margin.  Expiry at that operation boundary MUST produce a
+typed =generation-builder-supervision= failure.  The remaining margin belongs
+only to publishing the terminal admission receipt and releasing the single-flight
+key; it is not additional build time.
+
+A failed admission receipt MUST carry an explicit =failureStage=.  The Runtime
+MUST derive this value from a typed builder failure, never by parsing an error
+message.  Building and Ready receipts carry no failure stage.  Therefore an
+agent can distinguish candidate discovery, builder supervision, concrete build
+stages, and receipt validation without expanding logs or retrying the loop.
+
+The outer supervisor MUST NOT replace a concrete stage failure with a generic
+deadline message.  Once a terminal receipt is published, re-entry returns that
+same terminal evidence until a new candidate generation or explicit admission
+creates a new attempt.
+
+* Progressive agent projection
+
+The first request may return the compact =Discovering= receipt. A later request
+either consumes the admitted generation or receives one precise terminal failure
+with a recovery reason. The projection must not ask the agent to repeat the same
+command without a state transition, and it must not expose internal task handles,
+paths outside the workspace identity, or an unbounded diagnostic dump.
+
+* Qualification gates
+
+- delayed discovery reaches typed =Failed= at the configured deadline;
+- provider discovery error reaches typed =Failed= without creating a candidate;
+- Runtime shutdown reaches typed =Cancelled=;
+- client cancellation does not cancel Runtime-owned discovery;
+- concurrent requests share one discovery attempt;
+- terminal paths remove the single-flight key;
+- a delayed generation builder reaches typed Failed within 800 ms and wakes all
+  waiters;
+- builder cancellation reaches Cancelled rather than Failed;
+- Building and terminal receipts contain measured elapsed time rather than a
+  placeholder zero;
+- unchanged warm discovery remains resident and completes at millisecond scale;
+- real-project search advances from Discovering to Ready without =asp sync=;
+- Runtime status exposes the same discovery state returned to the requester.

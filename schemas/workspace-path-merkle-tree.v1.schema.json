@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-path-merkle-tree.v1.schema.json",
+  "title": "Workspace Path Merkle Tree V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "algorithm",
+    "workspaceIdentity",
+    "generationDigest",
+    "rootDigest",
+    "leafCount",
+    "nodeCount",
+    "nodeTableDigest"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.workspace-path-merkle-tree" },
+    "schemaVersion": { "const": "1" },
+    "algorithm": { "const": "workspace-path-radix-merkle-v1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "generationDigest": { "$ref": "#/$defs/digest" },
+    "rootDigest": { "$ref": "#/$defs/digest" },
+    "leafCount": { "type": "integer", "minimum": 0 },
+    "nodeCount": { "type": "integer", "minimum": 1 },
+    "nodeTableDigest": { "$ref": "#/$defs/digest" },
+    "proof": { "$ref": "#/$defs/proof" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "sibling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge", "digest"],
+      "properties": {
+        "edge": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "proofStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depth", "siblings"],
+      "properties": {
+        "depth": { "type": "integer", "minimum": 0 },
+        "terminalDigest": {
+          "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        },
+        "siblings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sibling" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "sourceBlobDigest", "ownerSubtreeDigest", "steps"],
+      "properties": {
+        "ownerPath": { "$ref": "#/$defs/ownerPath" },
+        "sourceBlobDigest": { "$ref": "#/$defs/digest" },
+        "ownerSubtreeDigest": { "$ref": "#/$defs/digest" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/proofStep" }
+        }
+      }
+    }
+  }
+}

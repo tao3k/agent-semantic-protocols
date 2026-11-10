@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[benchmark]
+id = "runtime-schema-bundle-socket"
+scenario = "runtime-schema-bundle-socket"
+measurement = "one initialized session, one socket round trip per semantic case"
+semantic_case_count = 6
+
+[workload]
+runtime_process_count = 1
+workspace_generation_count = 0
+package_schema_materialization_count = 0
+response_state_counts = { ready = 2, unchanged = 1, failed = 2, dispatch_error = 1 }
+
+[report]
+emit_elapsed_micros_per_case = true
+latency_threshold = "none; this scenario qualifies architecture and records measurements"

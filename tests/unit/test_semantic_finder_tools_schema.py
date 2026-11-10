@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
 """Validate the shared semantic finder tools schema."""
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ def _valid_catalog() -> dict:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "toolCatalog": [
             {
@@ -86,7 +90,7 @@ def _valid_catalog() -> dict:
         "pipelines": [
             {
                 "pipelineId": "lexical-rg-lines",
-                "surface": "search-lexical",
+                "surface": "provider-internal",
                 "purpose": "fuzzy-lexical-candidates",
                 "defaultFor": ["lexical"],
                 "stages": [

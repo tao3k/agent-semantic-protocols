@@ -1,0 +1,29 @@
+{
+  "schemaId": "agent.semantic-protocols.search-loop-capability",
+  "schemaVersion": "1",
+  "capabilityId": "capability:advance-1",
+  "tokenDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rawToken": "capability.this-must-never-be-persisted",
+  "commandId": "asp.search.loop.advance.v1",
+  "residentIdentityRef": "resident:asp-explore",
+  "loopId": "loop:search-1",
+  "stateBinding": {
+    "runId": "run:search-1",
+    "revision": 3,
+    "stateDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "authorityReceiptRef": "receipt:authority-3"
+  },
+  "contextBindingDigest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "subject": {
+    "kind": "advance",
+    "panelId": "panel:search-1",
+    "choiceId": "choice:parallel-1",
+    "proposalRef": "proposal:parallel-1",
+    "proposalDigest": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "executionGroupRef": "group:parallel-1"
+  },
+  "replayPolicy": "one-shot",
+  "status": "active",
+  "issuedAtUnixMs": 1000,
+  "expiresAtUnixMs": 61000
+}

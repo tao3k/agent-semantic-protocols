@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/subagent-catalog.v1.schema.json",
+  "title": "ASP Subagent Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "agents"],
+  "properties": {
+    "schema_id": {
+      "const": "asp.subagent-catalog.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "agents": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/agentSpec"
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stringSet": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "agentSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_name",
+        "session_lifetime",
+        "model_policy",
+        "reasoning_policy",
+        "permission_policy",
+        "sandbox_policy",
+        "roles",
+        "capabilities",
+        "platforms"
+      ],
+      "properties": {
+        "session_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "session_lifetime": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "model_policy": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reasoning_policy": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "permission_policy": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "sandbox_policy": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "roles": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "platforms": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "properties": {
+            "codex": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/platformProjection"
+                },
+                {
+                  "required": ["model"]
+                }
+              ]
+            },
+            "claude": {
+              "$ref": "#/$defs/platformProjection"
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/platformProjection"
+          }
+        }
+      }
+    },
+    "platformProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_agent_name", "profile", "projection"],
+      "properties": {
+        "host_agent_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "profile": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+$",
+          "minLength": 1
+        },
+        "projection": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+$",
+          "minLength": 1
+        },
+        "model": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}

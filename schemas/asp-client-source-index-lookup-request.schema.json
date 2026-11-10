@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-source-index-lookup-request.schema.json",
+  "title": "ASP Client Source Index Lookup Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "query", "indexRoot", "limit"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-source-index-lookup-request"
+    },
+    "schemaVersion": { "const": "1" },
+    "query": { "type": "string", "minLength": 1 },
+    "indexRoot": { "type": "string", "minLength": 1 },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+  }
+}

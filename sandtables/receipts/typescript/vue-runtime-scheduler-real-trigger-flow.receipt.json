@@ -16,7 +16,7 @@
     {
       "id": "workspace",
       "kind": "search",
-      "argv": ["ts-harness", "search", "workspace", "."],
+      "argv": ["asp-typescript", "search", "workspace", "."],
       "stdinShape": "none",
       "outputMode": "compact",
       "metrics": {
@@ -38,7 +38,7 @@
       "id": "text-scheduler-query-set",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",
@@ -74,7 +74,7 @@
       "id": "owner-scheduler-items",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "owner",
         "src/scheduler.ts",
@@ -104,7 +104,7 @@
       "id": "tests-scheduler-package-miss",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "tests",
         "src/scheduler.ts",
@@ -133,7 +133,7 @@
       "id": "tests-scheduler-root-noisy",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "tests",
         "packages/runtime-core/src/scheduler.ts",
@@ -163,7 +163,7 @@
       "id": "tests-query-set-unsupported",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "tests",
         "--query-set",
@@ -221,7 +221,7 @@
       },
       "beforeCommandIds": ["text-scheduler-query-set"],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",
@@ -249,7 +249,7 @@
       },
       "beforeCommandIds": ["tests-query-set-unsupported"],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "tests",
         "--query-set",
