@@ -11,9 +11,9 @@ description = "Lightweight V1 Scheme Search Playbook syntax and lowering contrac
 
 [dependencies]
 blake3.workspace = true
-agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
 agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 serde = { workspace = true, features = ["derive"] }
+tantivy-query-grammar.workspace = true
 
 [dev-dependencies]
 toml.workspace = true

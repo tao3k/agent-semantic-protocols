@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - main
-      - "codex/**"
 
 permissions:
   contents: read
@@ -28,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 30
+      max-parallel: 27
       matrix:
         package:
           - agent-semantic-artifacts
@@ -40,8 +39,6 @@ jobs:
           - agent-semantic-config
           - agent-semantic-content-identity
           - agent-semantic-context-product
-          - agent-semantic-hook
-          - agent-semantic-hook-testkit
           - agent-semantic-http-json
           - agent-semantic-loop
           - agent-semantic-mrr
@@ -56,7 +53,6 @@ jobs:
           - agent-semantic-search
           - agent-semantic-search-playbook
           - agent-semantic-search-projection
-          - agent-semantic-shell-parser
           - agent-semantic-topology
           - agent-semantic-tree-sitter
           - agent-semantic-workspace-scheduler
@@ -95,7 +91,7 @@ jobs:
           cache-on-failure: true
 
       - name: Consume the committed Orgize FFI bundle
-        if: contains(fromJSON('["agent-semantic-client","agent-semantic-client-db","agent-semantic-hook","agent-semantic-hook-testkit","agent-semantic-runtime-server","agent-semantic-search","agent-semantic-search-projection","agent-semantic-topology"]'), matrix.package)
+        if: contains(fromJSON('["agent-semantic-client","agent-semantic-client-db","agent-semantic-runtime-server","agent-semantic-search","agent-semantic-search-projection","agent-semantic-topology"]'), matrix.package)
         uses: ./.github/actions/orgize-ffi
 
       - name: Prepare the declared MRR search owner
@@ -103,10 +99,6 @@ jobs:
         uses: ./.github/actions/mrr-search-owner
         with:
           install-toolchain: ${{ matrix.package == 'agent-semantic-mrr' && 'true' || 'false' }}
-
-      - name: Build client installation fixture binaries
-        if: ${{ matrix.package == 'agent-semantic-client' }}
-        run: cargo build -p agent-semantic-hook --bin asp-hook
 
       - name: Lint package
         if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}

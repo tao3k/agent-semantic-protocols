@@ -16,7 +16,7 @@ mod topology_index_search_scenario;
 pub use build_gate::AspRustProjectHarnessMemberPolicyReceipt;
 pub use build_gate::assert_asp_rust_project_harness_member_policy;
 pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
-/// Reusable hook scenarios for Rust project harness policy checks.
+/// Central member policies for Rust project harness policy checks.
 pub mod member_policy;
 pub mod search_scenarios;
 #[cfg(feature = "workspace-policy")]

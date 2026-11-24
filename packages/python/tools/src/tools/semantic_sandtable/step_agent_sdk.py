@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-"""Resolve sandtable live agent SDK steps."""
+"""Resolve sandtable live OpenAI-compatible agent SDK steps."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from .step_agent_common import (
     resolve_agent_env,
 )
 from .step_errors import empty_step_error
-from .utils import require_str, string_list
+from .utils import require_str
 
 _OPENAI_COMPATIBLE_CLIENTS = {"deepseek", "openai-compatible"}
 
@@ -30,28 +30,17 @@ def resolve_agent_sdk_step(
     captures: dict[str, str],
     repo_root: Path | None,
 ) -> tuple[list[str], dict[str, str]] | StepResult:
+    _ = repo_root
     spec = step.get("agentSdk")
     if not isinstance(spec, dict):
         return empty_step_error(scenario_id, step_id, "step.agentSdk must be an object")
     client = require_str(spec, "client", "")
-    if client not in {"claude", *_OPENAI_COMPATIBLE_CLIENTS}:
+    if client not in _OPENAI_COMPATIBLE_CLIENTS:
         return empty_step_error(
             scenario_id,
             step_id,
-            "step.agentSdk.client must be 'claude', 'deepseek', or 'openai-compatible'",
+            "step.agentSdk.client must be 'deepseek' or 'openai-compatible'",
         )
-    if client == "claude":
-        tool_contract_error = _validate_asp_bash_tool_contract(
-            spec, scenario_id, step_id
-        )
-        if tool_contract_error is not None:
-            return tool_contract_error
-    else:
-        openai_contract_error = _validate_openai_compatible_contract(
-            spec, scenario_id, step_id
-        )
-        if openai_contract_error is not None:
-            return openai_contract_error
     contract_error = _validate_agent_answer_runtime_contract(
         step,
         spec,
@@ -61,23 +50,13 @@ def resolve_agent_sdk_step(
     if contract_error is not None:
         return contract_error
 
-    if client == "claude":
-        resolved = _resolve_claude_sdk_command(
-            step,
-            spec,
-            scenario_id,
-            step_id,
-            captures,
-            repo_root,
-        )
-    else:
-        resolved = _resolve_openai_compatible_sdk_command(
-            client,
-            spec,
-            scenario_id,
-            step_id,
-            captures,
-        )
+    resolved = _resolve_openai_compatible_sdk_command(
+        client,
+        spec,
+        scenario_id,
+        step_id,
+        captures,
+    )
     if isinstance(resolved, StepResult):
         return resolved
     step_env = resolve_agent_env(spec, scenario_id, step_id, env, "agentSdk")
@@ -107,90 +86,6 @@ def _validate_agent_answer_runtime_contract(
         step_id,
         "step.agentSdk.maxTurns cannot be used when expect.agentAnswer.required is true; use timeoutSeconds instead",
     )
-
-
-def _validate_asp_bash_tool_contract(
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-) -> StepResult | None:
-    if not bool(spec.get("requireAspBashCommands", False)):
-        return None
-    if not string_list(spec.get("allowedTools")):
-        return None
-    return empty_step_error(
-        scenario_id,
-        step_id,
-        "step.agentSdk.allowedTools cannot be used when requireAspBashCommands is true; ASP Bash permission is owned by claude_sdk_runner",
-    )
-
-
-def _resolve_claude_sdk_command(
-    step: dict[str, Any],
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-    captures: dict[str, str],
-    repo_root: Path | None = None,
-) -> list[str] | StepResult:
-    command = _base_sdk_command(spec, scenario_id, step_id, captures)
-    if isinstance(command, StepResult):
-        return command
-
-    _append_sdk_boolean_options(command, spec)
-    _append_sdk_tool_options(command, spec)
-    if bool(spec.get("requireAspBashCommands", False)):
-        command.append("--require-asp-bash-commands")
-    budget_error = _append_sdk_asp_bash_budget(
-        command,
-        spec,
-        step,
-        scenario_id,
-        step_id,
-    )
-    if budget_error is not None:
-        return budget_error
-
-    setup_error = _append_sdk_runtime_options(
-        command,
-        spec,
-        scenario_id,
-        step_id,
-        captures,
-        repo_root,
-    )
-    if setup_error is not None:
-        return setup_error
-    return command
-
-
-def _validate_openai_compatible_contract(
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-) -> StepResult | None:
-    claude_only_fields = (
-        "allowedTools",
-        "disallowedTools",
-        "requireAspBashCommands",
-        "includePartialMessages",
-        "includeHookEvents",
-        "verbose",
-        "useRepoClaudeSettings",
-        "claudeCwd",
-        "settings",
-        "addCwdDir",
-        "maxTurns",
-    )
-    for field in claude_only_fields:
-        value = spec.get(field)
-        if value not in (None, False, "", []):
-            return empty_step_error(
-                scenario_id,
-                step_id,
-                f"step.agentSdk.{field} is only supported for client 'claude'",
-            )
-    return None
 
 
 def _resolve_openai_compatible_sdk_command(
@@ -229,93 +124,6 @@ def _resolve_openai_compatible_sdk_command(
     if bool(spec.get("requireLiveUsage", False)):
         command.append("--require-live-usage")
     return command
-
-
-def _base_sdk_command(
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-    captures: dict[str, str],
-) -> list[str] | StepResult:
-    prompt = required_agent_string(
-        spec, "prompt", scenario_id, step_id, captures, "agentSdk"
-    )
-    output_format = required_agent_string(
-        spec,
-        "outputFormat",
-        scenario_id,
-        step_id,
-        captures,
-        "agentSdk",
-    )
-    if isinstance(prompt, StepResult):
-        return prompt
-    if isinstance(output_format, StepResult):
-        return output_format
-    if output_format not in {"text", "json", "stream-json", "summary-json"}:
-        return empty_step_error(
-            scenario_id,
-            step_id,
-            "step.agentSdk.outputFormat must be text, json, stream-json, or summary-json",
-        )
-    return [
-        sys.executable,
-        "-m",
-        "tools.semantic_sandtable.claude_sdk_runner",
-        "--prompt",
-        prompt,
-        "--output-format",
-        output_format,
-    ]
-
-
-def _append_sdk_boolean_options(command: list[str], spec: dict[str, Any]) -> None:
-    if bool(spec.get("includePartialMessages", False)):
-        command.append("--include-partial-messages")
-    if bool(spec.get("includeHookEvents", False)):
-        command.append("--include-hook-events")
-    if bool(spec.get("verbose", False)):
-        command.append("--verbose")
-
-
-def _append_sdk_tool_options(command: list[str], spec: dict[str, Any]) -> None:
-    for tool in string_list(spec.get("allowedTools")):
-        command.extend(["--allowed-tool", tool])
-    for tool in string_list(spec.get("disallowedTools")):
-        command.extend(["--disallowed-tool", tool])
-
-
-def _append_sdk_asp_bash_budget(
-    command: list[str],
-    spec: dict[str, Any],
-    step: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-) -> StepResult | None:
-    max_commands = _max_asp_bash_commands(spec, step)
-    if max_commands is None:
-        return None
-    if not isinstance(max_commands, int) or max_commands <= 0:
-        return empty_step_error(
-            scenario_id,
-            step_id,
-            "step.agentSdk.maxAspBashCommands must be a positive integer",
-        )
-    command.extend(["--max-asp-bash-commands", str(max_commands)])
-    return None
-
-
-def _max_asp_bash_commands(spec: dict[str, Any], step: dict[str, Any]) -> Any:
-    explicit = spec.get("maxAspBashCommands")
-    if explicit is not None:
-        return explicit
-    expect = step.get("expect")
-    if not isinstance(expect, dict):
-        return None
-    command_flow = expect.get("commandFlow")
-    if not isinstance(command_flow, dict):
-        return None
-    return command_flow.get("maxAspCommands")
 
 
 def _base_openai_compatible_command(
@@ -362,76 +170,3 @@ def _base_openai_compatible_command(
         "--output-format",
         output_format,
     ]
-
-
-def _append_sdk_runtime_options(
-    command: list[str],
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-    captures: dict[str, str],
-    repo_root: Path | None,
-) -> StepResult | None:
-    repo_error = _append_sdk_repo_settings(
-        command, spec, scenario_id, step_id, repo_root
-    )
-    if repo_error is not None:
-        return repo_error
-    turn_error = _append_sdk_max_turns(command, spec, scenario_id, step_id)
-    if turn_error is not None:
-        return turn_error
-
-    model = optional_agent_string(
-        spec, "model", scenario_id, step_id, captures, "agentSdk"
-    )
-    if isinstance(model, StepResult):
-        return model
-    if model:
-        command.extend(["--model", model])
-    return None
-
-
-def _append_sdk_repo_settings(
-    command: list[str],
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-    repo_root: Path | None,
-) -> StepResult | None:
-    if not bool(spec.get("useRepoClaudeSettings", False)):
-        return None
-    if repo_root is None:
-        return empty_step_error(
-            scenario_id,
-            step_id,
-            "step.agentSdk.useRepoClaudeSettings requires repo root context",
-        )
-    command.extend(
-        [
-            "--claude-cwd",
-            str(repo_root),
-            "--settings",
-            str(repo_root / ".claude" / "settings.json"),
-            "--add-cwd-dir",
-        ]
-    )
-    return None
-
-
-def _append_sdk_max_turns(
-    command: list[str],
-    spec: dict[str, Any],
-    scenario_id: str,
-    step_id: str,
-) -> StepResult | None:
-    max_turns = spec.get("maxTurns")
-    if max_turns is None:
-        return None
-    if not isinstance(max_turns, int) or max_turns <= 0:
-        return empty_step_error(
-            scenario_id,
-            step_id,
-            "step.agentSdk.maxTurns must be a positive integer",
-        )
-    command.extend(["--max-turns", str(max_turns)])
-    return None

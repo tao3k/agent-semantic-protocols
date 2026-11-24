@@ -144,16 +144,16 @@ async fn durable_recovery_requires_current_content_and_execution() {
     assert_eq!(recovered.materialization().owners[0].bytes, source);
     let same_content_from_process_cold_filesystem =
         snapshot.evidence(SourceSnapshotKind::Filesystem, digest("provider-and-scope"));
-    let same_content_from_hook_overlay = snapshot.evidence(
+    let same_content_from_overlay = snapshot.evidence(
         SourceSnapshotKind::DerivedOverlay,
         digest("provider-and-scope"),
     );
     assert_ne!(
-        same_content_from_hook_overlay,
+        same_content_from_overlay,
         same_content_from_process_cold_filesystem
     );
     assert!(
-        same_content_from_hook_overlay
+        same_content_from_overlay
             .has_same_content_identity(&same_content_from_process_cold_filesystem)
     );
     assert!(
@@ -161,7 +161,7 @@ async fn durable_recovery_requires_current_content_and_execution() {
             &db_path,
             &request,
             workspace,
-            &same_content_from_hook_overlay,
+            &same_content_from_overlay,
             &blobs,
         )
         .await

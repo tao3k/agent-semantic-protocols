@@ -53,5 +53,5 @@ pub(super) struct WorkspaceDbSessionBinding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum WorkspaceDbSessionProfile {
     Full,
-    HookReadOnly,
+    ReadOnly,
 }

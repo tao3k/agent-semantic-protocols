@@ -68,11 +68,14 @@ mod workspace_playbook_plan;
 mod workspace_playbook_result;
 
 mod source_index_rank;
+pub use agent_semantic_search_playbook::NativeRgArgvAnalysis;
+pub use agent_semantic_search_playbook::NativeRgOutputAttribution;
+pub use agent_semantic_search_playbook::TantivyQueryAnalysis;
+pub use agent_semantic_search_playbook::TantivyQueryDiagnostic;
+pub use agent_semantic_search_playbook::TantivyQueryMetrics;
+pub use agent_semantic_search_playbook::analyze_native_rg_argv;
+pub use agent_semantic_search_playbook::analyze_tantivy_query;
 pub use agent_semantic_search_projection::source_index_artifact_digest;
-pub use agent_semantic_shell_parser::TantivyQueryAnalysis;
-pub use agent_semantic_shell_parser::TantivyQueryDiagnostic;
-pub use agent_semantic_shell_parser::TantivyQueryMetrics;
-pub use agent_semantic_shell_parser::analyze_tantivy_query;
 pub use source_index_rank::SourceIndexRankReport;
 pub use source_index_rank::SourceIndexRankRequest;
 pub use source_index_rank::SourceIndexRankScore;

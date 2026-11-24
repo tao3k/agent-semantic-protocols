@@ -53,7 +53,7 @@ fn provider_runtime_storage(criterion: &mut Criterion) {
     let project = BenchProject::new();
     let binding = ProviderRuntimeStorageBinding::from_runtime_identity(
         &project.0,
-        "codex",
+        "marlin",
         "benchmark-session",
         "benchmark-root",
     )

@@ -5,7 +5,9 @@
 //! Public facade for the lightweight Search Playbook V1 contract.
 
 mod model;
+mod native_rg;
 mod playbook;
+mod tantivy_query;
 mod topology_owner;
 
 pub use model::{
@@ -18,7 +20,14 @@ pub use model::{
     SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
     TopologyOwnerMembershipBlock, search_playbook_composition_abi_digest,
 };
+pub use native_rg::{
+    NativeRgArgvAnalysis, NativeRgDiagnostic, NativeRgDiagnosticKind, NativeRgOptionOccurrence,
+    NativeRgOutputAttribution, NativeRgValueOccurrence, analyze_native_rg_argv,
+};
 pub use playbook::{
     parse_progressive_search_playbook_args, parse_query_playbook_producer_declaration,
     parse_search_playbook_producer_declaration,
+};
+pub use tantivy_query::{
+    TantivyQueryAnalysis, TantivyQueryDiagnostic, TantivyQueryMetrics, analyze_tantivy_query,
 };

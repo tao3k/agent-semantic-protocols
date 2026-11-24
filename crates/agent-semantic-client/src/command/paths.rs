@@ -100,9 +100,6 @@ impl ProjectPaths {
         let cache_manifest = project_state_paths.client_cache_manifest_path;
         let state_root = project_state_paths.protocol_home.clone();
         let protocol_home = &state_root;
-        let hook_cache_dir = project_state_paths.hook_cache_dir;
-        let hook_state_dir = project_state_paths.hook_state_dir;
-        let activation_path = project_state_paths.activation_path;
         let client_cache_dir = project_state_paths.client_cache_dir;
         let client_db_dir = project_state_paths.client_db_dir;
         let client_db_path = project_state_paths.client_db_path;
@@ -128,9 +125,6 @@ impl ProjectPaths {
         fields.insert("stateRoot", path_string(&state_root));
         fields.insert("protocolHome", path_string(protocol_home));
         fields.insert("cacheManifest", path_string(&cache_manifest));
-        fields.insert("hookCacheDir", path_string(&hook_cache_dir));
-        fields.insert("hookStateDir", path_string(&hook_state_dir));
-        fields.insert("activation", path_string(&activation_path));
         fields.insert("clientCacheDir", path_string(&client_cache_dir));
         fields.insert("clientDbDir", path_string(&client_db_dir));
         fields.insert("clientDbPath", path_string(&client_db_path));

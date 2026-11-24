@@ -531,8 +531,11 @@ fn isolated_workspace_preserves_bytes_and_has_a_distinct_runtime_identity() {
     let source = temp.path().join("immutable-source");
     std::fs::create_dir(&source).expect("source directory");
     std::fs::write(source.join("lib.rs"), "pub fn live_corpus() {}\n").expect("source file");
-    let source_identity = agent_semantic_client_db::AgentSessionRegistry::workspace_id(&source)
-        .expect("source workspace identity");
+    let source_identity = agent_semantic_client_core::state_core::ResolvedState::resolve(&source)
+        .expect("source workspace identity")
+        .workspace
+        .workspace_id
+        .to_string();
 
     let isolated = IsolatedBenchmarkWorkspace::materialize(
         temp.path(),

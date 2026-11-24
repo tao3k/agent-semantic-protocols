@@ -29,9 +29,7 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "wrap",
         "cache",
         "cloud",
-        "hook",
         "config",
-        "session",
         "install",
         "paths",
         "healthcheck",
@@ -48,92 +46,18 @@ fn root_and_first_level_paths_select_their_own_commands() {
     ] {
         assert_selected(&[command, "--help"], command, &format!("asp {command}"));
     }
-    assert_selected(
-        &["config", "agents", "--help"],
-        "agents",
-        "asp config agents",
-    );
     let mut config = help_model::selected_command(&owned_args(&["config", "--help"]));
     let config_help = config.render_long_help().to_string();
-    assert!(config_help.contains("agents"));
-    assert_selected(
-        &["config", "agents", "sync", "--help"],
-        "sync",
-        "asp config agents sync",
-    );
-    let mut session = help_model::selected_command(&owned_args(&["session", "--help"]));
-    let session_help = session.render_long_help().to_string();
-    assert!(session_help.contains("register-child"));
-    assert_selected(
-        &["session", "register-child", "--help"],
-        "register-child",
-        "asp session register-child",
-    );
-    let mut register_child =
-        help_model::selected_command(&owned_args(&["session", "register-child", "--help"]));
-    let register_child_help = register_child.render_long_help().to_string();
-    assert!(register_child_help.contains("--parent-thread-id"));
-    assert!(!register_child_help.contains("--parent-session-id"));
-    assert!(register_child_help.contains("--agent-name"));
+    assert!(!config_help.contains("agents"), "help={config_help}");
 }
 
 #[test]
-fn removed_agent_root_fails_closed_instead_of_rendering_root_help() {
-    let error = help_model::print_help_if_requested(&owned_args(&["agent", "--help"]))
-        .expect_err("the removed asp agent root must not look available");
-    assert_eq!(error, "unknown ASP command `agent`");
-}
-
-#[test]
-fn hook_break_glass_help_is_a_public_typed_command() {
-    assert_selected(
-        &["hook", "break-glass", "--help"],
-        "asp hook break-glass",
-        "asp hook break-glass",
-    );
-    let mut command = help_model::selected_command(&owned_args(&["hook", "break-glass", "--help"]));
-    let help = command.render_long_help().to_string();
-    assert!(help.contains("mint"), "help={help}");
-    assert!(
-        help.contains("one-shot Hook defect capability"),
-        "help={help}"
-    );
-}
-
-#[test]
-fn hook_enablement_help_owns_preflight_and_host_evidence() {
-    let mut command = help_model::selected_command(&owned_args(&["hook", "enablement", "--help"]));
-    let help = command.render_long_help().to_string();
-    assert!(help.contains("--host-rollout"), "help={help}");
-    assert!(help.contains("--hook-events"), "help={help}");
-    assert!(help.contains("--host-probe-path"), "help={help}");
-    assert!(help.contains("--host-sentinel"), "help={help}");
-
-    let mut hook = help_model::selected_command(&owned_args(&["hook", "--help"]));
-    let hook_help = hook.render_long_help().to_string();
-    assert!(hook_help.contains("refresh"));
-    assert!(!hook_help.contains("accept-host"));
-}
-
-#[test]
-fn install_plugin_path_selects_plugin_command() {
-    assert_selected(
-        &["install", "plugin", "--help"],
-        "plugin",
-        "asp install plugin",
-    );
-}
-
-#[test]
-fn codex_plugin_help_is_global_and_never_defaults_to_the_current_directory() {
-    let mut command = help_model::selected_command(&owned_args(&["install", "plugin", "--help"]));
-    let help = command.render_help().to_string();
-
-    assert!(help.contains("globally"), "help={help}");
-    assert!(help.contains("ASP_STATE_HOME [dev].root"), "help={help}");
-    assert!(!help.contains("--global-plugin"), "help={help}");
-    assert!(!help.contains("--project-plugin"), "help={help}");
-    assert!(!help.contains("[default: .]"), "help={help}");
+fn removed_agent_hook_and_session_roots_fail_closed_instead_of_rendering_root_help() {
+    for removed in ["agent", "hook", "session"] {
+        let error = help_model::print_help_if_requested(&owned_args(&[removed, "--help"]))
+            .expect_err("retired command root must not look available");
+        assert_eq!(error, format!("unknown ASP command `{removed}`"));
+    }
 }
 
 #[test]
@@ -246,7 +170,7 @@ fn removed_language_leaves_do_not_select_command_help() {
 #[test]
 fn non_help_invocations_are_not_intercepted() {
     for parts in [
-        &["install", "plugin", "--codex"][..],
+        &["install", "binary"][..],
         &[
             "search",
             "playbook",

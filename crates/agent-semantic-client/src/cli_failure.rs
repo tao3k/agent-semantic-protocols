@@ -5,7 +5,7 @@
 //! Agent-facing materialization for failures that occur before an ASP evidence frame exists.
 
 /// Preserve ordinary command errors, but turn a bare OS `EPERM` into an
-/// explicit boundary receipt that cannot be mistaken for a Hook policy deny.
+/// explicit boundary receipt that cannot be mistaken for a runtime policy deny.
 #[must_use]
 pub fn materialize_cli_failure(message: &str) -> String {
     let lower = message.to_ascii_lowercase();
@@ -59,8 +59,8 @@ pub fn materialize_cli_failure(message: &str) -> String {
         "reasonKind": "host-operation-not-permitted",
         "failureLayer": "asp-cli-startup-or-ipc-boundary",
         "osError": "EPERM",
-        "message": "ASP could not produce semantic evidence because the Host OS denied a process, IPC, or filesystem operation. This is not a Hook policy denial; the failing lower layer is not attributable until a typed ASP frame exists.",
-        "recovery": "Repair Host filesystem/socket permission and rerun the exact ASP command. Hook enablement is controlled only by State Home control/config/asp.toml; it does not override operator-stop or endpoint identity denial.",
+        "message": "ASP could not produce semantic evidence because the Host OS denied a process, IPC, or filesystem operation; the failing lower layer is not attributable until a typed ASP frame exists.",
+        "recovery": "Repair Host filesystem/socket permission and rerun the exact ASP command.",
         "originalError": message,
     })
     .to_string()

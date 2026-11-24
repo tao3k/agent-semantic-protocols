@@ -222,8 +222,6 @@ impl RuntimeServer {
             generation_admission: None,
             runtime_search_service: None,
             asp_python_graphs_status: None,
-            agent_session_registry_owner: None,
-            agent_session_status: None,
             telemetry_sender: None,
         })
     }

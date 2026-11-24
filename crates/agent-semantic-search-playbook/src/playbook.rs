@@ -784,8 +784,8 @@ fn require_nonempty(name: &str, values: &[String]) -> Result<(), ProgressiveSear
 }
 
 fn validate_rg(argv: &[String]) -> Result<(), ProgressiveSearchPlaybookError> {
-    use agent_semantic_shell_parser::NativeRgDiagnosticKind;
-    let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(argv);
+    use crate::native_rg::NativeRgDiagnosticKind;
+    let analysis = crate::native_rg::analyze_native_rg_argv(argv);
     if let Some(diagnostic) = analysis.diagnostics.first() {
         let reason_kind = match diagnostic.kind {
             NativeRgDiagnosticKind::UnknownOption
@@ -821,7 +821,7 @@ fn validate_rg(argv: &[String]) -> Result<(), ProgressiveSearchPlaybookError> {
 }
 
 fn validate_tantivy(expression: &str) -> Result<(), ProgressiveSearchPlaybookError> {
-    let analysis = agent_semantic_shell_parser::analyze_tantivy_query(expression);
+    let analysis = crate::tantivy_query::analyze_tantivy_query(expression);
     let (reason_kind, message) = if !analysis.syntax_diagnostics.is_empty() {
         (
             "search-playbook-tantivy-syntax-invalid",

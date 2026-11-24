@@ -4,28 +4,19 @@
 
 //! Command tree for the `asp` binary.
 
-mod agent_session;
-
 pub(crate) mod active_provider_projection;
-mod agent_config_sync;
-mod agent_control_plane;
+mod agent_session;
 mod ast_patch;
 mod cli_help;
 mod dispatch;
-mod dispatch_agent_session_policy;
 mod document_provider;
 mod healthcheck;
-mod hook;
-mod hook_break_glass;
-mod hook_host_acceptance;
-pub(crate) mod hook_runtime;
 mod install_binary_config_admission;
 mod install_provider;
 mod provider_install_receipt;
 
 #[cfg(feature = "live-corpus-test")]
 pub(crate) mod live_corpus;
-mod managed_hook_config;
 mod org_archive;
 mod org_capture;
 mod org_capture_contract_materialize;
@@ -44,7 +35,6 @@ mod root_language_facade;
 mod runtime_server;
 mod schema;
 mod search_config;
-mod session;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(crate) use dispatch::run_protocol_command_started;

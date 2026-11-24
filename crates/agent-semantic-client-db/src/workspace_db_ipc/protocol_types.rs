@@ -20,8 +20,8 @@ use crate::{
 };
 
 use crate::workspace_db_ipc::{
-    AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult, RuntimeGraphFactSource,
-    RuntimeGraphFactsRead, deserialize_changed_paths, deserialize_mutation_id,
+    RuntimeGraphFactSource, RuntimeGraphFactsRead, deserialize_changed_paths,
+    deserialize_mutation_id,
 };
 
 /// Request-time work counters proving that a resident read performed no cold I/O.
@@ -400,17 +400,6 @@ pub enum WorkspaceDbIpcOperation {
     ReadRuntimeGenerationDurability {
         project_root: String,
     },
-    AgentSessionRegistry {
-        project_root: String,
-        operation: AgentSessionRegistryIpcOperation,
-    },
-    RefreshCodexMultiAgentControlPlane {
-        project_id: crate::agent_session_registry::AgentSessionProjectId,
-        root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
-    },
-    ReadCodexMultiAgentControlPlane {
-        root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
-    },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
     },
@@ -607,15 +596,6 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeGenerationMutationSubmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt,
-    },
-    AgentSessionRegistry {
-        result: AgentSessionRegistryIpcResult,
-    },
-    CodexMultiAgentControlPlanePublication {
-        receipt: crate::codex_multi_agent_control_plane_owner::CodexControlPlanePublicationReceipt,
-    },
-    CodexMultiAgentControlPlane {
-        projection: Option<agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexMultiAgentV2ControlPlaneProjection>,
     },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,

@@ -206,10 +206,13 @@ async fn stale_workspace_identity_projection_is_replaced_once_by_current_derivat
 
     let current = RuntimeWorkspaceAdmissionCatalogEntry {
         project_id: "repo-test".to_owned(),
-        workspace_identity: agent_semantic_client_db::AgentSessionRegistry::workspace_id(
+        workspace_identity: agent_semantic_client_core::state_core::ResolvedState::resolve(
             &project_root,
         )
-        .unwrap(),
+        .unwrap()
+        .workspace
+        .workspace_id
+        .to_string(),
         project_root: project_root.clone(),
     };
     let replacement = catalog.record(current.clone()).await.unwrap();
@@ -608,7 +611,11 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
     let project_root = root.join("checkout");
     tokio::fs::create_dir_all(&project_root).await.unwrap();
     let workspace_id =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root).unwrap();
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .unwrap()
+            .workspace
+            .workspace_id
+            .to_string();
     let catalog_path = root.join("catalog.json");
     assert!(matches!(
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root),

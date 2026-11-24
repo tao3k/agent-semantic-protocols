@@ -25,14 +25,12 @@ async fn binary_refresh_builds_a_complete_bound_closure_for_an_empty_provider_se
     let state_home = tempfile::tempdir().expect("state home");
     let sources = tempfile::tempdir().expect("binary sources");
     let asp = sources.path().join("asp");
-    let hook = sources.path().join("asp-hook");
     std::fs::write(&asp, b"asp").expect("asp candidate");
-    std::fs::write(&hook, b"hook").expect("hook candidate");
     let mut plan = super::prepare_active_provider_reconciliation(state_home.path())
         .expect("empty active-provider reconciliation");
 
     let binding = plan
-        .bind_runtime_execution_closure(&asp, &hook)
+        .bind_runtime_execution_closure(&asp)
         .await
         .expect("bound Runtime execution closure");
 

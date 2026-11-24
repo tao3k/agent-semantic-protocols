@@ -73,7 +73,7 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
     let mut all_owners = std::collections::BTreeSet::new();
     let mut any_truncated = false;
     for (block_index, block) in blocks.iter().enumerate() {
-        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(block);
+        let analysis = agent_semantic_search::analyze_native_rg_argv(block);
         if !analysis.is_admitted() {
             return Err(format!(
                 "resident GREP argv is not admitted: blockIndex={block_index} diagnostics={:?}",
@@ -87,9 +87,9 @@ pub(crate) fn execute_runtime_resident_grep_blocks(
         );
         let line_attribution = matches!(
             analysis.output_attribution,
-            agent_semantic_shell_parser::NativeRgOutputAttribution::JsonPathLine
-                | agent_semantic_shell_parser::NativeRgOutputAttribution::VimgrepPathLine
-                | agent_semantic_shell_parser::NativeRgOutputAttribution::PathLine
+            agent_semantic_search::NativeRgOutputAttribution::JsonPathLine
+                | agent_semantic_search::NativeRgOutputAttribution::VimgrepPathLine
+                | agent_semantic_search::NativeRgOutputAttribution::PathLine
         );
         let mut owners = Vec::new();
         let mut matches = Vec::new();
@@ -252,7 +252,7 @@ impl ResidentGrepMatcher {
 }
 
 fn compile_resident_matcher(
-    analysis: &agent_semantic_shell_parser::NativeRgArgvAnalysis,
+    analysis: &agent_semantic_search::NativeRgArgvAnalysis,
     block_index: usize,
 ) -> Result<ResidentGrepMatcher, String> {
     let fixed = has_option(analysis, &["-F", "--fixed-strings"]);
@@ -359,7 +359,7 @@ fn compile_resident_matcher(
 }
 
 fn validate_resident_options(
-    analysis: &agent_semantic_shell_parser::NativeRgArgvAnalysis,
+    analysis: &agent_semantic_search::NativeRgArgvAnalysis,
     block_index: usize,
 ) -> Result<(), String> {
     const SUPPORTED: &[&str] = &[
@@ -408,10 +408,7 @@ fn validate_resident_options(
     Ok(())
 }
 
-fn has_option(
-    analysis: &agent_semantic_shell_parser::NativeRgArgvAnalysis,
-    names: &[&str],
-) -> bool {
+fn has_option(analysis: &agent_semantic_search::NativeRgArgvAnalysis, names: &[&str]) -> bool {
     analysis
         .options
         .iter()

@@ -160,7 +160,7 @@ fn case_flags_obey_last_occurrence() {
     ] {
         let mut argv = flags.into_iter().map(str::to_owned).collect::<Vec<_>>();
         argv.extend(["-n", "-e", "Runtime", "."].map(str::to_owned));
-        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(&argv);
+        let analysis = agent_semantic_search::analyze_native_rg_argv(&argv);
         let matcher = super::compile_resident_matcher(&analysis, 0).unwrap();
         assert_eq!(
             matcher.expression.is_match(b"runtime").unwrap(),

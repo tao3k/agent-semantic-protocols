@@ -4,8 +4,6 @@
 
 //! Runtime Server workspace data-plane protocol and transport.
 
-mod agent_session_registry;
-mod codex_control_plane;
 mod graph_facts;
 mod protocol;
 pub use protocol::{
@@ -14,7 +12,6 @@ pub use protocol::{
 };
 mod provider_owner;
 mod runtime_generation;
-mod runtime_locator;
 mod session_pool;
 pub(crate) mod transport;
 mod validation;
@@ -27,13 +24,6 @@ use validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
 };
 
-pub use agent_session_registry::{
-    AgentHostEventId, AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc,
-    AgentHostLifecycleEventKind, AgentHostNamespaceId, AgentHostNonMatchIpc, AgentHostProfileId,
-    AgentHostRouteKey, AgentHostSandboxMode, AgentHostTranscriptPath,
-    AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
-    AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult,
-};
 pub use graph_facts::{RuntimeGraphFactSource, RuntimeGraphFactsRead};
 pub use protocol::{
     RuntimeCacheControlReceipt, RuntimeCacheControlRequest, RuntimeCacheGenerationState,

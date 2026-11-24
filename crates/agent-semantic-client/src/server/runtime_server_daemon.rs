@@ -11,7 +11,6 @@ use super::runtime_server_daemon_publication::{
 use super::runtime_server_generation_builder::{
     build_workspace_generation_candidate_builder, resolve_host_workspace_initialization_binding,
 };
-use super::runtime_server_hook_memory_inbox;
 use super::runtime_server_identity_handoff;
 use super::runtime_server_query_generation_observer::publish_observer_terminal;
 use super::runtime_server_search_service;
@@ -28,7 +27,6 @@ use runtime_server_identity_handoff::RuntimeIdentityHandoffCoordinator;
 use runtime_server_search_service::serve_runtime_search_requests;
 
 pub(super) async fn run_daemon() -> Result<(), String> {
-    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
     // `run_daemon_at` is the sole owner-terminal publisher because only it has
     // the elected owner epoch. Failures before election remain process-launch
@@ -178,16 +176,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             state_home,
         )
         .await?;
-    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
-    let session_registry_root = agent_semantic_artifacts::StateHomeLayout::new(state_home)
-        .control()
-        .session_registry_root();
-    let agent_session_registry = std::sync::Arc::new(
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            session_registry_root,
-        )
-        .await?,
-    );
     let server = RuntimeServer::bind_with_artifact_catalog_and_listener(
         endpoint.clone(),
         control_listener,
@@ -213,8 +201,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             admission_catalog.clone(),
             runtime_bundle_digest_probe,
         )
-        .with_runtime_search_service(runtime_search_service.clone())
-        .with_agent_session_registry_owner(std::sync::Arc::clone(&agent_session_registry));
+        .with_runtime_search_service(runtime_search_service.clone());
     let task_scope = RuntimeServerTaskScope::new("runtime-server-daemon");
     let query_generation_authority =
         agent_semantic_runtime_server::RuntimeQueryGenerationAuthority::new_in_task_scope_with_calibration_store(
@@ -234,7 +221,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     })?;
     let client_grpc_service = runtime_asp_client::build_frame_service(
         schema_bundles,
-        std::sync::Arc::clone(&agent_session_registry),
         runtime_search_service.clone(),
         generation_admission.clone(),
         std::sync::Arc::clone(server.workspace_registry()),
@@ -263,7 +249,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     })?;
     let (client_grpc_shutdown, client_grpc_shutdown_receiver) = tokio::sync::watch::channel(false);
     let mut generation_shutdown = client_grpc_shutdown.subscribe();
-    let hook_inbox_shutdown = client_grpc_shutdown.subscribe();
     let (client_grpc_done_sender, mut client_grpc_done_receiver) = tokio::sync::oneshot::channel();
     let client_grpc_task = task_scope.spawn("asp-client-grpc", async move {
         let result = agent_semantic_client_server::serve_asp_client_grpc_tcp(
@@ -305,14 +290,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             telemetry_query_socket_path.clone(),
             lifecycle_bus.receiver,
         ),
-    )?;
-    let hook_inbox_task = runtime_server_hook_memory_inbox::spawn_reconciler(
-        state_home,
-        std::sync::Arc::clone(&query_generation_workspace_registry),
-        admission_catalog.clone(),
-        generation_admission.clone(),
-        &task_scope,
-        hook_inbox_shutdown,
     )?;
     let generation_authority = query_generation_authority.clone();
     let generation_state_home = state_home.to_path_buf();
@@ -727,11 +704,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     eprintln!(
         "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=generation-observer-drained"
     );
-    let hook_inbox_error = hook_inbox_task
-        .join()
-        .await
-        .map_err(|error| format!("Runtime Hook inbox task failed: {error}"))?
-        .err();
     let query_generation_shutdown_error = query_generation_authority.shutdown().await.err();
     eprintln!(
         "[runtime-server-shutdown-stage] schemaId=agent.semantic-protocols.runtime-server-shutdown-stage.v1 schemaVersion=1 stage=query-generation-builder-drained"
@@ -809,9 +781,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let mut shutdown_errors = Vec::new();
     if let Some(error) = query_generation_shutdown_error {
         shutdown_errors.push(format!("queryGenerationBuilder={error}"));
-    }
-    if let Some(error) = hook_inbox_error {
-        shutdown_errors.push(format!("hookMemoryInbox={error}"));
     }
     if let Err(error) = task_scope.finish(total_drain_elapsed.as_micros() as u64) {
         shutdown_errors.push(format!("taskScope={error}"));

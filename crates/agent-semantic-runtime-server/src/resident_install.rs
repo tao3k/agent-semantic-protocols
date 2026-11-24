@@ -59,36 +59,6 @@ pub async fn install_resident_runtime(
     })
 }
 
-/// Publishes the ASP client and Hook evaluator into one candidate directory.
-/// The Runtime activation actor switches the shared active/healthy directory
-/// authority, so both executables become visible as one build cohort.
-pub async fn install_resident_runtime_bundle(
-    state_home: &Path,
-    source: &Path,
-    target: &Path,
-    hook_source: &Path,
-    artifact_mode: &str,
-    qualified_source: Option<
-        agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
-    >,
-) -> Result<ResidentRuntimeInstallReceipt, String> {
-    let members = [
-        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: hook_source,
-        },
-    ];
-    install_resident_runtime_bundle_members(
-        state_home,
-        source,
-        target,
-        &members,
-        artifact_mode,
-        qualified_source,
-    )
-    .await
-}
-
 pub async fn install_resident_runtime_bundle_members(
     state_home: &Path,
     source: &Path,

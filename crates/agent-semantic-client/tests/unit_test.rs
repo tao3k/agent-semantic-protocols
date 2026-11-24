@@ -11,18 +11,8 @@
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;
 
-#[path = "unit/agent_config_sync.rs"]
-mod agent_config_sync;
-#[path = "unit/agent_session_lifecycle_projection.rs"]
-mod agent_session_lifecycle_projection;
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
-#[path = "unit/codex/mod.rs"]
-mod codex;
-#[path = "unit/codex_plugin_install.rs"]
-mod codex_plugin_install;
-#[path = "unit/command/dispatch_agent_session_policy.rs"]
-mod command_dispatch_agent_session_policy;
 #[path = "unit/context_product_state.rs"]
 mod context_product_state;
 #[path = "unit/document_owner_items_hot_path.rs"]
@@ -31,12 +21,6 @@ mod document_owner_items_hot_path;
 mod exact_projection;
 #[path = "unit/healthcheck.rs"]
 mod healthcheck;
-#[path = "unit/hook_command.rs"]
-mod hook_command;
-#[path = "unit/hook_paths.rs"]
-mod hook_paths;
-#[path = "unit/hook_runtime_skill.rs"]
-mod hook_runtime_skill;
 #[path = "unit/install_binary_existing_state_production_command.rs"]
 mod install_binary_existing_state_production_command;
 #[path = "unit/install_binary_production_command.rs"]

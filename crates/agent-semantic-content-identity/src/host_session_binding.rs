@@ -83,11 +83,12 @@ impl HostSessionBinding {
     {
         let platform =
             read("ASP_HOST_PLATFORM").ok_or(HostSessionBindingError::MissingField("platform"))?;
-        let root = read("ASP_ROOT_SESSION_ID")
+        let root = read("MARLIN_ROOT_SESSION_ID")
+            .or_else(|| read("ASP_ROOT_SESSION_ID"))
             .ok_or(HostSessionBindingError::MissingField("rootSessionId"))?;
-        let parent = read("CODEX_SESSION_ID")
+        let parent = read("MARLIN_PARENT_SESSION_ID")
             .ok_or(HostSessionBindingError::MissingField("parentSessionId"))?;
-        let current = read("CODEX_THREAD_ID")
+        let current = read("MARLIN_SESSION_ID")
             .ok_or(HostSessionBindingError::MissingField("currentSessionId"))?;
         Self::new(platform, root, parent, current)
     }

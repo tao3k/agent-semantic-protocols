@@ -81,11 +81,6 @@ fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate() 
 }
 
 #[test]
-fn asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate() {
-    super::scenario_performance_gate_impl::asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate();
-}
-
-#[test]
 fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
     super::scenario_performance_gate_impl::asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate();
 }

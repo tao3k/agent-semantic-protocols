@@ -6,60 +6,24 @@ use asp_rust_project_harness_policy::asp_workspace_member_forbidden_normal_depen
 use asp_rust_project_harness_policy::asp_workspace_member_policies;
 
 #[test]
-fn runtime_provider_consumers_forbid_direct_hook_dependencies() {
-    for package in [
-        "agent-semantic-client-core",
-        "agent-semantic-runtime-server",
+fn retired_codex_claude_hook_crates_are_absent_from_workspace() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for retired in [
+        "crates/agent-semantic-hook",
+        "crates/agent-semantic-hook-testkit",
+        "crates/agent-semantic-shell-parser",
+        "asp-codex-plugin",
+        "agents",
     ] {
-        assert_eq!(
-            asp_workspace_member_forbidden_normal_dependencies(package),
-            ["agent-semantic-hook"],
-            "{package} must consume provider DTOs from Provider Protocol"
+        assert!(
+            !repository_root.join(retired).exists(),
+            "retired Codex/Claude/Hook surface `{retired}` must not be recreated"
         );
     }
-}
-
-#[test]
-fn hook_source_rejects_retired_manifest_activation_routing() {
-    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let hook_source = repository_root.join("crates/agent-semantic-hook/src");
-    assert!(
-        !hook_source.join("protocol_activation").exists(),
-        "Hook source must not recreate the retired protocol_activation module"
+    assert_eq!(
+        asp_workspace_member_forbidden_normal_dependencies("agent-semantic-artifacts"),
+        ["turso"],
     );
-
-    let forbidden = [
-        "pub struct HookRoutes",
-        "pub struct HookRouteBindings",
-        "pub struct HookActivation",
-        "pub struct ActivatedProvider",
-        "pub struct ProviderManifest",
-        "fn materialize_provider_routes",
-    ];
-    let mut pending = vec![hook_source];
-    while let Some(path) = pending.pop() {
-        for entry in std::fs::read_dir(&path)
-            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
-        {
-            let path = entry.expect("Hook source entry").path();
-            if path.is_dir() {
-                pending.push(path);
-                continue;
-            }
-            if path.extension().and_then(std::ffi::OsStr::to_str) != Some("rs") {
-                continue;
-            }
-            let source = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-            for retired in forbidden {
-                assert!(
-                    !source.contains(retired),
-                    "{} recreates retired Hook routing surface `{retired}`",
-                    path.display()
-                );
-            }
-        }
-    }
 }
 
 #[test]
@@ -99,8 +63,6 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-client-db",
             "agent-semantic-client-server",
             "agent-semantic-client",
-            "agent-semantic-hook",
-            "agent-semantic-hook-testkit",
             "agent-semantic-http-json",
             "agent-semantic-provider-protocol",
             "agent-semantic-provider-transport",

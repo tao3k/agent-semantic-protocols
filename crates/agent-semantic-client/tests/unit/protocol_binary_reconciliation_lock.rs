@@ -146,38 +146,31 @@ async fn bundle_publication_points_runtime_members_to_path_visible_entries() {
     ));
     let artifact_root = root.join("runtime/artifacts");
     let asp = root.join("build/asp");
-    let hook = root.join("build/asp-hook");
     std::fs::create_dir_all(asp.parent().expect("build parent")).expect("create build dir");
     std::fs::write(&asp, b"asp-bundle").expect("write ASP fixture");
-    std::fs::write(&hook, b"hook-bundle").expect("write Hook fixture");
 
-    super::ensure_protocol_binary_bundle_installed_transaction(
-        &super::ProtocolBinaryInstallPlan {
-            binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
-            current_exe: asp,
-            explicit_candidate_source: None,
-            target: root.join("home/.local/bin/asp"),
-            artifact_root,
-        },
-        &hook,
-    )
+    super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
+        binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
+        current_exe: asp,
+        explicit_candidate_source: None,
+        target: root.join("home/.local/bin/asp"),
+        artifact_root,
+    })
     .await
     .expect("publish complete client bundle");
 
-    for binary in ["asp", "asp-hook"] {
-        let public_entry = root.join("home/.local/bin").join(binary);
-        let runtime_alias = root.join("runtime/bin").join(binary);
-        assert_eq!(
-            std::fs::read_link(&runtime_alias).expect("read Runtime compatibility alias"),
-            public_entry,
-            "{binary} Runtime alias direction"
-        );
-        assert_ne!(
-            std::fs::read_link(&public_entry).expect("read PATH-visible bundle entry"),
-            runtime_alias,
-            "{binary} public entry must not point back to Runtime"
-        );
-    }
+    let public_entry = root.join("home/.local/bin/asp");
+    let runtime_alias = root.join("runtime/bin/asp");
+    assert_eq!(
+        std::fs::read_link(&runtime_alias).expect("read Runtime compatibility alias"),
+        public_entry,
+        "asp Runtime alias direction"
+    );
+    assert_ne!(
+        std::fs::read_link(&public_entry).expect("read PATH-visible bundle entry"),
+        runtime_alias,
+        "asp public entry must not point back to Runtime"
+    );
 
     std::fs::remove_dir_all(root).expect("remove bundle direction fixture");
 }

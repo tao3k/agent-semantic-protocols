@@ -8,7 +8,7 @@ policy_ids = [
   "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-SELECTOR-DIRECTORY-CODE-PREFLIGHT-COLD-001",
   "RUST-AGENT-ASP-WORKSPACE-FILE-001",
 ]
-agent_goal = "Validate that query --selector <directory> --code is rejected as an exact-selector contract violation before provider execution, across query, from-hook, tree-sitter, and bare code request shapes."
+agent_goal = "Validate that query --selector <directory> --code is rejected as an exact-selector contract violation before provider execution, across query, tree-sitter, and bare code request shapes."
 language = "rust"
 workspace = "."
 owners = [
@@ -16,7 +16,7 @@ owners = [
   "crates/agent-semantic-client/tests/unit/syntax_query_preflight.rs",
 ]
 queries = [
-  "from-hook fallback-reason direct-source-read",
+  "tree-sitter query syntax selector",
   "tree-sitter query selector directory code",
 ]
 inputs = "A temporary Rust project with src/lib.rs and an active marker provider. The scenario runs directory-selector code query variants that previously could reach an empty code projection."

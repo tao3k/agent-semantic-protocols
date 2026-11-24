@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::sync::Barrier;
 
 use super::ensure_dir;
-use super::project_root_for_activation_path;
 use super::project_runtime_state_with_state_home;
 use super::project_state_paths_with_state_home;
 use super::provider_receipt_dir;
@@ -32,13 +31,7 @@ fn runtime_state_materializes_state_core_layout() {
 
     assert_eq!(resolved.repo.git_toplevel.as_deref(), Some(root.as_path()));
     assert_eq!(state.protocol_home, state_home);
-    assert_eq!(state.hook_cache_dir, workspace.hook_root().join("cache"));
-    assert_eq!(state.hook_state_dir, workspace.hook_root().join("state"));
     assert!(!state_home.join("projects").exists());
-    assert_eq!(
-        state.activation_path,
-        state.hook_state_dir.join("activation.json")
-    );
     assert_eq!(state.client_cache_dir, workspace.root);
     assert_eq!(state.artifacts_dir, workspace.artifacts);
     assert_eq!(state.runtime_home, state_home.join("runtime"));
@@ -47,41 +40,12 @@ fn runtime_state_materializes_state_core_layout() {
     assert_eq!(state.provider_bin_dir, active_bundle);
     assert_eq!(state.runtime_bin_dir, active_bundle);
     assert_eq!(state.provider_lock_dir, provider_receipt_dir(&state_home));
-    assert!(state.hook_cache_dir.is_dir());
-    assert!(state.hook_state_dir.is_dir());
     assert!(state.client_cache_dir.is_dir());
     assert!(state.artifacts_dir.is_dir());
     assert!(state.runtime_home.is_dir());
     assert!(state.provider_bin_dir.is_dir());
     assert!(state.provider_lock_dir.is_dir());
     assert!(!root.join(".cache").exists());
-    let _ = fs::remove_dir_all(root);
-    let _ = fs::remove_dir_all(state_home);
-}
-
-#[test]
-fn canonical_state_activation_path_resolves_workspace_root_without_legacy_fallback() {
-    let root = temp_root("canonical-activation-root");
-    let state_home = temp_root("canonical-activation-state-home");
-    init_git_repository(&root);
-
-    let state = project_runtime_state_with_state_home(&root, &state_home).expect("runtime state");
-    fs::write(&state.activation_path, "{}\n").expect("write canonical activation");
-
-    assert_eq!(
-        project_root_for_activation_path(&state.activation_path),
-        Some(root.clone())
-    );
-
-    let legacy = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-    fs::create_dir_all(legacy.parent().expect("legacy activation parent"))
-        .expect("create legacy activation parent");
-    fs::write(&legacy, "{}\n").expect("write legacy activation");
-    assert_eq!(
-        project_root_for_activation_path(&legacy),
-        None,
-        "project-local activation layouts are not a second authority"
-    );
     let _ = fs::remove_dir_all(root);
     let _ = fs::remove_dir_all(state_home);
 }
@@ -346,29 +310,11 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     resolved
         .ensure_workspace_state_layout()
         .expect("materialize identity metadata");
-    let hook_dir = ensure_dir(paths.hook_cache_dir).expect("hook cache dir");
-    let workspace = resolved.workspace_state_paths().expect("workspace paths");
-
-    assert!(hook_dir.is_dir());
-    assert_eq!(hook_dir, workspace.hook_root().join("cache"));
-    assert!(
-        !hook_dir
-            .parent()
-            .expect("hook parent")
-            .join("state")
-            .exists()
-    );
-    let hook_state_dir = ensure_dir(paths.hook_state_dir).expect("hook state dir");
     let client_dir = ensure_dir(paths.client_cache_dir).expect("client cache dir");
     let runtime_home = ensure_dir(paths.runtime_home).expect("runtime home");
     let provider_bin_dir = ensure_dir(paths.provider_bin_dir).expect("provider bin dir");
     let provider_lock_dir = ensure_dir(paths.provider_lock_dir).expect("provider lock dir");
 
-    assert!(hook_state_dir.is_dir());
-    assert_eq!(
-        hook_state_dir,
-        hook_dir.parent().expect("hook parent").join("state")
-    );
     assert!(client_dir.is_dir());
     assert!(client_dir.starts_with(state_home.join("workspaces")));
     assert!(

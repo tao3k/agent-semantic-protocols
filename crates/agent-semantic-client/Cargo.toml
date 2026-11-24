@@ -37,7 +37,6 @@ agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-topology = { path = "../agent-semantic-topology" }
 agent-semantic-config = { path = "../agent-semantic-config" }
-agent-semantic-hook = { path = "../agent-semantic-hook", features = ["compiler"] }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-runtime-observability.workspace = true
@@ -83,7 +82,6 @@ criterion = { workspace = true }
 gix.workspace = true
 gix-config.workspace = true
 insta.workspace = true
-agent-semantic-hook-testkit = { path = "../agent-semantic-hook-testkit" }
 referencing = "0.48.1"
 tempfile.workspace = true
 
@@ -109,7 +107,6 @@ harness = false
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
-agent-semantic-config = { path = "../agent-semantic-config" }
 
 [[test]]
 name = "embedded_org_ffi_startup"

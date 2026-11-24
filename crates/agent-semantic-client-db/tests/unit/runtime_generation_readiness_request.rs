@@ -144,8 +144,11 @@ async fn cold_readiness_request_is_single_flight_and_never_waits_for_the_build()
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let build_count = Arc::new(AtomicUsize::new(0));
     let build_started = Arc::new(tokio::sync::Semaphore::new(0));
@@ -266,8 +269,11 @@ async fn failed_readiness_request_releases_its_key_for_one_retry() {
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let build_count = Arc::new(AtomicUsize::new(0));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
@@ -344,8 +350,11 @@ async fn provider_hint_cannot_downgrade_the_complete_generation_barrier() {
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
         |workspace_identity,
@@ -396,8 +405,11 @@ async fn multiple_provider_demands_cross_one_complete_generation_barrier() {
         .expect("write provider generation owner");
     run_git(&project_root, &["add", "README.md"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let build_count = Arc::new(AtomicUsize::new(0));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
@@ -462,8 +474,11 @@ async fn provider_demand_rebuilds_a_ready_generation_for_its_exact_target() {
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let build_count = Arc::new(AtomicUsize::new(0));
     let observed_targets = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -526,8 +541,11 @@ async fn readiness_request_joins_complete_generation_build_without_rebuilding() 
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
     let project_id = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry::resolve(
         workspace_identity.clone(),
         project_root.clone(),
@@ -646,8 +664,11 @@ async fn readiness_terminal_callback_runs_for_a_replayed_ready_generation() {
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
         |workspace_identity,
@@ -706,8 +727,11 @@ async fn failed_readiness_is_delivered_once_and_releases_the_terminal_callback_k
     .expect("write source owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive canonical workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive canonical workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
 
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
         |_workspace_identity,
@@ -782,8 +806,11 @@ async fn mutation_during_build_cancels_stale_publication_before_the_next_attempt
     fs::write(&owner, "pub fn generation_owner() -> u8 { 1 }\n").expect("write first owner");
     run_git(&project_root, &["add", "src/lib.rs"]);
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
     let first = discover_workspace_generation_candidate(&project_root)
         .await
         .expect("first candidate");

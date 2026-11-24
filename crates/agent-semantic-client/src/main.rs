@@ -3,9 +3,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Process entry for the public `asp` client.
-//!
-//! Host Hook events belong exclusively to the sibling `asp-hook` executable.
+//! Process entry for the public `asp` client and Runtime Server.
 
 fn main() -> std::process::ExitCode {
     // SAFETY: process entry precedes application workers, runtime creation and children.

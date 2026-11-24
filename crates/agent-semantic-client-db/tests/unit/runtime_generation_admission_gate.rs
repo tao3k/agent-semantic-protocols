@@ -84,8 +84,11 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
                 .join(format!("workspace-{workspace_index}"));
             std::fs::create_dir(&root).expect("create canonical workspace identity fixture");
             let workspace_identity =
-                agent_semantic_client_db::AgentSessionRegistry::workspace_id(&root)
-                    .expect("derive canonical workspace identity");
+                agent_semantic_client_core::state_core::ResolvedState::resolve(&root)
+                    .expect("derive canonical workspace identity")
+                    .workspace
+                    .workspace_id
+                    .to_string();
             (workspace_identity, root)
         })
         .collect::<Vec<_>>();

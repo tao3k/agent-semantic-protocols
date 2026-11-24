@@ -99,7 +99,7 @@ fn query_captures_join_canonical_selector_signature_and_byte_spans() {
 
 #[test]
 fn query_capture_without_complete_owner_item_is_not_a_semantic_match() {
-    let source = r#"pub const INSTALL: &str = "asp install plugin --codex";"#;
+    let source = r#"pub const INSTALL: &str = "asp install binary";"#;
 
     let captures = join_capture_projections(
         vec![

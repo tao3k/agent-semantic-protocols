@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - main
-      - "codex/**"
 
 permissions:
   contents: read
@@ -238,7 +237,7 @@ jobs:
             tests/unit/test_semantic_tree_sitter_query_schema.py \
             tests/unit/semantic_tree_sitter_query_rfc \
             tests/unit/test_asp_server_first_architecture_rfc.py \
-            tests/unit/test_agent_hook_interception_protocol_rfc.py \
+            tests/unit/test_marlin_host_integration_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
             tests/unit/test_ci_contract_dag.py \
             tests/unit/test_ci_workflow_contracts.py \

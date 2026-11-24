@@ -10,7 +10,6 @@ mod facade_support;
 mod facade_turso_report;
 mod runtime_observability;
 mod search_facade;
-mod session_control_plane;
 mod session_facade;
 mod source_index_candidate_projection;
 mod source_index_candidate_selection;
@@ -61,12 +60,6 @@ pub use facade::{
     ClientDbEngine, ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
 };
 pub use runtime_observability::runtime_observability_database;
-pub use session_control_plane::{
-    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
-    SessionControlPlaneRuntime, SessionControlPlaneRuntimeMetricsSnapshot,
-    SessionControlPlaneRuntimeRegistry, SessionControlPlaneSnapshot,
-    SessionControlPlaneTransactionReceipt,
-};
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
 pub(crate) use turso::shared_turso_database;

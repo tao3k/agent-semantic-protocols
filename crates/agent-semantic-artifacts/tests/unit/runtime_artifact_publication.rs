@@ -9,7 +9,6 @@ use super::RuntimeArtifactBundleMemberSource;
 use super::publish_runtime_artifact;
 use super::publish_runtime_artifact_bound_bundle_members;
 use super::publish_runtime_artifact_bound_provider_member_from_active;
-use super::publish_runtime_artifact_bundle;
 use super::publish_runtime_artifact_bundle_member_from_active;
 use super::publish_runtime_artifact_bundle_members;
 use super::publish_runtime_artifact_bundle_successor_from_active;
@@ -138,20 +137,28 @@ async fn runtime_compatibility_launcher_follows_public_entry_into_owned_bundle()
 }
 
 #[tokio::test]
-async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
+async fn runtime_and_member_launchers_follow_one_active_bundle_selector() {
     let temporary = tempfile::tempdir().expect("bundle publication fixture");
     let state_home = temporary.path().join("state");
     let asp_source = temporary.path().join("asp");
-    let hook_source = temporary.path().join("asp-hook");
+    let rust_source = temporary.path().join("asp-rust");
     let asp_target = state_home.join("runtime/bin/asp");
-    let hook_target = state_home.join("runtime/artifacts/active/asp-hook");
+    let rust_target = state_home.join("runtime/artifacts/active/asp-rust");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook_source, "#!/bin/sh\nexit 0\n");
+    write_executable(&rust_source, "#!/bin/sh\nexit 0\n");
 
-    let publication =
-        publish_runtime_artifact_bundle(&state_home, &asp_source, &asp_target, "dev", &hook_source)
-            .await
-            .expect("publish one immutable Runtime/Hook bundle");
+    let publication = publish_runtime_artifact_bundle_members(
+        &state_home,
+        &asp_source,
+        &asp_target,
+        "dev",
+        &[RuntimeArtifactBundleMemberSource {
+            name: "asp-rust",
+            source: &rust_source,
+        }],
+    )
+    .await
+    .expect("publish one immutable Runtime bundle");
 
     let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let active = slots.active_target().await.unwrap().expect("active bundle");
@@ -160,8 +167,8 @@ async fn runtime_and_hook_launchers_follow_one_active_bundle_selector() {
         std::fs::canonicalize(active.join("asp")).unwrap()
     );
     assert_eq!(
-        std::fs::canonicalize(&hook_target).unwrap(),
-        std::fs::canonicalize(active.join("asp-hook")).unwrap()
+        std::fs::canonicalize(&rust_target).unwrap(),
+        std::fs::canonicalize(active.join("asp-rust")).unwrap()
     );
     assert!(active.join("bundle.json").is_file());
     assert!(slots.healthy_target().await.unwrap().is_none());
@@ -210,18 +217,27 @@ async fn bundle_publication_replaces_a_legacy_regular_provider_launcher() {
     std::fs::create_dir_all(state_home.join("runtime/bin")).expect("runtime bin directory");
     std::fs::create_dir_all(&source_root).expect("source directory");
     let asp_source = source_root.join("asp");
-    let hook_source = source_root.join("asp-hook");
+    let python_source = source_root.join("asp-python");
     let rust_source = source_root.join("asp-rust");
     let asp_target = state_home.join("runtime/bin/asp");
     let legacy_rust_launcher = state_home.join("runtime/bin/asp-rust");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
+    write_executable(&python_source, "#!/bin/sh\nexit 1\n");
     write_executable(&rust_source, "#!/bin/sh\nexit 2\n");
     write_executable(&legacy_rust_launcher, "#!/bin/sh\nexit 99\n");
 
-    publish_runtime_artifact_bundle(&state_home, &asp_source, &asp_target, "dev", &hook_source)
-        .await
-        .expect("publish predecessor Runtime/Hook bundle");
+    publish_runtime_artifact_bundle_members(
+        &state_home,
+        &asp_source,
+        &asp_target,
+        "dev",
+        &[RuntimeArtifactBundleMemberSource {
+            name: "asp-python",
+            source: &python_source,
+        }],
+    )
+    .await
+    .expect("publish predecessor Runtime bundle");
     publish_runtime_artifact_bundle_member_from_active(
         &state_home,
         "asp-rust",
@@ -257,22 +273,14 @@ async fn optional_capability_is_an_exact_member_of_the_same_active_bundle() {
     let temporary = tempfile::tempdir().expect("optional bundle member fixture");
     let state_home = temporary.path().join("state");
     let asp_source = temporary.path().join("asp");
-    let hook_source = temporary.path().join("asp-hook");
     let graphs_source = temporary.path().join("asp-python-graphs");
     let asp_target = state_home.join("runtime/bin/asp");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook_source, "#!/bin/sh\nexit 0\n");
     write_executable(&graphs_source, "#!/bin/sh\nexit 0\n");
-    let members = [
-        RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: &hook_source,
-        },
-        RuntimeArtifactBundleMemberSource {
-            name: "asp-python-graphs",
-            source: &graphs_source,
-        },
-    ];
+    let members = [RuntimeArtifactBundleMemberSource {
+        name: "asp-python-graphs",
+        source: &graphs_source,
+    }];
 
     publish_runtime_artifact_bundle_members(&state_home, &asp_source, &asp_target, "dev", &members)
         .await
@@ -295,19 +303,19 @@ async fn provider_refresh_republishes_the_complete_active_generation() {
     let temporary = tempfile::tempdir().expect("provider refresh bundle fixture");
     let state_home = temporary.path().join("state");
     let asp_source = temporary.path().join("asp");
-    let hook_source = temporary.path().join("asp-hook");
+    let graphs_source = temporary.path().join("asp-python-graphs");
     let first_provider = temporary.path().join("asp-rust-first");
     let next_provider = temporary.path().join("asp-rust-next");
     let asp_target = state_home.join("runtime/bin/asp");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
+    write_executable(&graphs_source, "#!/bin/sh\nexit 1\n");
     write_executable(&first_provider, "#!/bin/sh\nexit 2\n");
     write_executable(&next_provider, "#!/bin/sh\nexit 3\n");
 
     let members = [
         RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: &hook_source,
+            name: "asp-python-graphs",
+            source: &graphs_source,
         },
         RuntimeArtifactBundleMemberSource {
             name: "asp-rust",
@@ -336,8 +344,8 @@ async fn provider_refresh_republishes_the_complete_active_generation() {
         std::fs::read(&asp_source).unwrap()
     );
     assert_eq!(
-        std::fs::read(next_active.join("asp-hook")).unwrap(),
-        std::fs::read(&hook_source).unwrap()
+        std::fs::read(next_active.join("asp-python-graphs")).unwrap(),
+        std::fs::read(&graphs_source).unwrap()
     );
     assert_eq!(
         std::fs::read(next_active.join("asp-rust")).unwrap(),
@@ -362,11 +370,11 @@ async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_at
     let sources = temporary.path().join("sources");
     std::fs::create_dir_all(&sources).expect("source root");
     let asp_source = sources.join("asp");
-    let hook_source = sources.join("asp-hook");
+    let graphs_source = sources.join("asp-python-graphs");
     let rust_source = sources.join("asp-rust");
     let next_rust_source = sources.join("asp-rust-next");
     write_executable(&asp_source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook_source, "#!/bin/sh\nexit 1\n");
+    write_executable(&graphs_source, "#!/bin/sh\nexit 1\n");
     write_executable(&rust_source, "#!/bin/sh\nexit 2\n");
     write_executable(&next_rust_source, "#!/bin/sh\nexit 3\n");
     let base_members = std::collections::BTreeMap::from([
@@ -377,8 +385,8 @@ async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_at
                 .unwrap(),
         ),
         (
-            "asp-hook".to_owned(),
-            runtime_artifact_candidate_digest(&hook_source)
+            "asp-python-graphs".to_owned(),
+            runtime_artifact_candidate_digest(&graphs_source)
                 .await
                 .unwrap(),
         ),
@@ -410,8 +418,8 @@ async fn bound_provider_refresh_regenerates_registration_and_artifact_closure_at
         })
         .collect::<Vec<_>>();
     let mut publication_members = vec![RuntimeArtifactBundleMemberSource {
-        name: "asp-hook",
-        source: &hook_source,
+        name: "asp-python-graphs",
+        source: &graphs_source,
     }];
     publication_members.extend(
         closure_sources
@@ -548,18 +556,27 @@ async fn repeated_bundle_publication_moves_only_the_shared_active_selector() {
     let temporary = tempfile::tempdir().expect("fixed bundle launcher fixture");
     let state_home = temporary.path().join("state");
     let first_asp = temporary.path().join("asp-first");
-    let first_hook = temporary.path().join("asp-hook-first");
+    let first_python = temporary.path().join("asp-python-first");
     let next_asp = temporary.path().join("asp-next");
-    let next_hook = temporary.path().join("asp-hook-next");
+    let next_python = temporary.path().join("asp-python-next");
     let asp_target = state_home.join("runtime/bin/asp");
     write_executable(&first_asp, "#!/bin/sh\nexit 10\n");
-    write_executable(&first_hook, "#!/bin/sh\nexit 11\n");
+    write_executable(&first_python, "#!/bin/sh\nexit 11\n");
     write_executable(&next_asp, "#!/bin/sh\nexit 20\n");
-    write_executable(&next_hook, "#!/bin/sh\nexit 21\n");
+    write_executable(&next_python, "#!/bin/sh\nexit 21\n");
 
-    publish_runtime_artifact_bundle(&state_home, &first_asp, &asp_target, "dev", &first_hook)
-        .await
-        .expect("publish first bundle while Runtime is absent");
+    publish_runtime_artifact_bundle_members(
+        &state_home,
+        &first_asp,
+        &asp_target,
+        "dev",
+        &[RuntimeArtifactBundleMemberSource {
+            name: "asp-python",
+            source: &first_python,
+        }],
+    )
+    .await
+    .expect("publish first bundle while Runtime is absent");
     let first = read_runtime_artifact_activation_event(&state_home)
         .await
         .unwrap()
@@ -571,9 +588,18 @@ async fn repeated_bundle_publication_moves_only_the_shared_active_selector() {
     let slots = RuntimeArtifactSlotAuthority::new(state_home.join("runtime/artifacts"));
     let healthy_before = slots.healthy_target().await.unwrap();
 
-    publish_runtime_artifact_bundle(&state_home, &next_asp, &asp_target, "dev", &next_hook)
-        .await
-        .expect("publish next bundle while Runtime is absent");
+    publish_runtime_artifact_bundle_members(
+        &state_home,
+        &next_asp,
+        &asp_target,
+        "dev",
+        &[RuntimeArtifactBundleMemberSource {
+            name: "asp-python",
+            source: &next_python,
+        }],
+    )
+    .await
+    .expect("publish next bundle while Runtime is absent");
 
     let active_after = slots.active_target().await.unwrap();
     assert_ne!(active_after, healthy_before);
@@ -586,16 +612,16 @@ async fn binary_refresh_preserves_providers_and_health_commit_prunes_the_predece
     let temporary = tempfile::tempdir().expect("binary refresh fixture");
     let state_home = temporary.path().join("state");
     let first_asp = temporary.path().join("asp-first");
-    let first_hook = temporary.path().join("asp-hook-first");
+    let first_graphs = temporary.path().join("asp-python-graphs-first");
     let provider = temporary.path().join("asp-rust");
     let next_asp = temporary.path().join("asp-next");
-    let next_hook = temporary.path().join("asp-hook-next");
+    let next_graphs = temporary.path().join("asp-python-graphs-next");
     let target = state_home.join("runtime/bin/asp");
     write_executable(&first_asp, "#!/bin/sh\nexit 10\n");
-    write_executable(&first_hook, "#!/bin/sh\nexit 11\n");
+    write_executable(&first_graphs, "#!/bin/sh\nexit 11\n");
     write_executable(&provider, "#!/bin/sh\nexit 12\n");
     write_executable(&next_asp, "#!/bin/sh\nexit 20\n");
-    write_executable(&next_hook, "#!/bin/sh\nexit 21\n");
+    write_executable(&next_graphs, "#!/bin/sh\nexit 21\n");
 
     publish_runtime_artifact_bundle_members(
         &state_home,
@@ -604,8 +630,8 @@ async fn binary_refresh_preserves_providers_and_health_commit_prunes_the_predece
         "release",
         &[
             RuntimeArtifactBundleMemberSource {
-                name: "asp-hook",
-                source: &first_hook,
+                name: "asp-python-graphs",
+                source: &first_graphs,
             },
             RuntimeArtifactBundleMemberSource {
                 name: "asp-rust",
@@ -629,8 +655,8 @@ async fn binary_refresh_preserves_providers_and_health_commit_prunes_the_predece
         &target,
         "release",
         &[RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: &next_hook,
+            name: "asp-python-graphs",
+            source: &next_graphs,
         }],
     )
     .await

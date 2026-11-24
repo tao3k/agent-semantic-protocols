@@ -62,12 +62,6 @@ fn runtime_generated_state_is_derived_by_one_typed_layout() {
         runtime.serving().workspaces(),
         std::path::PathBuf::from("/tmp/state-home/runtime/serving/workspaces")
     );
-    assert_eq!(
-        runtime.serving().hook_host_native_handoff_mailbox(),
-        std::path::PathBuf::from(
-            "/tmp/state-home/runtime/serving/mailboxes/hook-host-native-handoff"
-        )
-    );
 }
 
 #[test]
@@ -82,16 +76,8 @@ fn global_control_cache_and_resources_are_derived_by_one_typed_layout() {
         std::path::PathBuf::from("/tmp/state-home/catalog/state.turso")
     );
     assert_eq!(
-        control.hook_client_config(),
-        std::path::PathBuf::from("/tmp/state-home/control/config/hook-client.toml")
-    );
-    assert_eq!(
-        control.session_registry_root(),
-        std::path::PathBuf::from("/tmp/state-home/control/sessions")
-    );
-    assert_eq!(
-        control.agent_registry(),
-        std::path::PathBuf::from("/tmp/state-home/control/config/agents/config.toml")
+        control.asp_config(),
+        std::path::PathBuf::from("/tmp/state-home/control/config/asp.toml")
     );
     assert_eq!(
         cache.reader_behavior(),
@@ -107,9 +93,7 @@ fn global_control_cache_and_resources_are_derived_by_one_typed_layout() {
     );
 
     for path in [
-        control.hook_client_config(),
-        control.session_registry_root(),
-        control.agent_registry(),
+        control.asp_config(),
         cache.reader_behavior(),
         resources.org(),
         resources.live_corpus(),
@@ -248,8 +232,7 @@ fn state_home_contract_finds_only_entries_outside_the_v1_allowlist() {
     let layout = StateHomeLayout::new(state_home.path());
     for canonical in [
         "catalog",
-        "control/config/agents",
-        "control/sessions",
+        "control/config",
         "runtime/bin",
         "runtime/artifacts",
         "runtime/serving",
@@ -262,11 +245,7 @@ fn state_home_contract_finds_only_entries_outside_the_v1_allowlist() {
     ] {
         std::fs::create_dir_all(state_home.path().join(canonical)).unwrap();
     }
-    std::fs::write(
-        layout.control().asp_config(),
-        "[dev]\nenabled = false\n\n[hook-engine]\nenabled = true\n",
-    )
-    .unwrap();
+    std::fs::write(layout.control().asp_config(), "[dev]\nenabled = false\n").unwrap();
     std::fs::create_dir_all(state_home.path().join("obsolete-root")).unwrap();
     std::fs::write(state_home.path().join("obsolete-root/payload"), b"old").unwrap();
     std::fs::create_dir_all(state_home.path().join("runtime/obsolete-runtime-tree")).unwrap();

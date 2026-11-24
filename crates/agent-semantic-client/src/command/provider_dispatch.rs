@@ -31,7 +31,6 @@ pub(crate) async fn run_language_command(
         return Err(unsupported_language_facade_message(
             language_id,
             args.first().map(String::as_str),
-            None,
         ));
     }
     let mut command_args = args.to_vec();

@@ -9,14 +9,6 @@ use std::sync::Arc;
 
 use crate::RuntimeProjectWorkspaceKey;
 use crate::RuntimeQueryGenerationState;
-use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_METHOD;
-use agent_semantic_client_protocol::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
-use agent_semantic_client_protocol::AgentSessionPlatform;
-use agent_semantic_client_protocol::AgentSessionRegisterReceipt;
-use agent_semantic_client_protocol::AgentSessionRegisterRequest;
-use agent_semantic_client_protocol::AgentSessionRegisterState;
-use agent_semantic_client_protocol::AgentSessionRegistryOwner;
-use agent_semantic_client_protocol::AgentSessionTransport;
 use agent_semantic_client_protocol::AspClientExactQueryRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceQueryPlaybookRequest;
 use agent_semantic_client_protocol::AspClientWorkspaceSearchPlaybookRequest;
@@ -262,7 +254,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
         self.cancellation_admitted.notify_waiters();
 
         let schema_bundles = self.schema_bundles.clone();
-        let agent_session_registry = Arc::clone(&self.agent_session_registry);
         let initialized_workspaces = Arc::clone(&self.initialized_workspaces);
         let runtime_search_service = self.runtime_search_service.clone();
         let generation_admission = Arc::clone(&self.generation_admission);
@@ -315,98 +306,6 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         Result<ClientResponsePayload, AspClientOperationError>,
                     >()
                     .await;
-                }
-                if request.method == AGENT_SESSION_REGISTER_METHOD {
-                    let params: AgentSessionRegisterRequest =
-                        serde_json::from_value(request.params).map_err(|error| {
-                            format!("decode child registration request: {error}")
-                        })?;
-                    params.validate()?;
-                    let initialized = initialized_workspaces
-                        .lock()
-                        .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
-                        .get(&(
-                            request.project_id.as_str().to_owned(),
-                            request.workspace_id.as_str().to_owned(),
-                            request.session_id.as_str().to_owned(),
-                        ))
-                        .cloned()
-                        .ok_or_else(|| {
-                            "ASP client request requires an initialized workspace root".to_owned()
-                        })?;
-                    let state = agent_semantic_client_core::state_core::ResolvedState::resolve(
-                        &initialized.project_root,
-                    )?;
-                    if state.repo.repo_id.as_str() != request.project_id.as_str()
-                        || state.workspace.workspace_id.as_str() != request.workspace_id.as_str()
-                    {
-                        return Err(AspClientOperationError::Message(
-                            "child registration project/workspace identity mismatch".to_owned(),
-                        ));
-                    }
-                    let now = agent_semantic_client_db::agent_session_unix_timestamp()?;
-                    let metadata = serde_json::json!({
-                        "event": "child-registration-command",
-                        "schemaId": AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID,
-                        "schemaVersion": 1,
-                        "platform": "codex",
-                        "nativeEnvironment": true,
-                        "rootSessionId": params.root_session_id,
-                        "parentThreadId": params.parent_thread_id,
-                        "childThreadId": params.child_thread_id,
-                        "agentType": params.agent_name,
-                        "configuredRoute": params.route_key,
-                        "messageTargetBinding": {
-                            "source": "codex-child-registration-command",
-                            "boundRootSessionId": params.root_session_id,
-                            "childThreadId": params.child_thread_id,
-                            "messageTargetId": params.agent_path
-                        }
-                    });
-                    let registered = agent_session_registry
-                        .register_session_from_runtime_owner(
-                            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                                project_id: request.project_id.as_str().into(),
-                                root_session_id: params.root_session_id.as_str().into(),
-                                session_id: params.child_thread_id.as_str().into(),
-                                message_target_id: Some(params.agent_path.as_str().into()),
-                                parent_session_id: Some(params.parent_thread_id.as_str().into()),
-                                name: params.route_key.as_str().into(),
-                                role: params.route_key.as_str().into(),
-                                model_observation: None,
-                                status: "active".into(),
-                                expires_at: None,
-                                metadata_json: metadata.to_string().into(),
-                                now,
-                            },
-                        )
-                        .await?;
-                    let physical_generation =
-                        registered.physical_generation.try_into().map_err(|_| {
-                            "child registration physical generation is invalid".to_owned()
-                        })?;
-                    let receipt = AgentSessionRegisterReceipt {
-                        schema_id: ClientSchemaId::new(AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID)?,
-                        schema_version: 1,
-                        state: AgentSessionRegisterState::Registered,
-                        platform: AgentSessionPlatform::Codex,
-                        project_id: request.project_id.clone(),
-                        root_session_id: params.root_session_id,
-                        parent_thread_id: params.parent_thread_id,
-                        child_thread_id: params.child_thread_id,
-                        agent_name: params.agent_name,
-                        agent_path: params.agent_path,
-                        route_key: params.route_key,
-                        physical_generation,
-                        registry_owner:
-                            AgentSessionRegistryOwner::RuntimeServerAgentSessionRegistry,
-                        transport: AgentSessionTransport::GrpcClientFrame,
-                    };
-                    receipt.validate()?;
-                    return serde_json::to_value(receipt)
-                        .map(ClientResponsePayload::from)
-                        .map_err(|error| error.to_string())
-                        .map_err(AspClientOperationError::Message);
                 }
                 if request.method == SCHEMA_BUNDLE_METHOD {
                     let params: SchemaBundleRequest = serde_json::from_value(request.params)

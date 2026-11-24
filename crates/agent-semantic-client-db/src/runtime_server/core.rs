@@ -10,7 +10,6 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 
-use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
 pub use crate::runtime_server_asp_python_graphs_status::AspPythonGraphsStatusHandle;
 use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
@@ -112,8 +111,6 @@ pub struct RuntimeServer {
     pub(super) generation_admission:
         Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
     pub(super) asp_python_graphs_status: Option<AspPythonGraphsStatusHandle>,
-    pub(crate) agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
-    pub(crate) agent_session_status: Option<AgentSessionStatusHandle>,
     pub(super) telemetry_sender: Option<crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
 }
 

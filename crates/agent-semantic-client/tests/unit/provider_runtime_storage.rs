@@ -36,7 +36,7 @@ fn context() -> ProviderRuntimeStorageContext {
         scope_id: "scope".to_owned(),
         session_id: "session".to_owned(),
         root_session_id: "root-session".to_owned(),
-        agent_id: "codex".to_owned(),
+        agent_id: "marlin".to_owned(),
         invocation_id: "invocation-0001".to_owned(),
     }
 }
@@ -77,7 +77,7 @@ fn provider_runtime_storage_maps_runtime_identity_into_one_atomic_batch() {
                 workspace_id: "workspace".to_owned().into(),
                 scope_id: "scope".to_owned().into(),
                 session_id: "session".to_owned().into(),
-                agent_id: "codex".to_owned().into(),
+                agent_id: "marlin".to_owned().into(),
             },
             after: None,
             limit: 10,
@@ -131,7 +131,7 @@ fn provider_runtime_storage_rejects_invalid_identity_without_partial_write() {
                 workspace_id: "workspace".to_owned().into(),
                 scope_id: "scope".to_owned().into(),
                 session_id: "session".to_owned().into(),
-                agent_id: "codex".to_owned().into(),
+                agent_id: "marlin".to_owned().into(),
             },
             after: None,
             limit: 10,
@@ -152,7 +152,7 @@ fn provider_runtime_storage_real_binding_persists_to_isolated_turso_profile() {
     let _state_home = crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", &state_home);
     let binding = ProviderRuntimeStorageBinding::from_runtime_identity(
         &project.0,
-        "codex",
+        "marlin",
         "session-real",
         "root-real",
     )

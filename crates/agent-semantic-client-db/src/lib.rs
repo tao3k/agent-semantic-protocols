@@ -5,23 +5,12 @@
 
 //! ASP Server-owned DB Engine facade and in-process control adapters.
 
-pub mod agent_session_registry;
+pub mod active_generation_projection_capability;
 mod artifact_event_builder;
-pub use agent_session_registry::{
-    AgentSessionModelObservationRef, AgentSessionModelObservationSource,
-};
 pub mod artifact_pointer_store;
-pub mod codex_multi_agent_control_plane_owner;
 pub mod context_run_mvcc;
 mod dependency_index;
 pub mod engine;
-pub use engine::{
-    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
-    SessionControlPlaneRuntime, SessionControlPlaneRuntimeMetricsSnapshot,
-    SessionControlPlaneRuntimeRegistry, SessionControlPlaneSnapshot,
-    SessionControlPlaneTransactionReceipt,
-};
-pub mod active_generation_projection_capability;
 pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
@@ -35,8 +24,6 @@ pub mod runtime_server_admission;
 mod runtime_server_admission_binding;
 mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
-mod runtime_server_agent_control_plane;
-mod runtime_server_agent_session_status;
 pub mod runtime_server_control;
 pub use runtime_server_control::call_runtime_server_for_state_home;
 pub mod runtime_server_lifecycle;
@@ -55,7 +42,6 @@ pub mod runtime_server_connection;
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
 pub mod runtime_server_health;
-pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;
 pub mod runtime_server_workspace;
 pub mod runtime_telemetry_bus;
@@ -73,14 +59,12 @@ pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
 pub mod workspace_project_resolution;
 pub use runtime_server_control::{
-    AgentSessionControlPlaneState, RuntimeServerAgentSessionLifecycleState,
-    RuntimeServerAgentSessionStatus, RuntimeServerControlReceipt, RuntimeServerEndpoint,
-    RuntimeServerOperation, acquire_runtime_server_election, call_runtime_server,
-    prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_with_workspace_store,
+    RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerOperation,
+    acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
+    prepare_runtime_server_endpoint_with_workspace_store,
     prepare_runtime_server_endpoint_with_workspace_store_and_identity,
-    publish_runtime_server_endpoint, read_runtime_server_agent_sessions,
-    read_runtime_server_endpoint, resolve_runtime_server_agent_session_status,
-    runtime_server_endpoint_path, runtime_server_runtime_base, wait_for_runtime_server_election,
+    publish_runtime_server_endpoint, read_runtime_server_endpoint, runtime_server_endpoint_path,
+    runtime_server_runtime_base, wait_for_runtime_server_election,
 };
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
@@ -96,17 +80,6 @@ pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;
 
 pub use agent_semantic_client_core::ClientDbStatus;
-pub use agent_session_registry::{
-    AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,
-    AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionDispatchClaimRequest,
-    AgentSessionDispatchClaimResult, AgentSessionDispatchCompleteRequest,
-    AgentSessionDispatchLeaseRecord, AgentSessionLookupRequest, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionRegistry, AgentSessionResidentName,
-    AgentSessionRootSessionId, AgentSessionToolEventRequest,
-    agent_session_message_target_is_currently_routable, agent_session_message_target_is_live_bound,
-    agent_session_normalized_metadata_json, agent_session_status_is_routable,
-    agent_session_unix_timestamp,
-};
 pub use artifact_event_builder::ClientDbArtifactEventBuilder;
 pub use dependency_index::{
     DEFAULT_GERBIL_DEPS_SEARCH_LIMIT, GerbilDepsQueryRequest, GerbilDepsQueryResult,

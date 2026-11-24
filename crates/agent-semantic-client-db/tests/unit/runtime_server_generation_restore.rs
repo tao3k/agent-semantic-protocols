@@ -294,8 +294,11 @@ async fn process_cold_recovery_reuses_only_an_exact_fresh_binding() {
     run_git(&project_root, &["add", "src/lib.rs"]);
 
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("derive workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("derive workspace identity")
+            .workspace
+            .workspace_id
+            .to_string();
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(
         runtime_dir.path().join("workspace-admissions.v1.json"),
     )

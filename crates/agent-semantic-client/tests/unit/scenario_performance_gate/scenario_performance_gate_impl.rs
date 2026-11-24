@@ -41,34 +41,6 @@ pub(super) fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scena
     );
 }
 
-pub(super) fn asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate() {
-    turso_pressure::asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate();
-
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_turso_agent_session_registry_shared_route_pressure");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert!(
-        duration_millis_from_manifest(&benchmark.max_total) <= 300,
-        "agent-session registry pressure must stay below the 300ms search pressure budget: max_total={}",
-        benchmark.max_total
-    );
-    assert!(
-        duration_millis_from_manifest(&benchmark.observed_total) <= 300,
-        "agent-session registry pressure observed_total must not sit at the generic hard ceiling: observed_total={}",
-        benchmark.observed_total
-    );
-    assert_observed_timing_inside_budget(
-        &benchmark,
-        "registry_db_operation",
-        300,
-        "agent-session registry pressure",
-    );
-}
-
 pub(super) fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
     turso_pressure::asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate();
 

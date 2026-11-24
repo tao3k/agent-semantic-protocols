@@ -29,30 +29,12 @@ fn dev_model_accepts_only_development_workspace_artifacts() {
 }
 
 #[test]
-fn global_hook_engine_defaults_enabled_and_can_be_explicitly_disabled() {
-    assert!(
-        parse_asp_global_config("")
-            .expect("default global config")
-            .hook_engine()
-            .enabled()
+fn global_config_defaults_to_release_mode() {
+    let config = parse_asp_global_config("").expect("default global config");
+    assert_eq!(
+        config.runtime_artifact_mode(),
+        &RuntimeArtifactMode::Release
     );
-    assert!(
-        !parse_asp_global_config("[hook-engine]\nenabled = false\n")
-            .expect("disabled Hook engine")
-            .hook_engine()
-            .enabled()
-    );
-}
-
-#[test]
-fn malformed_hook_engine_configuration_fails_closed() {
-    let missing = parse_asp_global_config("[hook-engine]\n")
-        .expect_err("Hook enablement must be explicit when the section exists");
-    assert!(missing.contains("missing field `enabled`"));
-
-    let unknown = parse_asp_global_config("[hook-engine]\nenabled = true\nescape = true\n")
-        .expect_err("unknown Hook escape fields must be rejected");
-    assert!(unknown.contains("unknown field `escape`"));
 }
 
 #[test]

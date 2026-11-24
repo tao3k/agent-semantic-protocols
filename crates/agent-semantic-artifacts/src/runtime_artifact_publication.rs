@@ -55,12 +55,9 @@ pub struct RuntimeArtifactBundleMemberSource<'a> {
 }
 
 fn client_bundle_stable_launchers<'a>(
-    members: &'a [RuntimeArtifactBundleMemberSource<'a>],
+    _members: &'a [RuntimeArtifactBundleMemberSource<'a>],
 ) -> Vec<&'a str> {
-    members
-        .iter()
-        .filter_map(|member| (member.name == "asp-hook").then_some(member.name))
-        .collect()
+    Vec::new()
 }
 
 #[derive(Debug)]
@@ -122,23 +119,6 @@ pub async fn publish_runtime_artifact(
         || async {},
     )
     .await
-}
-
-/// Publish the Runtime client and Hook evaluator as one immutable activation
-/// candidate. The active/healthy directory slot is the only serving selector.
-pub async fn publish_runtime_artifact_bundle(
-    state_home: &Path,
-    source: &Path,
-    target: &Path,
-    artifact_mode: &str,
-    hook_source: &Path,
-) -> Result<RuntimeArtifactPublicationReceipt, String> {
-    let members = [RuntimeArtifactBundleMemberSource {
-        name: "asp-hook",
-        source: hook_source,
-    }];
-    publish_runtime_artifact_bundle_members(state_home, source, target, artifact_mode, &members)
-        .await
 }
 
 /// Publish the Runtime client and a declarative set of optional executable

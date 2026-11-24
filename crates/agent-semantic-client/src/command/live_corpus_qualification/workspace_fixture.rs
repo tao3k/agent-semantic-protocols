@@ -50,7 +50,10 @@ impl IsolatedBenchmarkWorkspace {
         let materialization_elapsed_micros =
             started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
         let workspace_identity =
-            agent_semantic_client_db::AgentSessionRegistry::workspace_id(&path)?;
+            agent_semantic_client_core::state_core::ResolvedState::resolve(&path)?
+                .workspace
+                .workspace_id
+                .to_string();
         Ok(Self {
             path,
             workspace_identity,

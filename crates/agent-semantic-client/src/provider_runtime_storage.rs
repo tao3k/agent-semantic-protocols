@@ -100,7 +100,7 @@ impl From<&str> for ProviderRuntimeSessionId {
     }
 }
 
-/// Root Codex session that owns one provider-runtime event.
+/// Root Marlin session that owns one provider-runtime event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRuntimeRootSessionId(String);
 
@@ -244,11 +244,30 @@ impl ProviderRuntimeStorageBinding {
     }
 
     fn from_current_runtime_inner(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
-        let Some(runtime_session) = agent_semantic_runtime::current_agent_runtime_session() else {
+        let Some(session_id) = std::env::var("MARLIN_SESSION_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                std::env::var("AGENT_SESSION_ID")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+        else {
             return Ok(None);
         };
-        let registration =
-            agent_semantic_runtime::agent_session_registration_identity((None, None).into())?;
+        let root_session_id = std::env::var("MARLIN_ROOT_SESSION_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                std::env::var("AGENT_ROOT_SESSION_ID")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .unwrap_or_else(|| session_id.clone());
+        let client = std::env::var("MARLIN_HOST_CLIENT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "marlin".to_owned());
         let engine = ClientDbEngine::resolve_for_write(project_root)?;
         let event_db_path = engine
             .db_path()
@@ -267,11 +286,7 @@ impl ProviderRuntimeStorageBinding {
             Arc::new(storage),
             StorageOptimizationProfile::MvccConcurrentPassiveCheckpoint,
         )?;
-        let invocation_id = next_invocation_id(
-            &registration.session_id,
-            &runtime_session.client,
-            current_time_millis(),
-        );
+        let invocation_id = next_invocation_id(&session_id, &client, current_time_millis());
         Ok(Some(Self {
             adapter,
             event_db_path,
@@ -279,9 +294,9 @@ impl ProviderRuntimeStorageBinding {
                 repo_id: engine.repo_id().to_owned(),
                 workspace_id: engine.workspace_id().to_owned(),
                 scope_id: engine.scope_id().to_owned(),
-                session_id: registration.session_id,
-                root_session_id: registration.root_session_id,
-                agent_id: runtime_session.client,
+                session_id,
+                root_session_id,
+                agent_id: client,
                 invocation_id,
             },
         }))

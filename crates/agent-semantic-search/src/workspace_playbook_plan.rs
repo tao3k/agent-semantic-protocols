@@ -116,7 +116,7 @@ pub fn build_workspace_search_playbook_plan(
         ));
     }
     for (block_index, block) in rg.iter().enumerate() {
-        let analysis = agent_semantic_shell_parser::analyze_native_rg_argv(block);
+        let analysis = agent_semantic_search_playbook::analyze_native_rg_argv(block);
         if !analysis.is_admitted() {
             return Err(format!(
                 "Search Playbook native rg block is not admitted: blockIndex={block_index} diagnostics={:?}",

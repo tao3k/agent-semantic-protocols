@@ -81,7 +81,6 @@ impl PreparedActiveProviderReconciliation {
     pub(super) async fn bind_runtime_execution_closure(
         &mut self,
         asp_source: &Path,
-        hook_source: &Path,
     ) -> Result<
         agent_semantic_artifacts::runtime_artifact_slots::RuntimeArtifactBundleBinding,
         String,
@@ -89,14 +88,11 @@ impl PreparedActiveProviderReconciliation {
         use agent_semantic_artifacts::runtime_artifact_execution_closure::RuntimeArtifactExecutionClosure;
 
         let mut bundle_members = std::collections::BTreeMap::new();
-        for (name, path) in std::iter::once(("asp", asp_source))
-            .chain(std::iter::once(("asp-hook", hook_source)))
-            .chain(
-                self.members
-                    .iter()
-                    .map(|(name, path)| (name.as_str(), path.as_path())),
-            )
-        {
+        for (name, path) in std::iter::once(("asp", asp_source)).chain(
+            self.members
+                .iter()
+                .map(|(name, path)| (name.as_str(), path.as_path())),
+        ) {
             bundle_members.insert(
                 name.to_owned(),
                 agent_semantic_artifacts::runtime_artifact_slots::runtime_artifact_candidate_digest(
@@ -366,8 +362,6 @@ fn provider_artifact_authority<'a>(
 pub(crate) async fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("binary") => install_provider_binary::run_install_binary(&args[1..]).await,
-        Some("hook") => install_provider_binary::run_install_hook(&args[1..]).await,
-        Some("plugin") => install_provider_binary::run_install_plugin(&args[1..]).await,
         Some("language") => run_install_provider(&args[1..]).await,
         Some("help" | "--help" | "-h") => {
             println!("{}", usage());

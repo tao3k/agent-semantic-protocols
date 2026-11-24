@@ -43,17 +43,14 @@ pub use listener::{
     runtime_server_connection_pool_size, runtime_server_listener_backlog,
 };
 pub use model::{
-    AgentSessionControlPlaneState, AspPythonGraphsState, AspPythonGraphsStatus,
-    RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus,
-    RuntimeServerClientBootstrapAuthority, RuntimeServerClientBootstrapReceipt,
-    RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
-    RuntimeServerEndpointOwnerBinding, RuntimeServerLoopbackEndpoint, RuntimeServerOperation,
-    RuntimeServerRequestReadError, RuntimeServerState, RuntimeServerTransport,
-    RuntimeTransportBinding, WorkspaceGenerationControlReceipt,
+    AspPythonGraphsState, AspPythonGraphsStatus, RuntimeServerClientBootstrapAuthority,
+    RuntimeServerClientBootstrapReceipt, RuntimeServerControlReceipt, RuntimeServerControlRequest,
+    RuntimeServerEndpoint, RuntimeServerEndpointOwnerBinding, RuntimeServerLoopbackEndpoint,
+    RuntimeServerOperation, RuntimeServerRequestReadError, RuntimeServerState,
+    RuntimeServerTransport, RuntimeTransportBinding, WorkspaceGenerationControlReceipt,
     runtime_server_transport_contract_digest,
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,
-    read_runtime_server_agent_sessions, read_runtime_server_cached_health_status,
-    resolve_runtime_server_agent_session_status, runtime_server_status_memory_metrics,
+    read_runtime_server_cached_health_status, runtime_server_status_memory_metrics,
 };

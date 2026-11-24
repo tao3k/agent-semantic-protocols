@@ -203,7 +203,6 @@ impl InitializedWorkspace {
 #[derive(Clone)]
 pub struct RuntimeAspClientDispatcher {
     pub(super) schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
-    pub(super) agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
     pub(super) initialized_workspaces:
         Arc<Mutex<HashMap<ClientWorkspaceKey, InitializedWorkspace>>>,
     pub(super) runtime_search_service: RuntimeSearchServiceHandle,
@@ -243,7 +242,6 @@ impl RuntimeAspClientDispatcher {
     )]
     fn new(
         schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
-        agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
         runtime_search_service: RuntimeSearchServiceHandle,
         generation_admission: Arc<WorkspaceGenerationAdmission>,
         workspace_registry: Arc<
@@ -259,7 +257,6 @@ impl RuntimeAspClientDispatcher {
     ) -> Self {
         Self {
             schema_bundles,
-            agent_session_registry,
             runtime_search_service,
             generation_admission,
             workspace_registry,
@@ -288,7 +285,6 @@ impl RuntimeAspClientDispatcher {
 )]
 pub fn build_frame_service(
     schema_bundles: crate::schema_bundle::RuntimeSchemaBundleCatalog,
-    agent_session_registry: Arc<agent_semantic_client_db::AgentSessionRegistry>,
     runtime_search_service: RuntimeSearchServiceHandle,
     generation_admission: Arc<WorkspaceGenerationAdmission>,
     workspace_registry: Arc<
@@ -313,7 +309,6 @@ pub fn build_frame_service(
     )?;
     let dispatcher = Arc::new(RuntimeAspClientDispatcher::new(
         schema_bundles,
-        agent_session_registry,
         runtime_search_service,
         Arc::clone(&generation_admission),
         workspace_registry,

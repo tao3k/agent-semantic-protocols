@@ -133,7 +133,7 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
     while index < args.len() {
         let arg = args[index].as_str();
         match arg {
-            "--catalog" | "--from-hook" | "--projection" | "--query" | "--selector" | "--term"
+            "--catalog" | "--projection" | "--query" | "--selector" | "--term"
             | "--treesitter-query" | "--workspace" => {
                 index += 2;
                 continue;
@@ -143,7 +143,6 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
                 continue;
             }
             _ if arg.starts_with("--catalog=")
-                || arg.starts_with("--from-hook=")
                 || arg.starts_with("--projection=")
                 || arg.starts_with("--query=")
                 || arg.starts_with("--json=")

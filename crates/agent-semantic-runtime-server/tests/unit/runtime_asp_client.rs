@@ -196,8 +196,11 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
     std::fs::write(project_root.join("src/lib.rs"), "pub fn ready() {}\n")
         .expect("write source fixture");
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("workspace identity")
+            .workspace
+            .workspace_id
+            .0;
     let (runtime_search_service, _runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let telemetry = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
@@ -207,14 +210,6 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
     )
     .await
     .expect("verified schema bundle catalog");
-    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
-    let agent_session_registry = Arc::new(
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            directory.path().join("agent-sessions"),
-        )
-        .await
-        .expect("agent session registry"),
-    );
     let (generation_admission, project_id) =
         test_generation_admission(&project_root, &workspace_identity).await;
     let workspace_registry = Arc::new(
@@ -225,7 +220,6 @@ async fn dispatch_without_resident_generation_returns_query_not_ready(
     );
     let service = agent_semantic_runtime_server::build_frame_service(
         schema_bundles,
-        agent_session_registry,
         runtime_search_service,
         generation_admission,
         workspace_registry,
@@ -746,8 +740,11 @@ async fn runtime_schema_bundle_socket_scenario_is_generation_independent_and_fai
     std::fs::write(project_root.join("lib.rs"), "pub fn ready() {}\n")
         .expect("write source fixture");
     let workspace_identity =
-        agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
-            .expect("workspace identity");
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("workspace identity")
+            .workspace
+            .workspace_id
+            .0;
     let (runtime_search_service, _requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let telemetry = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
@@ -758,15 +755,6 @@ async fn runtime_schema_bundle_socket_scenario_is_generation_independent_and_fai
         .into_iter()
         .next()
         .expect("at least one registered profile");
-    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
-    let agent_session_root = tempfile::tempdir().expect("agent session root");
-    let agent_session_registry = Arc::new(
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            agent_session_root.path(),
-        )
-        .await
-        .expect("agent session registry"),
-    );
     let (generation_admission, project_id) =
         test_generation_admission(&project_root, &workspace_identity).await;
     let workspace_registry = Arc::new(
@@ -779,7 +767,6 @@ async fn runtime_schema_bundle_socket_scenario_is_generation_independent_and_fai
         agent_semantic_runtime_server::RuntimeSchemaBundleCatalog::load(&workspace_root)
             .await
             .expect("verified schema bundle catalog"),
-        agent_session_registry,
         runtime_search_service,
         generation_admission,
         workspace_registry,

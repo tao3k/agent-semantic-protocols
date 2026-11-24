@@ -302,7 +302,12 @@ impl RuntimeWorkspaceAdmissionCatalog {
             })
             .cloned()
         {
-            let current_identity = crate::AgentSessionRegistry::workspace_id(&entry.project_root)?;
+            let current_identity = agent_semantic_client_core::state_core::ResolvedState::resolve(
+                &entry.project_root,
+            )?
+            .workspace
+            .workspace_id
+            .0;
             if entry.workspace_identity != current_identity {
                 return Err(format!(
                     "workspace admission catalog rejected a noncanonical identity projection: projectRoot={} currentWorkspaceIdentity={} requestedWorkspaceIdentity={}",

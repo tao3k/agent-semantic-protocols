@@ -27,8 +27,6 @@ mod runtime_server_daemon_publication;
 mod runtime_server_execution_owner;
 #[path = "runtime_server_generation_builder.rs"]
 mod runtime_server_generation_builder;
-#[path = "runtime_server_hook_memory_inbox.rs"]
-mod runtime_server_hook_memory_inbox;
 #[path = "runtime_server_identity_handoff.rs"]
 mod runtime_server_identity_handoff;
 #[path = "runtime_server_query_generation_observer.rs"]

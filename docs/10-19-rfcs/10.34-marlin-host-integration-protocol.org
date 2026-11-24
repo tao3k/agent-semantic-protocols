@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.34: Marlin Host Integration Protocol
+#+AUTHOR: tao3k team and Contributors
+#+DATE: 2026-11-25
+#+STATUS: Accepted
+
+* Summary
+
+This RFC establishes the Marlin-native host integration contract for Agent Semantic
+Protocols (ASP) and records the complete retirement of third-party shell-hook
+interception and host adapters (Codex, Anthropic/Claude, ~agent-semantic-hook~,
+~agent-semantic-hook-testkit~, ~agent-semantic-shell-parser~, ~asp-codex-plugin~,
+~agents/~ routing manifests, and ASP-owned ~agent_session_registry~).
+
+Under this architecture, Marlin (~marlin-agent-core~) is the sole host system
+integrating ASP. ASP operates exclusively as Marlin's semantic analysis,
+provider supervision, progressive search, exact structural query, AST patch
+verification, and resident workspace generation subsystem.
+
+* Motivation
+
+Earlier ASP revisions embedded a shell-command hook classifier (~asp-hook~),
+bash AST parser (~agent-semantic-shell-parser~), Codex plugin bundle
+(~asp-codex-plugin~), Claude SDK sandtable runners, and an ASP-owned multi-agent
+session control plane (~agent_session_registry~) to bridge external agent hosts
+that lacked native semantic tool integration.
+
+In the Marlin architecture (~marlin-agent-core~, RFC 40.80):
+
+1. Marlin owns hooks (~marlin-agent-hooks~) with typed TOML configuration and
+   Gerbil Scheme policy extensions.
+2. Marlin owns session lifecycle and storage (~marlin-agent-sessions~) and
+   ~MARLIN_HOME~ (~/.marlin).
+3. Marlin owns multi-agent orchestration and graph loops (~marlin-agent-graph~).
+4. Marlin invokes ASP directly through typed protocol frames (~ClientFrame~ over
+   gRPC/UDS or explicit ~asp~ CLI invocations) without intercepting shell
+   commands or parsing arbitrary bash strings.
+
+Retaining Codex, Claude, and ASP-side hook/session control-plane layers creates
+duplicate ownership, ambiguous runtime boundaries, and dead maintenance surface.
+Git history is the sole archive; all retired surfaces are removed cleanly.
+
+* Ownership Split
+
+| Concern | Owner | Authoritative Surface |
+|---------+-------+-----------------------|
+| Hooks & policy enforcement | Marlin (~marlin-agent-hooks~) | Typed TOML + Gerbil Scheme policy extension |
+| Session lifecycle & lineage | Marlin (~marlin-agent-sessions~) | ~MARLIN_HOME~, ~MARLIN_ROOT_SESSION_ID~, ~MARLIN_SESSION_ID~ |
+| Multi-agent graph & dispatch | Marlin (~marlin-agent-graph~) | Readiness-gated Gerbil graph loops |
+| Semantic search & exact query | ASP (~agent-semantic-runtime-server~) | ~asp.workspace.search.playbook~, ~asp.workspace.query.playbook~ |
+| Syntax queries & AST patch verification | ASP (~agent-semantic-client~, providers) | ~asp.workspace.query.syntax~, ~asp ast-patch~ |
+| Language provider supervision | ASP (~agent-semantic-provider-transport~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~, embedded ~orgize~ |
+| Resident workspace generations | ASP (~agent-semantic-client-db~) | Turso + Tantivy + Project Topology under ~ASP_STATE_HOME~ |
+| Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~ |
+
+* Retired Surfaces (Removed Cleanly)
+
+The following surfaces are permanently removed from the ASP workspace and must
+not be reintroduced:
+
+- Crates: ~crates/agent-semantic-hook~, ~crates/agent-semantic-hook-testkit~,
+  ~crates/agent-semantic-shell-parser~.
+- Plugin and routing assets: ~asp-codex-plugin/~, ~.agents/plugins/~, ~agents/~.
+- CLI roots and subcommands: ~asp hook~, ~asp session~, ~asp install plugin~,
+  ~asp install hook~, ~asp config agents~.
+- Runtime/DB state: ~agent_session_registry~, ~codex_rollout_sessions~,
+  ~hook_memory_inbox~, ~runtime_server_hook_admission_locator~,
+  ~codex_multi_agent_v2_control_plane~, and ~[hook-engine]~ config blocks.
+- External agent runners: Claude Code SDK sandtable runners and Codex/Claude
+  hook smoke workflows.
+
+Search-only helpers previously hosted in ~agent-semantic-shell-parser~
+(~native_rg~ and ~tantivy_query~) are owned directly by
+~agent-semantic-search-playbook~ and re-exported by ~agent-semantic-search~.
+
+* Marlin Host Integration Contract
+
+** Typed Host Binding (~marlin-host-integration.v1.schema.json~)
+
+When Marlin binds a project workspace to ASP, it provides an explicit typed
+~MarlinHostIntegrationBinding~ (defined in
+~crates/agent-semantic-client-protocol/src/marlin_host.rs~ and
+~schemas/marlin-host-integration.v1.schema.json~):
+
+- ~schemaId~: ~"agent.semantic-protocols.marlin-host-integration"~
+- ~schemaVersion~: ~"1"~
+- ~platform~: ~"marlin"~ (fixed domain discriminator)
+- ~hostId~: typed ~MarlinHostId~ identifying the Marlin runtime instance
+- ~projectId~: typed ~MarlinProjectId~ identifying the Marlin project
+- ~workspaceId~: typed ~MarlinWorkspaceId~ identifying the canonical workspace
+- ~worktreeId~: typed ~MarlinWorktreeId~ identifying the active worktree
+- ~capabilityProfile~: ~"read-only-semantic"~ | ~"verified-ast-patch"~ | ~"full-workspace-generation"~
+- ~correlation~ (optional read-only observability metadata owned by Marlin):
+  - ~rootSessionId~: typed ~MarlinRootSessionId~
+  - ~sessionId~: typed ~MarlinSessionId~
+  - ~parentSessionId~: optional typed ~MarlinParentSessionId~ (must never alias ~sessionId~)
+  - ~agentLineage~: optional typed ~MarlinAgentLineageId~
+
+All public semantic identifiers MUST use domain newtypes rather than raw
+primitive strings. ASP treats ~correlation~ strictly as read-only trace and
+storage-partition context; ASP never mutates Marlin session state, spawns
+Marlin sub-agents, or enforces Marlin hook policies.
+
+** Environment Handshake
+
+When Marlin launches ~asp~ as a child process, it MAY pass correlation metadata
+through the Marlin-owned environment variables:
+
+- ~ASP_HOST_PLATFORM=marlin~
+- ~MARLIN_HOST_ID~
+- ~MARLIN_PROJECT_ID~
+- ~MARLIN_WORKSPACE_ID~
+- ~MARLIN_WORKTREE_ID~
+- ~MARLIN_ROOT_SESSION_ID~
+- ~MARLIN_SESSION_ID~
+- ~MARLIN_PARENT_SESSION_ID~ (optional; rejected fail-closed if equal to ~MARLIN_SESSION_ID~)
+- ~MARLIN_AGENT_LINEAGE~ (optional)
+
+Manual operator invocations without Marlin session variables remain supported
+and skip session-scoped provider-runtime event persistence without error.
+
+** Northbound Protocol Surface
+
+Marlin communicates with ASP Runtime Server exclusively through the typed
+~ClientFrame~ method catalog (~crates/agent-semantic-client-protocol~):
+
+1. ~asp.workspace.search.playbook~ — progressive Scheme-composed semantic search
+2. ~asp.workspace.query.playbook~ — exact selector-addressed structural reads
+3. ~asp.workspace.query.syntax~ — portable tree-sitter-compatible syntax queries
+4. ~asp.workspace.query.syntax-plan-context~ — syntax query plan preparation
+5. ~asp.workspace.generation.ensure-ready~ — deterministic workspace generation admission
+6. ~asp.graph.evaluate~ — resident Ascent/GQL graph evaluation
+7. ~asp.schema.bundle~ — canonical language schema bundle distribution
+8. ~asp.cancellation.probe~ — request cancellation verification
+
+** Fail-Closed Admission Rules
+
+1. Non-Marlin platform strings or empty required identifiers are rejected at the
+   protocol boundary with typed ~MarlinHostIntegrationError~ variants.
+2. Parent/current session aliasing (~parentSessionId == sessionId~) is rejected
+   fail-closed.
+3. Unrecognized or retired ~ClientFrame~ methods (including retired hook inbox
+   or session registry routes) are rejected at catalog validation time.
+4. ~asp ast-patch verify~ / ~dry-run~ returns a non-mutating safety-verifier
+   receipt (~mutationAvailable: false~); local source mutation occurs only
+   through explicit provider-native ~ast-patch apply~ or Marlin-owned file
+   mutation tools. Frozen V1 provider-shared AST patch and query packet schemas
+   retain their V1 wire field identifiers until a coordinated V2 provider
+   submodule release.
+
+* Verification
+
+This contract is enforced continuously by:
+
+- Rust unit tests in ~crates/agent-semantic-client-protocol/tests/unit/marlin_host.rs~
+- Workspace member policy tests in ~build-support/asp-rust-project-harness-policy~
+- Schema & RFC verification tests in ~tests/unit/test_marlin_host_integration_rfc.py~
+- Schema family classification via ~asp-schema-manager check~ under ~asp.schema-family.marlin-host~

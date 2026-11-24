@@ -47,8 +47,9 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "download-artifact" not in workflow
     assert "matrix.package == 'agent-semantic-provider-transport'" in workflow
     assert "fd-find ripgrep" in workflow
-    assert "matrix.package == 'agent-semantic-client'" in workflow
-    assert "cargo build -p agent-semantic-hook --bin asp-hook" in workflow
+    assert "agent-semantic-hook" not in workflow
+    assert "agent-semantic-hook-testkit" not in workflow
+    assert "agent-semantic-shell-parser" not in workflow
     assert "--ignored --exact" not in workflow
     monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     assert "github.event.pull_request.number || github.ref" in monolithic_workflow
@@ -163,11 +164,11 @@ def test_live_corpus_setup_builds_artifacts_without_installation() -> None:
     assert 'agent-tools-install-global bin_dir=""' not in justfile
     assert 'agent-tools-install-hook bin_dir=""' not in justfile
 
-    build = justfile.split("build-live-corpus-test-runtime:", 1)[1]
+    build = justfile.split("build-live-corpus-test-runtime", 1)[1]
     build = build.split("check-live-corpus-search-query-resource", 1)[0]
     assert (
         "cargo build --release -p agent-semantic-client "
-        "--features live-corpus-test --bin asp"
+        '--features "{{features}}" --bin asp'
     ) in build
 
     resource = justfile.split("check-live-corpus-search-query-resource resource:", 1)[1]
@@ -232,7 +233,7 @@ def test_julia_full_provider_gate_uses_fresh_compiled_provider_perf_guard() -> N
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
-    install_julia = install_julia.split("agent-hooks-doctor-providers:", 1)[0]
+    install_julia = install_julia.split("agent-tools-doctor-providers:", 1)[0]
     assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in install_julia
     assert "just agent-tools-install-language julia" in install_julia
     assert 'provider_bin="$${state_home}/runtime/bin/asp-julia"' in install_julia

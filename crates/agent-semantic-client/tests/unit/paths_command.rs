@@ -147,8 +147,8 @@ fn paths_json_is_machine_readable() {
         .env("ASP_STATE_HOME", &state_home)
         .env("PATH", "")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env_remove("CODEX_THREAD_ID")
-        .env_remove("CODEX_SESSION_ID")
+        .env_remove("MARLIN_SESSION_ID")
+        .env_remove("MARLIN_ROOT_SESSION_ID")
         .args(["paths", "--json"])
         .output()
         .expect("run asp paths --json");

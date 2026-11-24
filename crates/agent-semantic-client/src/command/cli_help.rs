@@ -3,41 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 include!("cli_help_model.rs");
-pub(crate) fn install_plugin_command() -> Command {
-    Command::new("plugin")
-        .bin_name("asp install plugin")
-        .about(
-            "Inspect or publish the ASP Codex plugin payload globally; omitted PROJECT_ROOT resolves ASP_STATE_HOME [dev].root",
-        )
-        .subcommand(install_plugin_operation_command(
-            "status",
-            "Compare the source payload with the installed Codex cache",
-        ))
-        .subcommand(install_plugin_operation_command(
-            "publish",
-            "Publish a changed payload through the Codex plugin CLI",
-        ))
-}
-
-fn install_plugin_operation_command(name: &'static str, about: &'static str) -> Command {
-    Command::new(name)
-        .bin_name(format!("asp install plugin {name}"))
-        .about(about)
-        .arg(
-            Arg::new("codex")
-                .long("codex")
-                .required(true)
-                .action(ArgAction::SetTrue)
-                .help("Target the Codex plugin surface"),
-        )
-        .arg(
-            Arg::new("project-root")
-                .value_name("PROJECT_ROOT")
-                .help(
-                    "Optional developer source-root override; publication remains global and defaults to ASP_STATE_HOME [dev].root",
-                ),
-        )
-}
 
 fn paths_command() -> Command {
     Command::new("paths")
@@ -301,23 +266,6 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
         [install, binary, ..] if install == "install" && binary == "binary" => {
             install_binary_command()
         }
-        [install, hook, ..] if install == "install" && hook == "hook" => install_hook_command(),
-        [hook, break_glass, ..] if hook == "hook" && break_glass == "break-glass" => {
-            super::hook_break_glass::break_glass_command()
-        }
-        [install, plugin, operation, ..]
-            if install == "install"
-                && plugin == "plugin"
-                && matches!(operation.as_str(), "status" | "publish") =>
-        {
-            install_plugin_command()
-                .find_subcommand(operation)
-                .cloned()
-                .expect("known plugin operation")
-        }
-        [install, plugin, ..] if install == "install" && plugin == "plugin" => {
-            install_plugin_command()
-        }
         [document, leaf, ..] if is_document_facade(document) => DOCUMENT_COMMANDS
             .iter()
             .find_map(|(candidate, _)| (*candidate == leaf).then_some(*candidate))
@@ -333,26 +281,10 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
 }
 
 fn selected_command_default(args: &[String]) -> Command {
-    if matches!(
-        args,
-        [config, agents, sync, ..]
-            if config == "config" && agents == "agents" && sync == "sync"
-    ) {
-        return agent_config_sync_command();
-    }
     let first = args.first().map(String::as_str);
     let second = args.get(1).map(String::as_str);
     match (first, second) {
-        (Some("install"), Some("plugin")) => install_plugin_command(),
         (Some("install"), _) => install_command(),
-        (Some("hook"), Some("doctor")) => hook_doctor_command(),
-        (Some("hook"), Some("enablement")) => hook_enablement_command(),
-        (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
-        (Some("hook"), _) => hook_command(),
-        (Some("config"), Some("agents")) => agent_config_command(),
-        (Some("config"), _) => config_command(),
-        (Some("session"), Some("register-child")) => session_register_child_command(),
-        (Some("session"), _) => session_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => Command::new("wrap")
@@ -453,16 +385,6 @@ fn print_help_if_requested_unchecked(args: &[String]) -> Result<bool, String> {
     }
     print_command_help(selected_command(args))?;
     Ok(true)
-}
-
-pub(crate) fn print_install_plugin_help(args: &[String]) -> Result<(), String> {
-    if let Some(operation) = args.first().map(String::as_str)
-        && matches!(operation, "status" | "publish")
-        && let Some(command) = install_plugin_command().find_subcommand(operation).cloned()
-    {
-        return print_command_help(command);
-    }
-    print_command_help(install_plugin_command())
 }
 #[cfg(test)]
 #[path = "../../tests/unit/cli_help_model.rs"]

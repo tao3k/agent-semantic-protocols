@@ -188,7 +188,7 @@ impl ProtocolBinaryInstallPlan {
             .unwrap_or_default();
         if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
             return Err(format!(
-                "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
+                "ASP binary installation must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}`"
             ));
         }
 
@@ -244,19 +244,7 @@ pub(crate) async fn ensure_protocol_binary_installed(
     .await
 }
 
-pub(crate) async fn ensure_protocol_binary_bundle_installed_transaction(
-    plan: &ProtocolBinaryInstallPlan,
-    hook_source: &Path,
-) -> Result<ProtocolBinaryInstall, String> {
-    let members = [
-        agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: hook_source,
-        },
-    ];
-    ensure_protocol_binary_bundle_members_installed_transaction(plan, &members).await
-}
-
+#[cfg(test)]
 pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
@@ -760,7 +748,7 @@ fn require_path_contains_dir(dir: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "{SEMANTIC_AGENT_BIN_DIR_ENV}={} is not present in PATH; generated hooks use bare `{SEMANTIC_AGENT_PROTOCOL_BIN}`",
+            "{SEMANTIC_AGENT_BIN_DIR_ENV}={} is not present in PATH; `{SEMANTIC_AGENT_PROTOCOL_BIN}` must resolve on PATH",
             dir.display()
         ))
     }

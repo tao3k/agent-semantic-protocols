@@ -380,44 +380,7 @@ pub struct RuntimeServerStatusSnapshot {
     pub workspace_entry_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asp_python_graphs: Option<AspPythonGraphsStatus>,
-    #[serde(default)]
-    pub agent_sessions: Vec<RuntimeServerAgentSessionStatus>,
     pub owner_epoch: u64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RuntimeServerAgentSessionLifecycleState {
-    Routable,
-    Stopped,
-    Achieved,
-    Invalid,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeServerAgentSessionStatus {
-    pub workspace_identity: String,
-    pub project_id: String,
-    pub root_session_id: String,
-    pub session_id: String,
-    pub name: String,
-    pub physical_generation: u64,
-    pub lifecycle_state: RuntimeServerAgentSessionLifecycleState,
-    #[serde(default)]
-    pub host_binding: Option<serde_json::Value>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentSessionControlPlaneState {
-    pub project_id: Option<String>,
-    pub root_session_id: Option<String>,
-    pub name: String,
-    pub state: String,
-    pub generation: u64,
-    pub reason_kind: Option<String>,
-    pub host_binding: Option<serde_json::Value>,
 }
 
 impl RuntimeServerStatusSnapshot {
@@ -438,7 +401,6 @@ impl RuntimeServerStatusSnapshot {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
             asp_python_graphs: None,
-            agent_sessions: Vec::new(),
             owner_epoch: endpoint.owner_epoch,
         }
     }

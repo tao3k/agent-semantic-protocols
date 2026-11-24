@@ -12,12 +12,6 @@ mod fixture;
 
 #[path = "unit/active_generation_projection_capability.rs"]
 mod active_generation_projection_capability;
-#[path = "unit/agent_session_registry_publication.rs"]
-mod agent_session_registry_publication;
-#[path = "unit/agent_session_runtime_proxy.rs"]
-mod agent_session_runtime_proxy;
-#[path = "unit/codex_multi_agent_control_plane_owner.rs"]
-mod codex_multi_agent_control_plane_owner;
 #[path = "unit/content_binding.rs"]
 mod content_binding;
 #[path = "unit/context_run_mvcc.rs"]
@@ -104,10 +98,6 @@ mod search_incident;
 mod selector_generation_evidence;
 #[path = "unit/seqlock_json_memory.rs"]
 mod seqlock_json_memory;
-#[path = "unit/session_control_plane.rs"]
-mod session_control_plane;
-#[path = "unit/session_control_plane_ipc.rs"]
-mod session_control_plane_ipc;
 #[path = "unit/db/snapshot_fixture.rs"]
 mod snapshot_fixture;
 #[path = "unit/source_index_fixture.rs"]

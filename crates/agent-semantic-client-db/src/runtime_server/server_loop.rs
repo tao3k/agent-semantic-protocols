@@ -12,7 +12,6 @@ use super::core::{
     AspPythonGraphsStatusHandle, CONNECTION_DRAIN_BOUNDARY, DURABILITY_DRAIN_BOUNDARY,
     RuntimeServer, RuntimeServerEvent, RuntimeServerExit, publish_connection_completion,
 };
-use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
 use crate::runtime_server_observability::publish_event;
 
 impl RuntimeServer {
@@ -32,8 +31,6 @@ impl RuntimeServer {
             events,
             generation_admission,
             asp_python_graphs_status,
-            agent_session_registry_owner,
-            agent_session_status,
             telemetry_sender: _,
             readiness_sender,
             mut startup_readiness,
@@ -81,15 +78,6 @@ impl RuntimeServer {
         let mut asp_python_graphs_status_changes = asp_python_graphs_status
             .as_ref()
             .map(AspPythonGraphsStatusHandle::subscribe);
-        let mut agent_session_status_changes = agent_session_status
-            .as_ref()
-            .map(AgentSessionStatusHandle::subscribe);
-        if let (Some(status), Some(owner)) = (
-            agent_session_status.as_ref(),
-            agent_session_registry_owner.as_ref(),
-        ) {
-            status.refresh(owner).await?;
-        }
         let exit = loop {
             tokio::select! {
                 changed = async {
@@ -196,11 +184,6 @@ impl RuntimeServer {
                     )?;
                 }
                 _ = retirement_sweep.tick() => {
-                    if let (Some(status), Some(owner)) =
-                        (agent_session_status.as_ref(), agent_session_registry_owner.as_ref())
-                    {
-                        status.refresh(owner).await?;
-                    }
                     let retirement_receipts = workspace_registry.retire_inactive().await?;
                     for receipt in retirement_receipts {
                         eprintln!(
@@ -233,31 +216,6 @@ impl RuntimeServer {
                             .max(loaded_entry_count)
                             .max(*workspace_count.borrow()),
                     )?;
-                    if let Some(status) = agent_session_status.as_ref() {
-                        status.mark_current_published();
-                    }
-                }
-                changed = async {
-                    match agent_session_status_changes.as_mut() {
-                        Some(changes) => Some(changes.changed().await),
-                        None => std::future::pending().await,
-                    }
-                }, if agent_session_status_changes.is_some() => {
-                    changed
-                        .expect("Agent session status branch requires a receiver")
-                        .map_err(|_| "Agent session status owner closed".to_owned())?;
-                    let entry_counts = registry.workspace_entry_counts();
-                    let slot_count = entry_counts.slot_count;
-                    let loaded_entry_count = entry_counts.loaded_entry_count;
-                    status_memory.publish(
-                        public_state,
-                        slot_count
-                            .max(loaded_entry_count)
-                            .max(*workspace_count.borrow()),
-                    )?;
-                    if let Some(status) = agent_session_status.as_ref() {
-                        status.mark_current_published();
-                    }
                 }
                 changed = shutdown.changed() => {
                     if changed.is_err() || *shutdown.borrow_and_update() {

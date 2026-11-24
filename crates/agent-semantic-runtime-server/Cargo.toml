@@ -17,10 +17,6 @@ name = "readiness_socket_identity"
 path = "tests/integration/readiness_socket_identity.rs"
 
 [[test]]
-name = "agent_session_registration"
-path = "tests/integration/agent_session_registration.rs"
-
-[[test]]
 name = "runtime_dependency_boundary"
 path = "tests/integration/runtime_dependency_boundary.rs"
 
@@ -51,7 +47,6 @@ agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-search = { path = "../agent-semantic-search" }
-agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-topology = { path = "../agent-semantic-topology" }
 agent-semantic-mrr.workspace = true

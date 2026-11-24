@@ -112,8 +112,8 @@ impl StateHomeLayout {
         "workspaces",
     ];
     const V1_RUNTIME_ENTRIES: &'static [&'static str] = &["artifacts", "bin", "serving"];
-    const V1_CONTROL_ENTRIES: &'static [&'static str] = &["config", "sessions"];
-    const V1_CONFIG_ENTRIES: &'static [&'static str] = &["agents", "asp.toml", "hook-client.toml"];
+    const V1_CONTROL_ENTRIES: &'static [&'static str] = &["config"];
+    const V1_CONFIG_ENTRIES: &'static [&'static str] = &["asp.toml"];
 
     pub fn new(root: impl AsRef<Path>) -> Self {
         let root = root.as_ref().to_path_buf();
@@ -598,28 +598,8 @@ impl StateHomeControlLayout {
         self.state_home.join("catalog/state.turso")
     }
 
-    pub fn hook_client_config(&self) -> PathBuf {
-        self.state_home.join("control/config/hook-client.toml")
-    }
-
     pub fn asp_config(&self) -> PathBuf {
         self.state_home.join("control/config/asp.toml")
-    }
-
-    pub fn agent_registry_root(&self) -> PathBuf {
-        self.state_home.join("control/config/agents")
-    }
-
-    pub fn agent_registry(&self) -> PathBuf {
-        self.agent_registry_root().join("config.toml")
-    }
-
-    /// Root of the Runtime Server-owned session registry publication.
-    ///
-    /// Artifacts owns the physical namespace. The session-registry package
-    /// owns the database filename, publication receipt, schema, and lifecycle.
-    pub fn session_registry_root(&self) -> PathBuf {
-        self.state_home.join("control/sessions")
     }
 }
 
@@ -685,10 +665,6 @@ impl WorkspaceStatePaths {
 
     pub fn cache_manifest_path(&self) -> PathBuf {
         self.observations.join(WORKSPACE_CACHE_MANIFEST_FILE)
-    }
-
-    pub fn hook_root(&self) -> PathBuf {
-        self.observations.join("hooks")
     }
 }
 

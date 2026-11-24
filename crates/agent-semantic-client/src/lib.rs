@@ -14,11 +14,9 @@ pub mod cli;
 mod cli_args;
 mod client_cli;
 mod command;
-mod hook_break_glass;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
 
-pub mod agent_session_lifecycle_projection;
 pub mod exact_projection;
 mod language_command;
 pub mod provider_runtime_storage;
@@ -52,7 +50,6 @@ pub use runtime_language_client::{AspClient, AspClientRuntimeHandoff};
 pub mod cli_failure;
 #[doc(hidden)]
 pub use state_cli::run_binary_from_env;
-pub(crate) mod codex;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_server::ProviderProjectResolution;

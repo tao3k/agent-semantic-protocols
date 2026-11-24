@@ -175,10 +175,9 @@ gold selector action.
 envelope. They describe route mode, provider set, privacy policy, cache
 generation provenance, Turso client DB status, execution route, provider
 command counts, and native provider provenance. They do not duplicate
-`semantic-query-packet`, and they do not rename the lower layers:
-`agent-semantic-protocol` still owns shared protocol rendering and
-`agent-semantic-hook` still owns hook classification. agent semantic client is the
-client/backend brand. Arrow and Flight remain server/cloud capabilities rather
+`semantic-query-packet`. `marlin-host-integration.v1.schema.json` owns the
+typed Marlin host binding, correlation lineage, and northbound capability
+contract between `marlin-agent-core` and ASP. Arrow and Flight remain server/cloud capabilities rather
 than default client-cache dependencies. `cache-status` receipts are read-only
 inspections; the prompt line reports manifest/DB health as `missing`,
 `unimported`, `available`, `invalid`, or `unavailable`, while the receipt keeps

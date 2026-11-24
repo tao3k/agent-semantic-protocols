@@ -63,7 +63,7 @@ impl WorkspaceDbIpcSession {
     fn new_state(profile: WorkspaceDbSessionProfile) -> std::sync::Arc<WorkspaceDbIpcSessionState> {
         let read_lane_capacity = match profile {
             WorkspaceDbSessionProfile::Full => workspace_db_ipc_read_lane_capacity(),
-            WorkspaceDbSessionProfile::HookReadOnly => 1,
+            WorkspaceDbSessionProfile::ReadOnly => 1,
         };
         std::sync::Arc::new(WorkspaceDbIpcSessionState {
             client_id: NEXT_WORKSPACE_DB_IPC_CLIENT_ID
@@ -144,7 +144,7 @@ impl WorkspaceDbIpcSession {
             data_endpoint: endpoint.data_endpoint.clone(),
             generation_pointer_path: None,
         };
-        let shared = Self::new_state(WorkspaceDbSessionProfile::HookReadOnly);
+        let shared = Self::new_state(WorkspaceDbSessionProfile::ReadOnly);
         Self { endpoint, shared }
     }
 

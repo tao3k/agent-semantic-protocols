@@ -305,10 +305,10 @@ async fn runtime_provider_projection_is_derived_only_from_the_verified_active_bu
     let sources = root.join("sources");
     std::fs::create_dir_all(&sources).expect("create bundle sources");
     let asp = sources.join("asp");
-    let hook = sources.join("asp-hook");
+    let graphs = sources.join("asp-python-graphs");
     let provider = sources.join("asp-rust");
     std::fs::write(&asp, b"asp-v1").expect("write asp fixture");
-    std::fs::write(&hook, b"hook-v1").expect("write hook fixture");
+    std::fs::write(&graphs, b"graphs-v1").expect("write graphs fixture");
     std::fs::write(&provider, b"provider-v1").expect("write provider fixture");
     let source_members = std::collections::BTreeMap::from([
         (
@@ -318,9 +318,9 @@ async fn runtime_provider_projection_is_derived_only_from_the_verified_active_bu
             ),
         ),
         (
-            "asp-hook".to_owned(),
+            "asp-python-graphs".to_owned(),
             agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
-                b"hook-v1",
+                b"graphs-v1",
             ),
         ),
         (
@@ -365,8 +365,8 @@ async fn runtime_provider_projection_is_derived_only_from_the_verified_active_bu
         .collect::<Vec<_>>();
     let mut members = vec![
         agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: &hook,
+            name: "asp-python-graphs",
+            source: &graphs,
         },
         agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
             name: "asp-rust",

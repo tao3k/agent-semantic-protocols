@@ -4,15 +4,14 @@
 
 //! Typed Runtime client frames, identities, catalogs, routes, and conformance contracts.
 
-mod agent_session;
 mod canonical_json;
 mod catalog;
 mod client_timing;
 mod conformance;
 mod enhanced_query_capability;
 mod frame;
-mod hook_memory_inbox;
 mod identity;
+pub mod marlin_host;
 pub mod protocol_identity;
 mod protocol_validation;
 mod resident_syntax_query_plan;
@@ -56,18 +55,6 @@ pub use frame::ClientInfo;
 pub use frame::ClientOutcome;
 pub use frame::ClientResponsePayload;
 pub use frame::TraceContext;
-pub use hook_memory_inbox::{
-    HOOK_MEMORY_INBOX_FAILURE_SCHEMA_ID, HOOK_MEMORY_INBOX_SCHEMA_ID,
-    HOOK_MEMORY_INBOX_SCHEMA_VERSION, HookMemoryInboxEntryKind, HookMemoryInboxEvent,
-    HookMemoryInboxEventPayload, HookMemoryInboxFailure, HookMemoryInboxFailureReason,
-    HookWorkspaceMutationEvent,
-};
-pub use identity::AgentChildThreadId;
-pub use identity::AgentName;
-pub use identity::AgentParentThreadId;
-pub use identity::AgentPath;
-pub use identity::AgentRootSessionId;
-pub use identity::AgentRouteKey;
 pub use identity::ClientProjectId;
 pub use identity::ClientReasonKind;
 pub use identity::ClientRequestId;
@@ -75,6 +62,22 @@ pub use identity::ClientRouteId;
 pub use identity::ClientSchemaId;
 pub use identity::ClientSessionId;
 pub use identity::ClientWorkspaceIdentity;
+pub use marlin_host::MARLIN_ADMITTED_METHODS;
+pub use marlin_host::MARLIN_HOST_INTEGRATION_SCHEMA_ID;
+pub use marlin_host::MARLIN_HOST_INTEGRATION_SCHEMA_VERSION;
+pub use marlin_host::MARLIN_HOST_PLATFORM;
+pub use marlin_host::MarlinAgentLineageId;
+pub use marlin_host::MarlinCapabilityProfile;
+pub use marlin_host::MarlinHostCorrelation;
+pub use marlin_host::MarlinHostId;
+pub use marlin_host::MarlinHostIntegrationBinding;
+pub use marlin_host::MarlinHostIntegrationError;
+pub use marlin_host::MarlinParentSessionId;
+pub use marlin_host::MarlinProjectId;
+pub use marlin_host::MarlinRootSessionId;
+pub use marlin_host::MarlinSessionId;
+pub use marlin_host::MarlinWorkspaceId;
+pub use marlin_host::MarlinWorktreeId;
 pub use schema_bundle::schema_bundle_digest;
 pub use session::ClientSession;
 pub use session::ClientSessionState;
@@ -144,8 +147,6 @@ pub use server_method_catalog::GRAPH_TIMELINE_REQUEST_SCHEMA_ID;
 pub use server_method_catalog::GRAPH_TIMELINE_RESPONSE_SCHEMA_ID;
 pub use server_method_catalog::LIVE_CORPUS_CACHE_STATE_METHOD;
 pub use server_method_catalog::LIVE_CORPUS_MERKLE_OWNER_READ_METHOD;
-pub use server_method_catalog::MULTI_AGENT_CHILDREN_METHOD;
-pub use server_method_catalog::MULTI_AGENT_HOST_EVENT_METHOD;
 pub use server_method_catalog::ResolvedServerClientMethod;
 pub use server_method_catalog::ServerClientRoute;
 pub use server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_METHOD;
@@ -171,12 +172,3 @@ mod terminal_contract_tests;
 #[cfg(test)]
 #[path = "../tests/unit/client_protocol_contract.rs"]
 mod tests;
-pub use agent_session::AGENT_SESSION_REGISTER_METHOD;
-pub use agent_session::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
-pub use agent_session::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
-pub use agent_session::AgentSessionPlatform;
-pub use agent_session::AgentSessionRegisterReceipt;
-pub use agent_session::AgentSessionRegisterRequest;
-pub use agent_session::AgentSessionRegisterState;
-pub use agent_session::AgentSessionRegistryOwner;
-pub use agent_session::AgentSessionTransport;

@@ -46,10 +46,10 @@ _agent-tools-run-asp bin_dir +args:
       SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-client --bin asp -- {{args}}; \
     fi
 
-# Develop mode: install this checkout's tools and Codex hooks.
+# Develop mode: install this checkout's tools and providers for Marlin integration.
 install bin_dir="":
+	@just agent-tools-install-global
 	@just agent-tools-ensure-local-bin-path
-	@just agent-hooks-install "{{bin_dir}}"
 
 # Publish only the canonical ASP entry into the user PATH.
 agent-tools-ensure-local-bin-path:
@@ -62,51 +62,6 @@ agent-tools-ensure-local-bin-path:
       ln -s "${canonical_runtime_asp}" "${temporary_link}"; \
       mv -f "${temporary_link}" "${user_path_entry}"; \
       echo "[agent-tools-ensure-local-bin-path] canonicalRuntimeAsp=${canonical_runtime_asp} userPathEntry=${user_path_entry} switch=atomic"
-
-# Install the ASP runtime, language providers, and Codex hook config under ASP State Home.
-agent-hooks-install bin_dir="":
-	@bin_dir="{{bin_dir}}"; \
-	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
-	just agent-tools-install-global; \
-	just _agent-hooks-install-codex "${bin_dir}"; \
-	just agent-hooks-doctor "${bin_dir}"
-
-agent-hooks-doctor bin_dir="":
-	@just _agent-hooks-doctor-codex "{{bin_dir}}"
-
-_agent-hooks-install-codex bin_dir="":
-	@just _agent-tools-run-asp "{{bin_dir}}" install plugin --codex {{repo}}
-
-_agent-hooks-doctor-codex bin_dir="":
-	@just _agent-tools-run-asp "{{bin_dir}}" hook doctor --client codex {{repo}}
-
-# Replay the root classifier directly without launching Codex.
-agent-hooks-smoke-hook:
-    @activation="$(cargo run -q -p agent-semantic-client --bin asp -- hook paths . | awk -F= '$1=="activation"{print substr($0, 12)}')"; \
-      printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/asp-typescript/tests/unit/cli.test.ts"}}' \
-      | cargo run -q -p agent-semantic-client --bin asp -- hook pre-tool --client codex --activation "$activation" --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
-      | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
-
-# Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
-agent-hooks-smoke-codex:
-    @out="$(mktemp)"; \
-      codex_bin="$(command -v codex || true)"; \
-      if [ -z "${codex_bin}" ] && [ -x /Applications/Codex.app/Contents/Resources/codex ]; then codex_bin=/Applications/Codex.app/Contents/Resources/codex; fi; \
-      if [ -z "${codex_bin}" ]; then echo "codex binary not found on PATH"; rm -f "${out}"; exit 127; fi; \
-      "${codex_bin}" exec --json --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -C "$PWD" \
-        "Run exactly this shell command and do nothing else: sed -n '1,8p' languages/asp-typescript/tests/unit/cli.test.ts" >"${out}" 2>&1 || true; \
-      if rg -q "Command blocked by PreToolUse hook: bulk-source-dump denied|permissionDecision.*deny" "${out}"; then \
-        echo "[agent-hooks-smoke-codex] blocked"; \
-      elif rg -q '"type":"command_execution"' "${out}"; then \
-        echo "[agent-hooks-smoke-codex] unsupported-surface=command_execution; PreToolUse only intercepts Bash, apply_patch, and MCP tools"; \
-        rm -f "${out}"; \
-        exit 2; \
-      else \
-        cat "${out}"; \
-        rm -f "${out}"; \
-        exit 1; \
-      fi; \
-      rm -f "${out}"
 
 # Develop mode: build and install asp plus all providers from this checkout.
 agent-tools-install-global:
@@ -130,7 +85,7 @@ build-asp-release:
 agent-tools-install-client: check-rust-workspace-policy
     @cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/release/asp"; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary || exit $?; \
@@ -144,14 +99,10 @@ agent-tools-install-client: check-rust-workspace-policy
 # reused instead of being rescanned by every downstream build script.
 agent-tools-install-client-debug: check-rust-workspace-policy
     @asp_artifact="target/debug/asp"; \
-      cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp --package agent-semantic-hook --bin asp-hook || exit $?; \
+      cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary || exit $?; \
       test -x "${destination}"
-
-# Install the shared client binary used by hook runtime commands.
-agent-tools-install-hook:
-	@just agent-tools-install-client
 
 # Install a language provider through ASP's registered workspace-install contract.
 # The root Justfile is only an adapter; provider-owned descriptors own builds and artifacts.
@@ -246,18 +197,18 @@ test-gerbil-provider-http-json: agent-tools-build-gerbil
 agent-tools-install-gx bin_dir="":
     @just agent-tools-build-gerbil "{{bin_dir}}"
 
-agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py agent-hooks-doctor-julia
+agent-tools-doctor-providers: agent-tools-doctor-rs agent-tools-doctor-ts agent-tools-doctor-py agent-tools-doctor-julia
 
-agent-hooks-doctor-rs:
+agent-tools-doctor-rs:
     asp-rust agent doctor {{repo}}
 
-agent-hooks-doctor-ts:
+agent-tools-doctor-ts:
     asp-typescript agent doctor {{repo}}
 
-agent-hooks-doctor-py:
+agent-tools-doctor-py:
     asp-python agent doctor {{repo}}
 
-agent-hooks-doctor-julia:
+agent-tools-doctor-julia:
     asp-julia agent doctor --json {{asp_julia_project}} >/dev/null
 
 check-sandtables:
@@ -378,12 +329,11 @@ check-rfc-docs:
 
 provider-gate-root: check-language-facade-smoke
     just check-gerbil-owner-items-fast-path
-    cargo test -p agent-semantic-hook
     uv run --project packages/python --frozen --exact python -m pytest \
       tests/unit/test_semantic_*_schema.py \
       tests/unit/semantic_tree_sitter_query_rfc \
       tests/unit/test_asp_server_first_architecture_rfc.py \
-      tests/unit/test_agent_hook_interception_protocol_rfc.py \
+      tests/unit/test_marlin_host_integration_rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \
       tests/unit/test_python_package_dependency_boundary.py \
       tests/unit/semantic_sandtable

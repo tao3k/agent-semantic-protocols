@@ -23,7 +23,6 @@ from .step_runner import run_step
 from .utils import (
     build_env,
     dict_value,
-    list_value,
     optional_int,
     require_str,
     resolve_workdir_with_env,
@@ -310,80 +309,9 @@ def _resolve_scenario_steps(
             result.errors.append("scenario.steps must be an array")
             return None
         return steps
-
-    live_agent = scenario.get("liveAgent")
-    if live_agent is None:
-        result.status = "fail"
-        result.errors.append("scenario must define steps or liveAgent")
-        return None
-    if not isinstance(live_agent, dict):
-        result.status = "fail"
-        result.errors.append("scenario.liveAgent must be an object")
-        return None
-    return _live_agent_steps_from_deep_question(scenario, live_agent, result)
-
-
-def _live_agent_steps_from_deep_question(
-    scenario: dict[str, Any],
-    live_agent: dict[str, Any],
-    result: ScenarioResult,
-) -> list[Any] | None:
-    evidence = dict_value(scenario.get("evidence"))
-    cases = list_value(evidence.get("deepQuestionCases"))
-    if len(cases) != 1 or not isinstance(cases[0], dict):
-        result.status = "fail"
-        result.errors.append(
-            "scenario.liveAgent requires exactly one evidence.deepQuestionCases item"
-        )
-        return None
-
-    question_case = cases[0]
-    prompt = require_str(question_case, "question", "")
-    if not prompt:
-        result.status = "fail"
-        result.errors.append("scenario.liveAgent deep question must have question")
-        return None
-
-    step_ids = string_list(question_case.get("stepIds"))
-    step_id = step_ids[0] if step_ids else require_str(question_case, "id", "prompt")
-    expect = dict_value(live_agent.get("expect"))
-    require_asp_bash_commands = bool(live_agent.get("requireAspBashCommands", True))
-    agent_sdk = {
-        "client": require_str(live_agent, "client", "claude"),
-        "prompt": prompt,
-        "outputFormat": require_str(live_agent, "outputFormat", "stream-json"),
-        "includeHookEvents": bool(live_agent.get("includeHookEvents", True)),
-        "verbose": bool(live_agent.get("verbose", True)),
-        "requireAspBashCommands": require_asp_bash_commands,
-        "useRepoClaudeSettings": True,
-        "env": dict_value(
-            live_agent.get("env", {"ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"})
-        ),
-        "requiredEnv": string_list(
-            live_agent.get("requiredEnv", ["ANTHROPIC_AUTH_TOKEN"])
-        ),
-    }
-    allowed_tools = string_list(live_agent.get("allowedTools"))
-    if allowed_tools:
-        agent_sdk["allowedTools"] = allowed_tools
-    if isinstance(live_agent.get("model"), str):
-        agent_sdk["model"] = live_agent["model"]
-    pipe_expect = dict_value(expect.get("commandFlow"))
-    max_asp_commands = optional_int(pipe_expect.get("maxAspCommands"))
-    if max_asp_commands is not None:
-        agent_sdk["maxAspBashCommands"] = max_asp_commands
-
-    step: dict[str, Any] = {
-        "id": step_id,
-        "kind": "agent-sdk",
-        "agentSdk": agent_sdk,
-    }
-    timeout_seconds = live_agent.get("timeoutSeconds")
-    if timeout_seconds is not None:
-        step["timeoutSeconds"] = timeout_seconds
-    if expect:
-        step["expect"] = expect
-    return [step]
+    result.status = "fail"
+    result.errors.append("scenario must define steps")
+    return None
 
 
 def _finalize_scenario_status(result: ScenarioResult) -> None:

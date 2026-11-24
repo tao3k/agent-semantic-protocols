@@ -19,8 +19,6 @@ members = [
     "crates/agent-semantic-client-db",
     "crates/agent-semantic-client-server",
     "crates/agent-semantic-runtime-server",
-    "crates/agent-semantic-hook",
-    "crates/agent-semantic-hook-testkit",
     "crates/agent-semantic-http-json",
     "crates/agent-semantic-loop",
     "crates/agent-semantic-mrr",
@@ -32,7 +30,6 @@ members = [
     "crates/agent-semantic-topology",
     "crates/agent-semantic-schema-manager",
     "crates/agent-semantic-scheme-syntax",
-    "crates/agent-semantic-shell-parser",
     "crates/agent-semantic-tree-sitter",
     "crates/agent-semantic-workspace-scheduler",
 ]
@@ -57,7 +54,6 @@ agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" 
 agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
 agent-semantic-runtime-observability = { path = "crates/agent-semantic-runtime-observability" }
 agent-semantic-runtime-process-observation = { path = "crates/agent-semantic-runtime-process-observation" }
-agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 jsonschema = { version = "0.48.1", default-features = false }
 referencing = "0.48.1"
 aho-corasick = "1.1.5"
@@ -122,6 +118,7 @@ sha2 = "0.10"
 streaming-iterator = "0.1"
 syn = "2"
 tantivy = "0.26.1"
+tantivy-query-grammar = "0.26.0"
 toml = "0.9"
 tree-sitter = "0.26"
 tree-sitter-tsquery = "0.8.0"
@@ -176,12 +173,6 @@ opt-level = 2
 [profile.dev.package.agent-semantic-config]
 opt-level = 2
 
-[profile.dev.package.agent-semantic-shell-parser]
-opt-level = 2
-
-[profile.dev.package.agent-semantic-hook]
-opt-level = 2
-
 [profile.dev.package.agent-semantic-client]
 opt-level = 1
 codegen-units = 16
@@ -194,17 +185,8 @@ codegen-units = 16
 debug = 0
 incremental = true
 
-# Hook microsecond SLO tests must execute representative optimized policy code;
-# an unoptimized test artifact turns allocator/decoder debug overhead into a
-# false production regression. The black-box limits remain unchanged.
-[profile.test.package.agent-semantic-hook]
-opt-level = 2
-
 [profile.test.package.agent-semantic-client]
 opt-level = 2
-# The Client now owns the broad CLI composition surface. It must not inherit
-# the removed Protocol crate's single-unit test linkage, which serialized every
-# Hook composition fixture behind a 160MB binary link.
 codegen-units = 16
 
 [profile.dev-build]

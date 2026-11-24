@@ -42,12 +42,6 @@ impl RuntimeServerRuntimeBuilder {
         Self { builder }
     }
 
-    pub fn new_hook_client() -> Self {
-        let mut builder = tokio::runtime::Builder::new_current_thread();
-        builder.thread_name("asp-hook-client");
-        Self { builder }
-    }
-
     pub fn new_daemon() -> Self {
         let worker_count = adaptive_tokio_worker_count();
         let mut builder = tokio::runtime::Builder::new_multi_thread();

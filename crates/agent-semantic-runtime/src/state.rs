@@ -16,9 +16,6 @@ pub struct WorkspaceRuntimePaths {
     pub identity_basis: String,
     pub persistence: crate::state_core::RepoPersistence,
     pub protocol_home: PathBuf,
-    pub hook_cache_dir: PathBuf,
-    pub hook_state_dir: PathBuf,
-    pub activation_path: PathBuf,
     pub client_cache_dir: PathBuf,
     pub client_cache_manifest_path: PathBuf,
     pub client_db_dir: PathBuf,
@@ -34,9 +31,6 @@ pub struct WorkspaceRuntimePaths {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectRuntimeState {
     pub protocol_home: PathBuf,
-    pub hook_cache_dir: PathBuf,
-    pub hook_state_dir: PathBuf,
-    pub activation_path: PathBuf,
     pub client_cache_dir: PathBuf,
     pub artifacts_dir: PathBuf,
     pub runtime_home: PathBuf,
@@ -85,10 +79,6 @@ fn project_state_paths_from_resolved(
     let workspace = resolved
         .workspace_state_paths()
         .expect("resolved workspace identity always maps to canonical State Home paths");
-    let hook_dir = workspace.hook_root();
-    let hook_cache_dir = hook_dir.join("cache");
-    let hook_state_dir = hook_dir.join("state");
-    let activation_path = hook_state_dir.join("activation.json");
     let client_cache_dir = workspace.root.clone();
     let client_db_dir = workspace.root.clone();
     let client_db_path = workspace.facts.clone();
@@ -105,9 +95,6 @@ fn project_state_paths_from_resolved(
         identity_basis: resolved.repo.identity_basis.clone(),
         persistence: resolved.repo.persistence,
         protocol_home,
-        hook_cache_dir,
-        hook_state_dir,
-        activation_path,
         client_cache_dir,
         client_cache_manifest_path: workspace.cache_manifest_path(),
         client_db_dir,
@@ -163,8 +150,6 @@ fn materialize_project_runtime_state(
     paths: WorkspaceRuntimePaths,
 ) -> Result<ProjectRuntimeState, String> {
     let protocol_home = ensure_dir(paths.protocol_home)?;
-    let hook_cache_dir = ensure_dir(paths.hook_cache_dir)?;
-    let hook_state_dir = ensure_dir(paths.hook_state_dir)?;
     let client_cache_dir = ensure_dir(paths.client_cache_dir)?;
     let artifacts_dir = ensure_dir(paths.artifacts_dir)?;
     let runtime_home = ensure_dir(paths.runtime_home)?;
@@ -173,9 +158,6 @@ fn materialize_project_runtime_state(
 
     Ok(ProjectRuntimeState {
         protocol_home,
-        hook_cache_dir,
-        hook_state_dir,
-        activation_path: paths.activation_path,
         client_cache_dir,
         artifacts_dir,
         runtime_home,
@@ -188,65 +170,6 @@ fn materialize_project_runtime_state(
 /// Resolve the State Core home used by this project identity.
 pub fn project_protocol_home_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_state_paths(project_root)?.protocol_home)
-}
-
-/// Resolve the managed hook activation path.
-pub fn project_activation_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    Ok(project_state_paths(project_root)?.activation_path)
-}
-
-/// Resolve the managed hook activation path if it already exists.
-pub fn discover_project_activation_path(project_root: impl AsRef<Path>) -> Option<PathBuf> {
-    project_activation_path(project_root)
-        .ok()
-        .filter(|path| path.exists())
-}
-
-/// Return whether a path names an activation artifact.
-pub fn is_project_activation_path(path: impl AsRef<Path>) -> bool {
-    path.as_ref().file_name().and_then(|name| name.to_str()) == Some("activation.json")
-}
-
-/// Return the project root represented by an activation path when it is embedded
-/// in the global State Core workspace layout.
-pub fn project_root_for_activation_path(path: impl AsRef<Path>) -> Option<PathBuf> {
-    let path = path.as_ref();
-    if !is_project_activation_path(path) {
-        return None;
-    }
-    project_root_for_state_activation_path(path)
-}
-
-fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
-    let state_dir = path.parent()?;
-    if state_dir.file_name().and_then(|name| name.to_str()) != Some("state") {
-        return None;
-    }
-    let hooks_dir = state_dir.parent()?;
-    if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
-        return None;
-    }
-    let observations_dir = hooks_dir.parent()?;
-    if observations_dir.file_name().and_then(|name| name.to_str()) != Some("observations") {
-        return None;
-    }
-    let binding_path = observations_dir.join(agent_semantic_artifacts::WORKSPACE_BINDING_FILE);
-    let binding = serde_json::from_slice::<agent_semantic_artifacts::ProjectBinding>(
-        &std::fs::read(binding_path).ok()?,
-    )
-    .ok()?;
-    binding.validate().ok()?;
-    Some(binding.workspace.canonical_root)
-}
-
-/// Resolve and create the managed hook activation directory.
-pub fn ensure_project_hook_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    ensure_dir(project_state_paths(project_root)?.hook_cache_dir)
-}
-
-/// Resolve and create the managed hook event-state directory.
-pub fn ensure_project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    ensure_dir(project_state_paths(project_root)?.hook_state_dir)
 }
 
 /// Resolve and create the client cache directory.
