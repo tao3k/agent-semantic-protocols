@@ -34,11 +34,16 @@ mod lexical_accelerator;
 mod lexical_generation_plan;
 mod lexical_overlay;
 pub mod marlin_engine;
+pub mod marlin_playbook_executor;
 pub mod marlin_storage_port;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
+pub use marlin_playbook_executor::{
+    ConvergedLineMatch, ConvergedSearchExecutionError, ConvergedSearchExecutionReport,
+    ConvergedSearchHit, execute_admitted_playbook,
+};
 pub use marlin_storage_port::{
     InMemorySearchStoragePort, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
     SearchGenerationDigest, SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest,

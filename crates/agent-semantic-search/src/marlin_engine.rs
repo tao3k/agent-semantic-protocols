@@ -10,6 +10,7 @@
 //!
 //! This facade embeds neither `orgize` FFI nor a second Turso database engine.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use agent_semantic_search_playbook::{
@@ -23,10 +24,11 @@ use agent_semantic_topology::{
 };
 
 use crate::{
-    GraphOwnerRankReport, GraphOwnerRankRequest, SearchArtifactBlob, SearchArtifactHash,
-    SearchEngineStoragePort, SearchGenerationDigest, SearchGenerationPointerRecord,
-    SearchGenerationPointerSwapRequest, SearchPointerKey, SearchProjectId, SearchStoragePortError,
-    SearchTopologyEdgeRecord, SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest,
+    ConvergedSearchExecutionError, ConvergedSearchExecutionReport, GraphOwnerRankReport,
+    GraphOwnerRankRequest, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
+    SearchGenerationDigest, SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest,
+    SearchPointerKey, SearchProjectId, SearchStoragePortError, SearchTopologyEdgeRecord,
+    SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest, execute_admitted_playbook,
     rank_graph_owner_report, rank_source_index_report,
 };
 
@@ -195,5 +197,46 @@ impl MarlinConvergedSearchEngine {
     #[must_use]
     pub fn rank_source_index(&self, request: SourceIndexRankRequest) -> SourceIndexRankReport {
         rank_source_index_report(request)
+    }
+
+    /// Execute an admitted multi-axis Search Playbook purely in-process over
+    /// `workspace_root`, returning a generation-bound deterministic report.
+    pub fn execute_admitted_playbook(
+        &self,
+        workspace_root: &Path,
+        request: &ProgressiveSearchPlaybookRequest,
+    ) -> Result<ConvergedSearchExecutionReport, ConvergedSearchExecutionError> {
+        execute_admitted_playbook(workspace_root, request)
+    }
+
+    /// Execute an admitted Search Playbook and atomically publish its canonical
+    /// JSON artifact into Marlin's unified `SearchEngineStoragePort` via CAS.
+    pub fn execute_and_publish_playbook(
+        &self,
+        project_id: SearchProjectId,
+        workspace_id: SearchWorkspaceId,
+        workspace_root: &Path,
+        expected_hash: Option<&SearchArtifactHash>,
+        request: &ProgressiveSearchPlaybookRequest,
+    ) -> Result<
+        (
+            ConvergedSearchExecutionReport,
+            SearchGenerationPointerRecord,
+        ),
+        ConvergedSearchExecutionError,
+    > {
+        let report = self.execute_admitted_playbook(workspace_root, request)?;
+        let body = serde_json::to_vec(&report).map_err(|err| {
+            ConvergedSearchExecutionError::Storage(SearchStoragePortError::Backend(err.to_string()))
+        })?;
+        let pointer = self.publish_generation_artifact(
+            project_id,
+            workspace_id,
+            expected_hash,
+            report.generation_digest.clone(),
+            "application/vnd.asp.converged-search-report.v1+json",
+            body,
+        )?;
+        Ok((report, pointer))
     }
 }

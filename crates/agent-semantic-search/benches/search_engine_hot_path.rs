@@ -267,6 +267,45 @@ fn bench_query_analysis_hot_path(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_real_corpus_playbook_execution(c: &mut Criterion) {
+    let engine = MarlinConvergedSearchEngine::new(
+        Arc::new(BenchOrgPort),
+        Arc::new(InMemorySearchStoragePort::new()),
+    );
+    let corpus_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../agent-semantic-search-playbook/src");
+    let plan = SearchPlaybookPlanInput {
+        workspace: Some("asp-real-corpus".to_owned()),
+        languages: vec!["rust".to_owned()],
+        documents: Vec::new(),
+        composition: SearchPlaybookComposition::Intersect(vec![
+            SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(vec![
+                "-n".to_owned(),
+                "admit_search_playbook_plan".to_owned(),
+            ])),
+            SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Tantivy(vec![
+                "title:\"playbook\"^2 OR body:admit_search_playbook_plan".to_owned(),
+            ])),
+        ]),
+    };
+    let admitted = engine
+        .admit_search_plan(plan)
+        .expect("admit real corpus plan");
+
+    let mut group = c.benchmark_group("asp_real_corpus_playbook_execution");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("execute_multi_axis_over_real_rust_corpus", |bencher| {
+        bencher.iter(|| {
+            let report = engine
+                .execute_admitted_playbook(black_box(&corpus_root), black_box(&admitted))
+                .expect("execute playbook over real corpus");
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+    group.finish();
+}
+
 fn benchmark_config() -> Criterion {
     Criterion::default()
         .warm_up_time(Duration::from_millis(500))
@@ -281,6 +320,7 @@ criterion_group! {
         bench_source_index_rank,
         bench_playbook_admission,
         bench_generation_cas_and_edges,
-        bench_query_analysis_hot_path
+        bench_query_analysis_hot_path,
+        bench_real_corpus_playbook_execution
 }
 criterion_main!(benches);

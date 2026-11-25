@@ -320,3 +320,67 @@ fn stateful_reference_model_holds_across_12000_randomized_transitions() {
         run_seed(seed);
     }
 }
+
+#[test]
+fn pure_rust_playbook_executor_searches_multilang_workspace_and_publishes_cas_artifact() {
+    let dir = tempfile::TempDir::new().expect("temp workspace");
+    std::fs::create_dir_all(dir.path().join("crates/search/src")).expect("mkdir rust");
+    std::fs::create_dir_all(dir.path().join("docs")).expect("mkdir docs");
+    std::fs::write(
+        dir.path().join("crates/search/src/engine.rs"),
+        "pub fn execute_converged_query() -> &'static str { \"marlin-search-engine\" }\n",
+    )
+    .expect("write rust file");
+    std::fs::write(
+        dir.path().join("crates/search/src/unrelated.py"),
+        "def other():\n    return 'ignored'\n",
+    )
+    .expect("write py file");
+    std::fs::write(
+        dir.path().join("docs/architecture.org"),
+        "* Search Engine\nexecute_converged_query runs in-process\n",
+    )
+    .expect("write org file");
+
+    let engine = MarlinConvergedSearchEngine::new(
+        Arc::new(DeterministicOrgPort),
+        Arc::new(InMemorySearchStoragePort::new()),
+    );
+    let plan = SearchPlaybookPlanInput {
+        workspace: Some("marlin-live".to_owned()),
+        languages: vec!["rust".to_owned()],
+        documents: vec!["org".to_owned()],
+        composition: SearchPlaybookComposition::Intersect(vec![
+            SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(vec![
+                "-n".to_owned(),
+                "execute_converged_query".to_owned(),
+            ])),
+            SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Tantivy(vec![
+                "title:\"Search Engine\"^2 OR body:execute_converged_query".to_owned(),
+            ])),
+        ]),
+    };
+    let admitted = engine.admit_search_plan(plan).expect("admit plan");
+
+    let proj = project_id(0);
+    let ws = workspace_id(0);
+    let (report, pointer) = engine
+        .execute_and_publish_playbook(proj.clone(), ws.clone(), dir.path(), None, &admitted)
+        .expect("execute and publish playbook");
+
+    assert_eq!(report.execution_mode, "pure-rust-in-process");
+    assert_eq!(report.scanned_files, 2);
+    assert_eq!(report.matched_files, 2);
+    assert_eq!(pointer.revision, 1);
+    assert_eq!(pointer.generation_digest, report.generation_digest);
+
+    let (loaded_ptr, loaded_blob) = engine
+        .load_active_generation_artifact(&proj, &ws)
+        .expect("load active")
+        .expect("present");
+    assert_eq!(loaded_ptr, pointer);
+    loaded_blob.verify_digest().expect("verified BLAKE3 blob");
+    let decoded: agent_semantic_search::ConvergedSearchExecutionReport =
+        serde_json::from_slice(&loaded_blob.body).expect("decode report artifact");
+    assert_eq!(decoded, report);
+}
