@@ -28,8 +28,9 @@ use crate::{
     GraphOwnerRankRequest, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
     SearchGenerationDigest, SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest,
     SearchPointerKey, SearchProjectId, SearchStoragePortError, SearchTopologyEdgeRecord,
-    SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest, execute_admitted_playbook,
-    rank_graph_owner_report, rank_source_index_report,
+    SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest, WorkspaceSearchIndex,
+    execute_admitted_playbook, execute_admitted_playbook_with_index, rank_graph_owner_report,
+    rank_source_index_report,
 };
 
 /// Default CAS pointer key for one workspace's active search generation.
@@ -207,6 +208,16 @@ impl MarlinConvergedSearchEngine {
         request: &ProgressiveSearchPlaybookRequest,
     ) -> Result<ConvergedSearchExecutionReport, ConvergedSearchExecutionError> {
         execute_admitted_playbook(workspace_root, request)
+    }
+
+    /// Execute an admitted multi-axis Search Playbook directly against a warm
+    /// resident [`WorkspaceSearchIndex`] (zero disk walks, full HIR trigram pruning).
+    pub fn execute_admitted_playbook_with_index(
+        &self,
+        index: &WorkspaceSearchIndex,
+        request: &ProgressiveSearchPlaybookRequest,
+    ) -> Result<ConvergedSearchExecutionReport, ConvergedSearchExecutionError> {
+        execute_admitted_playbook_with_index(index, request)
     }
 
     /// Execute an admitted Search Playbook and atomically publish its canonical

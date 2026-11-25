@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! High-performance sub-millisecond converged 4-axis resident workspace search engine,
-//! upgraded with `microsoft/tgrep`-grade indexing and query planning.
+//! High-performance sub-millisecond converged 4-axis resident workspace search engine
+//! with compact 6-byte trigram postings, HIR boolean query planning, zero-copy `mmap`
+//! snapshots, and incremental delta updates.
 
 use super::{build, query};
 
@@ -122,6 +123,8 @@ pub(super) struct IndexedFile {
     pub(super) ext: String,
     pub(super) language: Option<&'static str>,
     pub(super) content_hash: [u8; 32],
+    pub(super) disk_len: Option<u64>,
+    pub(super) disk_mtime_nanos: Option<u128>,
     pub(super) body: String,
     pub(super) body_lower: Vec<u8>,
     pub(super) line_offsets: Vec<u32>,
@@ -221,6 +224,36 @@ impl WorkspaceSearchIndex {
         ))
     }
 
+    /// Open a cached zero-copy `mmap` snapshot from `snapshot_path` if present and
+    /// valid, incrementally syncing any files modified on disk since the snapshot
+    /// was written. Falls back to building from disk and saving a fresh snapshot.
+    #[must_use]
+    pub fn open_or_build_cached(
+        root: &Path,
+        snapshot_path: &Path,
+        config: WorkspaceIndexConfig,
+    ) -> Self {
+        if snapshot_path.is_file()
+            && let Ok(mut idx) =
+                Self::load_mmap_snapshot(root.to_path_buf(), snapshot_path, config.clone())
+        {
+            let receipt = idx.sync_workspace_from_disk();
+            if receipt.upserted_files > 0 || receipt.deleted_files > 0 {
+                let _ = idx.save_snapshot(snapshot_path);
+            }
+            return idx;
+        }
+        let idx = Self::build_with_config(root, config);
+        let _ = idx.save_snapshot(snapshot_path);
+        idx
+    }
+
+    /// Incrementally synchronize this resident index against the current files on
+    /// disk under [`Self::root`], updating only added, modified, or deleted paths.
+    pub fn sync_workspace_from_disk(&mut self) -> WorkspaceDeltaReceipt {
+        build::sync_workspace_from_disk(self)
+    }
+
     /// Apply incremental file-level upserts and deletes without rebuilding the full index.
     pub fn apply_file_delta(&mut self, delta: WorkspaceFileDelta) -> WorkspaceDeltaReceipt {
         build::apply_file_delta(self, delta)
@@ -279,7 +312,7 @@ impl WorkspaceSearchIndex {
         &self.generation_digest
     }
 
-    /// Execute a sub-millisecond converged query across resident `tgrep`-grade `rg`,
+    /// Execute a sub-millisecond converged query across resident `rg`,
     /// ASP `FileLocatorIndex`, fuzzy path matching, and in-RAM Tantivy BM25/Fuzzy.
     #[must_use]
     pub fn query(&self, query_req: &WorkspaceSearchQuery<'_>) -> WorkspaceSearchReport {
@@ -293,6 +326,28 @@ impl WorkspaceSearchIndex {
         let plan = compile_regex_trigram_query(expr, smart_case_insensitive);
         let candidates = self.trigrams.evaluate_query(&plan, &self.tombstones);
         (plan, candidates)
+    }
+
+    /// Evaluate a conjunctive list of compiled [`TrigramQuery`] plans over live files.
+    #[must_use]
+    pub(crate) fn evaluate_trigram_plans(&self, plans: &[TrigramQuery]) -> Vec<u32> {
+        let combined = TrigramQuery::and(plans.to_vec());
+        self.trigrams.evaluate_query(&combined, &self.tombstones)
+    }
+
+    /// Borrow one live indexed file's metadata and body directly from RAM.
+    #[must_use]
+    pub(crate) fn live_file_view(&self, file_id: u32) -> Option<(&str, &str, Option<&str>, &str)> {
+        if self.is_tombstoned(file_id) {
+            return None;
+        }
+        let file = self.files.get(file_id as usize)?;
+        Some((
+            file.relative_path.as_str(),
+            file.ext.as_str(),
+            file.language,
+            file.body.as_str(),
+        ))
     }
 
     #[inline]

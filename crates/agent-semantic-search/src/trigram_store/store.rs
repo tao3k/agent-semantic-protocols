@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Compact `microsoft/tgrep`-inspired trigram posting store with 6-byte postings
+//! Compact trigram posting store with 6-byte postings
 //! (`file_id + loc_mask + next_mask`), flat contiguous arena + sorted lookup table,
 //! zero-copy `mmap` snapshot backing, and incremental delta overlay.
 
@@ -18,7 +18,7 @@ use super::snapshot::{
     self, LOOKUP_RECORD_BYTES, POSTING_RECORD_BYTES, SnapshotFileRecord, TrigramSnapshotError,
 };
 
-/// One compact 6-byte posting record modeled after `microsoft/tgrep`'s `index.bin`.
+/// One compact 6-byte posting record (`file_id` + `loc_mask` + `next_mask`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TrigramPosting {
     pub file_id: u32,
@@ -50,7 +50,7 @@ impl TrigramPosting {
     }
 }
 
-/// One 16-byte sorted directory entry modeled after `microsoft/tgrep`'s `lookup.bin`.
+/// One 16-byte sorted trigram directory entry (`trigram` + `offset` + `len`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TrigramLookupEntry {
     pub trigram: u32,

@@ -24,7 +24,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     SearchGenerationDigest, SearchStoragePortError, SourceIndexRankCandidate,
-    SourceIndexRankRequest, rank_source_index_report,
+    SourceIndexRankRequest, TrigramQuery, WorkspaceSearchIndex, compile_regex_trigram_query,
+    rank_source_index_report,
 };
 
 const MAX_LINE_MATCHES_PER_FILE: usize = 8;
@@ -99,6 +100,7 @@ struct CompiledTopologyFilter {
 
 struct CompiledRgClause {
     matchers: Vec<Regex>,
+    trigram_plan: TrigramQuery,
 }
 
 struct CompiledTantivyClause {
@@ -149,6 +151,72 @@ pub fn execute_admitted_playbook(
         generation_digest,
         execution_mode: "pure-rust-in-process".to_owned(),
         scanned_files: scanned.len(),
+        matched_files: ranked_hits.len(),
+        admitted_axes,
+        hits: ranked_hits,
+    })
+}
+
+/// Execute an admitted multi-axis Search Playbook directly against a resident
+/// [`WorkspaceSearchIndex`] (zero disk I/O, full HIR trigram query pruning).
+pub fn execute_admitted_playbook_with_index(
+    index: &WorkspaceSearchIndex,
+    request: &ProgressiveSearchPlaybookRequest,
+) -> Result<ConvergedSearchExecutionReport, ConvergedSearchExecutionError> {
+    let allowed_extensions = allowed_extensions_from_request(request);
+    let topology_filters = compile_topology_filters(&request.topology)?;
+    let rg_clauses = compile_rg_clauses(&request.rg)?;
+    let tantivy_clauses = compile_tantivy_clauses(&request.tantivy);
+    let admitted_axes = collect_admitted_axes(request);
+    let query_hint = build_rank_query_hint(&rg_clauses, &tantivy_clauses, request);
+
+    let plans: Vec<TrigramQuery> = rg_clauses.iter().map(|c| c.trigram_plan.clone()).collect();
+    let candidate_ids = index.evaluate_trigram_plans(&plans);
+
+    let mut scanned_files = 0usize;
+    let mut candidate_hits = Vec::new();
+    for file_id in candidate_ids {
+        let Some((rel_path, ext, lang, body)) = index.live_file_view(file_id) else {
+            continue;
+        };
+        if !matches_topology_filters(rel_path, &topology_filters) {
+            continue;
+        }
+        if let Some(allowed) = &allowed_extensions
+            && !allowed.contains(ext)
+        {
+            continue;
+        }
+        scanned_files += 1;
+        let view = ScannedFile {
+            relative_path: rel_path.to_owned(),
+            language: lang
+                .map(|l| {
+                    if l == "scheme" {
+                        "gerbil-scheme".to_owned()
+                    } else {
+                        l.to_owned()
+                    }
+                })
+                .or_else(|| infer_language_from_extension(ext)),
+            content_hash: String::new(),
+            body: body.to_owned(),
+        };
+        if let Some(hit) = evaluate_file(
+            &view,
+            &rg_clauses,
+            &tantivy_clauses,
+            !topology_filters.is_empty(),
+        ) {
+            candidate_hits.push(hit);
+        }
+    }
+
+    let ranked_hits = rank_converged_hits(candidate_hits, &query_hint);
+    Ok(ConvergedSearchExecutionReport {
+        generation_digest: index.generation_digest().clone(),
+        execution_mode: "pure-rust-resident-index".to_owned(),
+        scanned_files,
         matched_files: ranked_hits.len(),
         admitted_axes,
         hits: ranked_hits,
@@ -283,6 +351,7 @@ fn compile_rg_clauses(
                 .iter()
                 .any(|opt| opt.option == "-F" || opt.option == "--fixed-strings");
             let mut matchers = Vec::with_capacity(analysis.patterns.len());
+            let mut branch_plans = Vec::with_capacity(analysis.patterns.len());
             for pattern in &analysis.patterns {
                 let source = if fixed_strings {
                     regex::escape(&pattern.value)
@@ -295,9 +364,18 @@ fn compile_rg_clauses(
                     .map_err(|err| {
                         ConvergedSearchExecutionError::InvalidPattern(err.to_string())
                     })?;
+                branch_plans.push(compile_regex_trigram_query(&source, ignore_case));
                 matchers.push(regex);
             }
-            Ok(CompiledRgClause { matchers })
+            let trigram_plan = if branch_plans.is_empty() {
+                TrigramQuery::All
+            } else {
+                TrigramQuery::or(branch_plans)
+            };
+            Ok(CompiledRgClause {
+                matchers,
+                trigram_plan,
+            })
         })
         .collect()
 }

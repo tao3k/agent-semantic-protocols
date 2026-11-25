@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! High-performance sub-millisecond converged 4-axis resident workspace search engine,
-//! upgraded with `microsoft/tgrep`-grade indexing and query planning.
+//! High-performance sub-millisecond converged 4-axis resident workspace search engine
+//! with compact 6-byte trigram postings, HIR boolean query planning, zero-copy `mmap`
+//! snapshots, and incremental delta updates.
 
 mod build;
 mod index;

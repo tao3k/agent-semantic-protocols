@@ -393,7 +393,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("tgrep_hir_alternation_regex", |bencher| {
+    group.bench_function("hir_alternation_regex", |bencher| {
         let query = WorkspaceSearchQuery {
             pattern: "re:(WorkspaceSearchIndex|FileLocatorIndex|TantivyRamEngine)",
             languages: &rust_lang,
@@ -411,7 +411,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
     });
 
     let snap_dir = tempfile::tempdir().expect("bench tempdir");
-    let snap_path = snap_dir.path().join("asp.tgrep.bin");
+    let snap_path = snap_dir.path().join("asp.index.bin");
     index
         .save_snapshot(&snap_path)
         .expect("save bench snapshot");
@@ -425,7 +425,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
     )
     .expect("load mmap bench snapshot");
 
-    group.bench_function("tgrep_mmap_backed_alternation_query", |bencher| {
+    group.bench_function("mmap_backed_alternation_query", |bencher| {
         let query = WorkspaceSearchQuery {
             pattern: "re:(WorkspaceSearchIndex|FileLocatorIndex|TantivyRamEngine)",
             languages: &rust_lang,
@@ -457,7 +457,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
         },
     );
     let mut counter = 0usize;
-    group.bench_function("tgrep_incremental_single_file_delta", |bencher| {
+    group.bench_function("incremental_single_file_delta", |bencher| {
         bencher.iter(|| {
             counter = counter.wrapping_add(1);
             let body =

@@ -21,9 +21,9 @@ pub const SNAPSHOT_MAGIC: &[u8; 8] = b"ASPTGRP1";
 pub const SNAPSHOT_VERSION: u32 = 1;
 /// Fixed header size in bytes (including 32-byte payload BLAKE3 digest).
 pub const SNAPSHOT_HEADER_BYTES: usize = 80;
-/// Fixed wire size of one sorted lookup entry (`tgrep` `lookup.bin` layout).
+/// Fixed wire size of one sorted trigram lookup directory record.
 pub const LOOKUP_RECORD_BYTES: usize = 16;
-/// Fixed wire size of one posting record (`tgrep` `index.bin` layout).
+/// Fixed wire size of one compact trigram posting record.
 pub const POSTING_RECORD_BYTES: usize = 6;
 
 /// Raw file record stored inside the binary snapshot's files section.

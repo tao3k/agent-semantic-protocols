@@ -689,7 +689,7 @@ fn adversarial_fuzz_mmap_and_binary_snapshot_corruption_never_panics() {
 
     // 1. Round-trip through zero-copy mmap snapshot on disk.
     let tmp = tempfile::tempdir().expect("tempdir");
-    let snap_path = tmp.path().join("workspace.tgrep.bin");
+    let snap_path = tmp.path().join("workspace.asp-index.bin");
     original.save_snapshot(&snap_path).expect("save snapshot");
     let mmap_index = WorkspaceSearchIndex::load_mmap_snapshot(
         PathBuf::from("/virtual/snap"),
@@ -805,4 +805,81 @@ fn adversarial_fuzz_mmap_and_binary_snapshot_corruption_never_panics() {
         );
         assert!(res.is_err(), "corrupted snapshot unexpectedly succeeded");
     }
+}
+
+#[test]
+fn cached_mmap_open_and_disk_sync_plus_resident_playbook_execution() {
+    use agent_semantic_search::{
+        SearchPlaybookPlanInput, admit_search_playbook_plan, execute_admitted_playbook,
+        execute_admitted_playbook_with_index,
+    };
+    use agent_semantic_search_playbook::{SearchPlaybookComposition, SearchPlaybookLeaf};
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let ws = tmp.path().join("workspace");
+    let snap = tmp.path().join("cache/workspace.asp-index.bin");
+    std::fs::create_dir_all(ws.join("src")).expect("create src");
+    std::fs::write(
+        ws.join("src/alpha.rs"),
+        "pub fn alpha_search_kernel() -> usize { 1 }\n",
+    )
+    .expect("write alpha");
+    std::fs::write(
+        ws.join("src/beta.rs"),
+        "pub fn beta_other_helper() -> usize { 2 }\n",
+    )
+    .expect("write beta");
+
+    let cfg = WorkspaceIndexConfig::default();
+    // 1. Cold open builds and saves snapshot.
+    let cold = WorkspaceSearchIndex::open_or_build_cached(&ws, &snap, cfg.clone());
+    assert!(snap.is_file());
+    assert_eq!(cold.file_count(), 2);
+
+    // 2. Warm open maps zero-copy snapshot with identical digest.
+    let mut warm = WorkspaceSearchIndex::open_or_build_cached(&ws, &snap, cfg.clone());
+    assert!(warm.is_mmap_backed());
+    assert_eq!(warm.generation_digest(), cold.generation_digest());
+
+    // 3. Mutate workspace on disk (modify alpha, add gamma, delete beta) and sync incrementally.
+    std::fs::write(
+        ws.join("src/alpha.rs"),
+        "pub fn alpha_search_kernel_v2() -> usize { 42 }\n",
+    )
+    .expect("update alpha");
+    std::fs::write(
+        ws.join("src/gamma.rs"),
+        "pub fn gamma_resident_engine() -> usize { 7 }\n",
+    )
+    .expect("write gamma");
+    std::fs::remove_file(ws.join("src/beta.rs")).expect("remove beta");
+
+    let receipt = warm.sync_workspace_from_disk();
+    assert_eq!(receipt.upserted_files, 2);
+    assert_eq!(receipt.deleted_files, 1);
+    assert_eq!(receipt.live_files, 2);
+
+    let fresh = WorkspaceSearchIndex::build_with_config(&ws, cfg);
+    assert_eq!(warm.generation_digest(), fresh.generation_digest());
+
+    // 4. Verify `execute_admitted_playbook_with_index` matches cold `execute_admitted_playbook`.
+    let plan = SearchPlaybookPlanInput {
+        workspace: Some("virtual-ws".to_owned()),
+        languages: vec!["rust".to_owned()],
+        documents: Vec::new(),
+        composition: SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(vec![
+            "-n".to_owned(),
+            "(alpha_search_kernel_v2|gamma_resident_engine)".to_owned(),
+        ])),
+    };
+    let admitted = admit_search_playbook_plan(plan).expect("admit plan");
+    let resident_report =
+        execute_admitted_playbook_with_index(&warm, &admitted).expect("resident playbook");
+    let disk_report = execute_admitted_playbook(&ws, &admitted).expect("disk playbook");
+
+    assert_eq!(resident_report.execution_mode, "pure-rust-resident-index");
+    let res_paths: BTreeSet<String> = resident_report.hits.into_iter().map(|h| h.path).collect();
+    let disk_paths: BTreeSet<String> = disk_report.hits.into_iter().map(|h| h.path).collect();
+    assert_eq!(res_paths, disk_paths);
+    assert_eq!(res_paths.len(), 2);
 }

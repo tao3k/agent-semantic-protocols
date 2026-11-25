@@ -62,7 +62,7 @@ jobs:
           cache-on-failure: true
 
       - name: Sync core external providers from providers.toml
-        if: ${{ matrix.package == 'agent-semantic-schema-manager' }}
+        if: ${{ matrix.package == 'agent-semantic-schema-manager' || matrix.package == 'agent-semantic-tree-sitter' }}
         run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Prepare the declared MRR search owner

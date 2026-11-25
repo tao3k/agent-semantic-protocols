@@ -25,11 +25,14 @@ fn input(
     OWNER.get_or_init(|| {
         let executable = std::env::current_exe().unwrap();
         let owner = executable
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("mrr-native-worker");
+            .ancestors()
+            .skip(1)
+            .map(|dir| dir.join("mrr-native-worker"))
+            .find(|candidate| candidate.is_file())
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../target/debug/mrr-native-worker")
+            });
         super::configure_data_search_execution(&owner).expect("explicit producer fixture");
     });
     DataSearchCompositionInput {

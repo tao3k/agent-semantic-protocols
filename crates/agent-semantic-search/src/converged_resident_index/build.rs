@@ -6,11 +6,11 @@
 //! and compaction for [`super::WorkspaceSearchIndex`].
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 
 use ignore::WalkBuilder;
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::SearchGenerationDigest;
 use crate::file_locator::FileLocatorIndex;
@@ -36,7 +36,14 @@ pub(super) fn build_from_disk(root: &Path, config: WorkspaceIndexConfig) -> Work
     let entries = collect_workspace_entries(root, &config);
     let records: Vec<BuiltFileRecord> = entries
         .into_par_iter()
-        .filter_map(|(abs_path, rel_path)| build_file_record_from_disk(&abs_path, rel_path))
+        .filter_map(|entry| {
+            build_file_record_from_disk(
+                &entry.abs_path,
+                entry.relative_path,
+                Some(entry.len),
+                entry.mtime_nanos,
+            )
+        })
         .collect();
     assemble_index(root.to_path_buf(), config, records, started)
 }
@@ -107,6 +114,8 @@ pub(super) fn assemble_from_snapshot(
             ext,
             language,
             content_hash: rec.content_hash,
+            disk_len: None,
+            disk_mtime_nanos: None,
             body: rec.body,
             body_lower,
             line_offsets,
@@ -407,7 +416,135 @@ fn finish_index_assembly(
     }
 }
 
-fn collect_workspace_entries(root: &Path, config: &WorkspaceIndexConfig) -> Vec<(PathBuf, String)> {
+struct DiskWorkspaceEntry {
+    abs_path: PathBuf,
+    relative_path: String,
+    len: u64,
+    mtime_nanos: Option<u128>,
+}
+
+enum SyncCheckOutcome {
+    Unchanged {
+        file_id: u32,
+        len: u64,
+        mtime_nanos: Option<u128>,
+    },
+    Upsert {
+        relative_path: String,
+        bytes: Vec<u8>,
+        len: u64,
+        mtime_nanos: Option<u128>,
+    },
+}
+
+pub(super) fn sync_workspace_from_disk(index: &mut WorkspaceSearchIndex) -> WorkspaceDeltaReceipt {
+    let started = Instant::now();
+    let entries = collect_workspace_entries(&index.root, &index.config);
+    let disk_paths: FxHashSet<String> = entries.iter().map(|e| e.relative_path.clone()).collect();
+
+    let deletes: Vec<String> = index
+        .path_to_id
+        .keys()
+        .filter(|path| !disk_paths.contains(*path))
+        .cloned()
+        .collect();
+
+    // Partition entries into stat-unchanged (zero I/O) vs candidates needing hash check.
+    type SyncReadCandidate = (DiskWorkspaceEntry, Option<(u32, [u8; 32])>);
+    let mut needs_read: Vec<SyncReadCandidate> = Vec::new();
+    for entry in entries {
+        if let Some(&fid) = index.path_to_id.get(&entry.relative_path)
+            && !index.is_tombstoned(fid)
+            && let Some(existing) = index.files.get(fid as usize)
+        {
+            if existing.disk_len == Some(entry.len)
+                && existing.disk_mtime_nanos.is_some()
+                && existing.disk_mtime_nanos == entry.mtime_nanos
+            {
+                continue;
+            }
+            needs_read.push((entry, Some((fid, existing.content_hash))));
+        } else {
+            needs_read.push((entry, None));
+        }
+    }
+
+    let outcomes: Vec<SyncCheckOutcome> = needs_read
+        .into_par_iter()
+        .filter_map(|(entry, existing)| {
+            let bytes = std::fs::read(&entry.abs_path).ok()?;
+            if let Some((file_id, prev_hash)) = existing
+                && *blake3::hash(&bytes).as_bytes() == prev_hash
+            {
+                return Some(SyncCheckOutcome::Unchanged {
+                    file_id,
+                    len: entry.len,
+                    mtime_nanos: entry.mtime_nanos,
+                });
+            }
+            Some(SyncCheckOutcome::Upsert {
+                relative_path: entry.relative_path,
+                bytes,
+                len: entry.len,
+                mtime_nanos: entry.mtime_nanos,
+            })
+        })
+        .collect();
+
+    let mut upserts: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut stat_updates: Vec<(String, u64, Option<u128>)> = Vec::new();
+    for outcome in outcomes {
+        match outcome {
+            SyncCheckOutcome::Unchanged {
+                file_id,
+                len,
+                mtime_nanos,
+            } => {
+                if let Some(file) = index.files.get_mut(file_id as usize) {
+                    file.disk_len = Some(len);
+                    file.disk_mtime_nanos = mtime_nanos;
+                }
+            }
+            SyncCheckOutcome::Upsert {
+                relative_path,
+                bytes,
+                len,
+                mtime_nanos,
+            } => {
+                stat_updates.push((relative_path.clone(), len, mtime_nanos));
+                upserts.push((relative_path, bytes));
+            }
+        }
+    }
+
+    if upserts.is_empty() && deletes.is_empty() {
+        return WorkspaceDeltaReceipt {
+            generation_digest: index.generation_digest.clone(),
+            upserted_files: 0,
+            deleted_files: 0,
+            live_files: index.live_file_count,
+            compacted: false,
+            elapsed_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+        };
+    }
+
+    let mut receipt = apply_file_delta(index, WorkspaceFileDelta { upserts, deletes });
+    for (rel_path, len, mtime_nanos) in stat_updates {
+        if let Some(&fid) = index.path_to_id.get(&rel_path)
+            && let Some(file) = index.files.get_mut(fid as usize)
+        {
+            file.disk_len = Some(len);
+            file.disk_mtime_nanos = mtime_nanos;
+        }
+    }
+    receipt.elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    receipt
+}
+
+fn collect_workspace_entries(
+    root: &Path,
+    config: &WorkspaceIndexConfig,
+) -> Vec<DiskWorkspaceEntry> {
     let mut entries = Vec::new();
     let skip_dirs = config.skip_dirs.clone();
     let max_file_bytes = config.max_file_bytes.max(1);
@@ -438,19 +575,38 @@ fn collect_workspace_entries(root: &Path, config: &WorkspaceIndexConfig) -> Vec<
         if meta.len() == 0 || meta.len() > max_file_bytes {
             continue;
         }
+        let mtime_nanos = meta
+            .modified()
+            .ok()
+            .and_then(|ts| ts.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos());
+        let len = meta.len();
         let path = entry.into_path();
         let Ok(rel) = path.strip_prefix(root) else {
             continue;
         };
         let rel_path = rel.to_string_lossy().replace('\\', "/");
-        entries.push((path, rel_path));
+        entries.push(DiskWorkspaceEntry {
+            abs_path: path,
+            relative_path: rel_path,
+            len,
+            mtime_nanos,
+        });
     }
     entries
 }
 
-fn build_file_record_from_disk(abs_path: &Path, relative_path: String) -> Option<BuiltFileRecord> {
+fn build_file_record_from_disk(
+    abs_path: &Path,
+    relative_path: String,
+    disk_len: Option<u64>,
+    disk_mtime_nanos: Option<u128>,
+) -> Option<BuiltFileRecord> {
     let bytes = std::fs::read(abs_path).ok()?;
-    build_file_record_from_bytes(relative_path, bytes)
+    let mut rec = build_file_record_from_bytes(relative_path, bytes)?;
+    rec.file.disk_len = disk_len;
+    rec.file.disk_mtime_nanos = disk_mtime_nanos;
+    Some(rec)
 }
 
 fn build_file_record_from_bytes(relative_path: String, bytes: Vec<u8>) -> Option<BuiltFileRecord> {
@@ -481,6 +637,8 @@ fn build_file_record_from_bytes(relative_path: String, bytes: Vec<u8>) -> Option
             ext,
             language,
             content_hash,
+            disk_len: None,
+            disk_mtime_nanos: None,
             body,
             body_lower,
             line_offsets,

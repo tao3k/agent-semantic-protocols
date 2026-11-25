@@ -53,7 +53,7 @@ pub use graph_topology_projection::{
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
 pub use marlin_playbook_executor::{
     ConvergedLineMatch, ConvergedSearchExecutionError, ConvergedSearchExecutionReport,
-    ConvergedSearchHit, execute_admitted_playbook,
+    ConvergedSearchHit, execute_admitted_playbook, execute_admitted_playbook_with_index,
 };
 pub use marlin_storage_port::{
     InMemorySearchStoragePort, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,

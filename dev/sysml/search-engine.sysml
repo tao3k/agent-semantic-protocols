@@ -58,9 +58,9 @@ package AspSearchEngine {
                    and `agent-semantic-mrr`. */
         }
         part providerBoundary {
-            doc /* `agent-semantic-provider-protocol` and
-                   `agent-semantic-provider-transport` owning external
-                   non-Rust language provider gRPC streaming and checked-in
+            doc /* `agent-semantic-provider-protocol`, `agent-semantic-http-json`,
+                   and `agent-semantic-provider-transport` owning external
+                   non-Rust language provider HTTP-JSON transport and checked-in
                    resolved register snapshots. */
         }
         part packageManager {
@@ -87,8 +87,12 @@ package AspSearchEngine {
         }
         part rankingAndIndexing {
             doc /* Deterministic `rank_source_index_report`,
-                   `rank_graph_owner_report`, `SortedRecordTable`,
-                   `ResidentSourceIndex`, and `Tantivy` lexical acceleration. */
+                   `rank_graph_owner_report`, `WorkspaceSearchIndex`
+                   (compact 6B `loc_mask`/`next_mask` trigram postings,
+                   `regex-syntax` HIR boolean query planner, zero-copy `mmap`
+                   snapshots, incremental `apply_file_delta` + disk sync),
+                   `FileLocatorIndex`, `execute_admitted_playbook_with_index`,
+                   and in-RAM `Tantivy` BM25/Fuzzy lexical acceleration. */
         }
         part topologyAndTreeSitter {
             doc /* Self-contained builtin `.scm` query catalog, resident syntax
@@ -96,8 +100,8 @@ package AspSearchEngine {
                    manifest/program/overlay admission. */
         }
         part providerTransport {
-            doc /* Process/gRPC boundary reserved solely for external language
-                   providers (TypeScript, Python, Julia, Gerbil Scheme). */
+            doc /* Process and HTTP-JSON boundary reserved solely for external
+                   language providers (TypeScript, Python, Julia, Gerbil Scheme). */
         }
         part providerPackageLibrary {
             doc /* Embeddable pure-Rust `providers.toml` workspace library

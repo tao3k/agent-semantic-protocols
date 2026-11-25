@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Compact `microsoft/tgrep`-inspired trigram posting store with 6-byte postings,
-//! flat contiguous arena + sorted lookup table, zero-copy `mmap` snapshot backing,
-//! and incremental delta overlay.
+//! Compact trigram posting store with 6-byte postings (`file_id`, `loc_mask`,
+//! `next_mask`), flat contiguous arena + sorted lookup table, zero-copy `mmap`
+//! snapshot backing, and incremental delta overlay.
 
 pub mod snapshot;
 mod store;

@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Russ Cox / `microsoft/tgrep`-inspired `regex-syntax` HIR to Boolean Trigram
-//! Query Plan compiler.
+//! `regex-syntax` HIR to Boolean Trigram Query Plan compiler.
 //!
 //! Compiles arbitrary regex patterns into a sound (zero-false-negative) boolean
 //! expression over ASCII-lowercased literals (`All | None | Literal | And | Or`).
