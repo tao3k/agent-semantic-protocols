@@ -16,10 +16,10 @@
 	url = https://github.com/tao3k/asp-python
 [submodule "analyzers/WendaoGraph.jl"]
 	path = analyzers/WendaoGraph.jl
-	url = git@github.com:tao3k/WendaoGraph.jl.git
+	url = https://github.com/tao3k/WendaoGraph.jl.git
 [submodule "analyzers/ScienceResearch.jl"]
 	path = analyzers/ScienceResearch.jl
-	url = git@github.com:tao3k/ScienceResearch.jl.git
+	url = https://github.com/tao3k/ScienceResearch.jl.git
 [submodule "languages/orgize"]
 	path = languages/orgize
 	url = https://github.com/tao3k/orgize
@@ -31,4 +31,4 @@
 	url = https://github.com/tao3k/org.git
 [submodule "analyzers/AspGraphsSearch.jl"]
 	path = analyzers/AspGraphsSearch.jl
-	url = git@github.com:tao3k/AspGraphsSearch.jl.git
+	url = https://github.com/tao3k/AspGraphsSearch.jl.git
