@@ -470,5 +470,28 @@ check-license-contract:
     uv run --frozen python scripts/check_license_contract.py
     uv run --frozen reuse --root . lint
 
+# Validate OpenSysML v2 models under project.sysml and dev/sysml.
+sysml-check:
+    sysml -strict -validate -self-check -no-record-cache project.sysml dev/sysml
+
+# Verify Quint search engine state-machine models and negative mutation controls.
+quint-check:
+    quint typecheck dev/quint/search-engine.qnt
+    quint test dev/quint/search-engine.qnt --main=searchGenerationPublication
+    quint test dev/quint/search-engine.qnt --main=searchPlanAbiAdmission
+    quint test dev/quint/search-engine.qnt --main=searchTopologyEdgeCustody
+    quint run dev/quint/search-engine.qnt --main=searchGenerationPublication --seed=42 --max-samples=1000 --max-steps=16 --invariant=safe --verbosity=1
+    quint run dev/quint/search-engine.qnt --main=searchPlanAbiAdmission --seed=42 --max-samples=1000 --max-steps=16 --invariant=safe --verbosity=1
+    quint run dev/quint/search-engine.qnt --main=searchTopologyEdgeCustody --seed=42 --max-samples=1000 --max-steps=16 --invariant=safe --verbosity=1
+    @for control in searchGenerationPublication:publishWithoutBlobMutation searchGenerationPublication:bypassCasMutation searchGenerationPublication:nonMonotonicRevisionMutation searchPlanAbiAdmission:bypassAdmissionMutation searchPlanAbiAdmission:staleGenerationMutation searchTopologyEdgeCustody:crossGenerationLeakMutation searchTopologyEdgeCustody:duplicateCountMutation; do result=0; output=$(quint run dev/quint/search-engine.qnt --main="${control%:*}" --step="${control#*:}" --seed=42 --max-samples=1000 --max-steps=16 --invariant=safe --verbosity=1 2>&1) || result=$?; printf '%s\n%s\n' "$control" "$output"; if [ "$result" -ne 1 ] || ! printf '%s\n' "$output" | grep -q 'Invariant violated'; then exit 1; fi; done
+
+# Combined formal architecture, Quint state model, and Rust stateful property gate.
+property-gate: sysml-check quint-check
+    cargo test --locked -p agent-semantic-search --test marlin_engine_state_machine
+
+# Multi-scale Criterion hot-path benchmarks for the ASP search engine.
+search-engine-bench:
+    cargo bench --locked -p agent-semantic-search --bench search_engine_hot_path
+
 report-python-policy:
     uv run --project {{asp_python_project}} --frozen python -c 'from asp_python import render_asp_python_report, run_asp_python; print(render_asp_python_report(run_asp_python("{{repo}}")), end="")'

@@ -159,6 +159,7 @@ dependencies = [
  "asp-rust-project-harness-policy",
  "blake3",
  "bytes",
+ "criterion",
  "globset",
  "ignore",
  "memchr",

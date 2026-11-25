@@ -62,6 +62,8 @@ asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
 agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
+criterion.workspace = true
+
 [[test]]
 name = "graph_owner_rank_report"
 path = "tests/integration/graph_owner_rank_report/mod.rs"
@@ -69,3 +71,12 @@ path = "tests/integration/graph_owner_rank_report/mod.rs"
 [[test]]
 name = "search_generation_segment"
 path = "tests/unit/search_generation_segment.rs"
+
+[[test]]
+name = "marlin_engine_state_machine"
+path = "tests/unit/marlin_engine_state_machine.rs"
+
+[[bench]]
+name = "search_engine_hot_path"
+path = "benches/search_engine_hot_path.rs"
+harness = false
