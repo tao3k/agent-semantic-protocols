@@ -9,7 +9,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-provider-protocol.workspace = true
 base64.workspace = true

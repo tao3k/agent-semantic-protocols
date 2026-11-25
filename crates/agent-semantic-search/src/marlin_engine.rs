@@ -12,6 +12,10 @@
 
 use std::sync::Arc;
 
+use agent_semantic_search_playbook::{
+    ProgressiveSearchPlaybookError, ProgressiveSearchPlaybookRequest, SearchPlaybookPlanInput,
+    admit_search_playbook_plan,
+};
 use agent_semantic_topology::{
     AgentOrgTopologyOverlay, AgentOrgTopologyOverlayError, AgentTopologyRelationship,
     OrgDocumentProjectionPort, ProjectTopologyManifest, ProjectTopologyManifestError,
@@ -21,9 +25,9 @@ use agent_semantic_topology::{
 use crate::{
     GraphOwnerRankReport, GraphOwnerRankRequest, SearchArtifactBlob, SearchArtifactHash,
     SearchEngineStoragePort, SearchGenerationDigest, SearchGenerationPointerRecord,
-    SearchPointerKey, SearchProjectId, SearchStoragePortError, SearchTopologyEdgeRecord,
-    SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest, rank_graph_owner_report,
-    rank_source_index_report,
+    SearchGenerationPointerSwapRequest, SearchPointerKey, SearchProjectId, SearchStoragePortError,
+    SearchTopologyEdgeRecord, SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest,
+    rank_graph_owner_report, rank_source_index_report,
 };
 
 /// Default CAS pointer key for one workspace's active search generation.
@@ -118,14 +122,15 @@ impl MarlinConvergedSearchEngine {
         let artifact_hash = blob.artifact_hash.clone();
         self.storage_port.put_artifact(blob)?;
         let pointer_key = SearchPointerKey::new(DEFAULT_SEARCH_GENERATION_POINTER_KEY)?;
-        self.storage_port.compare_and_swap_generation_pointer(
-            &project_id,
-            &workspace_id,
-            &pointer_key,
-            expected_hash,
-            &generation_digest,
-            &artifact_hash,
-        )
+        self.storage_port
+            .compare_and_swap_generation_pointer(SearchGenerationPointerSwapRequest {
+                project_id,
+                workspace_id,
+                pointer_key,
+                expected_hash: expected_hash.cloned(),
+                new_generation_digest: generation_digest,
+                new_artifact_hash: artifact_hash,
+            })
     }
 
     /// Load the active generation pointer and its immutable artifact payload.
@@ -168,6 +173,16 @@ impl MarlinConvergedSearchEngine {
     ) -> Result<Vec<SearchTopologyEdgeRecord>, SearchStoragePortError> {
         self.storage_port
             .list_topology_edges(project_id, generation_digest)
+    }
+
+    /// Admit a pure typed Search Playbook plan projected from Marlin's Gerbil
+    /// Scheme module system via native `RootedSchemeObject` ABI (zero pseudo
+    /// S-expression text parsing).
+    pub fn admit_search_plan(
+        &self,
+        plan: SearchPlaybookPlanInput,
+    ) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
+        admit_search_playbook_plan(plan)
     }
 
     /// Execute deterministic graph-owner ranking over admitted workspace evidence.

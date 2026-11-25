@@ -50,6 +50,10 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "agent-semantic-hook" not in workflow
     assert "agent-semantic-hook-testkit" not in workflow
     assert "agent-semantic-shell-parser" not in workflow
+    assert "agent-semantic-scheme-syntax" not in workflow
+    assert "agent-semantic-client-db" not in workflow
+    assert "agent-semantic-runtime-server" not in workflow
+    assert "orgize-ffi" not in workflow
     assert "--ignored --exact" not in workflow
     monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     assert "github.event.pull_request.number || github.ref" in monolithic_workflow
@@ -58,14 +62,15 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "cargo clippy --workspace --all-targets --all-features" not in monolithic_workflow
     assert "rust-format:" in monolithic_workflow
     assert "rust-platform-smoke:" in monolithic_workflow
+    assert "orgize-ffi" not in monolithic_workflow
     platform_matrix = monolithic_workflow.split("rust-platform-smoke:", 1)[1].split(
-        "asp-linux-binary:", 1
+        "shared-contract-gates:", 1
     )[0]
     assert "ubuntu-latest" not in platform_matrix
     assert "macos-latest" in platform_matrix
     assert "windows-latest" in platform_matrix
-    assert "cargo run --quiet --bin asp -- --help" in platform_matrix
-    assert "cargo run --quiet --bin asp -- guide" not in platform_matrix
+    assert "agent-semantic-search" in platform_matrix
+    assert "cargo build --bin asp" not in platform_matrix
 
 
 def test_root_schema_gate_references_only_present_test_paths() -> None:
@@ -129,7 +134,7 @@ def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     step = workflow.split("- name: Language facade smoke gate", 1)[1]
-    step = step.split("  rust-provider-gates:", 1)[0]
+    step = step.split("  tree-sitter-query-contract-gates:", 1)[0]
 
     assert (
         "uv run --project packages/python --frozen pytest "

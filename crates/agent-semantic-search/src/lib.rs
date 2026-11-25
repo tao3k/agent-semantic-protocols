@@ -41,8 +41,9 @@ mod merkle_search_generation;
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
 pub use marlin_storage_port::{
     InMemorySearchStoragePort, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
-    SearchGenerationDigest, SearchGenerationPointerRecord, SearchPointerKey, SearchProjectId,
-    SearchStoragePortError, SearchTopologyEdgeId, SearchTopologyEdgeRecord, SearchWorkspaceId,
+    SearchGenerationDigest, SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest,
+    SearchPointerKey, SearchProjectId, SearchStoragePortError, SearchTopologyEdgeId,
+    SearchTopologyEdgeRecord, SearchWorkspaceId,
 };
 pub use memory_search::MemorySearchGeneration;
 pub use memory_search::MemorySearchGenerationReceipt;
@@ -65,7 +66,6 @@ mod resident_grep_candidate_plan;
 #[cfg(feature = "tantivy-accelerator")]
 mod resident_source_index;
 mod runtime_search_receipt;
-mod scheme_playbook_source;
 mod search_candidate;
 mod search_generation_segment;
 mod search_language_files;
@@ -78,9 +78,11 @@ mod workspace_playbook_result;
 mod source_index_rank;
 pub use agent_semantic_search_playbook::NativeRgArgvAnalysis;
 pub use agent_semantic_search_playbook::NativeRgOutputAttribution;
+pub use agent_semantic_search_playbook::SearchPlaybookPlanInput;
 pub use agent_semantic_search_playbook::TantivyQueryAnalysis;
 pub use agent_semantic_search_playbook::TantivyQueryDiagnostic;
 pub use agent_semantic_search_playbook::TantivyQueryMetrics;
+pub use agent_semantic_search_playbook::admit_search_playbook_plan;
 pub use agent_semantic_search_playbook::analyze_native_rg_argv;
 pub use agent_semantic_search_playbook::analyze_tantivy_query;
 pub use agent_semantic_search_projection::source_index_artifact_digest;
@@ -121,9 +123,6 @@ mod resident_source_index_tests;
 #[path = "../tests/unit/runtime_search_receipt.rs"]
 mod runtime_search_receipt_tests;
 #[cfg(test)]
-#[path = "../tests/unit/scheme_playbook_source.rs"]
-mod scheme_playbook_source_tests;
-#[cfg(test)]
 #[path = "../tests/unit/workspace_playbook_plan.rs"]
 mod workspace_playbook_plan_tests;
 #[cfg(test)]
@@ -134,7 +133,6 @@ pub use agent_semantic_search_playbook::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
     SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
-    parse_progressive_search_playbook_args, parse_search_playbook_producer_declaration,
     search_playbook_composition_abi_digest,
 };
 pub use agent_semantic_search_projection::WORKSPACE_SEARCH_PLAYBOOK_V1_EVIDENCE_ITEM_LIMIT;
@@ -240,7 +238,7 @@ pub use merkle_search_generation::search_owner_graph_fragment_digest;
 #[cfg(feature = "tantivy-accelerator")]
 pub use merkle_search_generation::search_projection_analyzer_digest;
 pub use progressive_query::{
-    ProgressiveQueryRequest, QueryOutputFormat, parse_progressive_query_args,
+    ProgressiveQueryInput, ProgressiveQueryRequest, QueryOutputFormat, admit_progressive_query,
 };
 pub use provider_candidate_annotations::ProviderFactsEnvelope;
 pub use provider_candidate_annotations::compact_provider_fact_nodes;
@@ -326,10 +324,6 @@ pub use runtime_search_receipt::bounded_ranked_selector_owner_paths;
 pub use runtime_search_receipt::bounded_runtime_search_source;
 pub use runtime_search_receipt::build_runtime_provider_search_receipt;
 pub use runtime_search_receipt::build_runtime_provider_search_receipt_with_graph;
-pub use scheme_playbook_source::{
-    DEFAULT_SEARCH_PLAYBOOK_SOURCE, admit_default_search_playbook_source,
-    admit_search_playbook_source,
-};
 pub use search_candidate::FieldHit;
 pub use search_candidate::RankFeature;
 pub use search_candidate::RankedSearchCandidate;

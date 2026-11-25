@@ -26,8 +26,6 @@ pub use agent_org_topology_overlay::{
     AgentTopologyRelationship,
 };
 pub use agent_semantic_content_identity::ProjectWorkspaceBinding;
-#[cfg(feature = "embedded-orgize")]
-pub use org_projection_port::EmbeddedOrgizeProjectionPort;
 pub use org_projection_port::{
     OrgDocumentProjection, OrgDocumentProjectionPort, OrgOverlayDocumentProjection,
     OrgProjectionPortError, OrgPropertyEntry, OrgSectionProjection,

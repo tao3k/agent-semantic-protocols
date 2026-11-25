@@ -2,196 +2,135 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Lightweight public Search Playbook V1 syntax and normalized request lowering.
+//! Pure typed Search Playbook V1 validation and normalized request lowering.
+//!
+//! Marlin's real Gerbil Scheme module system evaluates search compositions and
+//! projects them across the native `RootedSchemeObject` ABI directly into
+//! [`SearchPlaybookPlanInput`]. No pseudo S-expression string parsing exists here.
 
 use crate::model::{
     GraphNativeBlock, ProducerNativeBlock, ProgressiveSearchPlaybookError,
     ProgressiveSearchPlaybookRequest, SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH,
     SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES, SEARCH_PLAYBOOK_MAX_STATIC_WORK,
     SearchPlaybookClauseAxis, SearchPlaybookClauseRef, SearchPlaybookComposition,
-    SearchPlaybookLeaf, SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
+    SearchPlaybookLeaf, SearchPlaybookNormalizedComposition, SearchPlaybookPlanInput,
     TopologyOwnerMembershipBlock,
 };
-use agent_semantic_scheme_syntax::SchemeDatum;
 
-/// Admits exactly `search playbook <scheme-expression>` and lowers its V1 AST.
-pub fn parse_progressive_search_playbook_args(
-    args: &[String],
+/// Admit a pure typed Search Playbook plan projected from Marlin's Gerbil
+/// Scheme module system via native `RootedSchemeObject` ABI.
+pub fn admit_search_playbook_plan(
+    input: SearchPlaybookPlanInput,
 ) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
-    if args.first().map(String::as_str) != Some("search")
-        || args.get(1).map(String::as_str) != Some("playbook")
+    if let Some(workspace) = &input.workspace
+        && !valid_registered_name(workspace)
     {
-        return Err(ProgressiveSearchPlaybookError::InvalidOperation);
-    }
-    let Some(source) = args.get(2) else {
-        return Err(incomplete("one Scheme composition expression is required"));
-    };
-    if args.len() != 3 {
         return Err(invalid_parameter(
-            "search-playbook-source-arity-invalid",
-            "Search Playbook accepts exactly one Scheme expression argument",
+            "search-playbook-workspace-identity-invalid",
+            "workspace requires one registered WorkspaceId, not a path",
         ));
     }
-    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
-        invalid_parameter(
-            error.reason_kind,
-            format!("invalid Search Playbook Scheme source: {error}"),
-        )
-    })?;
-    let [SchemeDatum::List(root)] = datums.as_slice() else {
-        return Err(invalid_parameter(
-            "search-playbook-root-invalid",
-            "expected one (search ...) expression",
-        ));
-    };
-    lower_search(root)
+    let language = normalize_producer_axis(&input.languages)?;
+    let documents = normalize_producer_axis(&input.documents)?;
+    if language.is_none() && documents.is_none() {
+        return Err(incomplete("at least one producer axis is required"));
+    }
+    admit_composition_budget(&input.composition)?;
+    validate_composition_leaves(&input.composition)?;
+    admit_validated_composition(input.workspace, language, documents, input.composition)
 }
 
-/// Reads only the declared producer axes from one structurally valid Search
-/// Playbook expression. Hook routing uses this before native leaf admission so
-/// a malformed producer-owned request still reaches the typed PreTool denial.
-pub fn parse_search_playbook_producer_declaration(
-    source: &str,
-) -> Result<SearchPlaybookProducerDeclaration, ProgressiveSearchPlaybookError> {
-    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
-        invalid_parameter(
-            error.reason_kind,
-            format!("invalid Search Playbook Scheme source: {error}"),
-        )
-    })?;
-    let [SchemeDatum::List(root)] = datums.as_slice() else {
+fn normalize_producer_axis(
+    values: &[String],
+) -> Result<Option<String>, ProgressiveSearchPlaybookError> {
+    if values.is_empty() {
+        return Ok(None);
+    }
+    if values.iter().any(|value| !valid_registered_name(value)) {
         return Err(invalid_parameter(
-            "search-playbook-root-invalid",
-            "expected one (search ...) expression",
-        ));
-    };
-    if symbol(root.first()) != Some("search") {
-        return Err(invalid_parameter(
-            "search-playbook-root-invalid",
-            "expected one (search ...) expression",
+            "search-playbook-producer-expression-invalid",
+            "producer values must be registered-name symbols",
         ));
     }
-    let producers_index = match root.as_slice() {
-        [_, SchemeDatum::List(target), _, _] if symbol(target.first()) == Some("workspace") => 2,
-        [_, _, _] => 1,
-        _ => {
-            return Err(invalid_parameter(
-                "search-playbook-root-invalid",
-                "expected (search [(workspace \"id\")] (producers ...) composition)",
-            ));
+    Ok(Some(values.join("|")))
+}
+
+fn validate_composition_leaves(
+    composition: &SearchPlaybookComposition,
+) -> Result<(), ProgressiveSearchPlaybookError> {
+    match composition {
+        SearchPlaybookComposition::Chain(children) => {
+            if children.is_empty() {
+                return Err(incomplete("chain requires at least 1 child"));
+            }
+            children.iter().try_for_each(validate_composition_leaves)
         }
-    };
-    let SchemeDatum::List(producers) = &root[producers_index] else {
-        return Err(invalid_parameter(
-            "search-playbook-producers-invalid",
-            "expected a producers declaration",
-        ));
-    };
-    let (language, documents) = lower_producers(producers)?;
-    Ok(SearchPlaybookProducerDeclaration {
-        language: split_producer_expression(language.as_deref()),
-        documents: split_producer_expression(documents.as_deref()),
-    })
-}
-
-/// Reads producer axes from the sole public Query Playbook Scheme expression.
-/// Hook routing uses this lightweight structural view; the Client performs the
-/// complete selector/projection lowering before Runtime dispatch.
-pub fn parse_query_playbook_producer_declaration(
-    source: &str,
-) -> Result<SearchPlaybookProducerDeclaration, ProgressiveSearchPlaybookError> {
-    let datums = agent_semantic_scheme_syntax::parse_scheme_datums(source).map_err(|error| {
-        invalid_parameter(
-            error.reason_kind,
-            format!("invalid Query Playbook Scheme source: {error}"),
-        )
-    })?;
-    let [SchemeDatum::List(root)] = datums.as_slice() else {
-        return Err(invalid_parameter(
-            "query-playbook-root-invalid",
-            "expected one (query ...) expression",
-        ));
-    };
-    if symbol(root.first()) != Some("query") {
-        return Err(invalid_parameter(
-            "query-playbook-root-invalid",
-            "expected one (query ...) expression",
-        ));
-    }
-    let producers_index = match root.as_slice() {
-        [_, SchemeDatum::List(target), _, _] if symbol(target.first()) == Some("workspace") => 2,
-        [_, _, _] => 1,
-        _ => {
-            return Err(invalid_parameter(
-                "query-playbook-root-invalid",
-                "expected (query [(workspace \"id\")] (producers ...) (select ...))",
-            ));
+        SearchPlaybookComposition::Intersect(children) => {
+            if children.len() < 2 {
+                return Err(incomplete("intersect requires at least 2 children"));
+            }
+            children.iter().try_for_each(validate_composition_leaves)
         }
-    };
-    let SchemeDatum::List(producers) = &root[producers_index] else {
-        return Err(invalid_parameter(
-            "query-playbook-producers-invalid",
-            "expected a producers declaration",
-        ));
-    };
-    let (language, documents) = lower_producers(producers)?;
-    Ok(SearchPlaybookProducerDeclaration {
-        language: split_producer_expression(language.as_deref()),
-        documents: split_producer_expression(documents.as_deref()),
-    })
-}
-
-fn split_producer_expression(expression: Option<&str>) -> Vec<String> {
-    expression
-        .into_iter()
-        .flat_map(|expression| expression.split('|'))
-        .map(str::to_owned)
-        .collect()
-}
-
-fn lower_search(
-    root: &[SchemeDatum],
-) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
-    if symbol(root.first()) != Some("search") {
-        return Err(invalid_parameter(
-            "search-playbook-root-invalid",
-            "expected one (search ...) expression",
-        ));
+        SearchPlaybookComposition::Leaf(leaf) => validate_leaf_value(leaf),
     }
-    let (workspace, producers_index, flow_index) = match root {
-        [_, SchemeDatum::List(target), _, _] if symbol(target.first()) == Some("workspace") => {
-            let [_, SchemeDatum::String(workspace)] = target.as_slice() else {
+}
+
+fn validate_leaf_value(leaf: &SearchPlaybookLeaf) -> Result<(), ProgressiveSearchPlaybookError> {
+    match leaf {
+        SearchPlaybookLeaf::Rg(argv) => {
+            require_nonempty("rg", argv)?;
+            validate_rg(argv)
+        }
+        SearchPlaybookLeaf::Tantivy(argv) => {
+            if argv.len() != 1 {
+                return Err(incomplete("tantivy requires one query string"));
+            }
+            validate_tantivy(&argv[0])
+        }
+        SearchPlaybookLeaf::Topology(block) => {
+            crate::topology_owner::validate_block(block.clone()).map(|_| ())
+        }
+        SearchPlaybookLeaf::Syntax(block) => {
+            if !valid_registered_name(&block.producer) {
                 return Err(invalid_parameter(
-                    "search-playbook-workspace-identity-invalid",
-                    "workspace requires exactly one registered WorkspaceId string",
-                ));
-            };
-            if !valid_registered_name(workspace) {
-                return Err(invalid_parameter(
-                    "search-playbook-workspace-identity-invalid",
-                    "workspace requires one registered WorkspaceId, not a path",
+                    "search-playbook-producer-expression-invalid",
+                    "invalid syntax producer",
                 ));
             }
-            (Some(workspace.clone()), 2, 3)
+            if block.argv.len() != 1 {
+                return Err(incomplete(
+                    "syntax requires exactly one enhanced Tree-sitter Query string",
+                ));
+            }
+            Ok(())
         }
-        [_, _, _] => (None, 1, 2),
-        _ => {
-            return Err(invalid_parameter(
-                "search-playbook-root-invalid",
-                "expected (search [(workspace \"id\")] (producers ...) composition)",
-            ));
+        SearchPlaybookLeaf::NativeSyntax(selector) => {
+            if !valid_exact_selector(selector) {
+                return Err(invalid_parameter(
+                    "search-playbook-native-selector-invalid",
+                    "native-syntax requires one canonical parser-owned selector",
+                ));
+            }
+            Ok(())
         }
-    };
-    let SchemeDatum::List(producers) = &root[producers_index] else {
-        return Err(invalid_parameter(
-            "search-playbook-producers-invalid",
-            "expected a producers declaration",
-        ));
-    };
-    let (language, documents) = lower_producers(producers)?;
-    let mut parsed_nodes = 0;
-    let composition = parse_composition(&root[flow_index], 1, &mut parsed_nodes)?;
-    admit_composition_budget(&composition)?;
+        SearchPlaybookLeaf::Graph(block) => {
+            if !matches!(block.language.as_str(), "gql" | "pgql") {
+                return Err(invalid_parameter(
+                    "search-playbook-graph-language-invalid",
+                    "graph language must be gql or pgql",
+                ));
+            }
+            require_nonempty("graph", &block.argv)
+        }
+    }
+}
+
+fn admit_validated_composition(
+    workspace: Option<String>,
+    language: Option<String>,
+    documents: Option<String>,
+    composition: SearchPlaybookComposition,
+) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
     reject_duplicate_leaves(&composition)?;
     let mut state = LoweringState::default();
     lower_v1_composition(&composition, &mut state)?;
@@ -234,9 +173,7 @@ fn reject_duplicate_leaves(
         match composition {
             SearchPlaybookComposition::Chain(children)
             | SearchPlaybookComposition::Intersect(children) => {
-                for child in children {
-                    visit(child, seen)?;
-                }
+                children.iter().try_for_each(|child| visit(child, seen))
             }
             SearchPlaybookComposition::Leaf(leaf) => {
                 if seen.contains(&leaf) {
@@ -246,9 +183,9 @@ fn reject_duplicate_leaves(
                     ));
                 }
                 seen.push(leaf);
+                Ok(())
             }
         }
-        Ok(())
     }
 
     visit(composition, &mut Vec::new())
@@ -317,66 +254,6 @@ fn take_index(
     let block_index = *index;
     *index = index.saturating_add(1);
     (axis, block_index)
-}
-
-fn lower_producers(
-    form: &[SchemeDatum],
-) -> Result<(Option<String>, Option<String>), ProgressiveSearchPlaybookError> {
-    if symbol(form.first()) != Some("producers") {
-        return Err(invalid_parameter(
-            "search-playbook-producers-invalid",
-            "expected (producers (language ...) (documents ...))",
-        ));
-    }
-    let mut language = None;
-    let mut documents = None;
-    for axis in &form[1..] {
-        let SchemeDatum::List(values) = axis else {
-            return Err(invalid_parameter(
-                "search-playbook-producers-invalid",
-                "producer axis must be a list",
-            ));
-        };
-        let Some(name) = symbol(values.first()) else {
-            return Err(invalid_parameter(
-                "search-playbook-producers-invalid",
-                "producer axis must begin with language or documents",
-            ));
-        };
-        let atoms = values[1..]
-            .iter()
-            .map(|value| match value {
-                SchemeDatum::Symbol(value) if valid_registered_name(value) => Ok(value.as_str()),
-                _ => Err(invalid_parameter(
-                    "search-playbook-producer-expression-invalid",
-                    "producer values must be registered-name symbols",
-                )),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if atoms.is_empty() {
-            return Err(incomplete(format!("{name} producer axis is empty")));
-        }
-        let joined = atoms.join("|");
-        let target = match name {
-            "language" => &mut language,
-            "documents" => &mut documents,
-            other => {
-                return Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-                    other.to_owned(),
-                ));
-            }
-        };
-        if target.replace(joined).is_some() {
-            return Err(invalid_parameter(
-                "search-playbook-field-conflict",
-                format!("producer axis `{name}` may occur only once"),
-            ));
-        }
-    }
-    if language.is_none() && documents.is_none() {
-        return Err(incomplete("at least one producer axis is required"));
-    }
-    Ok((language, documents))
 }
 
 #[derive(Default)]
@@ -462,23 +339,22 @@ fn lower_acquisition(
                     "the acquisition intersect requires at least two children",
                 ));
             }
-            for child in children {
-                lower_acquisition(child, state)?;
-            }
+            children
+                .iter()
+                .try_for_each(|child| lower_acquisition(child, state))
         }
         SearchPlaybookComposition::Leaf(
             leaf @ (SearchPlaybookLeaf::Rg(_)
             | SearchPlaybookLeaf::Tantivy(_)
             | SearchPlaybookLeaf::Topology(_)),
-        ) => lower_leaf(leaf, state)?,
+        ) => lower_leaf(leaf, state),
         SearchPlaybookComposition::Leaf(_) | SearchPlaybookComposition::Chain(_) => {
-            return Err(invalid_parameter(
+            Err(invalid_parameter(
                 "search-playbook-layout-invalid",
                 "V1 acquisition intersection admits only nested intersect, rg, tantivy, and topology",
-            ));
+            ))
         }
     }
-    Ok(())
 }
 
 fn lower_tail(
@@ -486,12 +362,9 @@ fn lower_tail(
     state: &mut LoweringState,
 ) -> Result<(), ProgressiveSearchPlaybookError> {
     match composition {
-        SearchPlaybookComposition::Chain(children) => {
-            for child in children {
-                lower_tail(child, state)?;
-            }
-            Ok(())
-        }
+        SearchPlaybookComposition::Chain(children) => children
+            .iter()
+            .try_for_each(|child| lower_tail(child, state)),
         SearchPlaybookComposition::Leaf(
             leaf @ (SearchPlaybookLeaf::Syntax(_)
             | SearchPlaybookLeaf::NativeSyntax(_)
@@ -574,106 +447,6 @@ fn lower_leaf(
     Ok(())
 }
 
-fn parse_composition(
-    datum: &SchemeDatum,
-    depth: usize,
-    parsed_nodes: &mut usize,
-) -> Result<SearchPlaybookComposition, ProgressiveSearchPlaybookError> {
-    *parsed_nodes = parsed_nodes.saturating_add(1);
-    if *parsed_nodes > SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES
-        || depth > SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH
-    {
-        return Err(invalid_parameter(
-            "search-playbook-composition-budget-exceeded",
-            "Search Playbook Composition exceeds the V1 node or depth budget",
-        ));
-    }
-    let form = operator_form(datum)?;
-    let operator = symbol(form.first()).expect("operator_form checks the head");
-    match operator {
-        "chain" | "intersect" => {
-            let minimum_children = if operator == "chain" { 1 } else { 2 };
-            if form.len() <= minimum_children {
-                return Err(incomplete(format!(
-                    "{operator} requires at least {minimum_children} child{}",
-                    if minimum_children == 1 { "" } else { "ren" }
-                )));
-            }
-            let children = form[1..]
-                .iter()
-                .map(|child| parse_composition(child, depth + 1, parsed_nodes))
-                .collect::<Result<Vec<_>, _>>()?;
-            if operator == "chain" {
-                Ok(SearchPlaybookComposition::Chain(children))
-            } else {
-                Ok(SearchPlaybookComposition::Intersect(children))
-            }
-        }
-        "union" => Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-            "union".to_owned(),
-        )),
-        "rg" => {
-            let argv = string_arguments(operator, &form[1..])?;
-            require_nonempty(operator, &argv)?;
-            validate_rg(&argv)?;
-            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(
-                argv,
-            )))
-        }
-        "tantivy" => {
-            let argv = string_arguments(operator, &form[1..])?;
-            if argv.len() != 1 {
-                return Err(incomplete("tantivy requires one query string"));
-            }
-            validate_tantivy(&argv[0])?;
-            Ok(SearchPlaybookComposition::Leaf(
-                SearchPlaybookLeaf::Tantivy(argv),
-            ))
-        }
-        "topology" => Ok(SearchPlaybookComposition::Leaf(
-            SearchPlaybookLeaf::Topology(crate::topology_owner::parse(&form[1..])?),
-        )),
-        "syntax" => {
-            let (producer, argv) = producer_arguments(operator, &form[1..])?;
-            if argv.len() != 1 {
-                return Err(incomplete(
-                    "syntax requires exactly one enhanced Tree-sitter Query string",
-                ));
-            }
-            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Syntax(
-                ProducerNativeBlock { producer, argv },
-            )))
-        }
-        "native-syntax" => {
-            let argv = string_arguments(operator, &form[1..])?;
-            if argv.len() != 1 || !valid_exact_selector(&argv[0]) {
-                return Err(invalid_parameter(
-                    "search-playbook-native-selector-invalid",
-                    "native-syntax requires one canonical parser-owned selector",
-                ));
-            }
-            Ok(SearchPlaybookComposition::Leaf(
-                SearchPlaybookLeaf::NativeSyntax(argv[0].clone()),
-            ))
-        }
-        "graph" => {
-            let (language, argv) = producer_arguments(operator, &form[1..])?;
-            if !matches!(language.as_str(), "gql" | "pgql") {
-                return Err(invalid_parameter(
-                    "search-playbook-graph-language-invalid",
-                    "graph language must be gql or pgql",
-                ));
-            }
-            Ok(SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Graph(
-                GraphNativeBlock { language, argv },
-            )))
-        }
-        other => Err(ProgressiveSearchPlaybookError::UnsupportedOption(
-            other.to_owned(),
-        )),
-    }
-}
-
 fn admit_composition_budget(
     composition: &SearchPlaybookComposition,
 ) -> Result<(), ProgressiveSearchPlaybookError> {
@@ -691,66 +464,6 @@ fn admit_composition_budget(
         ));
     }
     Ok(())
-}
-
-fn operator_form(datum: &SchemeDatum) -> Result<&[SchemeDatum], ProgressiveSearchPlaybookError> {
-    let SchemeDatum::List(form) = datum else {
-        return Err(invalid_parameter(
-            "search-playbook-composition-invalid",
-            "composition must be an operator list",
-        ));
-    };
-    if symbol(form.first()).is_none() {
-        return Err(invalid_parameter(
-            "search-playbook-composition-invalid",
-            "composition must begin with an operator",
-        ));
-    }
-    Ok(form)
-}
-
-fn symbol(value: Option<&SchemeDatum>) -> Option<&str> {
-    match value {
-        Some(SchemeDatum::Symbol(value)) => Some(value),
-        _ => None,
-    }
-}
-
-fn string_arguments(
-    operator: &str,
-    values: &[SchemeDatum],
-) -> Result<Vec<String>, ProgressiveSearchPlaybookError> {
-    values
-        .iter()
-        .map(|value| match value {
-            SchemeDatum::String(value) => Ok(value.clone()),
-            _ => Err(invalid_parameter(
-                "search-playbook-argument-invalid",
-                format!("{operator} arguments must be strings"),
-            )),
-        })
-        .collect()
-}
-
-fn producer_arguments(
-    operator: &str,
-    values: &[SchemeDatum],
-) -> Result<(String, Vec<String>), ProgressiveSearchPlaybookError> {
-    let Some(SchemeDatum::Symbol(producer)) = values.first() else {
-        return Err(invalid_parameter(
-            "search-playbook-producer-expression-invalid",
-            format!("{operator} requires a producer symbol"),
-        ));
-    };
-    if !valid_registered_name(producer) {
-        return Err(invalid_parameter(
-            "search-playbook-producer-expression-invalid",
-            format!("invalid {operator} producer"),
-        ));
-    }
-    let argv = string_arguments(operator, &values[1..])?;
-    require_nonempty(operator, &argv)?;
-    Ok((producer.clone(), argv))
 }
 
 fn reject_after_graph(state: &LoweringState) -> Result<(), ProgressiveSearchPlaybookError> {

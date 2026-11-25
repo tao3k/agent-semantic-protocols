@@ -116,6 +116,18 @@ impl SearchArtifactBlob {
     }
 }
 
+/// Typed compare-and-swap request for advancing a workspace generation pointer.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchGenerationPointerSwapRequest {
+    pub project_id: SearchProjectId,
+    pub workspace_id: SearchWorkspaceId,
+    pub pointer_key: SearchPointerKey,
+    pub expected_hash: Option<SearchArtifactHash>,
+    pub new_generation_digest: SearchGenerationDigest,
+    pub new_artifact_hash: SearchArtifactHash,
+}
+
 /// Compare-and-swap generation pointer record persisted by Marlin's `AgentStorage`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -216,12 +228,7 @@ pub trait SearchEngineStoragePort: Send + Sync {
     /// Atomically advance a workspace's active generation pointer.
     fn compare_and_swap_generation_pointer(
         &self,
-        project_id: &SearchProjectId,
-        workspace_id: &SearchWorkspaceId,
-        pointer_key: &SearchPointerKey,
-        expected_hash: Option<&SearchArtifactHash>,
-        new_generation_digest: &SearchGenerationDigest,
-        new_artifact_hash: &SearchArtifactHash,
+        request: SearchGenerationPointerSwapRequest,
     ) -> Result<SearchGenerationPointerRecord, SearchStoragePortError>;
 
     /// Read the currently committed generation pointer for a workspace.
@@ -308,37 +315,35 @@ impl SearchEngineStoragePort for InMemorySearchStoragePort {
 
     fn compare_and_swap_generation_pointer(
         &self,
-        project_id: &SearchProjectId,
-        workspace_id: &SearchWorkspaceId,
-        pointer_key: &SearchPointerKey,
-        expected_hash: Option<&SearchArtifactHash>,
-        new_generation_digest: &SearchGenerationDigest,
-        new_artifact_hash: &SearchArtifactHash,
+        request: SearchGenerationPointerSwapRequest,
     ) -> Result<SearchGenerationPointerRecord, SearchStoragePortError> {
         let mut state = self
             .state
             .write()
             .map_err(|_| SearchStoragePortError::Backend("storage lock poisoned".to_owned()))?;
-        let artifact_key = (project_id.clone(), new_artifact_hash.clone());
+        let artifact_key = (
+            request.project_id.clone(),
+            request.new_artifact_hash.clone(),
+        );
         if !state.artifacts.contains_key(&artifact_key) {
             return Err(SearchStoragePortError::MissingArtifact {
-                project_id: project_id.clone(),
-                artifact_hash: new_artifact_hash.clone(),
+                project_id: request.project_id,
+                artifact_hash: request.new_artifact_hash,
             });
         }
         let key = (
-            project_id.clone(),
-            workspace_id.clone(),
-            pointer_key.clone(),
+            request.project_id.clone(),
+            request.workspace_id.clone(),
+            request.pointer_key.clone(),
         );
         let actual_hash = state
             .pointers
             .get(&key)
             .map(|record| record.artifact_hash.clone());
-        if actual_hash.as_ref() != expected_hash {
+        if actual_hash != request.expected_hash {
             return Err(SearchStoragePortError::PointerConflict {
-                pointer_key: pointer_key.clone(),
-                expected: expected_hash.cloned(),
+                pointer_key: request.pointer_key,
+                expected: request.expected_hash,
                 actual: actual_hash,
             });
         }
@@ -347,11 +352,11 @@ impl SearchEngineStoragePort for InMemorySearchStoragePort {
             .get(&key)
             .map_or(1, |record| record.revision.saturating_add(1));
         let record = SearchGenerationPointerRecord {
-            project_id: project_id.clone(),
-            workspace_id: workspace_id.clone(),
-            pointer_key: pointer_key.clone(),
-            generation_digest: new_generation_digest.clone(),
-            artifact_hash: new_artifact_hash.clone(),
+            project_id: request.project_id,
+            workspace_id: request.workspace_id,
+            pointer_key: request.pointer_key,
+            generation_digest: request.new_generation_digest,
+            artifact_hash: request.new_artifact_hash,
             revision: next_revision,
         };
         state.pointers.insert(key, record.clone());

@@ -57,13 +57,6 @@ impl ProjectTopologyManifest {
         Self::parse_with_port(&source, port)
     }
 
-    #[cfg(feature = "embedded-orgize")]
-    pub fn load_from_project_root(
-        project_root: &Path,
-    ) -> Result<Self, ProjectTopologyManifestError> {
-        Self::load_from_project_root_with_port(project_root, &crate::EmbeddedOrgizeProjectionPort)
-    }
-
     /// Parse raw Org manifest source through a host-supplied [`OrgDocumentProjectionPort`].
     pub fn parse_with_port(
         source: &str,
@@ -73,11 +66,6 @@ impl ProjectTopologyManifest {
             .project_document(source)
             .map_err(|cause| error(cause.reason_kind, cause.message))?;
         Self::from_org_projection(&projection)
-    }
-
-    #[cfg(feature = "embedded-orgize")]
-    pub fn parse_org(source: &str) -> Result<Self, ProjectTopologyManifestError> {
-        Self::parse_with_port(source, &crate::EmbeddedOrgizeProjectionPort)
     }
 
     /// Admit one canonical Project Topology manifest from a pure-Rust [`OrgDocumentProjection`].

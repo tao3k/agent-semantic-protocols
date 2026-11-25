@@ -106,8 +106,7 @@
       "properties": {
         "orgPort": {
           "enum": [
-            "marlin-context-org-fold",
-            "embedded-orgize"
+            "marlin-context-org-fold"
           ]
         },
         "storagePort": {

@@ -2,5 +2,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#[path = "unit/progressive_playbook.rs"]
-mod progressive_playbook;
+#[path = "unit/typed_plan.rs"]
+mod typed_plan;

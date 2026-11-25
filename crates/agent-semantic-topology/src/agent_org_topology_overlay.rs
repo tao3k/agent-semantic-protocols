@@ -185,36 +185,6 @@ impl AgentOrgTopologyOverlay {
         )
     }
 
-    #[cfg(feature = "embedded-orgize")]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the overlay identity product must remain explicit at its admission boundary"
-    )]
-    pub fn admit(
-        source_generation_digest: impl Into<String>,
-        base_topology_generation_digest: impl Into<String>,
-        selector: impl Into<String>,
-        evidence_digest: impl Into<String>,
-        agent_identity_digest: impl Into<String>,
-        prompt_digest: impl Into<String>,
-        summary: impl Into<String>,
-        org_source: impl Into<String>,
-        relationships: Vec<AgentTopologyRelationship>,
-    ) -> Result<Self, AgentOrgTopologyOverlayError> {
-        Self::admit_with_port(
-            source_generation_digest,
-            base_topology_generation_digest,
-            selector,
-            evidence_digest,
-            agent_identity_digest,
-            prompt_digest,
-            summary,
-            org_source,
-            relationships,
-            &crate::EmbeddedOrgizeProjectionPort,
-        )
-    }
-
     /// Recomputes every derived identity using a host-supplied [`OrgDocumentProjectionPort`].
     pub fn validate_with_port(
         &self,
@@ -256,28 +226,6 @@ impl AgentOrgTopologyOverlay {
             return Err(invalid("agent-org-topology-overlay-base-binding-mismatch"));
         }
         Ok(())
-    }
-
-    /// Recomputes every derived identity. Serialized overlay packets cannot
-    /// self-attest by carrying stale summary, Org AST, or overlay digests.
-    #[cfg(feature = "embedded-orgize")]
-    pub fn validate(&self) -> Result<(), AgentOrgTopologyOverlayError> {
-        self.validate_with_port(&crate::EmbeddedOrgizeProjectionPort)
-    }
-
-    /// Joins the independently built overlay to one exact Search topology
-    /// identity without modifying or reconstructing that base topology.
-    #[cfg(feature = "embedded-orgize")]
-    pub fn validate_against_base(
-        &self,
-        expected_source_generation_digest: &str,
-        expected_base_topology_generation_digest: &str,
-    ) -> Result<(), AgentOrgTopologyOverlayError> {
-        self.validate_against_base_with_port(
-            expected_source_generation_digest,
-            expected_base_topology_generation_digest,
-            &crate::EmbeddedOrgizeProjectionPort,
-        )
     }
 }
 

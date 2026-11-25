@@ -90,11 +90,6 @@ impl ProjectTopologySourceProgram {
         )
     }
 
-    #[cfg(feature = "embedded-orgize")]
-    pub fn standard() -> Result<Self, ProjectTopologySourceProgramError> {
-        Self::standard_with_port(&crate::EmbeddedOrgizeProjectionPort)
-    }
-
     /// Parse raw Org program source through a host-supplied [`OrgDocumentProjectionPort`].
     pub fn parse_with_port(
         source: &str,
@@ -104,11 +99,6 @@ impl ProjectTopologySourceProgram {
             .project_document(source)
             .map_err(|cause| error(cause.reason_kind, cause.message))?;
         Self::from_org_projection(&projection)
-    }
-
-    #[cfg(feature = "embedded-orgize")]
-    pub fn parse_org(source: &str) -> Result<Self, ProjectTopologySourceProgramError> {
-        Self::parse_with_port(source, &crate::EmbeddedOrgizeProjectionPort)
     }
 
     /// Admit one canonical Org topology source program from a pure-Rust [`OrgDocumentProjection`].

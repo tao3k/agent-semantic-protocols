@@ -8,6 +8,9 @@
 
 use std::sync::Arc;
 
+use agent_semantic_search_playbook::{
+    SearchPlaybookComposition, SearchPlaybookLeaf, SearchPlaybookPlanInput,
+};
 use agent_semantic_topology::{
     AgentTopologyRelationship, OrgDocumentProjection, OrgDocumentProjectionPort,
     OrgOverlayDocumentProjection, OrgProjectionPortError, OrgPropertyEntry, OrgSectionProjection,
@@ -172,4 +175,19 @@ fn converged_marlin_search_engine_drives_org_and_storage_without_orgize_or_turso
         .expect("list topology edges");
     assert_eq!(loaded_edges.len(), 1);
     assert_eq!(loaded_edges[0].relation, "DELEGATES_TO");
+
+    let admitted_plan = engine
+        .admit_search_plan(SearchPlaybookPlanInput {
+            workspace: Some("workspace-root".to_owned()),
+            languages: vec!["rust".to_owned()],
+            documents: vec!["org".to_owned()],
+            composition: SearchPlaybookComposition::Leaf(SearchPlaybookLeaf::Rg(vec![
+                "-n".to_owned(),
+                "-e".to_owned(),
+                "MarlinConvergedSearchEngine".to_owned(),
+            ])),
+        })
+        .expect("typed search plan admitted without pseudo S-expr parsing");
+    assert_eq!(admitted_plan.workspace.as_deref(), Some("workspace-root"));
+    assert_eq!(admitted_plan.rg.len(), 1);
 }

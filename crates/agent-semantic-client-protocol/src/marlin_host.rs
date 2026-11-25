@@ -122,8 +122,6 @@ pub enum MarlinCapabilityProfile {
 pub enum MarlinOrgPortMode {
     /// Marlin (`marlin-agent-context` / `orgize-fold`) supplies typed Org projections.
     MarlinContextOrgFold,
-    /// Optional standalone CLI adapter using ASP's embedded `orgize` feature.
-    EmbeddedOrgize,
 }
 
 /// Authoritative storage backend port wired into ASP's search engine.

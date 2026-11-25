@@ -33,11 +33,3 @@ pub(crate) fn canonical_test_manifest() -> ProjectTopologyManifest {
     ProjectTopologyManifest::from_org_projection(&projection)
         .expect("canonical test Project Topology manifest")
 }
-
-#[cfg(feature = "embedded-orgize")]
-pub(crate) fn ensure_orgize_native_runtime() {
-    // SAFETY: unit tests in this crate are pure in-memory checks that do not
-    // spawn subprocesses or alter host stdio/signal state; `initialize_native_runtime`
-    // is process-global and idempotent via `OnceLock`.
-    unsafe { orgize::initialize_native_runtime() }.expect("native Org parser startup");
-}

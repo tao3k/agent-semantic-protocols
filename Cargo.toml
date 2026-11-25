@@ -9,18 +9,8 @@ members = [
     "crates/agent-semantic-artifacts",
     "crates/agent-semantic-config",
     "crates/agent-semantic-content-identity",
-    "crates/agent-semantic-context-product",
-    "crates/agent-semantic-runtime",
-    "crates/agent-semantic-runtime-observability",
-    "crates/agent-semantic-runtime-process-observation",
-    "crates/agent-semantic-client",
     "crates/agent-semantic-client-protocol",
-    "crates/agent-semantic-client-core",
-    "crates/agent-semantic-client-db",
-    "crates/agent-semantic-client-server",
-    "crates/agent-semantic-runtime-server",
     "crates/agent-semantic-http-json",
-    "crates/agent-semantic-loop",
     "crates/agent-semantic-mrr",
     "crates/agent-semantic-provider-protocol",
     "crates/agent-semantic-provider-transport",
@@ -29,7 +19,6 @@ members = [
     "crates/agent-semantic-search-projection",
     "crates/agent-semantic-topology",
     "crates/agent-semantic-schema-manager",
-    "crates/agent-semantic-scheme-syntax",
     "crates/agent-semantic-tree-sitter",
     "crates/agent-semantic-workspace-scheduler",
 ]
@@ -51,9 +40,6 @@ memmap2 = "0.9.10"
 agent-semantic-provider-protocol = { path = "crates/agent-semantic-provider-protocol" }
 agent-semantic-provider-transport = { path = "crates/agent-semantic-provider-transport" }
 agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" }
-agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
-agent-semantic-runtime-observability = { path = "crates/agent-semantic-runtime-observability" }
-agent-semantic-runtime-process-observation = { path = "crates/agent-semantic-runtime-process-observation" }
 jsonschema = { version = "0.48.1", default-features = false }
 referencing = "0.48.1"
 aho-corasick = "1.1.5"
@@ -93,7 +79,6 @@ gql-ir = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev =
 meta-relational-reasoning = { git = "https://github.com/tao3k/meta-relational-reasoning.git", rev = "305e967b06d98efe362b56dc26f43463e34657be", version = "0.1.0" }
 ignore = { version = "0.4.26", features = ["simd-accel"] }
 insta = "1"
-orgize = { path = "languages/orgize", features = ["md"] }
 proc-macro2 = "1"
 libc = "0.2"
 windows-sys = "0.61.2"
@@ -122,9 +107,6 @@ tantivy-query-grammar = "0.26.0"
 toml = "0.9"
 tree-sitter = "0.26"
 tree-sitter-tsquery = "0.8.0"
-tree-sitter-scheme = "=0.24.7"
-# Data owns the shared physical driver dependency.
-mrr-data-backend = { git = "https://github.com/tao3k/mrr-data.git", rev = "e688402813fd655df6d48742432a8ce716c0d166", version = "0.1.0", default-features = false, features = ["turso-fts", "turso-sync"] }
 which = "8"
 
 [profile.release]
@@ -173,10 +155,6 @@ opt-level = 2
 [profile.dev.package.agent-semantic-config]
 opt-level = 2
 
-[profile.dev.package.agent-semantic-client]
-opt-level = 1
-codegen-units = 16
-
 # Test binaries are executable evidence, not debugger artifacts. Omitting DWARF
 # keeps focused harness links proportional to code under test instead of the
 # transitive workspace dependency graph. Package-specific optimization below
@@ -184,10 +162,6 @@ codegen-units = 16
 [profile.test]
 debug = 0
 incremental = true
-
-[profile.test.package.agent-semantic-client]
-opt-level = 2
-codegen-units = 16
 
 [profile.dev-build]
 inherits = "dev"

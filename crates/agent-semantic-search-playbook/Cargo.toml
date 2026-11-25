@@ -7,11 +7,10 @@ name = "agent-semantic-search-playbook"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Lightweight V1 Scheme Search Playbook syntax and lowering contract."
+description = "Pure typed Search Playbook IR, validation, and rg/Tantivy analyzers for Marlin-native ASP."
 
 [dependencies]
 blake3.workspace = true
-agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
 serde = { workspace = true, features = ["derive"] }
 tantivy-query-grammar.workspace = true
 
