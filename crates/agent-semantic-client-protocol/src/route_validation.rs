@@ -13,13 +13,10 @@ use crate::routes::{
     AspClientGraphsTimelineRequest, AspClientSearchPlaybookClauseAxis,
     AspClientSearchPlaybookComposition, AspClientSourceIndexLookupRequest,
     AspClientWorkspaceQueryPlaybookRequest, AspClientWorkspaceSearchPlaybookRequest,
-    AspClientWorkspaceSyntaxPlanContextResponse, AspClientWorkspaceSyntaxQueryRequest,
     CLIENT_EXACT_QUERY_FAILURE, CLIENT_EXACT_QUERY_REQUEST, CLIENT_EXACT_QUERY_RESPONSE,
     CLIENT_GRAPHS_TIMELINE_REQUEST, CLIENT_SOURCE_INDEX_LOOKUP_REQUEST,
     CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST, CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST,
-    CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST, CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE,
-    CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST, EXACT_REQUEST, EXACT_RESPONSE,
-    ProviderNativeExactProjection, ProviderNativeExactRequest,
+    EXACT_REQUEST, EXACT_RESPONSE, ProviderNativeExactProjection, ProviderNativeExactRequest,
     RUNTIME_RESIDENT_REQUEST_PLANE_RECEIPT_SCHEMA_ID, RuntimeProviderSearchRequest,
     RuntimeResidentRequestPlaneReceipt, SEARCH_REQUEST,
 };
@@ -105,7 +102,6 @@ impl AspClientWorkspaceSearchPlaybookRequest {
         let predicate_count = self.rg.as_ref().map_or(0, Vec::len)
             + self.tantivy.as_ref().map_or(0, Vec::len)
             + self.topology.as_ref().map_or(0, Vec::len)
-            + self.syntax.as_ref().map_or(0, Vec::len)
             + self.native_syntax.as_ref().map_or(0, Vec::len);
         let graph_count = self.graph.as_ref().map_or(0, Vec::len);
         if predicate_count == 0 && graph_count != 0 {
@@ -120,7 +116,6 @@ impl AspClientWorkspaceSearchPlaybookRequest {
         if self.rg.as_deref().is_some_and(has_duplicates)
             || self.tantivy.as_deref().is_some_and(has_duplicates)
             || self.topology.as_deref().is_some_and(has_duplicates)
-            || self.syntax.as_deref().is_some_and(has_duplicates)
             || self.native_syntax.as_deref().is_some_and(has_duplicates)
             || self.graph.as_deref().is_some_and(has_duplicates)
         {
@@ -147,11 +142,7 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                         .to_owned(),
                 );
             }
-            if matches!(
-                clause.axis,
-                AspClientSearchPlaybookClauseAxis::Syntax
-                    | AspClientSearchPlaybookClauseAxis::NativeSyntax
-            ) {
+            if clause.axis == AspClientSearchPlaybookClauseAxis::NativeSyntax {
                 structural_started = true;
             }
             let block_count = match clause.axis {
@@ -161,9 +152,6 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                 }
                 AspClientSearchPlaybookClauseAxis::Topology => {
                     self.topology.as_ref().map_or(0, Vec::len)
-                }
-                AspClientSearchPlaybookClauseAxis::Syntax => {
-                    self.syntax.as_ref().map_or(0, Vec::len)
                 }
                 AspClientSearchPlaybookClauseAxis::NativeSyntax => {
                     self.native_syntax.as_ref().map_or(0, Vec::len)
@@ -228,13 +216,6 @@ impl AspClientWorkspaceSearchPlaybookRequest {
                     .any(|path| invalid_topology_path_filter(path))
         }) {
             return Err("ASP workspace Search Topology owner block is invalid".to_owned());
-        }
-        if self.syntax.iter().flatten().any(|block| {
-            block.producer.is_empty()
-                || block.plan.language_id != block.producer
-                || block.plan.validate().is_err()
-        }) {
-            return Err("ASP workspace Search Syntax query block must not be empty".to_owned());
         }
         if self.native_syntax.iter().flatten().any(|selector| {
             selector.is_empty()
@@ -360,55 +341,6 @@ impl AspClientWorkspaceQueryPlaybookRequest {
             return Err("workspace Query Playbook projection is unsupported".to_owned());
         }
         Ok(())
-    }
-}
-
-impl AspClientWorkspaceSyntaxQueryRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST,
-            &self.schema_version,
-        )?;
-        if self.syntax.is_empty()
-            || self.syntax.iter().any(|block| {
-                block.producer.trim().is_empty()
-                    || block.plan.language_id != block.producer
-                    || block.plan.validate().is_err()
-            })
-        {
-            return Err("workspace syntax Query requires complete resident plans".to_owned());
-        }
-        if self.projection != "matches" {
-            return Err("workspace syntax Query projection must be matches".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl crate::AspClientWorkspaceSyntaxPlanContextRequest {
-    pub fn validate_schema_identity(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST,
-            &self.schema_version,
-        )?;
-        if self.producer.trim().is_empty() {
-            return Err("workspace syntax plan context request is incomplete".to_owned());
-        }
-        Ok(())
-    }
-}
-
-impl AspClientWorkspaceSyntaxPlanContextResponse {
-    pub fn validate(&self) -> Result<(), String> {
-        check(
-            &self.schema_id,
-            CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE,
-            &self.schema_version,
-        )?;
-        validate_digest("generationDigest", &self.generation_digest, true)?;
-        self.capability.validate()
     }
 }
 

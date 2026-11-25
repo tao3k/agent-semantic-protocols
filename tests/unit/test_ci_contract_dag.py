@@ -19,7 +19,7 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
     assert "  python-provider-gates:" in workflow
     assert "  catalog-provider-gates:" in workflow
     assert "  language-facade-gates:" in workflow
-    assert "  tree-sitter-query-contract-gates:" in workflow
+    assert "  tree-sitter-query-contract-gates:" not in workflow
 
     python_provider = workflow.split("  python-provider-gates:", 1)[1].split(
         "  catalog-provider-gates:", 1,
@@ -37,17 +37,8 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
     )
     assert "agent-semantic-runtime-server" not in catalog_provider
 
-    language_facade = workflow.split("  language-facade-gates:", 1)[1].split(
-        "  tree-sitter-query-contract-gates:", 1,
-    )[0]
+    language_facade = workflow.split("  language-facade-gates:", 1)[1]
     assert "Language facade smoke gate" in language_facade
-
-    query_contracts = workflow.split("  tree-sitter-query-contract-gates:", 1)[1]
-    assert "--asp-bin" not in query_contracts
-    assert "--gate runtime-boundary" in query_contracts
-    assert "--gate query-corpus" in query_contracts
-    assert "--no-build" in query_contracts
-    assert "cargo test" not in query_contracts
 
 
 def test_asp_rust_workspace_is_a_pure_library_workspace_with_zero_cli_binaries() -> None:

@@ -8,9 +8,6 @@
 pub use agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID;
 pub use agent_semantic_provider_protocol::PROVIDER_REGISTER_RESPONSE_SCHEMA_ID;
 pub use agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION;
-pub use agent_semantic_provider_protocol::PROVIDER_SYNTAX_QUERY_OPERATION;
-pub use agent_semantic_provider_protocol::PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID;
-pub use agent_semantic_provider_protocol::PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID;
 pub use agent_semantic_provider_protocol::ProviderRegisterOperation;
 pub use agent_semantic_provider_protocol::ProviderRegisterRequest;
 pub use agent_semantic_provider_protocol::ProviderRegisterResponse;
@@ -18,14 +15,6 @@ pub use agent_semantic_provider_protocol::ProviderRegisterResult;
 pub use agent_semantic_provider_protocol::ProviderRegisterSnapshot;
 pub use agent_semantic_provider_protocol::ProviderRegistrationDocument;
 pub use agent_semantic_provider_protocol::ProviderSchemaReference;
-pub use agent_semantic_provider_protocol::ProviderSyntaxQueryCapture;
-pub use agent_semantic_provider_protocol::ProviderSyntaxQueryRequest;
-pub use agent_semantic_provider_protocol::ProviderSyntaxQueryResponse;
-pub use agent_semantic_provider_protocol::SyntaxQueryPattern;
-pub use agent_semantic_provider_protocol::SyntaxQueryPlan;
-pub use agent_semantic_provider_protocol::SyntaxQueryPredicate;
-pub use agent_semantic_provider_protocol::SyntaxQueryPredicateOp;
-pub use agent_semantic_provider_protocol::SyntaxQueryPredicateValue;
 
 #[cfg(feature = "http-client-server")]
 mod asp_client_server;

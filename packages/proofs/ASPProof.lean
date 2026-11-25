@@ -321,8 +321,6 @@ import ASPProof.RuntimeProjectTopologyAttachment
 import ASPProof.Audit.RuntimeProjectTopologyAttachment
 import ASPProof.SearchTopologySemanticOverlayIndependence
 import ASPProof.SearchAcquisitionIntersection
-import ASPProof.EnhancedSyntaxQueryPlan
-import ASPProof.Audit.EnhancedSyntaxQueryPlan
 import ASPProof.ResidentGrepCost
 import ASPProof.ServerDerivedSchemaDistribution
 import ASPProof.Audit.ResidentGrepCost

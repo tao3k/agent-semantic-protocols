@@ -107,7 +107,7 @@ check-language-facade-smoke:
 check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
-provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-tree-sitter-query-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-rust-workspace-policy check-schema-manager check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia provider-gate-gerbil
 
 # Run the parser-owned whole-workspace policy exactly once. Ordinary member
 # builds keep the O(1) manifest/policy-identity dependency and never rescan the
@@ -116,7 +116,7 @@ check-rust-workspace-policy:
     rtk cargo test -p asp-rust-project-harness-policy --features workspace-policy --test integration_test workspace_policy::asp_workspace_source_policy_is_clean -- --exact --nocapture
 
 check-rust-warnings:
-    env RUSTFLAGS="-D warnings" cargo check -q --workspace --exclude agent-semantic-mrr
+    env RUSTFLAGS="-D warnings" cargo check -q --workspace
     env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{asp_rust_project}}/Cargo.toml --all-features
 
 check-schema-profiles:
@@ -131,9 +131,6 @@ check-schema-proof-plan:
 report-schema-manager:
     uv run --project packages/python --frozen --exact asp-schema-manager audit --workspace-root .
 
-check-tree-sitter-query-contracts:
-    uv run --project packages/python --frozen --exact python -m tools tree-sitter validate contracts
-
 check-rfc-docs:
     uv run --project packages/python --frozen --exact pytest \
       tests/unit/test_*rfc.py \
@@ -144,7 +141,6 @@ provider-gate-root: check-language-facade-smoke
     just check-gerbil-owner-items-fast-path
     uv run --project packages/python --frozen --exact python -m pytest \
       tests/unit/test_semantic_*_schema.py \
-      tests/unit/semantic_tree_sitter_query_rfc \
       tests/unit/test_asp_server_first_architecture_rfc.py \
       tests/unit/test_marlin_host_integration_rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \

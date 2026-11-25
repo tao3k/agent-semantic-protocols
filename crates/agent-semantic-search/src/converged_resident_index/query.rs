@@ -90,14 +90,17 @@ pub(super) struct CompiledFilters {
 }
 
 impl CompiledFilters {
-    fn from_query(query: &WorkspaceSearchQuery<'_>) -> Self {
-        let allowed_exts = allowed_extensions(query.languages, query.documents);
-        let prefix_lower = query
-            .path_prefix
+    pub(super) fn from_parts(
+        languages: &[String],
+        documents: &[String],
+        path_prefix: Option<&str>,
+        extension: Option<&str>,
+    ) -> Self {
+        let allowed_exts = allowed_extensions(languages, documents);
+        let prefix_lower = path_prefix
             .filter(|p| !p.is_empty())
             .map(str::to_ascii_lowercase);
-        let ext_filter = query
-            .extension
+        let ext_filter = extension
             .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
             .filter(|e| !e.is_empty());
         let has_topology = prefix_lower.is_some() || ext_filter.is_some();
@@ -107,6 +110,15 @@ impl CompiledFilters {
             ext_filter,
             has_topology,
         }
+    }
+
+    fn from_query(query: &WorkspaceSearchQuery<'_>) -> Self {
+        Self::from_parts(
+            query.languages,
+            query.documents,
+            query.path_prefix,
+            query.extension,
+        )
     }
 
     pub(super) fn matches(&self, file: &IndexedFile) -> bool {

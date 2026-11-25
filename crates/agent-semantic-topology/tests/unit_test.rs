@@ -4,16 +4,8 @@
 
 #[path = "unit/org_projection_port.rs"]
 mod org_projection_port;
-#[path = "unit/project_topology_closure.rs"]
-mod project_topology_closure;
-#[path = "unit/project_topology_frontier.rs"]
-mod project_topology_frontier;
-#[path = "unit/project_topology_generation_builder.rs"]
-mod project_topology_generation_builder;
 #[path = "unit/project_topology_library.rs"]
 mod project_topology_library;
-#[path = "unit/project_topology_program_binding.rs"]
-mod project_topology_program_binding;
 #[path = "unit/runtime_project_topology_attachment.rs"]
 mod runtime_project_topology_attachment;
 #[path = "unit/support.rs"]

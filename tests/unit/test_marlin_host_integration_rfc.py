@@ -40,8 +40,6 @@ def _valid_binding() -> dict[str, Any]:
         "admittedMethods": [
             "asp.workspace.search.playbook",
             "asp.workspace.query.playbook",
-            "asp.workspace.query.syntax",
-            "asp.workspace.query.syntax-plan-context",
             "asp.workspace.generation.ensure-ready",
             "asp.graph.evaluate",
             "asp.schema.bundle",
@@ -101,6 +99,9 @@ def test_retired_codex_claude_and_hook_surfaces_are_absent() -> None:
         "crates/agent-semantic-runtime-process-observation",
         "crates/agent-semantic-runtime-server",
         "crates/agent-semantic-scheme-syntax",
+        "crates/agent-semantic-tree-sitter",
+        "crates/agent-semantic-mrr",
+        ".github/actions/mrr-search-owner",
         ".github/actions/orgize-ffi",
         ".github/scripts/fetch-orgize-ffi.sh",
         "asp-codex-plugin",

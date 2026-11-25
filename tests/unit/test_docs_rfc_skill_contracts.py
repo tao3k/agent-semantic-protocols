@@ -115,7 +115,6 @@ def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
     missing_just_terms = [term for term in required_just_terms if term not in justfile]
     required_ci_terms = [
         "Root schema gates",
-        "tests/unit/semantic_tree_sitter_query_rfc",
         "tests/unit/test_asp_server_first_architecture_rfc.py",
         "tests/unit/test_marlin_host_integration_rfc.py",
         "tests/unit/test_docs_rfc_skill_contracts.py",

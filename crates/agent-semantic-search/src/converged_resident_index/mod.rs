@@ -7,10 +7,15 @@
 //! snapshots, and incremental delta updates.
 
 mod build;
+mod edb;
 mod index;
 mod query;
 mod symbols;
 
+pub use edb::{
+    WorkspaceEdbAttr, WorkspaceEdbEdgeFact, WorkspaceEdbEdgeRule, WorkspaceEdbEntityFact,
+    WorkspaceEdbEntityRule, WorkspaceEdbFileFact, WorkspaceEdbPrefilter, WorkspaceEdbSnapshot,
+};
 pub use index::{
     WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
     WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery, WorkspaceSearchReport,

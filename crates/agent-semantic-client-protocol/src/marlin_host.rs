@@ -13,8 +13,6 @@ use crate::server_method_catalog::GRAPH_EVALUATE_METHOD;
 use crate::server_method_catalog::WORKSPACE_GENERATION_ENSURE_READY_METHOD;
 use crate::server_method_catalog::WORKSPACE_QUERY_PLAYBOOK_METHOD;
 use crate::server_method_catalog::WORKSPACE_SEARCH_PLAYBOOK_METHOD;
-use crate::server_method_catalog::WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD;
-use crate::server_method_catalog::WORKSPACE_SYNTAX_QUERY_METHOD;
 
 /// Schema identifier for the Marlin host integration contract.
 pub const MARLIN_HOST_INTEGRATION_SCHEMA_ID: &str =
@@ -28,8 +26,6 @@ pub const MARLIN_HOST_PLATFORM: &str = "marlin";
 pub const MARLIN_ADMITTED_METHODS: &[&str] = &[
     WORKSPACE_SEARCH_PLAYBOOK_METHOD,
     WORKSPACE_QUERY_PLAYBOOK_METHOD,
-    WORKSPACE_SYNTAX_QUERY_METHOD,
-    WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD,
     WORKSPACE_GENERATION_ENSURE_READY_METHOD,
     GRAPH_EVALUATE_METHOD,
     SCHEMA_BUNDLE_METHOD,

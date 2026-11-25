@@ -55,9 +55,9 @@ Git history is the sole archive; all retired surfaces are removed cleanly.
 | Multi-agent graph & dispatch | Marlin (~marlin-agent-graph~) | Readiness-gated Gerbil graph loops |
 | Org parsing & Fold graph projection | Marlin (~marlin-agent-context~) | ~org-source.ss~ / ~gerbil_org.rs~ feeding ASP via ~OrgDocumentProjectionPort~ |
 | Unified Turso persistence & artifact CAS | Marlin (~marlin-agent-storage~) | ~TursoAgentStorage~ / ~TursoContextIndex~ feeding ASP via ~SearchEngineStoragePort~ |
-| Converged search, Merkle generation, ranking & topology engine | ASP (~agent-semantic-search~, ~agent-semantic-search-playbook~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, Tantivy + ripgrep + Ascent closure, zero ~orgize~, zero ~turso~, zero pseudo-Scheme text parser |
-| Real Gerbil Scheme search composition & C-ABI projection | Marlin (~scheme/search/*~, ~crates/marlin-agent-search~) | Real Gerbil Scheme module system + ~RootedSchemeObject~ -> ~SearchPlaybookPlanInput~ / ~ProgressiveQueryInput~ |
-| Language provider supervision (non-Rust external providers only) | ASP (~agent-semantic-provider-transport~, ~agent-semantic-tree-sitter~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ |
+| Converged search, Merkle generation, ranking & open EDB fact extraction | ASP (~agent-semantic-search~, ~agent-semantic-search-playbook~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, language-agnostic rule-driven ~WorkspaceSearchIndex::extract_prefiltered_edb~, Tantivy + ripgrep + compact 6B trigram postings, zero hardcoded language parsers, zero ~orgize~, zero ~turso~, zero pseudo-Tree-sitter ~.scm~, zero Rust ~ascent~ / ~agent-semantic-mrr~ |
+| Unified logical & Dusa finite-choice search DSL, typed structured parsing, POO language fragments & C-ABI projection | Marlin (~scheme/search-dsl/*~, ~scheme/search-engine/*~, ~:gerbil-ascent~, ~:gerbil-parser~, ~crates/marlin-agent-search-engine~) | Real Gerbil Scheme ~:gerbil-ascent~ (relational + Dusa finite-choice ~choice~/~closed~/~open~) + ~:gerbil-parser~ (typed structured DSL/sub-syntax parsing in Scheme instead of Rust) + POO ~LanguageFragment.~ prototypes + ~RootedSchemeObject~ open EDB streaming |
+| Language provider supervision (non-Rust external providers only) | ASP (~agent-semantic-provider-transport~, ~agent-semantic-provider-protocol~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ |
 | Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~ |
 
 * Two-Port Extreme Convergence (Org Parsing, Unified Turso Storage & Native Scheme ABI)
@@ -116,9 +116,13 @@ not be reintroduced:
   ~crates/agent-semantic-context-product~, ~crates/agent-semantic-loop~,
   ~crates/agent-semantic-runtime~, ~crates/agent-semantic-runtime-observability~,
   ~crates/agent-semantic-runtime-process-observation~,
-  ~crates/agent-semantic-runtime-server~, ~crates/agent-semantic-scheme-syntax~.
-- Retired Orgize FFI bootstrap assets: ~.github/actions/orgize-ffi/~,
-  ~.github/scripts/fetch-orgize-ffi.sh~, and any ~embedded-orgize~ /
+  ~crates/agent-semantic-runtime-server~, ~crates/agent-semantic-scheme-syntax~,
+  ~crates/agent-semantic-tree-sitter~ (pseudo-Tree-sitter ~.scm~ S-expression layer),
+  and ~crates/agent-semantic-mrr~ + Rust ~ascent = "0.8.0"~ (superseded by
+  Marlin's native Scheme ~:gerbil-ascent~ with Dusa finite-choice and POO
+  language fragments).
+- Retired Orgize & MRR bootstrap assets: ~.github/actions/orgize-ffi/~,
+  ~.github/actions/mrr-search-owner/~, ~.github/scripts/fetch-orgize-ffi.sh~, and any ~embedded-orgize~ /
   ~legacy-scheme-text~ compatibility features.
 - Plugin and routing assets: ~asp-codex-plugin/~, ~.agents/plugins/~, ~agents/~.
 - CLI roots and subcommands: standalone ~asp~ CLI/daemon, ~asp hook~,
@@ -186,12 +190,16 @@ Marlin communicates with ASP Runtime Server exclusively through the typed
 
 1. ~asp.workspace.search.playbook~ — progressive Scheme-composed semantic search
 2. ~asp.workspace.query.playbook~ — exact selector-addressed structural reads
-3. ~asp.workspace.query.syntax~ — portable tree-sitter-compatible syntax queries
-4. ~asp.workspace.query.syntax-plan-context~ — syntax query plan preparation
-5. ~asp.workspace.generation.ensure-ready~ — deterministic workspace generation admission
-6. ~asp.graph.evaluate~ — resident Ascent/GQL graph evaluation
-7. ~asp.schema.bundle~ — canonical language schema bundle distribution
-8. ~asp.cancellation.probe~ — request cancellation verification
+3. ~asp.workspace.generation.ensure-ready~ — deterministic workspace generation admission
+4. ~asp.schema.bundle~ — canonical language schema bundle distribution
+5. ~asp.cancellation.probe~ — request cancellation verification
+
+Note: heavy compilation-unit language providers communicate with ASP over
+HTTP/gRPC, while lightweight/sub-syntax/query parsing and relational/Dusa
+choice reasoning live natively in Marlin's Gerbil Scheme plane (~:gerbil-parser~
++ ~:gerbil-ascent~ + POO ~LanguageFragment.~). ASP's Rust search engine remains
+a minimal, language-agnostic runtime indexing and rule-driven Open EDB
+extraction interface.
 
 ** Fail-Closed Admission Rules
 

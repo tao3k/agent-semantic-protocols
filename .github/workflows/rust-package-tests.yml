@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 16
+      max-parallel: 14
       matrix:
         package:
           - agent-semantic-artifacts
@@ -35,7 +35,6 @@ jobs:
           - agent-semantic-config
           - agent-semantic-content-identity
           - agent-semantic-http-json
-          - agent-semantic-mrr
           - agent-semantic-provider-protocol
           - agent-semantic-provider-transport
           - agent-semantic-schema-manager
@@ -43,7 +42,6 @@ jobs:
           - agent-semantic-search-playbook
           - agent-semantic-search-projection
           - agent-semantic-topology
-          - agent-semantic-tree-sitter
           - agent-semantic-workspace-scheduler
           - asp-rust-project-harness-policy
 
@@ -62,14 +60,8 @@ jobs:
           cache-on-failure: true
 
       - name: Sync core external providers from providers.toml
-        if: ${{ matrix.package == 'agent-semantic-schema-manager' || matrix.package == 'agent-semantic-tree-sitter' }}
+        if: ${{ matrix.package == 'agent-semantic-schema-manager' }}
         run: python3 scripts/providers_sync.py sync --workspace . --profile core
-
-      - name: Prepare the declared MRR search owner
-        if: ${{ matrix.package == 'agent-semantic-mrr' }}
-        uses: ./.github/actions/mrr-search-owner
-        with:
-          install-toolchain: 'true'
 
       - name: Lint package
         if: ${{ matrix.package != 'asp-rust-project-harness-policy' }}
