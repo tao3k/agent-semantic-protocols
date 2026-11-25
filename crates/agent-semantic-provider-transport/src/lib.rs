@@ -39,7 +39,6 @@ mod resident_runtime;
 mod runtime_contract;
 mod runtime_process;
 mod runtime_wire;
-mod search_tool_process;
 pub use projection_batch::ProviderDerivedProjection;
 pub use projection_batch::ProviderProjectedItem;
 pub use projection_batch::ProviderProjectedOwner;
@@ -94,19 +93,7 @@ pub use runtime_wire::PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID;
 pub use runtime_wire::ProviderRuntimeRequestFrame;
 pub use runtime_wire::ProviderRuntimeResponseFrame;
 pub use runtime_wire::ProviderRuntimeResponseOutcome;
-pub use search_tool_process::FdInventoryDeadline;
-pub use search_tool_process::FdInventoryOutput;
-pub use search_tool_process::FdInventoryReceipt;
-pub use search_tool_process::RgColdQueryOutput;
-pub use search_tool_process::RgColdQueryReceipt;
-pub use search_tool_process::ValidatedColdRgCorpus;
-pub use search_tool_process::run_fd_inventory;
-pub use search_tool_process::run_rg_cold_query;
 pub use transport::ProviderProcessOutput;
 pub use transport::ProviderProcessStarted;
 pub use transport::ProviderProcessSupervisor;
 pub use transport::provider_process_limits_from_environment;
-#[cfg(feature = "grpc-session")]
-pub mod grpc_session;
-#[cfg(feature = "grpc-session")]
-pub use grpc_session::GrpcProviderSessionClient;

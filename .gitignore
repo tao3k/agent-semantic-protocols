@@ -21,3 +21,15 @@ __pycache__/
 /.asp-artifacts/
 /.worktrees
 /.pnpm*
+
+# Materialized external providers, analyzers, and docs managed by `providers.toml`.
+/languages/asp-rust/
+/languages/asp-typescript/
+/languages/asp-python/
+/languages/AspJulia.jl/
+/languages/asp-gerbil-scheme/
+/languages/orgize/
+/analyzers/WendaoGraph.jl/
+/analyzers/ScienceResearch.jl/
+/analyzers/AspGraphsSearch.jl/
+/org/

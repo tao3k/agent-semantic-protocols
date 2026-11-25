@@ -173,6 +173,17 @@ pub struct SearchPlaybookProducerDeclaration {
     pub documents: Vec<String>,
 }
 
+/// Pure typed Search Playbook input projected from Marlin's real Gerbil Scheme
+/// module system via native `RootedSchemeObject` ABI (zero pseudo S-expression
+/// text parsing).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPlaybookPlanInput {
+    pub workspace: Option<String>,
+    pub languages: Vec<String>,
+    pub documents: Vec<String>,
+    pub composition: SearchPlaybookComposition,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchPlaybookClauseAxis {

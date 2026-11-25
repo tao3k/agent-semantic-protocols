@@ -2,10 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Public facade for the lightweight Search Playbook V1 contract.
+//! Public facade for the pure typed Search Playbook V1 IR contract.
 
 mod model;
+mod native_rg;
 mod playbook;
+mod tantivy_query;
 mod topology_owner;
 
 pub use model::{
@@ -15,10 +17,15 @@ pub use model::{
     SEARCH_PLAYBOOK_MAX_COMPOSITION_DEPTH, SEARCH_PLAYBOOK_MAX_COMPOSITION_NODES,
     SEARCH_PLAYBOOK_MAX_STATIC_WORK, SearchPlaybookClauseAxis, SearchPlaybookClauseRef,
     SearchPlaybookComposition, SearchPlaybookCompositionMetrics, SearchPlaybookLeaf,
-    SearchPlaybookNormalizedComposition, SearchPlaybookProducerDeclaration,
-    TopologyOwnerMembershipBlock, search_playbook_composition_abi_digest,
+    SearchPlaybookNormalizedComposition, SearchPlaybookPlanInput,
+    SearchPlaybookProducerDeclaration, TopologyOwnerMembershipBlock,
+    search_playbook_composition_abi_digest,
 };
-pub use playbook::{
-    parse_progressive_search_playbook_args, parse_query_playbook_producer_declaration,
-    parse_search_playbook_producer_declaration,
+pub use native_rg::{
+    NativeRgArgvAnalysis, NativeRgDiagnostic, NativeRgDiagnosticKind, NativeRgOptionOccurrence,
+    NativeRgOutputAttribution, NativeRgValueOccurrence, analyze_native_rg_argv,
+};
+pub use playbook::admit_search_playbook_plan;
+pub use tantivy_query::{
+    TantivyQueryAnalysis, TantivyQueryDiagnostic, TantivyQueryMetrics, analyze_tantivy_query,
 };

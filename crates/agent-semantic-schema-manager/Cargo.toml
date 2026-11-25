@@ -11,23 +11,31 @@ license.workspace = true
 [features]
 default = ["runtime"]
 runtime = [
+    "dep:agent-semantic-config",
     "dep:agent-semantic-content-identity",
     "dep:agent-semantic-workspace-scheduler",
+    "dep:gix",
     "dep:serde",
     "dep:tempfile",
     "dep:tokio",
 ]
 
 [dependencies]
+agent-semantic-config = { workspace = true, optional = true }
 agent-semantic-content-identity = { workspace = true, optional = true }
 agent-semantic-workspace-scheduler = { workspace = true, optional = true }
+gix = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json.workspace = true
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
-[build-dependencies]
-asp-rust-project-harness-policy.workspace = true
-
 [lints]
 workspace = true
+
+[dev-dependencies]
+asp-rust.workspace = true
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

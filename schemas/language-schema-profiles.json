@@ -365,14 +365,13 @@
       }
     },
     {
-      "familyId": "asp.schema-family.hook",
+      "familyId": "asp.schema-family.activation",
       "owner": "schemas",
-      "rationale": "Hook activation, policy, matching, and break-glass capability contracts.",
+      "rationale": "Runtime artifact activation admission and host-native execution boundary contracts.",
       "priority": 200,
       "parentFamilyId": "asp.schema-family.semantic",
       "namespace": {
         "filenamePrefixes": [
-          "hook-",
           "activation-"
         ]
       },
@@ -383,11 +382,23 @@
       }
     },
     {
+      "familyId": "asp.schema-family.marlin-host",
+      "owner": "crates/agent-semantic-client-protocol",
+      "rationale": "Marlin-native host integration, session lineage correlation, and runtime boundary contracts.",
+      "priority": 250,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": [
+          "marlin-host-"
+        ]
+      }
+    },
+    {
       "familyId": "asp.schema-family.semantic-agent",
       "definitionSchemaPath": "schemas/semantic-agent-definitions.schema.json",
       "definitionVisibility": "family",
       "owner": "schemas",
-      "rationale": "Agent hook, session, search, policy, and runtime profile contracts.",
+      "rationale": "Agent search, policy, project config, and runtime profile contracts.",
       "priority": 200,
       "parentFamilyId": "asp.schema-family.semantic",
       "namespace": {
@@ -395,23 +406,9 @@
           "semantic-agent-",
           "agent-action-",
           "agent-action.",
-          "agent-route-",
-          "agent-root-",
-          "agent-session-",
-          "multi-agent-",
-        "subagent-",
-        "host-agent-",
-        "host-session-",
-        "agent-semantic-project-",
-        "codex-session-",
-        "codex-child-",
-        "codex-collaboration-",
-        "codex-thread-"
-        ]
-      },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/codex-multi-agent-v2-host-lifecycle-event.v1.schema.json"
+          "host-agent-",
+          "host-session-",
+          "agent-semantic-project-"
         ]
       }
     },
@@ -1140,7 +1137,7 @@
     },
     {
       "fingerprint": "sha256:e3694767637bb90692a735a3d4290ceb288576cdf05a50f573c8cc037c2eb9a1",
-      "occurrenceSetDigest": "sha256:4025b62f39f4481419697bddc0f9f0bc720d4f14d238a2cecca81a97dfaa3f63",
+      "occurrenceSetDigest": "sha256:60839a0272ff06b4550abf76e5bb001e2f6c328170ef369b0234ea24cf060e39",
       "familyIds": [
         "asp.schema-family.runtime-server",
         "asp.schema-family.workspace"

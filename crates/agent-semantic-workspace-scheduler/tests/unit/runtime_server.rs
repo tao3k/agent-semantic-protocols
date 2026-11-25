@@ -92,15 +92,11 @@ async fn dropped_owned_tasks_are_accounted_as_cancelled() {
 
 #[test]
 fn client_profiles_are_current_thread_schedulers() {
-    for mut builder in [
-        RuntimeServerRuntimeBuilder::new_client(),
-        RuntimeServerRuntimeBuilder::new_hook_client(),
-    ] {
-        let runtime = builder.enable_all().build().expect("client runtime");
-        let workers =
-            runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
-        assert_eq!(workers, 1);
-    }
+    let mut builder = RuntimeServerRuntimeBuilder::new_client();
+    let runtime = builder.enable_all().build().expect("client runtime");
+    let workers =
+        runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
+    assert_eq!(workers, 1);
 }
 
 #[test]

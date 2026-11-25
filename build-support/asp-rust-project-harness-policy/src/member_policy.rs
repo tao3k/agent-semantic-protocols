@@ -47,7 +47,6 @@ pub fn asp_workspace_member_forbidden_normal_dependencies(
 ) -> &'static [&'static str] {
     match package_name {
         "agent-semantic-artifacts" => &["turso"],
-        "agent-semantic-client-core" | "agent-semantic-runtime-server" => &["agent-semantic-hook"],
         _ => &[],
     }
 }
@@ -157,16 +156,16 @@ const PROVIDER_TRANSPORT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] =
 
 const SEARCH_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/resident_source_index.rs",
-        rationale: "resident shallow and owner-local search lookup sits on every warm search hot path",
+        path: "src/converged_resident_index/query.rs",
+        rationale: "resident multi-axis query execution sits on every warm search hot path",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/graph_owner_rank.rs",
-        rationale: "owner candidate ranking must remain below the warm search latency gate",
+        path: "src/trigram_store/store.rs",
+        rationale: "compact 6-byte trigram posting intersection governs resident candidate pruning latency",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/search_generation_segment.rs",
-        rationale: "immutable generation segment validation gates resident search admission",
+        path: "src/source_index_rank.rs",
+        rationale: "deterministic candidate ranking must remain below the warm search latency gate",
     },
 ];
 
@@ -184,130 +183,12 @@ const TOPOLOGY_INDEX_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     },
 ];
 
-const CLIENT_DB_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/engine/facade.rs",
-        rationale: "DB Engine facade routes provider replay hot paths through active Turso adapters",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/engine/turso_cache.rs",
-        rationale: "Turso cache generation lookup and invalidation sit on repeated agent search replay paths",
-    },
-];
-
-const CLIENT_DB_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/engine/turso.rs",
-        rationale: "Turso bootstrap schema and transaction boundaries must remain stable under repeated agent writeback and replay",
-    },
-];
-
-const CLIENT_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/cli.rs",
-        rationale: "the thin client owns Runtime Server route submission and provider-register snapshot latency",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/search_history",
-        rationale: "search history audit uses Turso-backed artifact timelines and graph-turbo dispatch",
-    },
-];
-
-const CLIENT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/cli.rs",
-        rationale: "the thin client must fail closed when Runtime Server route authority is unavailable",
-    },
-];
-
-const RUNTIME_SERVER_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/query_generation.rs",
-        rationale: "Runtime generation admission, bounded calibration, and resident attachment publication control cold-to-warm Search latency",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/runtime_asp_client.rs",
-        rationale: "Runtime ClientFrame dispatch and terminalization sit on every public Search and Query request",
-    },
-];
-
-const RUNTIME_SERVER_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/query_generation.rs",
-        rationale: "ProjectId and WorkspaceId generation partitions must preserve single-flight, drain, and exact content binding",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/runtime_asp_client.rs",
-        rationale: "Every admitted request must emit exactly one typed terminal without raw EOF or client fallback",
-    },
-];
-
 const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
     AspRustProjectHarnessMemberPolicy {
         package_name: "agent-semantic-artifacts",
         crate_root: "crates/agent-semantic-artifacts",
         cargo_check_advice_allow_explanation: "scope=agent-semantic-artifacts cargo-check advice; owner=artifact identity build gate; finding_category=advisory policy findings; why_safe_now=Phase 1 exposes only typed Merkle identity primitives and keeps DB/search side effects out of this crate while warning and error findings still fail the build; cleanup_trigger=clear any remaining advisory backlog before connecting artifact roots to DB writes",
         verification_label: None,
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-client-core",
-        crate_root: "crates/agent-semantic-client-core",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-client-core cargo-check advice; owner=agent-semantic-client-core build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-core keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: None,
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-client-db",
-        crate_root: "crates/agent-semantic-client-db",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-client-db cargo-check advice; owner=agent-semantic-client-db build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-db keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: Some("client db"),
-        rule_severity_overrides: &[],
-        criterion_performance_verification: true,
-        latency_sensitive_performance_owners: CLIENT_DB_LATENCY_OWNERS,
-        availability_stability_owners: CLIENT_DB_STABILITY_OWNERS,
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-client-server",
-        crate_root: "crates/agent-semantic-client-server",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-client-server cargo-check advice; owner=agent-semantic-client-server build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-server keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: Some("ASP client server"),
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-client",
-        crate_root: "crates/agent-semantic-client",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-client cargo-check advice; owner=agent-semantic-client build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: Some("client"),
-        rule_severity_overrides: &[],
-        criterion_performance_verification: true,
-        latency_sensitive_performance_owners: CLIENT_LATENCY_OWNERS,
-        availability_stability_owners: CLIENT_STABILITY_OWNERS,
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-hook",
-        crate_root: "crates/agent-semantic-hook",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-hook cargo-check advice; owner=agent-semantic-hook build gate; finding_category=advisory policy findings; why_safe_now=semantic-agent-hook keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: None,
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-hook-testkit",
-        crate_root: "crates/agent-semantic-hook-testkit",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-hook-testkit cargo-check advice; owner=agent-semantic-hook-testkit build gate; finding_category=advisory policy findings; why_safe_now=the Hook TestKit keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: Some("Hook TestKit"),
         rule_severity_overrides: &[],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],
@@ -389,39 +270,6 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         cargo_check_advice_allow_explanation: "scope=agent-semantic-tree-sitter cargo-check advice; owner=agent-semantic-tree-sitter build gate; finding_category=advisory policy findings; why_safe_now=tree-sitter catalog ABI advice stays visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         verification_label: None,
         rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-runtime",
-        crate_root: "crates/agent-semantic-runtime",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-runtime cargo-check advice; owner=agent-semantic-runtime build gate; finding_category=advisory policy findings; why_safe_now=runtime state materialization keeps filesystem side effects in a focused crate while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: None,
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-runtime-server",
-        crate_root: "crates/agent-semantic-runtime-server",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-runtime-server cargo-check advice; owner=Runtime Server generation and ClientFrame build gate; finding_category=advisory policy findings; why_safe_now=advisory findings remain visible while warning and error findings fail the explicit workspace policy gate; cleanup_trigger=clear Runtime Server owner-size and lifecycle findings before publication",
-        verification_label: Some("Runtime Server"),
-        rule_severity_overrides: &[],
-        criterion_performance_verification: true,
-        latency_sensitive_performance_owners: RUNTIME_SERVER_LATENCY_OWNERS,
-        availability_stability_owners: RUNTIME_SERVER_STABILITY_OWNERS,
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "orgize",
-        crate_root: "languages/orgize",
-        cargo_check_advice_allow_explanation: "scope=orgize explicit verification; owner=orgize parser build gate; finding_category=advisory policy findings; why_safe_now=ordinary downstream builds consume only the content-addressed member policy while the explicit Orgize verification gate runs the full harness; cleanup_trigger=clear the parser advisory backlog before tightening the explicit verification profile",
-        verification_label: Some("Orgize parser"),
-        rule_severity_overrides: &[AspRustProjectHarnessSeverityPolicy {
-            rule_code: "RUST-MOD-R002",
-            severity: AspRustProjectHarnessDiagnosticSeverity::Info,
-        }],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],
         availability_stability_owners: &[],

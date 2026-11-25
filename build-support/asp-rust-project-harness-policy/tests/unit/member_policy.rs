@@ -6,82 +6,37 @@ use asp_rust_project_harness_policy::asp_workspace_member_forbidden_normal_depen
 use asp_rust_project_harness_policy::asp_workspace_member_policies;
 
 #[test]
-fn runtime_provider_consumers_forbid_direct_hook_dependencies() {
-    for package in [
-        "agent-semantic-client-core",
-        "agent-semantic-runtime-server",
+fn retired_codex_claude_hook_and_legacy_standalone_crates_are_absent_from_workspace() {
+    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for retired in [
+        "crates/agent-semantic-hook",
+        "crates/agent-semantic-hook-testkit",
+        "crates/agent-semantic-shell-parser",
+        "crates/agent-semantic-client",
+        "crates/agent-semantic-client-core",
+        "crates/agent-semantic-client-db",
+        "crates/agent-semantic-client-server",
+        "crates/agent-semantic-context-product",
+        "crates/agent-semantic-loop",
+        "crates/agent-semantic-runtime",
+        "crates/agent-semantic-runtime-observability",
+        "crates/agent-semantic-runtime-process-observation",
+        "crates/agent-semantic-runtime-server",
+        "crates/agent-semantic-scheme-syntax",
+        ".github/actions/orgize-ffi",
+        ".github/scripts/fetch-orgize-ffi.sh",
+        "asp-codex-plugin",
+        "agents",
     ] {
-        assert_eq!(
-            asp_workspace_member_forbidden_normal_dependencies(package),
-            ["agent-semantic-hook"],
-            "{package} must consume provider DTOs from Provider Protocol"
+        assert!(
+            !repository_root.join(retired).exists(),
+            "retired legacy surface `{retired}` must not be recreated"
         );
     }
-}
-
-#[test]
-fn hook_source_rejects_retired_manifest_activation_routing() {
-    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let hook_source = repository_root.join("crates/agent-semantic-hook/src");
-    assert!(
-        !hook_source.join("protocol_activation").exists(),
-        "Hook source must not recreate the retired protocol_activation module"
+    assert_eq!(
+        asp_workspace_member_forbidden_normal_dependencies("agent-semantic-artifacts"),
+        ["turso"],
     );
-
-    let forbidden = [
-        "pub struct HookRoutes",
-        "pub struct HookRouteBindings",
-        "pub struct HookActivation",
-        "pub struct ActivatedProvider",
-        "pub struct ProviderManifest",
-        "fn materialize_provider_routes",
-    ];
-    let mut pending = vec![hook_source];
-    while let Some(path) = pending.pop() {
-        for entry in std::fs::read_dir(&path)
-            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
-        {
-            let path = entry.expect("Hook source entry").path();
-            if path.is_dir() {
-                pending.push(path);
-                continue;
-            }
-            if path.extension().and_then(std::ffi::OsStr::to_str) != Some("rs") {
-                continue;
-            }
-            let source = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-            for retired in forbidden {
-                assert!(
-                    !source.contains(retired),
-                    "{} recreates retired Hook routing surface `{retired}`",
-                    path.display()
-                );
-            }
-        }
-    }
-}
-
-#[test]
-#[cfg(feature = "workspace-policy")]
-fn runtime_server_member_source_policy_accepts_split_route_owners() {
-    let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let crate_root = repository_root.join("crates/agent-semantic-runtime-server");
-
-    let report =
-        asp_rust_project_harness_policy::evaluate_asp_rust_project_harness_member_source_policy(
-            "agent-semantic-runtime-server",
-            &crate_root,
-        )
-        .expect("evaluate Runtime Server member source policy");
-
-    assert!(!report.findings.iter().any(|finding| {
-        finding.rule_id == "RUST-MOD-R002"
-            && finding.location.path.as_ref().is_some_and(|path| {
-                path.ends_with("src/runtime_asp_client_resolved_route.rs")
-                    || path.ends_with("src/runtime_asp_client_query_playbook.rs")
-            })
-    }));
 }
 
 #[test]
@@ -95,12 +50,6 @@ fn central_policy_registry_contains_migrated_member_crates() {
         package_names,
         vec![
             "agent-semantic-artifacts",
-            "agent-semantic-client-core",
-            "agent-semantic-client-db",
-            "agent-semantic-client-server",
-            "agent-semantic-client",
-            "agent-semantic-hook",
-            "agent-semantic-hook-testkit",
             "agent-semantic-http-json",
             "agent-semantic-provider-protocol",
             "agent-semantic-provider-transport",
@@ -109,9 +58,6 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-topology",
             "agent-semantic-schema-manager",
             "agent-semantic-tree-sitter",
-            "agent-semantic-runtime",
-            "agent-semantic-runtime-server",
-            "orgize",
         ]
     );
 }
@@ -128,25 +74,23 @@ fn every_member_policy_has_a_content_addressed_declaration() {
 #[test]
 fn every_member_build_uses_the_shared_source_policy_crate() {
     let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for policy in asp_workspace_member_policies()
-        .iter()
-        .filter(|policy| policy.package_name != "orgize")
-    {
+    for policy in asp_workspace_member_policies() {
         let manifest =
             std::fs::read_to_string(repository_root.join(policy.crate_root).join("Cargo.toml"))
                 .unwrap_or_else(|error| panic!("{} manifest: {error}", policy.package_name));
         assert!(
-            manifest.contains("[build-dependencies]")
-                && manifest.contains("asp-rust-project-harness-policy"),
-            "{} must share the Cargo Build Support unit",
+            manifest.contains("[dev-dependencies]") && manifest.contains("asp-rust"),
+            "{} must declare asp-rust strictly under [dev-dependencies]",
             policy.package_name
         );
-        let conventional_build = repository_root.join(policy.crate_root).join("build.rs");
-        let source = std::fs::read_to_string(&conventional_build)
-            .unwrap_or_else(|error| panic!("read {}: {error}", conventional_build.display()));
+        let policy_test = repository_root
+            .join(policy.crate_root)
+            .join("tests/unit/policy.rs");
+        let source = std::fs::read_to_string(&policy_test)
+            .unwrap_or_else(|error| panic!("read {}: {error}", policy_test.display()));
         assert!(
-            source.contains("assert_asp_rust_project_harness_member_policy_from_env"),
-            "{} must execute one package-local policy atom",
+            source.contains("asp_rust_cargo_test_gate!"),
+            "{} must mount asp_rust_cargo_test_gate! in tests/unit/policy.rs",
             policy.package_name
         );
     }
@@ -171,18 +115,17 @@ fn every_workspace_package_is_one_cargo_owned_policy_atom() {
         let manifest = std::fs::read_to_string(&manifest_path)
             .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()));
         assert!(
-            manifest.contains("[build-dependencies]")
-                && manifest.contains("asp-rust-project-harness-policy"),
-            "{} must participate in the shared Cargo policy DAG",
+            manifest.contains("[dev-dependencies]") && manifest.contains("asp-rust"),
+            "{} must declare asp-rust strictly under [dev-dependencies]",
             package.package_name
         );
 
-        let build_path = package.package_root.join("build.rs");
-        let build = std::fs::read_to_string(&build_path)
-            .unwrap_or_else(|error| panic!("read {}: {error}", build_path.display()));
+        let policy_test = package.package_root.join("tests/unit/policy.rs");
+        let source = std::fs::read_to_string(&policy_test)
+            .unwrap_or_else(|error| panic!("read {}: {error}", policy_test.display()));
         assert!(
-            build.contains("assert_asp_rust_project_harness_member_policy_from_env"),
-            "{} must run exactly one package-local policy atom",
+            source.contains("asp_rust_cargo_test_gate!"),
+            "{} must mount asp_rust_cargo_test_gate! in tests/unit/policy.rs",
             package.package_name
         );
     }
@@ -209,62 +152,59 @@ fn shared_build_policy_compiles_one_default_full_scanner() {
 #[test]
 fn central_policy_preserves_member_specific_verification_owners() {
     let policies = asp_workspace_member_policies();
-    let client_db = policies
+    let provider_transport = policies
         .iter()
-        .find(|policy| policy.package_name == "agent-semantic-client-db")
-        .expect("client-db policy");
-    let client = policies
+        .find(|policy| policy.package_name == "agent-semantic-provider-transport")
+        .expect("provider-transport policy");
+    let search = policies
         .iter()
-        .find(|policy| policy.package_name == "agent-semantic-client")
-        .expect("client policy");
-    let runtime_server = policies
+        .find(|policy| policy.package_name == "agent-semantic-search")
+        .expect("search policy");
+    let topology = policies
         .iter()
-        .find(|policy| policy.package_name == "agent-semantic-runtime-server")
-        .expect("Runtime Server policy");
+        .find(|policy| policy.package_name == "agent-semantic-topology")
+        .expect("topology policy");
 
-    assert_eq!(client_db.verification_label, Some("client db"));
-    assert!(
-        client_db
-            .latency_sensitive_performance_owners
-            .iter()
-            .any(|owner| owner.path == "src/engine/facade.rs")
+    assert_eq!(
+        provider_transport.verification_label,
+        Some("provider transport")
     );
     assert!(
-        client
+        provider_transport
             .availability_stability_owners
             .iter()
-            .any(|owner| owner.path == "src/cli.rs")
+            .any(|owner| owner.path == "src/transport.rs")
     );
     assert!(
-        runtime_server
+        search
             .latency_sensitive_performance_owners
             .iter()
-            .any(|owner| owner.path == "src/query_generation.rs")
+            .any(|owner| owner.path == "src/converged_resident_index/query.rs")
     );
     assert!(
-        runtime_server
-            .availability_stability_owners
+        topology
+            .latency_sensitive_performance_owners
             .iter()
-            .any(|owner| owner.path == "src/query_generation.rs")
+            .any(|owner| owner.path == "src/topology_index.rs")
     );
 }
 
 #[test]
 fn member_policy_digest_is_stable_and_distinguishes_declarations() {
     let policies = asp_workspace_member_policies();
-    let client_db = policies
+    let topology = policies
         .iter()
-        .find(|policy| policy.package_name == "agent-semantic-client-db")
+        .find(|policy| policy.package_name == "agent-semantic-topology")
         .copied()
-        .expect("client-db policy");
+        .expect("topology policy");
     let search = policies
         .iter()
         .find(|policy| policy.package_name == "agent-semantic-search")
         .copied()
         .expect("search policy");
 
-    let first = client_db.contract_digest();
-    assert_eq!(first, client_db.contract_digest());
+    let first = topology.contract_digest();
+    assert_eq!(first, topology.contract_digest());
     assert!(first.starts_with("blake3-256:"));
     assert_ne!(first, search.contract_digest());
 }

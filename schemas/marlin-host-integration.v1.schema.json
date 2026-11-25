@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/marlin-host-integration.v1.schema.json",
+  "title": "Marlin Host Integration Contract",
+  "description": "Typed binding, correlation lineage, and northbound admission receipt shared between Marlin (marlin-agent-core) and Agent Semantic Protocols (ASP).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "platform",
+    "hostId",
+    "projectId",
+    "workspaceId",
+    "worktreeId",
+    "capabilityProfile",
+    "admittedMethods"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.marlin-host-integration"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "platform": {
+      "const": "marlin"
+    },
+    "hostId": {
+      "$ref": "#/$defs/nonEmptyIdentifier"
+    },
+    "projectId": {
+      "$ref": "#/$defs/nonEmptyIdentifier"
+    },
+    "workspaceId": {
+      "$ref": "#/$defs/nonEmptyIdentifier"
+    },
+    "worktreeId": {
+      "$ref": "#/$defs/nonEmptyIdentifier"
+    },
+    "capabilityProfile": {
+      "enum": [
+        "read-only-semantic",
+        "verified-ast-patch",
+        "full-workspace-generation"
+      ]
+    },
+    "admittedMethods": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "asp.workspace.search.playbook",
+          "asp.workspace.query.playbook",
+          "asp.workspace.query.syntax",
+          "asp.workspace.query.syntax-plan-context",
+          "asp.workspace.generation.ensure-ready",
+          "asp.graph.evaluate",
+          "asp.schema.bundle",
+          "asp.cancellation.probe"
+        ]
+      }
+    },
+    "enginePorts": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/marlinEnginePortBindings"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "correlation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/marlinCorrelation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stateHome": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "nonEmptyIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(.*\\S)?$"
+    },
+    "marlinEnginePortBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orgPort",
+        "storagePort"
+      ],
+      "properties": {
+        "orgPort": {
+          "enum": [
+            "marlin-context-org-fold"
+          ]
+        },
+        "storagePort": {
+          "enum": [
+            "marlin-agent-storage-turso",
+            "in-memory-reference"
+          ]
+        }
+      }
+    },
+    "marlinCorrelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootSessionId",
+        "sessionId"
+      ],
+      "properties": {
+        "rootSessionId": {
+          "$ref": "#/$defs/nonEmptyIdentifier"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/nonEmptyIdentifier"
+        },
+        "parentSessionId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/nonEmptyIdentifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agentLineage": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/nonEmptyIdentifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

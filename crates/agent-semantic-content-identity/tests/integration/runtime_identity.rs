@@ -239,18 +239,18 @@ fn legacy_v1_binding_is_not_a_runtime_v2_execution_binding() {
 #[test]
 fn host_binding_reads_identity_once_and_rejects_parent_current_aliasing() {
     let mut values = std::collections::BTreeMap::from([
-        ("ASP_HOST_PLATFORM", "macos"),
-        ("ASP_ROOT_SESSION_ID", "root"),
-        ("CODEX_SESSION_ID", "parent"),
-        ("CODEX_THREAD_ID", "current"),
+        ("ASP_HOST_PLATFORM", "marlin"),
+        ("MARLIN_ROOT_SESSION_ID", "root"),
+        ("MARLIN_PARENT_SESSION_ID", "parent"),
+        ("MARLIN_SESSION_ID", "current"),
     ]);
     let bound = HostSessionBinding::from_environment(|key| values.get(key).map(|v| (*v).into()))
         .expect("valid host binding");
-    values.insert("CODEX_THREAD_ID", "changed");
+    values.insert("MARLIN_SESSION_ID", "changed");
     assert_eq!(bound.current_session_id, "current");
 
     assert_eq!(
-        HostSessionBinding::new("macos", "root", "same", "same"),
+        HostSessionBinding::new("marlin", "root", "same", "same"),
         Err(HostSessionBindingError::ParentEqualsCurrent)
     );
 }

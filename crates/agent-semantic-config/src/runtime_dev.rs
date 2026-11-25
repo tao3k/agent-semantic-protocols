@@ -9,35 +9,16 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-/// Process-wide Hook engine policy from the State Home `asp.toml` contract.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HookEngineConfig {
-    enabled: bool,
-}
-
-impl HookEngineConfig {
-    #[must_use]
-    pub const fn enabled(self) -> bool {
-        self.enabled
-    }
-}
-
 /// One parsed generation of the global ASP configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AspGlobalConfig {
     runtime_artifact_mode: RuntimeArtifactMode,
-    hook_engine: HookEngineConfig,
 }
 
 impl AspGlobalConfig {
     #[must_use]
     pub const fn runtime_artifact_mode(&self) -> &RuntimeArtifactMode {
         &self.runtime_artifact_mode
-    }
-
-    #[must_use]
-    pub const fn hook_engine(&self) -> HookEngineConfig {
-        self.hook_engine
     }
 }
 
@@ -69,16 +50,8 @@ struct DevSection {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HookEngineSection {
-    enabled: bool,
-}
-
-#[derive(Debug, Deserialize)]
 struct AspConfigDocument {
     dev: Option<DevSection>,
-    #[serde(rename = "hook-engine")]
-    hook_engine: Option<HookEngineSection>,
 }
 
 /// Parse one immutable generation of the State Home `asp.toml` contract.
@@ -93,12 +66,8 @@ pub fn parse_asp_global_config(input: &str) -> Result<AspGlobalConfig, String> {
             root,
         }) => validate_dev_root(root),
     }?;
-    let hook_engine = HookEngineConfig {
-        enabled: document.hook_engine.is_none_or(|section| section.enabled),
-    };
     Ok(AspGlobalConfig {
         runtime_artifact_mode,
-        hook_engine,
     })
 }
 

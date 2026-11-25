@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: ASP OpenSysML Model Map
+#+LANGUAGE: en
+#+OPTIONS: toc:2
+#+STARTUP: overview
+#+FILETAGS: :asp:search-engine:architecture:sysml:
+
+[[file:../../project.sysml][Project entry]] · [[file:../quint/search-engine.qnt][Quint state model]] · [[file:../../providers.toml][Provider manifest]]
+
+* Scope and ownership
+
+=project.sysml= and =dev/sysml/search-engine.sysml= follow the same strict
+OpenSysML v2 standard used in Marlin Agent CORE (=sysml -strict -validate -self-check -no-record-cache=).
+Models own structural identities, transport boundaries, generation lifecycles,
+and requirement allocations; generated views and benchmark artifacts remain
+under =target/=.
+
+* Model and requirement correspondence
+
+| Model | Viewpoint and state | Companion |
+|-------+---------------------+-----------|
+| [[file:../../project.sysml][project.sysml]] | Top-level ASP project entry and named views | [[file:../../README.md][ASP README]] |
+| [[file:search-engine.sysml][search-engine.sysml]] | ASP-SRCH-R01/R07 Pure-Rust search kernel, host Storage/Org ports, atomic CAS generation lifecycle, `providers.toml` packaging, Quint verification, and Criterion benchmarks | [[file:../quint/search-engine.qnt][Search Engine Quint model]] |
+
+* Validate and render
+
+#+begin_src sh
+just sysml-check
+mkdir -p target/sysml
+sysml -strict -no-record-cache project.sysml dev/sysml \
+  -render AgentSemanticProtocols::projectStructure -render-form mermaid > target/sysml/project-structure.mmd
+sysml -strict -no-record-cache project.sysml dev/sysml \
+  -render AgentSemanticProtocols::searchPipelineFlow -render-form mermaid > target/sysml/search-pipeline-flow.mmd
+sysml -strict -no-record-cache project.sysml dev/sysml \
+  -render '#state:AspSearchEngine::SearchGenerationLifecycle' -render-form mermaid > target/sysml/search-generation-lifecycle.mmd
+#+end_src

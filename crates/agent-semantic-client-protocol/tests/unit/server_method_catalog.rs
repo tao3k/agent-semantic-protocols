@@ -26,9 +26,6 @@ fn server_catalog_exposes_workspace_search_exact_query_and_schema_bundle_methods
             "asp.live-corpus.cache-state",
             "asp.live-corpus.merkle-owner.qualify",
             "asp.schema.bundle",
-            "asp.session.children",
-            "asp.session.host-event",
-            "asp.session.register-child",
             "asp.workspace.generation.ensure-ready",
             "asp.workspace.query.playbook",
             "asp.workspace.query.syntax",
@@ -200,23 +197,6 @@ fn dispatch_class_is_catalog_owned_and_preserved_by_transports() {
     assert_eq!(
         classify_client_dispatch("asp.graph.evaluate"),
         ClientDispatchClass::ResidentGenerationRead,
-    );
-}
-
-#[test]
-fn multi_agent_v2_methods_are_server_owned_and_language_independent() {
-    let languages = ["rust".to_owned(), "python".to_owned()];
-    assert_eq!(
-        resolve_server_client_method_owner(crate::MULTI_AGENT_HOST_EVENT_METHOD, languages.clone()),
-        Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::MultiAgentHostEvent
-        ))
-    );
-    assert_eq!(
-        resolve_server_client_method_owner(crate::MULTI_AGENT_CHILDREN_METHOD, languages),
-        Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::MultiAgentChildren
-        ))
     );
 }
 

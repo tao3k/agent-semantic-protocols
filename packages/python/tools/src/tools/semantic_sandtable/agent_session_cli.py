@@ -456,26 +456,15 @@ def _agent_session_command(args: Any) -> list[str]:
     command = [
         sys.executable,
         "-m",
-        "tools.semantic_sandtable.claude_sdk_runner",
+        "tools.semantic_sandtable.openai_compatible_runner",
+        "--provider",
+        "openai-compatible",
         "--prompt",
         args.prompt,
         "--output-format",
         args.agent_output_format,
     ]
-    _append_flag(command, "--include-partial-messages", args.include_partial_messages)
-    _append_flag(command, "--include-hook-events", args.include_hook_events)
-    _append_flag(command, "--verbose", args.verbose)
-    _append_flag(command, "--require-asp-bash-commands", args.require_asp_bash_commands)
-    _append_flag(command, "--add-cwd-dir", args.add_cwd_dir)
     _append_option(command, "--model", args.model)
-    _append_option(command, "--permission-mode", args.permission_mode)
-    _append_option(command, "--max-asp-bash-commands", args.max_asp_bash_commands)
-    _append_option(command, "--settings", args.settings)
-    _append_option(command, "--claude-cwd", args.claude_cwd)
-    _append_option(command, "--max-turns", args.max_turns)
-    _append_repeated_option(command, "--allowed-tool", args.allowed_tools)
-    _append_repeated_option(command, "--disallowed-tool", args.disallowed_tools)
-    _append_repeated_option(command, "--add-dir", args.add_dirs)
     return command
 
 

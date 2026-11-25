@@ -64,72 +64,40 @@ pub fn builtin_catalog_source(
 
 fn rust_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
-        "calls" => Some(include_str!(
-            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/calls.scm"
-        )),
-        "cfg" => Some(include_str!(
-            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/cfg.scm"
-        )),
-        "declarations" => Some(include_str!(
-            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/declarations.scm"
-        )),
-        "imports" => Some(include_str!(
-            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/imports.scm"
-        )),
-        "macros" => Some(include_str!(
-            "../../../languages/asp-rust/tree-sitter/tree-sitter-rust/queries/macros.scm"
-        )),
+        "calls" => Some(include_str!("../queries/rust/calls.scm")),
+        "cfg" => Some(include_str!("../queries/rust/cfg.scm")),
+        "declarations" => Some(include_str!("../queries/rust/declarations.scm")),
+        "imports" => Some(include_str!("../queries/rust/imports.scm")),
+        "macros" => Some(include_str!("../queries/rust/macros.scm")),
         _ => None,
     }
 }
 
 fn typescript_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
-        "calls" => Some(include_str!(
-            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/calls.scm"
-        )),
-        "declarations" => Some(include_str!(
-            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/declarations.scm"
-        )),
-        "imports" => Some(include_str!(
-            "../../../languages/asp-typescript/tree-sitter/tree-sitter-typescript/queries/imports.scm"
-        )),
+        "calls" => Some(include_str!("../queries/typescript/calls.scm")),
+        "declarations" => Some(include_str!("../queries/typescript/declarations.scm")),
+        "imports" => Some(include_str!("../queries/typescript/imports.scm")),
         _ => None,
     }
 }
 
 fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
-        "calls" => Some(include_str!(
-            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/calls.scm"
-        )),
-        "control-flow" => Some(include_str!(
-            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/control-flow.scm"
-        )),
-        "declarations" => Some(include_str!(
-            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/declarations.scm"
-        )),
-        "decorators" => Some(include_str!(
-            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/decorators.scm"
-        )),
-        "imports" => Some(include_str!(
-            "../../../languages/asp-python/tree-sitter/tree-sitter-python/queries/imports.scm"
-        )),
+        "calls" => Some(include_str!("../queries/python/calls.scm")),
+        "control-flow" => Some(include_str!("../queries/python/control-flow.scm")),
+        "declarations" => Some(include_str!("../queries/python/declarations.scm")),
+        "decorators" => Some(include_str!("../queries/python/decorators.scm")),
+        "imports" => Some(include_str!("../queries/python/imports.scm")),
         _ => None,
     }
 }
 
 fn julia_catalog_source(catalog_id: &str) -> Option<&'static str> {
     match catalog_id {
-        "calls" => Some(include_str!(
-            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
-        )),
-        "declarations" => Some(include_str!(
-            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
-        )),
-        "imports" => Some(include_str!(
-            "../../../languages/AspJulia.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
-        )),
+        "calls" => Some(include_str!("../queries/julia/calls.scm")),
+        "declarations" => Some(include_str!("../queries/julia/declarations.scm")),
+        "imports" => Some(include_str!("../queries/julia/imports.scm")),
         _ => None,
     }
 }

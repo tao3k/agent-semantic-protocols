@@ -10,10 +10,10 @@ async fn provider_set_is_derived_from_active_bundle_without_a_side_document() {
     let sources = state_home.path().join("sources");
     std::fs::create_dir_all(&sources).expect("sources");
     let asp = sources.join("asp");
-    let hook = sources.join("asp-hook");
+    let graphs = sources.join("asp-python-graphs");
     let rust = sources.join("asp-rust");
     std::fs::write(&asp, b"asp").expect("asp");
-    std::fs::write(&hook, b"hook").expect("hook");
+    std::fs::write(&graphs, b"graphs").expect("graphs");
     std::fs::write(&rust, b"rust").expect("rust");
     let source_members = std::collections::BTreeMap::from([
         (
@@ -22,9 +22,9 @@ async fn provider_set_is_derived_from_active_bundle_without_a_side_document() {
                 .expect("asp digest"),
         ),
         (
-            "asp-hook".to_owned(),
-            crate::runtime_artifact_store::runtime_artifact_content_digest(&hook)
-                .expect("hook digest"),
+            "asp-python-graphs".to_owned(),
+            crate::runtime_artifact_store::runtime_artifact_content_digest(&graphs)
+                .expect("graphs digest"),
         ),
         (
             "asp-rust".to_owned(),
@@ -56,8 +56,8 @@ async fn provider_set_is_derived_from_active_bundle_without_a_side_document() {
         .collect::<Vec<_>>();
     let mut members = vec![
         crate::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
-            name: "asp-hook",
-            source: &hook,
+            name: "asp-python-graphs",
+            source: &graphs,
         },
         crate::runtime_artifact_publication::RuntimeArtifactBundleMemberSource {
             name: "asp-rust",

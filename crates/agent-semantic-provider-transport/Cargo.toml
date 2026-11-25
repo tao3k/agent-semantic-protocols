@@ -10,17 +10,8 @@ license.workspace = true
 description = "Tokio process transport for external ASP language providers."
 
 [features]
-default = ["http-client-server", "grpc-session"]
+default = ["http-client-server"]
 http-client-server = ["dep:agent-semantic-http-json", "dep:reqwest"]
-grpc-session = [
-  "dep:hyper-util",
-  "dep:prost",
-  "dep:protoc-bin-vendored",
-  "dep:tonic",
-  "dep:tonic-prost",
-  "dep:tonic-prost-build",
-  "dep:tower",
-]
 
 [dependencies]
 agent-semantic-provider-protocol.workspace = true
@@ -34,27 +25,21 @@ bytes = "1"
 futures-util = "0.3"
 libc = "0.2"
 memchr = "2"
-ignore.workspace = true
 sha2 = "0.10"
 tokio.workspace = true
 reqwest = { version = "0.13", default-features = false, optional = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower = { workspace = true, optional = true }
-hyper-util = { workspace = true, optional = true }
 tokio-util = { version = "0.7", features = ["codec"] }
-prost = { workspace = true, optional = true }
-tonic = { workspace = true, optional = true }
-tonic-prost = { workspace = true, optional = true }
 tracing = "0.1"
 
-[build-dependencies]
-asp-rust-project-harness-policy.workspace = true
-protoc-bin-vendored = { workspace = true, optional = true }
-tonic-prost-build = { workspace = true, optional = true }
-
 [dev-dependencies]
+asp-rust.workspace = true
 criterion = "0.8.2"
 
 [[bench]]
 name = "transport_hot_path"
 harness = false
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

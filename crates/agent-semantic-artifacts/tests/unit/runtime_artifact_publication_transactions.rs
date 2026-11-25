@@ -265,16 +265,16 @@ async fn binary_successor_treats_an_empty_selector_directory_as_initial_publicat
     let temporary = tempfile::tempdir().expect("successor repair fixture");
     let state_home = temporary.path().join("state");
     let source = temporary.path().join("asp");
-    let hook = temporary.path().join("asp-hook");
+    let graphs = temporary.path().join("asp-python-graphs");
     let target = state_home.join("bin/asp");
     write_executable(&source, "#!/bin/sh\nexit 0\n");
-    write_executable(&hook, "#!/bin/sh\nexit 0\n");
+    write_executable(&graphs, "#!/bin/sh\nexit 0\n");
     let active = state_home.join("runtime/artifacts/active");
     std::fs::create_dir_all(&active).expect("empty initial selector directory");
 
     let members = [super::RuntimeArtifactBundleMemberSource {
-        name: "asp-hook",
-        source: &hook,
+        name: "asp-python-graphs",
+        source: &graphs,
     }];
     let receipt = super::publish_runtime_artifact_bundle_successor_from_active(
         &state_home,

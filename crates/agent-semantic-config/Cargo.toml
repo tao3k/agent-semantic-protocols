@@ -10,26 +10,17 @@ description = "Unified project identity, configuration, and state layout for ASP
 license.workspace = true
 
 [dependencies]
-blake3.workspace = true
-figment = { workspace = true, features = ["toml"] }
-globset.workspace = true
 serde = { workspace = true }
-serde_json.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+asp-rust.workspace = true
 tempfile.workspace = true
-
-[build-dependencies]
-agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager", default-features = false }
-asp-rust-project-harness-policy.workspace = true
-serde_json.workspace = true
 
 [[test]]
 name = "unit"
 path = "tests/unit/main.rs"
 
 [[test]]
-name = "integration"
-path = "tests/integration/main.rs"
+name = "policy"
+path = "tests/unit/policy.rs"

@@ -10,9 +10,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::AGENT_SESSION_REGISTER_METHOD;
-use crate::AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID;
-use crate::AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID;
 use crate::ClientCapabilities;
 use crate::ClientMethod;
 use crate::ClientParameter;
@@ -113,16 +110,11 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
         ClientDispatchClass::InteractiveRead
     }
 }
-pub const MULTI_AGENT_HOST_EVENT_METHOD: &str = "asp.session.host-event";
-pub const MULTI_AGENT_CHILDREN_METHOD: &str = "asp.session.children";
 pub const LIVE_CORPUS_CACHE_STATE_METHOD: &str = "asp.live-corpus.cache-state";
 pub const LIVE_CORPUS_MERKLE_OWNER_READ_METHOD: &str = "asp.live-corpus.merkle-owner.qualify";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServerClientRoute {
-    AgentSessionRegister,
-    MultiAgentHostEvent,
-    MultiAgentChildren,
     CancellationProbe,
     LiveCorpusCacheState,
     LiveCorpusMerkleOwnerRead,
@@ -149,9 +141,6 @@ pub enum ResolvedServerClientMethod {
 impl ServerClientRoute {
     pub const fn operation(self) -> &'static str {
         match self {
-            Self::AgentSessionRegister => "session.register-child",
-            Self::MultiAgentHostEvent => "session.host-event",
-            Self::MultiAgentChildren => "session.children",
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::LiveCorpusCacheState => "live-corpus.cache-state",
             Self::LiveCorpusMerkleOwnerRead => "live-corpus.merkle-owner.qualify",
@@ -185,9 +174,6 @@ pub fn server_client_methods(
         ]);
     }
     methods.extend([
-        agent_session_register_method(),
-        multi_agent_host_event_method(),
-        multi_agent_children_method(),
         cancellation_probe_method(),
         live_corpus_cache_state_method(),
         live_corpus_merkle_owner_read_method(),
@@ -202,60 +188,6 @@ pub fn server_client_methods(
     ]);
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     Ok(methods)
-}
-
-fn multi_agent_host_event_method() -> ClientMethod {
-    ClientMethod {
-        method: MULTI_AGENT_HOST_EVENT_METHOD.to_owned(),
-        route_id: client_route_id(MULTI_AGENT_HOST_EVENT_METHOD),
-        request_schema_id: client_schema_id(
-            "agent.semantic-protocols.codex-multi-agent-v2-host-lifecycle-event",
-        ),
-        response_schema_id: client_schema_id("agent.semantic-protocols.agent-session-host-binding"),
-        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
-        parameters: vec![required("event", ClientParameterType::Json)],
-        cancellable: false,
-        streaming: false,
-    }
-}
-
-fn multi_agent_children_method() -> ClientMethod {
-    ClientMethod {
-        method: MULTI_AGENT_CHILDREN_METHOD.to_owned(),
-        route_id: client_route_id(MULTI_AGENT_CHILDREN_METHOD),
-        request_schema_id: client_schema_id(
-            "agent.semantic-protocols.agent-session-lifecycle-projection",
-        ),
-        response_schema_id: client_schema_id(
-            "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection",
-        ),
-        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
-        parameters: vec![required_string("rootSessionId")],
-        cancellable: false,
-        streaming: false,
-    }
-}
-
-fn agent_session_register_method() -> ClientMethod {
-    ClientMethod {
-        method: AGENT_SESSION_REGISTER_METHOD.to_owned(),
-        route_id: client_route_id(AGENT_SESSION_REGISTER_METHOD),
-        request_schema_id: client_schema_id(AGENT_SESSION_REGISTER_REQUEST_SCHEMA_ID),
-        response_schema_id: client_schema_id(AGENT_SESSION_REGISTER_RESPONSE_SCHEMA_ID),
-        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
-        parameters: vec![
-            required_string("schemaId"),
-            required_string("schemaVersion"),
-            required_string("rootSessionId"),
-            required_string("parentThreadId"),
-            required_string("childThreadId"),
-            required_string("agentName"),
-            required_string("agentPath"),
-            required_string("routeKey"),
-        ],
-        cancellable: false,
-        streaming: false,
-    }
 }
 
 fn live_corpus_cache_state_method() -> ClientMethod {
@@ -421,21 +353,6 @@ pub fn resolve_server_client_method_owner(
     if method == GRAPH_EVALUATE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::GraphEvaluate,
-        ));
-    }
-    if method == AGENT_SESSION_REGISTER_METHOD {
-        return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::AgentSessionRegister,
-        ));
-    }
-    if method == MULTI_AGENT_HOST_EVENT_METHOD {
-        return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::MultiAgentHostEvent,
-        ));
-    }
-    if method == MULTI_AGENT_CHILDREN_METHOD {
-        return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::MultiAgentChildren,
         ));
     }
     if method == LIVE_CORPUS_CACHE_STATE_METHOD {

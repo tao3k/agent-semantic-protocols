@@ -10,8 +10,8 @@ use std::fs;
 use std::path::Path;
 
 use agent_semantic_content_identity::{ProjectWorkspaceBinding, ProjectWorkspaceBindingError};
-use orgize::Org;
-use orgize::ast::{ParsedAnnotation, Property};
+
+use crate::{OrgDocumentProjection, OrgDocumentProjectionPort, OrgPropertyEntry};
 
 pub const PROJECT_TOPOLOGY_MANIFEST_PATH: &str = ".agents/asp/topology/manifest.org";
 
@@ -29,8 +29,11 @@ pub struct ProjectTopologyManifest {
 }
 
 impl ProjectTopologyManifest {
-    pub fn load_from_project_root(
+    /// Load and validate the Git-tracked manifest using a host-supplied
+    /// [`OrgDocumentProjectionPort`] (Marlin's `marlin-agent-context`).
+    pub fn load_from_project_root_with_port(
         project_root: &Path,
+        port: &dyn OrgDocumentProjectionPort,
     ) -> Result<Self, ProjectTopologyManifestError> {
         let path = project_root.join(PROJECT_TOPOLOGY_MANIFEST_PATH);
         let metadata = fs::symlink_metadata(&path).map_err(|io_error| {
@@ -51,19 +54,31 @@ impl ProjectTopologyManifest {
                 format!("cannot read {}: {io_error}", path.display()),
             )
         })?;
-        Self::parse_org(&source)
+        Self::parse_with_port(&source, port)
     }
 
-    pub fn parse_org(source: &str) -> Result<Self, ProjectTopologyManifestError> {
-        let org = Org::parse(source);
-        let document = org.document();
-        let contract_properties = &document.properties;
-        let contract = unique_property(contract_properties, "CONTRACT_ORG")?.ok_or_else(|| {
-            error(
-                "topology-manifest-contract-mismatch",
-                "manifest has no CONTRACT_ORG property",
-            )
-        })?;
+    /// Parse raw Org manifest source through a host-supplied [`OrgDocumentProjectionPort`].
+    pub fn parse_with_port(
+        source: &str,
+        port: &dyn OrgDocumentProjectionPort,
+    ) -> Result<Self, ProjectTopologyManifestError> {
+        let projection = port
+            .project_document(source)
+            .map_err(|cause| error(cause.reason_kind, cause.message))?;
+        Self::from_org_projection(&projection)
+    }
+
+    /// Admit one canonical Project Topology manifest from a pure-Rust [`OrgDocumentProjection`].
+    pub fn from_org_projection(
+        projection: &OrgDocumentProjection,
+    ) -> Result<Self, ProjectTopologyManifestError> {
+        let contract = unique_property(&projection.document_properties, "CONTRACT_ORG")?
+            .ok_or_else(|| {
+                error(
+                    "topology-manifest-contract-mismatch",
+                    "manifest has no CONTRACT_ORG property",
+                )
+            })?;
         if !contract_reference_is_canonical(&contract) {
             return invalid(
                 "topology-manifest-contract-mismatch",
@@ -71,10 +86,10 @@ impl ProjectTopologyManifest {
             );
         }
 
-        let declarations = document
+        let declarations = projection
             .sections
             .iter()
-            .filter(|section| section.level == 1)
+            .filter(|section| section.level == 1 && section.parent_index.is_none())
             .map(|section| section.properties.as_slice())
             .filter(|properties| manifest_declaration(properties))
             .collect::<Vec<_>>();
@@ -128,14 +143,14 @@ impl ProjectTopologyManifest {
     }
 }
 
-fn manifest_declaration(properties: &[Property<ParsedAnnotation>]) -> bool {
+fn manifest_declaration(properties: &[OrgPropertyEntry]) -> bool {
     properties
         .iter()
         .any(|property| property.key == PROJECT_WORKSPACE_ID)
 }
 
 fn unique_properties(
-    properties: &[Property<ParsedAnnotation>],
+    properties: &[OrgPropertyEntry],
 ) -> Result<BTreeMap<String, String>, ProjectTopologyManifestError> {
     let mut result = BTreeMap::new();
     for property in properties {
@@ -151,7 +166,7 @@ fn unique_properties(
 }
 
 fn unique_property(
-    properties: &[Property<ParsedAnnotation>],
+    properties: &[OrgPropertyEntry],
     key: &str,
 ) -> Result<Option<String>, ProjectTopologyManifestError> {
     let values = properties

@@ -13,17 +13,18 @@ description = "Typed language-neutral search projection model, resident result c
 blake3.workspace = true
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 agent-semantic-topology = { path = "../agent-semantic-topology" }
-orgize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustc-hash.workspace = true
 
 [dev-dependencies]
+asp-rust.workspace = true
 jsonschema.workspace = true
 tokio.workspace = true
 
-[build-dependencies]
-asp-rust-project-harness-policy.workspace = true
-
 [lints]
 workspace = true
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

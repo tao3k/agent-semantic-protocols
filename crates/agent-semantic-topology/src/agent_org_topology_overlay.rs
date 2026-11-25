@@ -4,7 +4,7 @@
 
 //! Content-bound semantic topology contributed by an external reasoning Agent.
 
-use orgize::Org;
+use crate::{OrgDocumentProjectionPort, OrgOverlayDocumentProjection};
 use serde::{Deserialize, Serialize};
 
 pub const AGENT_ORG_TOPOLOGY_OVERLAY_SCHEMA_ID: &str =
@@ -49,11 +49,13 @@ pub struct AgentOrgTopologyOverlayTerminal {
 }
 
 impl AgentOrgTopologyOverlay {
+    /// Admit an Agent-authored Org overlay using a host-supplied Org projection
+    /// (for example from Marlin's `marlin-agent-context` / `orgize-fold` parser).
     #[expect(
         clippy::too_many_arguments,
         reason = "the overlay identity product must remain explicit at its admission boundary"
     )]
-    pub fn admit(
+    pub fn admit_with_org_projection(
         source_generation_digest: impl Into<String>,
         base_topology_generation_digest: impl Into<String>,
         selector: impl Into<String>,
@@ -61,7 +63,7 @@ impl AgentOrgTopologyOverlay {
         agent_identity_digest: impl Into<String>,
         prompt_digest: impl Into<String>,
         summary: impl Into<String>,
-        org_source: impl Into<String>,
+        org_projection: &OrgOverlayDocumentProjection,
         mut relationships: Vec<AgentTopologyRelationship>,
     ) -> Result<Self, AgentOrgTopologyOverlayError> {
         let source_generation_digest = source_generation_digest.into();
@@ -71,7 +73,8 @@ impl AgentOrgTopologyOverlay {
         let agent_identity_digest = agent_identity_digest.into();
         let prompt_digest = prompt_digest.into();
         let summary = summary.into();
-        let org_source = org_source.into();
+        let org_source = org_projection.org_source.clone();
+        let org_ast_digest = org_projection.org_ast_digest.clone();
         for (field, value) in [
             ("sourceGenerationDigest", source_generation_digest.as_str()),
             (
@@ -81,6 +84,7 @@ impl AgentOrgTopologyOverlay {
             ("evidenceDigest", evidence_digest.as_str()),
             ("agentIdentityDigest", agent_identity_digest.as_str()),
             ("promptDigest", prompt_digest.as_str()),
+            ("orgAstDigest", org_ast_digest.as_str()),
         ] {
             require_digest(field, value)?;
         }
@@ -101,13 +105,11 @@ impl AgentOrgTopologyOverlay {
         if relationships.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(invalid("agent-org-topology-overlay-relationship-duplicate"));
         }
-        let org = Org::parse(&org_source);
-        if org.headlines().next().is_none() {
+        if !org_projection.has_headline {
             return Err(invalid("agent-org-topology-overlay-org-ast-empty"));
         }
         let summary_digest = digest(summary.as_bytes());
         let org_source_digest = digest(org_source.as_bytes());
-        let org_ast_digest = digest(format!("{:#?}", org.syntax()).as_bytes());
         let identity = serde_json::to_vec(&(
             &source_generation_digest,
             &base_topology_generation_digest,
@@ -146,10 +148,49 @@ impl AgentOrgTopologyOverlay {
         })
     }
 
-    /// Recomputes every derived identity. Serialized overlay packets cannot
-    /// self-attest by carrying stale summary, Org AST, or overlay digests.
-    pub fn validate(&self) -> Result<(), AgentOrgTopologyOverlayError> {
-        let rebuilt = Self::admit(
+    /// Admit an Agent-authored Org overlay through a host-supplied [`OrgDocumentProjectionPort`].
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the overlay identity product must remain explicit at its admission boundary"
+    )]
+    pub fn admit_with_port(
+        source_generation_digest: impl Into<String>,
+        base_topology_generation_digest: impl Into<String>,
+        selector: impl Into<String>,
+        evidence_digest: impl Into<String>,
+        agent_identity_digest: impl Into<String>,
+        prompt_digest: impl Into<String>,
+        summary: impl Into<String>,
+        org_source: impl Into<String>,
+        relationships: Vec<AgentTopologyRelationship>,
+        port: &dyn OrgDocumentProjectionPort,
+    ) -> Result<Self, AgentOrgTopologyOverlayError> {
+        let org_source = org_source.into();
+        if org_source.trim().is_empty() {
+            return Err(invalid("agent-org-topology-overlay-content-empty"));
+        }
+        let projection = port
+            .inspect_overlay(&org_source)
+            .map_err(|_| invalid("agent-org-topology-overlay-org-ast-empty"))?;
+        Self::admit_with_org_projection(
+            source_generation_digest,
+            base_topology_generation_digest,
+            selector,
+            evidence_digest,
+            agent_identity_digest,
+            prompt_digest,
+            summary,
+            &projection,
+            relationships,
+        )
+    }
+
+    /// Recomputes every derived identity using a host-supplied [`OrgDocumentProjectionPort`].
+    pub fn validate_with_port(
+        &self,
+        port: &dyn OrgDocumentProjectionPort,
+    ) -> Result<(), AgentOrgTopologyOverlayError> {
+        let rebuilt = Self::admit_with_port(
             self.source_generation_digest.clone(),
             self.base_topology_generation_digest.clone(),
             self.selector.clone(),
@@ -159,6 +200,7 @@ impl AgentOrgTopologyOverlay {
             self.summary.clone(),
             self.org_source.clone(),
             self.relationships.clone(),
+            port,
         )?;
         if rebuilt == *self {
             Ok(())
@@ -170,13 +212,14 @@ impl AgentOrgTopologyOverlay {
     }
 
     /// Joins the independently built overlay to one exact Search topology
-    /// identity without modifying or reconstructing that base topology.
-    pub fn validate_against_base(
+    /// identity using a host-supplied [`OrgDocumentProjectionPort`].
+    pub fn validate_against_base_with_port(
         &self,
         expected_source_generation_digest: &str,
         expected_base_topology_generation_digest: &str,
+        port: &dyn OrgDocumentProjectionPort,
     ) -> Result<(), AgentOrgTopologyOverlayError> {
-        self.validate()?;
+        self.validate_with_port(port)?;
         if self.source_generation_digest != expected_source_generation_digest
             || self.base_topology_generation_digest != expected_base_topology_generation_digest
         {

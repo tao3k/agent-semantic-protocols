@@ -71,10 +71,68 @@ pub(super) fn is_search_result_support_edge(
             .is_some_and(|from| !ranked_node_ids.contains(from))
 }
 
-pub(super) fn org_render_error(
-    failure: orgize::ast::OrgSourceBlockDocumentError,
-) -> SearchTopologySettlementError {
-    error("rendering-failed", failure.to_string())
+/// Render a canonical single-block Org `#+begin_src` document in pure Rust.
+///
+/// Rejects embedded Org block terminators or invalid header tokens so rendered
+/// output always round-trips as one exact `src-block` element under Marlin's
+/// Org parser without requiring an embedded Orgize FFI runtime.
+pub(super) fn render_canonical_org_src_block(
+    language: &str,
+    block_name: &str,
+    lines: &[String],
+) -> Result<String, SearchTopologySettlementError> {
+    if language.is_empty()
+        || !language
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(error(
+            "rendering-failed",
+            "Org source-block language token is invalid",
+        ));
+    }
+    if block_name.is_empty()
+        || !block_name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(error(
+            "rendering-failed",
+            "Org source-block :name token is invalid",
+        ));
+    }
+    let body = lines.join("\n");
+    if body.is_empty() {
+        return Err(error("rendering-failed", "Org source-block body is empty"));
+    }
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.eq_ignore_ascii_case("#+end_src")
+            || trimmed
+                .get(..10)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("#+end_src "))
+            || trimmed
+                .get(..10)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("#+end_src\t"))
+        {
+            return Err(error(
+                "rendering-failed",
+                "Org source-block body must not contain an unescaped #+end_src line",
+            ));
+        }
+    }
+    let mut output = String::with_capacity(body.len() + 48);
+    output.push_str("#+begin_src ");
+    output.push_str(language);
+    output.push_str(" :name ");
+    output.push_str(block_name);
+    output.push('\n');
+    output.push_str(&body);
+    if !body.ends_with('\n') {
+        output.push('\n');
+    }
+    output.push_str("#+end_src\n");
+    Ok(output)
 }
 
 pub(super) fn render_node(

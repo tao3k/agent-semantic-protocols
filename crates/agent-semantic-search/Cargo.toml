@@ -2,6 +2,38 @@
 #
 # SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
+[package]
+name = "agent-semantic-search"
+version = "0.1.0"
+edition.workspace = true
+description = "Converged sub-millisecond pure-Rust search engine for ASP and Marlin."
+license.workspace = true
+
+[features]
+default = ["tantivy-accelerator"]
+tantivy-accelerator = ["dep:tantivy"]
+
+[dependencies]
+agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
+agent-semantic-topology.workspace = true
+blake3.workspace = true
+globset.workspace = true
+ignore = { workspace = true }
+memchr = "2"
+memmap2.workspace = true
+rayon = "1.12.0"
+regex.workspace = true
+regex-syntax.workspace = true
+rustc-hash.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tantivy = { workspace = true, optional = true }
+
+[dev-dependencies]
+asp-rust.workspace = true
+criterion.workspace = true
+tempfile = { workspace = true }
+
 [[test]]
 name = "file_locator"
 path = "tests/integration/file_locator.rs"
@@ -15,59 +47,22 @@ name = "source_index_rank_performance"
 path = "tests/integration/source_index_rank_performance.rs"
 
 [[test]]
-name = "graph_generation_authority"
-path = "tests/integration/graph_generation_authority.rs"
-
-[package]
-name = "agent-semantic-search"
-version = "0.1.0"
-edition.workspace = true
-description = "Search orchestration services for ASP agent-facing queries."
-license.workspace = true
-
-[features]
-default = ["tantivy-accelerator"]
-tantivy-accelerator = ["dep:tantivy"]
-
-[dependencies]
-agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
-sha2.workspace = true
-serde = { workspace = true, features = ["derive"] }
-agent-semantic-content-identity.workspace = true
-agent-semantic-mrr.workspace = true
-agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }
-blake3.workspace = true
-globset.workspace = true
-agent-semantic-config = { path = "../agent-semantic-config" }
-agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
-agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
-agent-semantic-topology.workspace = true
-agent-semantic-scheme-syntax = { path = "../agent-semantic-scheme-syntax" }
-agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
-bytes = { workspace = true }
-ignore = { workspace = true }
-serde_json = { workspace = true }
-memmap2.workspace = true
-memchr = "2"
-regex.workspace = true
-regex-syntax.workspace = true
-rustc-hash.workspace = true
-toml = { workspace = true }
-tokio = { workspace = true }
-tokio-stream.workspace = true
-tantivy = { workspace = true, optional = true }
-which = { workspace = true }
-tempfile = { workspace = true }
-
-[build-dependencies]
-asp-rust-project-harness-policy = { workspace = true }
-
-[dev-dependencies]
-agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
-[[test]]
-name = "graph_owner_rank_report"
-path = "tests/integration/graph_owner_rank_report/mod.rs"
+name = "marlin_engine_state_machine"
+path = "tests/unit/marlin_engine_state_machine.rs"
 
 [[test]]
-name = "search_generation_segment"
-path = "tests/unit/search_generation_segment.rs"
+name = "converged_resident_index_fuzz"
+path = "tests/unit/converged_resident_index_fuzz.rs"
+
+[[test]]
+name = "resident_symbol_graph"
+path = "tests/unit/resident_symbol_graph.rs"
+
+[[bench]]
+name = "search_engine_hot_path"
+path = "benches/search_engine_hot_path.rs"
+harness = false
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

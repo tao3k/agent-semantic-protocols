@@ -15,10 +15,6 @@ pub mod catalog;
 pub mod enhanced_query;
 pub mod query_syntax;
 mod resident_syntax_plan;
-pub use agent_semantic_scheme_syntax::{
-    SCHEME_GRAMMAR_ID, SCHEME_GRAMMAR_REPOSITORY, SCHEME_GRAMMAR_VERSION, SchemeDatum,
-    SchemeSourceAdmission, SchemeSourceAdmissionError, admit_scheme_source, parse_scheme_datums,
-};
 pub use builtin_catalog::BuiltinCatalogId;
 pub use builtin_catalog::BuiltinCatalogLanguageId;
 pub use builtin_catalog::builtin_catalog_source;
@@ -54,6 +50,3 @@ mod enhanced_query_tests;
 #[cfg(test)]
 #[path = "../tests/unit/query_syntax.rs"]
 mod query_syntax_tests;
-#[cfg(test)]
-#[path = "../tests/unit/scheme_source.rs"]
-mod scheme_source_tests;

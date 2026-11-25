@@ -5,33 +5,31 @@ SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 # Agent Semantic Protocols
 
-Shared protocol contracts, hook runtime, and replay sandtables for semantic
-ASP language providers.
+Shared protocol contracts, resident semantic runtime, language provider
+supervision, and replay sandtables for semantic ASP language providers integrated
+under the Marlin (`marlin-agent-core`) host system.
 
-This repository keeps the agent-facing surface stable across Rust, TypeScript,
-Python, Julia, and future providers. ASP language providers own parser facts and
-provider-specific commands; this repository owns the shared schemas, RFCs,
-root hook classifier, and scenario evidence used to keep those providers
-aligned.
+This repository keeps the semantic search, exact query, AST patch verification,
+and resident workspace generation surfaces stable across Rust, TypeScript,
+Python, Julia, Gerbil Scheme, Org, and Markdown providers. ASP language providers
+own parser facts and provider-specific analysis; Marlin owns hooks, session
+control, and multi-agent orchestration; this repository owns the shared schemas,
+RFCs, typed ClientFrame/gRPC runtime server, and scenario evidence.
 
 ## What Lives Here
 
-- `docs/10-19-rfcs/`: protocol intent and change process. Start here before changing
-  search behavior or hook behavior.
-- `schemas/`: shared JSON contracts for search packets, language registries,
-  hook decisions, hook activations, provider manifests, sandtable scenarios,
-  and receipts.
-- `crates/agent-semantic-protocol/`: shared Rust CLI entrypoint for protocol
-  commands such as `hook` and `ast-patch`.
-- `crates/agent-semantic-hook/`: Rust root hook runtime for Codex, Claude,
-  and other agent hook classification and provider routing, used by `asp hook`.
-- `crates/agent-semantic-client*/`: agent semantic client/backend crates. `asp` is the
-  product-facing local/cloud client surface; hook and protocol crates keep
-  their `semantic-agent-*` names.
-- `packages/python/src/tools/semantic_sandtable/`: sandtable runner for
+- `docs/10-19-rfcs/`: protocol intent and change process. Start here before
+  changing search, query, schema, or Marlin host integration behavior.
+- `schemas/`: shared JSON contracts for search/query packets, language
+  registries, provider manifests, Marlin host integration bindings, sandtable
+  scenarios, and receipts.
+- `crates/agent-semantic-client*/` and `crates/agent-semantic-runtime*`: Rust
+  client CLI (`asp`), typed ClientFrame/gRPC protocol crates, Turso/Tantivy
+  workspace generation store, and resident Runtime Server.
+- `packages/python/tools/src/tools/semantic_sandtable/`: sandtable runner for
   replaying real provider commands and validating scenario evidence.
-- `sandtables/`: cross-language replay scenarios for search flows, hook denial
-  guides, performance budgets, and real-trigger regressions.
+- `sandtables/`: cross-language replay scenarios for search flows, performance
+  budgets, and real-trigger regressions.
 - `languages/`: language provider worktrees used by the protocol repo for
   alignment and integration tests.
 
@@ -50,15 +48,17 @@ in the RFC and schema first, then align providers and sandtable evidence.
 
 ## Documentation Map
 
-- `docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org` owns the portable
-  tree-sitter-compatible syntax ABI, catalog/profile/corpus layout, native
-  projection boundary, and pattern-graph roadmap.
-- `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org` owns the server-first agent search architecture; `asp <language> ...` is a typed ASP Server client surface,
-  search/query/read-plan stdout contracts, and syntax locate/code flows.
-- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns normalized
-  Host invocation, compiled Hook policy/provider projections, typed decisions,
-  and the strict boundary that keeps provider activation and Runtime execution
-  out of Hook classification.
+- `docs/10-19-rfcs/10.34-marlin-host-integration-protocol.org` owns the Marlin
+  host integration boundary, typed host context/binding contracts, and the
+  explicit ownership split between Marlin (hooks, sessions, multi-agent graph)
+  and ASP (semantic search/query playbooks, resident generations, providers).
+- `docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org` owns the
+  portable tree-sitter-compatible syntax ABI, catalog/profile/corpus layout,
+  native projection boundary, and pattern-graph roadmap.
+- `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org`
+  owns the server-first agent search architecture; `asp <language> ...` is a
+  typed ASP Server client surface, search/query/read-plan stdout contracts, and
+  syntax locate/code flows.
 - `schemas/README.md` owns the schema catalog and explains how query/search/read
   packets share tree-sitter provenance without merging packet envelopes.
 - `docs/30-39-research/31.18-tree-sitter-query-rfc-roadmap.org` records the
@@ -74,148 +74,34 @@ already-activated workspace without evaluating `direnv` for every command:
 .devenv/devenv-profile-exec <command>
 ```
 
-Install agent-facing tools and refresh the Codex integration through the
-current convenience target:
+Install the core ASP runtime binary and all language providers from this
+checkout into `$ASP_STATE_HOME` (`~/.agent-semantic-protocols`) and expose the
+canonical `~/.local/bin/asp` entrypoint:
 
 ```sh
-just agent-hooks-install
-just agent-hooks-doctor
+just install
 ```
 
-This installs the core ASP runtime surface: `asp`, the `asp-python-graphs`
-service project, `asp-rust`, `asp-typescript`, and `asp-python`. Graph-Turbo
-is an algorithm profile served by `asp-python-graphs`, not a standalone
-executable or alias.
-
-Install or refresh the Codex plugin globally through the unified install
-command:
+Install individual tool boundaries when only one component changed:
 
 ```sh
-asp install plugin --codex .
+just agent-tools-install-client
+just agent-tools-install-rust
+just agent-tools-install-typescript
+just agent-tools-install-python
+just agent-tools-install-julia
+just agent-tools-install-gerbil
 ```
 
-Global installation is the default when no scope flag is given. To enable and
-cache the plugin only for the current project, pass `--project` (or
-`--project-plugin`) explicitly:
-
-```sh
-asp install plugin --codex --project .
-```
-
-The project-scoped installer uses the official plugin marketplace model. It
-writes or refreshes `.agents/plugins/marketplace.json`, enables
-`asp-codex-plugin@asp-project`, materializes the plugin bundle in the
-project-scoped `.codex` cache, writes the generated skill to that cache, and
-removes retired project-local hook artifacts. It does not create
-`asp-codex-plugin/` at the downstream project root. After installing, restart
-Codex or start a new task so the plugin bundle and hooks are loaded.
-
-For a manual install that mirrors the Codex marketplace flow, run:
-
-```sh
-CODEX_HOME="$PWD/.codex" codex plugin marketplace add . --json
-CODEX_HOME="$PWD/.codex" codex plugin add asp-codex-plugin@asp-project --json
-CODEX_HOME="$PWD/.codex" codex plugin list --json
-```
-
-Publishing is only required when the plugin should be distributed beyond this
-repository checkout. For this repo, the maintained publish surface is the repo
-marketplace at `.agents/plugins/marketplace.json`; a public or workspace-shared
-plugin should only come after the manifest, hook behavior, and generated skill
-contract are stable.
-
-Install released provider binaries into the current project's ASP runtime state
-when you want the repo to consume ASP language provider releases instead of binaries
-from `.bin` or the process `PATH`:
+Install released language provider artifacts into the current project or State Home:
 
 ```sh
 asp install language rust --rev v0.1.0 --project .
 asp install language julia --rev v0.1.0 --target aarch64-apple-darwin --project .
 ```
 
-`--rev` is the required install identity and normally matches the language
-provider release tag. `--target` is only the release asset selector; omit it to
-use the host target when ASP can infer one. The install writes the full provider
-package under `.cache/agent-semantic-protocol/runtime/providers/`, writes a
-launcher into `.cache/agent-semantic-protocol/runtime/bin/`, and records a
-`<language>.lock.toml` receipt beside the provider packages.
-
-Each language provider owns its own GitHub release workflow under
-`languages/<provider>/.github/workflows/release.yml`. Release assets must be
-named `<binary>-<target>.tar.gz` with a matching `.sha256`, for example
-`asp-rust-aarch64-apple-darwin.tar.gz`. The currently published target set is
-`x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the Rust provider also
-publishes `x86_64-pc-windows-msvc`. `x86_64-apple-darwin` is not supported.
-
-Install the same tools into a user-owned bin directory. The directory must be
-on the PATH that your agent client uses to run hooks:
-
-```sh
-mkdir -p "$HOME/.local/bin"
-export PATH="$HOME/.local/bin:$PATH"
-just agent-hooks-install "$HOME/.local/bin"
-just agent-hooks-doctor "$HOME/.local/bin"
-```
-
-Install individual agent tools when only one boundary changed:
-
-```sh
-just agent-tools-install-client
-just agent-tools-install-hook
-just agent-tools-install-rust
-just agent-tools-install-typescript
-just agent-tools-install-python
-```
-
-Use the Runtime-owned Search Playbook when an agent step needs source discovery,
-native syntax, lexical retrieval, or graph reasoning. The `asp-python-graphs`
-service is managed by the ASP Server and is not invoked as a second executable:
-
-```sh
-asp search playbook '(search (producers (language rust))
-  (chain
-    (intersect
-      (rg "-n" "-e" "graphs_timeline")
-      (tantivy "body:graphs_timeline"))
-    (graph gql "--query" "node(kind = \"owner\")")))'
-```
-
-Graph-turbo request packets use the ranking engine through schema-owned JSON:
-`semantic-graph-turbo-request.v1` enters the `asp-python-graphs` service through
-`semantic-graph-turbo-result.v1` or its JSON projection leaves that boundary.
-The retired compact graph renderer is a prompt/debug projection only; it is not a
-trusted graph, frontier, rank, or action protocol.
-
-Agent-facing Search is predicate-directed: rg owns regex truth, Tantivy owns
-ranked text, provider syntax owns structural facts, and Query owns known exact
-selectors. There is no mandatory multi-engine order; `intersect` is an explicit
-set conjunction and `chain` is an explicit typed scope transform. The
-trusted structure remains the schema packet and its schema-owned GQL projection.
-Rank, profile, paths, scores, cache, trace, explanations, metrics, and frontier
-actions must be packet-visible before any presentation layer serializes them.
-Default fast-search request packets include candidate hot range nodes and
-`item -> hot` typed edges when locators are available, plus owner-scoped
-dependency nodes and `owner -> dependency` import edges for query-deps routing,
-so graph-turbo can rank direct code and package follow-ups. Warm graph-turbo
-backend cache entries are stored under `$PRJ_CACHE_HOME` when set, otherwise
-under the git toplevel `.cache`, with the graph fingerprint guarding against
-stale source facts. Inspect or reset that ranking cache with the ASP Server-owned
-graph cache methods. Use `--view graph-turbo-request` only when validating or
-debugging the JSON packet that will be sent to `asp-python-graphs` through the
-ASP Server.
-
-`asp-python-graphs` provides the lightweight Graph-Turbo ranker for this path. Its default
-ranking dependency is SciPy sparse graph scoring, not PyTorch, PyG, or a GNN
-runtime. Future PyG/HeteroData work belongs behind optional lab or offline
-rerank surfaces; it must not become an install requirement, hook dependency, or
-agent hot-path fallback. The current roadmap is to strengthen typed facts,
-profile-specific sparse scoring, failure/read-loop feedback, and command
-inflation metrics while keeping the stable search frontier deterministic and
-schema-auditable. Its artifact timeline report also surfaces historical
-direct-code read-loop risk so cached agent runs can be audited before another
-live sandtable pass.
-
-agent semantic client-backend phase 1 is local-native only:
+Use the Runtime-owned Search Playbook and Query Playbook for code and document
+discovery and exact structural reads:
 
 ```sh
 asp guide
@@ -227,129 +113,37 @@ asp query playbook '(query (producers (language rust)) (select (selectors "rust:
 asp query playbook '(query (producers (documents org)) (select (selectors "org://docs/spec.org#item/heading/Contract") (projection source)))'
 ```
 
-`asp search playbook` and `asp query playbook` are the only public Search and Query
-surfaces. Use `(language rust typescript python julia)` for code producers and
-`(documents org md)` for document producers; a cross-domain request may use
-both. Search
-accepts one Scheme composition with top-level Workspace scope; an rg leaf never
-carries a path. Query accepts only selectors returned on the
-owning GQL nodes. Dependency discovery therefore starts with manifest terms in
-the Playbook and continues through returned selectors, rather than a separate
-provider mode.
+`asp search playbook` and `asp query playbook` are the sole public Search and
+Query surfaces. Use `(language rust typescript python julia gerbil-scheme)` for
+code producers and `(documents org md)` for document producers; a cross-domain
+request may use both. Search accepts one Scheme composition with top-level
+Workspace scope; an `rg` leaf never carries a path. Query accepts only exact
+canonical selectors returned on owning GQL nodes.
 
-Calibrate the local Julia cache hot path after client/cache changes:
-
-```sh
-just perf-calibrate-julia-cache
-```
-
-Refresh a client hook config after the binaries already exist:
-
-```sh
-just install
-asp install plugin --codex .
-asp hook doctor --client codex .
-asp install hook --client claude .
-asp hook doctor --client claude .
-```
-
-`just install` installs `asp`, `asp-python-graphs`, `asp-rust`, `asp-typescript`,
-`asp-python`, and `asp-julia` into
-`${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}` by default, then refreshes the
-Codex hook config. Pass a directory argument, such as
-`just install /tmp/asp-bin`, to override the install root.
-
-`asp install plugin --codex` installs the Codex plugin globally by default.
-Pass `--project` to write the Codex project plugin config and project-local
-cache.
-`asp install hook --client claude` writes the direct Claude hook
-configuration. Both install surfaces refresh cache activation, versioned hook
-policy config, and provider manifests for this repository. They do not build or
-install `asp-python-graphs`, `asp-rust`, `asp-typescript`, `asp-python`, or
-`asp-julia`; use `just install` for the full local setup or the
-`just agent-tools-install-*` commands for one binary family.
-
-Agent clients invoke the runtime hook entrypoint as `asp hook --client
-<codex|claude> --event <event>`. Lifecycle commands stay under the hook
-surface: `asp install plugin --codex`, `asp install hook ...`, and
-`asp hook doctor ...`.
-
-Verify a compact AST patch intent without enabling mutation:
+Verify a compact AST patch intent without enabling client-side mutation:
 
 ```sh
 asp ast-patch verify --packet ast-patch.json .
 asp ast-patch dry-run --packet ast-patch.json .
 ```
 
-For text-patch agent adapters such as Codex, `ast-patch` emits a receipt with
-`mutationAvailable=false`; apply code changes through the client patch tool.
-
-`doctor` checks the project hook block, PATH binary, activation/provider
-manifest sync, and client-specific readiness. Codex also reports user-level
-hook trust state; Claude reports non-Codex enforcement probes as not applicable.
-It does not prove that the already-running agent thread has reloaded the hook
-config. After changing hooks, start a fresh agent session or run a live smoke:
-
-```sh
-just agent-hooks-smoke-hook
-just agent-hooks-smoke-codex
-uv run semantic-sandtable sandtables/root/claude-hook-flow.json
-```
-
-The direct smoke replays the hook classifier. The Codex smoke launches the
-actual Codex CLI and verifies that a TypeScript source dump is blocked by
-`PreToolUse`. The Claude sandtable replays Claude `PreToolUse` payloads through
-the same hook classifier.
-
-Run the root hook tests:
-
-```sh
-cargo test -p agent-semantic-protocol
-cargo test -p agent-semantic-hook
-```
-
-Run only the RFC/docs contract tests:
+Run RFC/docs, schema, and policy checks:
 
 ```sh
 just check-rfc-docs
-```
-
-Run sandtable scenarios:
-
-```sh
-uv run semantic-sandtable
-uv run semantic-sandtable sandtables/root/codex-hook-dispatcher-flow.json
-uv run semantic-sandtable sandtables/root/claude-hook-flow.json
-```
-
-Prove a failure-frontier workflow reduces validation/read rounds without losing
-hot-block coverage:
-
-```sh
-uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
-  sandtables/fixtures/asp/failure-frontier-real-trigger-replay.json
-
-uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
-  sandtables/fixtures/asp/failure-frontier-real-trigger-trace-replay.json
-```
-
-Both replay gates currently prove `10 -> 4` commands, `0.600` command
-reduction, `0.923` stdout-byte reduction, and `4/4` expected hot blocks
-covered.
-
-Run the Python policy gate owned by the ASP Python:
-
-```sh
-just check-python-policy
+just check-schema-profiles
+just check-schema-manager
+just check-rust-workspace-policy
+just check-license-contract
 ```
 
 ## Notes For Agents
 
 - Prefer compact provider search output over raw source reads.
-- Treat `asp` as the public shared CLI and `agent-semantic-hook` as the shared
-  classifier implementation; provider hooks
-  should publish profile descriptors instead of duplicating platform parsing.
+- Treat `asp` as the public shared CLI and resident Runtime Server integrated
+  with Marlin; hook interception, session control, and multi-agent routing belong
+  exclusively to Marlin (`marlin-agent-core`).
 - Use sandtable receipts and real-trigger scenarios to prove that a workflow
   saves commands, bytes, latency, or repeated searches.
-- Keep README short. Put design detail in `docs/10-19-rfcs/`, `schemas/README.md`, or
-  `docs/`.
+- Keep README short. Put design detail in `docs/10-19-rfcs/`,
+  `schemas/README.md`, or `docs/`.

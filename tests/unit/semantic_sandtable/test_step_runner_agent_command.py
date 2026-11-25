@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
@@ -58,101 +57,20 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
             command,
         )
 
-    def test_claude_agent_sdk_step_builds_sdk_runner_command(self) -> None:
-        step = {
-            "id": "claude-sdk",
-            "agentSdk": {
-                "client": "claude",
-                "prompt": "Explain {subject}",
-                "outputFormat": "stream-json",
-                "includePartialMessages": True,
-                "includeHookEvents": True,
-                "verbose": True,
-                "requireAspBashCommands": True,
-                "useRepoClaudeSettings": True,
-                "maxTurns": 9,
-                "model": "sonnet",
-            },
-        }
-
-        execution = _resolve_step_execution(
-            step,
-            "root.claude-sdk",
-            "claude-sdk",
-            {},
-            {"subject": "ASP"},
-            repo_root=Path("/workspace"),
-        )
-
-        self.assertIsInstance(execution, tuple)
-        command, _env = execution
-        self.assertEqual(
-            [
-                sys.executable,
-                "-m",
-                "tools.semantic_sandtable.claude_sdk_runner",
-                "--prompt",
-                "Explain ASP",
-                "--output-format",
-                "stream-json",
-                "--include-partial-messages",
-                "--include-hook-events",
-                "--verbose",
-                "--require-asp-bash-commands",
-                "--claude-cwd",
-                "/workspace",
-                "--settings",
-                "/workspace/.claude/settings.json",
-                "--add-cwd-dir",
-                "--max-turns",
-                "9",
-                "--model",
-                "sonnet",
-            ],
-            command,
-        )
-
-    def test_claude_agent_sdk_rejects_preallowed_bash_with_asp_permission(self) -> None:
-        execution = _resolve_step_execution(
-            {
-                "id": "claude-sdk",
-                "agentSdk": {
-                    "client": "claude",
-                    "prompt": "Explain ASP",
-                    "outputFormat": "stream-json",
-                    "allowedTools": ["Bash"],
-                    "requireAspBashCommands": True,
-                },
-            },
-            "root.claude-sdk",
-            "claude-sdk",
-            {},
-            {},
-            repo_root=Path("/workspace"),
-        )
-
-        self.assertNotIsInstance(execution, tuple)
-        self.assertEqual(
-            [
-                "step.agentSdk.allowedTools cannot be used when requireAspBashCommands is true; ASP Bash permission is owned by claude_sdk_runner"
-            ],
-            execution.errors,
-        )
-
     def test_agent_answer_required_rejects_sdk_max_turns(self) -> None:
         execution = _resolve_step_execution(
             {
-                "id": "claude-sdk",
+                "id": "deepseek-sdk",
                 "agentSdk": {
-                    "client": "claude",
+                    "client": "deepseek",
                     "prompt": "Explain ASP",
                     "outputFormat": "stream-json",
                     "maxTurns": 9,
                 },
                 "expect": {"agentAnswer": {"required": True}},
             },
-            "root.claude-sdk",
-            "claude-sdk",
+            "root.deepseek-sdk",
+            "deepseek-sdk",
             {},
             {},
             repo_root=Path("/workspace"),
@@ -166,7 +84,7 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
             execution.errors,
         )
 
-    def test_claude_agent_sdk_accepts_summary_json_output(self) -> None:
+    def test_claude_agent_sdk_client_is_rejected(self) -> None:
         execution = _resolve_step_execution(
             {
                 "id": "claude-sdk",
@@ -183,9 +101,11 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
             repo_root=Path("/workspace"),
         )
 
-        self.assertIsInstance(execution, tuple)
-        command, _env = execution
-        self.assertEqual("summary-json", command[6])
+        self.assertNotIsInstance(execution, tuple)
+        self.assertEqual(
+            ["step.agentSdk.client must be 'deepseek' or 'openai-compatible'"],
+            execution.errors,
+        )
 
     def test_step_cannot_define_command_and_agent_cli(self) -> None:
         execution = _resolve_step_execution(

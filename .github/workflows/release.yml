@@ -39,15 +39,12 @@ jobs:
             exe: .exe
 
     env:
-      ASP_BINARY: asp
-      RELEASE_BUNDLE: asp-tools
+      RELEASE_BUNDLE: asp-service-bundle
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: false
 
       - name: Ensure release tag checkout
         if: github.event_name != 'push'
@@ -57,18 +54,9 @@ jobs:
           git fetch --tags --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           git checkout --force "${RELEASE_TAG}"
 
-      - name: Checkout local language dependencies
+      - name: Sync core external providers from providers.toml
         shell: bash
-        run: |
-          set -euo pipefail
-          git submodule update --init --depth 1 \
-            languages/asp-rust \
-            languages/asp-gerbil-scheme \
-            org \
-            languages/orgize \
-            languages/asp-typescript \
-            languages/asp-python \
-            languages/AspJulia.jl
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -86,17 +74,12 @@ jobs:
         shell: bash
         run: git config --global core.longpaths true
 
-      - name: Consume the committed Orgize FFI bundle
-        if: runner.os != 'Windows'
-        uses: ./.github/actions/orgize-ffi
-
-      - name: Build atomic ASP and asp-python-graphs service bundle
+      - name: Verify pure-Rust library workspace and build asp-python-graphs service bundle
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
+          cargo test --release --manifest-path Cargo.toml -p agent-semantic-search -p agent-semantic-search-playbook -p agent-semantic-topology
           mkdir -p package/asp-python-graphs.bundle
-          install -m 755 target/release/asp${{ matrix.exe }} package/asp${{ matrix.exe }}
           uv build --project packages/python/asp_memory_engine --wheel \
             --out-dir package/asp-python-graphs.bundle
           uv build --project packages/python/asp_python_graphs --wheel \
@@ -175,7 +158,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
           if [[ -x package/asp-python-graphs.bundle/asp-python-graphs-service ]]; then
             service_launcher="$PWD/package/asp-python-graphs.bundle/asp-python-graphs-service"
             service_run_args=(serve --socket)

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use agent_semantic_topology::{ProjectTopologyLibrary, ProjectTopologyManifest};
+use agent_semantic_topology::ProjectTopologyLibrary;
 use serde_json::{Value, json};
 
 fn packet() -> Value {
@@ -15,10 +15,7 @@ fn packet() -> Value {
 }
 
 fn admit(packet: Value) -> Result<ProjectTopologyLibrary, String> {
-    let manifest = ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.workspace-manifest.v1.org"
-    ))
-    .expect("Project Topology manifest");
+    let manifest = crate::canonical_test_manifest();
     let receipt = packet["fromScratchRebuildReceipt"].clone();
     let receipts = BTreeMap::from([("topology-rebuild-1".to_owned(), receipt)]);
     ProjectTopologyLibrary::admit_with_receipts(packet, manifest.project_workspace(), &receipts)

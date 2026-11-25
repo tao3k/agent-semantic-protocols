@@ -72,26 +72,26 @@ class StepRunnerAgentEnvTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             execution = _resolve_step_execution(
                 {
-                    "id": "claude-sdk-missing-token",
+                    "id": "deepseek-sdk-missing-token",
                     "agentSdk": {
-                        "client": "claude",
+                        "client": "deepseek",
                         "prompt": "hello",
                         "outputFormat": "stream-json",
                         "env": {
-                            "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}",
+                            "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}",
                         },
-                        "requiredEnv": ["ANTHROPIC_AUTH_TOKEN"],
+                        "requiredEnv": ["DEEPSEEK_API_KEY"],
                     },
                 },
-                "root.claude-sdk",
-                "claude-sdk-missing-token",
+                "root.deepseek-sdk",
+                "deepseek-sdk-missing-token",
                 {},
                 {},
             )
 
         self.assertEqual("fail", execution.status)
         self.assertEqual(
-            ["step.agentSdk.requiredEnv unresolved: ANTHROPIC_AUTH_TOKEN"],
+            ["step.agentSdk.requiredEnv unresolved: DEEPSEEK_API_KEY"],
             execution.errors,
         )
 

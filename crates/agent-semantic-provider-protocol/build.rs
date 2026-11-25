@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
 fn main() {
-    asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env();
-
     let manifest =
         std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let root = manifest.join("../..");

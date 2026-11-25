@@ -16,7 +16,7 @@ fn host_reference_is_optional_and_never_becomes_workspace_identity() {
         ProjectBinding::resolve(None, "git-common-dir:/workspace/.git", root).unwrap();
     let host_bound = ProjectBinding::resolve(
         Some(HostProjectReference {
-            platform: "codex".to_string(),
+            platform: "marlin".to_string(),
             project_id: "local-host-id".to_string(),
             project_kind: "local".to_string(),
             host_id: Some("local".to_string()),

@@ -26,8 +26,12 @@ mrr-search-kernel = { package = "meta-relational-reasoning", git = "https://gith
 serde.workspace = true
 serde_json.workspace = true
 
-[build-dependencies]
-asp-rust-project-harness-policy.workspace = true
-
 [lints]
 workspace = true
+
+[dev-dependencies]
+asp-rust.workspace = true
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

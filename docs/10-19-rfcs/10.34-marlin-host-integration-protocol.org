@@ -1,0 +1,218 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.34: Marlin Host Integration Protocol
+#+AUTHOR: tao3k team and Contributors
+#+DATE: 2026-11-25
+#+STATUS: Accepted
+
+* Summary
+
+This RFC establishes the Marlin-native host integration contract for Agent Semantic
+Protocols (ASP) and records the complete retirement of third-party shell-hook
+interception and host adapters (Codex, Anthropic/Claude, ~agent-semantic-hook~,
+~agent-semantic-hook-testkit~, ~agent-semantic-shell-parser~, ~asp-codex-plugin~,
+~agents/~ routing manifests, and ASP-owned ~agent_session_registry~).
+
+Under this architecture, Marlin (~marlin-agent-core~) is the sole host system
+integrating ASP. ASP operates exclusively as Marlin's semantic analysis,
+provider supervision, progressive search, exact structural query, AST patch
+verification, and resident workspace generation subsystem.
+
+* Motivation
+
+Earlier ASP revisions embedded a shell-command hook classifier (~asp-hook~),
+bash AST parser (~agent-semantic-shell-parser~), Codex plugin bundle
+(~asp-codex-plugin~), Claude SDK sandtable runners, and an ASP-owned multi-agent
+session control plane (~agent_session_registry~) to bridge external agent hosts
+that lacked native semantic tool integration.
+
+In the Marlin architecture (~marlin-agent-core~, RFC 40.80):
+
+1. Marlin owns hooks (~marlin-agent-hooks~) with typed TOML configuration and
+   Gerbil Scheme policy extensions.
+2. Marlin owns session lifecycle and storage (~marlin-agent-sessions~) and
+   ~MARLIN_HOME~ (~/.marlin).
+3. Marlin owns multi-agent orchestration and graph loops (~marlin-agent-graph~).
+4. Marlin embeds ASP's pure-Rust search, topology, and language-provider crates
+   directly as native Rust library dependencies and projects real Gerbil Scheme
+   search plans across the native ~gerbil_scheme::RootedSchemeObject~ ABI into
+   typed Rust structs (~SearchPlaybookPlanInput~, ~ProgressiveQueryInput~) without
+   text S-expression parsing, without a second Orgize runtime, without a second
+   Turso database, and without a standalone ASP daemon/CLI.
+
+Retaining Codex, Claude, and ASP-side hook/session control-plane layers creates
+duplicate ownership, ambiguous runtime boundaries, and dead maintenance surface.
+Git history is the sole archive; all retired surfaces are removed cleanly.
+
+* Ownership Split
+
+| Concern | Owner | Authoritative Surface |
+|---------+-------+-----------------------|
+| Hooks & policy enforcement | Marlin (~marlin-agent-hooks~) | Typed TOML + Gerbil Scheme policy extension |
+| Session lifecycle & lineage | Marlin (~marlin-agent-sessions~) | ~MARLIN_HOME~, ~MARLIN_ROOT_SESSION_ID~, ~MARLIN_SESSION_ID~ |
+| Multi-agent graph & dispatch | Marlin (~marlin-agent-graph~) | Readiness-gated Gerbil graph loops |
+| Org parsing & Fold graph projection | Marlin (~marlin-agent-context~) | ~org-source.ss~ / ~gerbil_org.rs~ feeding ASP via ~OrgDocumentProjectionPort~ |
+| Unified Turso persistence & artifact CAS | Marlin (~marlin-agent-storage~) | ~TursoAgentStorage~ / ~TursoContextIndex~ feeding ASP via ~SearchEngineStoragePort~ |
+| Converged search, Merkle generation, ranking & topology engine | ASP (~agent-semantic-search~, ~agent-semantic-search-playbook~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, Tantivy + ripgrep + Ascent closure, zero ~orgize~, zero ~turso~, zero pseudo-Scheme text parser |
+| Real Gerbil Scheme search composition & C-ABI projection | Marlin (~scheme/search/*~, ~crates/marlin-agent-search~) | Real Gerbil Scheme module system + ~RootedSchemeObject~ -> ~SearchPlaybookPlanInput~ / ~ProgressiveQueryInput~ |
+| Language provider supervision (non-Rust external providers only) | ASP (~agent-semantic-provider-transport~, ~agent-semantic-tree-sitter~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ |
+| Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~ |
+
+* Two-Port Extreme Convergence (Org Parsing, Unified Turso Storage & Native Scheme ABI)
+
+Marlin (~marlin-agent-core~) already owns Scheme-based Org parsing
+(~marlin-agent-context~ / ~orgize-fold~), the real Gerbil Scheme module system
+(~scheme/search/*~ + ~gerbil_scheme::RootedSchemeObject~), and the unified Turso
+persistence layer (~marlin-agent-storage~ / ~TursoAgentStorage~ /
+~TursoContextIndex~). Embedding a second Gambit/Orgize FFI runtime, a second
+Turso agent-storage engine, a pseudo S-expression text parser
+(~agent-semantic-scheme-syntax~), or a standalone daemon/CLI inside ASP creates
+duplicate ownership and dual-runtime startup conflicts.
+
+Accordingly, the entire ASP Rust workspace compiles with *zero* ~orgize~ FFI
+dependency, *zero* ~turso_core~ dependency, and *zero* ~agent-semantic-scheme-syntax~
+pseudo-Scheme text parser, converging on two host-supplied ports plus direct
+typed plan admission:
+
+1. *Port 1 — ~OrgDocumentProjectionPort~* (~crates/agent-semantic-topology/src/org_projection_port.rs~):
+   - Accepts typed ~OrgDocumentProjection~ (document properties + section hierarchy)
+     and ~OrgOverlayDocumentProjection~ (source + AST digest + headline presence)
+     produced once by Marlin's ~marlin-agent-context~.
+   - ~ProjectTopologyManifest::from_org_projection~,
+     ~ProjectTopologySourceProgram::from_org_projection~, and
+     ~AgentOrgTopologyOverlay::admit_with_org_projection~ run in pure Rust.
+   - ~agent-semantic-search-projection~ renders canonical ~#+begin_src gql :name result~
+     settlement blocks in pure Rust without linking ~orgize~.
+   - No ~embedded-orgize~ compatibility shim exists anywhere in ASP.
+2. *Port 2 — ~SearchEngineStoragePort~* (~crates/agent-semantic-search/src/marlin_storage_port.rs~):
+   - Maps 1:1 onto Marlin's ~marlin-agent-storage::AgentStorage~ artifact CAS
+     (~put_artifact~ / ~get_artifact~), compare-and-swap generation pointer
+     (~compare_and_swap_generation_pointer~ / ~get_generation_pointer~), and
+     topology edge tables (~append_topology_edges~ / ~list_topology_edges~).
+   - ~MarlinConvergedSearchEngine~ (~crates/agent-semantic-search/src/marlin_engine.rs~)
+     composes both ports and typed plan admission (~admit_search_plan~) into a
+     single Marlin-embeddable search/ranking/topology engine.
+3. *Direct Typed Plan Admission (Real Gerbil Scheme -> Rust)*:
+   - ~agent-semantic-search-playbook~ accepts only typed ~SearchPlaybookPlanInput~
+     via ~admit_search_playbook_plan~, and ~agent-semantic-search~ accepts only
+     typed ~ProgressiveQueryInput~ via ~admit_progressive_query~.
+   - Marlin's ~scheme/search/*~ modules compose search plans using the real
+     Gerbil Scheme module system and POO abstractions, and ~crates/marlin-agent-search~
+     projects ~RootedSchemeObject~ directly into ~SearchPlaybookPlanInput~ without
+     any text S-expression serialization or gRPC hop.
+
+* Retired Surfaces (Removed Cleanly)
+
+The following surfaces are permanently removed from the ASP workspace and must
+not be reintroduced:
+
+- Retired host/hook crates: ~crates/agent-semantic-hook~,
+  ~crates/agent-semantic-hook-testkit~, ~crates/agent-semantic-shell-parser~.
+- Retired standalone client/daemon/DB/runtime/pseudo-Scheme crates:
+  ~crates/agent-semantic-client~, ~crates/agent-semantic-client-core~,
+  ~crates/agent-semantic-client-db~, ~crates/agent-semantic-client-server~,
+  ~crates/agent-semantic-context-product~, ~crates/agent-semantic-loop~,
+  ~crates/agent-semantic-runtime~, ~crates/agent-semantic-runtime-observability~,
+  ~crates/agent-semantic-runtime-process-observation~,
+  ~crates/agent-semantic-runtime-server~, ~crates/agent-semantic-scheme-syntax~.
+- Retired Orgize FFI bootstrap assets: ~.github/actions/orgize-ffi/~,
+  ~.github/scripts/fetch-orgize-ffi.sh~, and any ~embedded-orgize~ /
+  ~legacy-scheme-text~ compatibility features.
+- Plugin and routing assets: ~asp-codex-plugin/~, ~.agents/plugins/~, ~agents/~.
+- CLI roots and subcommands: standalone ~asp~ CLI/daemon, ~asp hook~,
+  ~asp session~, ~asp install plugin~, ~asp install hook~, ~asp config agents~.
+- Runtime/DB state: ~agent_session_registry~, ~codex_rollout_sessions~,
+  ~hook_memory_inbox~, ~runtime_server_hook_admission_locator~,
+  ~codex_multi_agent_v2_control_plane~, and ~[hook-engine]~ config blocks.
+- External agent runners: Claude Code SDK sandtable runners and Codex/Claude
+  hook smoke workflows.
+
+Search-only helpers previously hosted in ~agent-semantic-shell-parser~
+(~native_rg~ and ~tantivy_query~) are owned directly by
+~agent-semantic-search-playbook~ and re-exported by ~agent-semantic-search~.
+
+* Marlin Host Integration Contract
+
+** Typed Host Binding (~marlin-host-integration.v1.schema.json~)
+
+When Marlin binds a project workspace to ASP, it provides an explicit typed
+~MarlinHostIntegrationBinding~ (defined in
+~crates/agent-semantic-client-protocol/src/marlin_host.rs~ and
+~schemas/marlin-host-integration.v1.schema.json~):
+
+- ~schemaId~: ~"agent.semantic-protocols.marlin-host-integration"~
+- ~schemaVersion~: ~"1"~
+- ~platform~: ~"marlin"~ (fixed domain discriminator)
+- ~hostId~: typed ~MarlinHostId~ identifying the Marlin runtime instance
+- ~projectId~: typed ~MarlinProjectId~ identifying the Marlin project
+- ~workspaceId~: typed ~MarlinWorkspaceId~ identifying the canonical workspace
+- ~worktreeId~: typed ~MarlinWorktreeId~ identifying the active worktree
+- ~capabilityProfile~: ~"read-only-semantic"~ | ~"verified-ast-patch"~ | ~"full-workspace-generation"~
+- ~correlation~ (optional read-only observability metadata owned by Marlin):
+  - ~rootSessionId~: typed ~MarlinRootSessionId~
+  - ~sessionId~: typed ~MarlinSessionId~
+  - ~parentSessionId~: optional typed ~MarlinParentSessionId~ (must never alias ~sessionId~)
+  - ~agentLineage~: optional typed ~MarlinAgentLineageId~
+
+All public semantic identifiers MUST use domain newtypes rather than raw
+primitive strings. ASP treats ~correlation~ strictly as read-only trace and
+storage-partition context; ASP never mutates Marlin session state, spawns
+Marlin sub-agents, or enforces Marlin hook policies.
+
+** Environment Handshake
+
+When Marlin launches ~asp~ as a child process, it MAY pass correlation metadata
+through the Marlin-owned environment variables:
+
+- ~ASP_HOST_PLATFORM=marlin~
+- ~MARLIN_HOST_ID~
+- ~MARLIN_PROJECT_ID~
+- ~MARLIN_WORKSPACE_ID~
+- ~MARLIN_WORKTREE_ID~
+- ~MARLIN_ROOT_SESSION_ID~
+- ~MARLIN_SESSION_ID~
+- ~MARLIN_PARENT_SESSION_ID~ (optional; rejected fail-closed if equal to ~MARLIN_SESSION_ID~)
+- ~MARLIN_AGENT_LINEAGE~ (optional)
+
+Manual operator invocations without Marlin session variables remain supported
+and skip session-scoped provider-runtime event persistence without error.
+
+** Northbound Protocol Surface
+
+Marlin communicates with ASP Runtime Server exclusively through the typed
+~ClientFrame~ method catalog (~crates/agent-semantic-client-protocol~):
+
+1. ~asp.workspace.search.playbook~ — progressive Scheme-composed semantic search
+2. ~asp.workspace.query.playbook~ — exact selector-addressed structural reads
+3. ~asp.workspace.query.syntax~ — portable tree-sitter-compatible syntax queries
+4. ~asp.workspace.query.syntax-plan-context~ — syntax query plan preparation
+5. ~asp.workspace.generation.ensure-ready~ — deterministic workspace generation admission
+6. ~asp.graph.evaluate~ — resident Ascent/GQL graph evaluation
+7. ~asp.schema.bundle~ — canonical language schema bundle distribution
+8. ~asp.cancellation.probe~ — request cancellation verification
+
+** Fail-Closed Admission Rules
+
+1. Non-Marlin platform strings or empty required identifiers are rejected at the
+   protocol boundary with typed ~MarlinHostIntegrationError~ variants.
+2. Parent/current session aliasing (~parentSessionId == sessionId~) is rejected
+   fail-closed.
+3. Unrecognized or retired ~ClientFrame~ methods (including retired hook inbox
+   or session registry routes) are rejected at catalog validation time.
+4. ~asp ast-patch verify~ / ~dry-run~ returns a non-mutating safety-verifier
+   receipt (~mutationAvailable: false~); local source mutation occurs only
+   through explicit provider-native ~ast-patch apply~ or Marlin-owned file
+   mutation tools. Frozen V1 provider-shared AST patch and query packet schemas
+   retain their V1 wire field identifiers until a coordinated V2 provider
+   submodule release.
+
+* Verification
+
+This contract is enforced continuously by:
+
+- Rust unit tests in ~crates/agent-semantic-client-protocol/tests/unit/marlin_host.rs~
+- Workspace member policy tests in ~build-support/asp-rust-project-harness-policy~
+- Schema & RFC verification tests in ~tests/unit/test_marlin_host_integration_rfc.py~
+- Schema family classification via ~asp-schema-manager check~ under ~asp.schema-family.marlin-host~

@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-#[path = "hook_client_config.rs"]
-mod hook_client_config;
+#[path = "providers_manifest.rs"]
+mod providers_manifest;
 
 #[path = "source_extension.rs"]
 mod source_extension;

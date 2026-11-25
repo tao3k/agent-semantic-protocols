@@ -45,10 +45,14 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "setup-uv" not in workflow
     assert "setup-node" not in workflow
     assert "download-artifact" not in workflow
-    assert "matrix.package == 'agent-semantic-provider-transport'" in workflow
-    assert "fd-find ripgrep" in workflow
-    assert "matrix.package == 'agent-semantic-client'" in workflow
-    assert "cargo build -p agent-semantic-hook --bin asp-hook" in workflow
+    assert "fd-find ripgrep" not in workflow
+    assert "agent-semantic-hook" not in workflow
+    assert "agent-semantic-hook-testkit" not in workflow
+    assert "agent-semantic-shell-parser" not in workflow
+    assert "agent-semantic-scheme-syntax" not in workflow
+    assert "agent-semantic-client-db" not in workflow
+    assert "agent-semantic-runtime-server" not in workflow
+    assert "orgize-ffi" not in workflow
     assert "--ignored --exact" not in workflow
     monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     assert "github.event.pull_request.number || github.ref" in monolithic_workflow
@@ -57,14 +61,15 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "cargo clippy --workspace --all-targets --all-features" not in monolithic_workflow
     assert "rust-format:" in monolithic_workflow
     assert "rust-platform-smoke:" in monolithic_workflow
+    assert "orgize-ffi" not in monolithic_workflow
     platform_matrix = monolithic_workflow.split("rust-platform-smoke:", 1)[1].split(
-        "asp-linux-binary:", 1
+        "shared-contract-gates:", 1
     )[0]
     assert "ubuntu-latest" not in platform_matrix
     assert "macos-latest" in platform_matrix
     assert "windows-latest" in platform_matrix
-    assert "cargo run --quiet --bin asp -- --help" in platform_matrix
-    assert "cargo run --quiet --bin asp -- guide" not in platform_matrix
+    assert "agent-semantic-search" in platform_matrix
+    assert "cargo build --bin asp" not in platform_matrix
 
 
 def test_root_schema_gate_references_only_present_test_paths() -> None:
@@ -77,26 +82,29 @@ def test_root_schema_gate_references_only_present_test_paths() -> None:
     assert [path for path in referenced_paths if not (REPO_ROOT / path).exists()] == []
 
 
-def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
+def test_asp_rust_ci_uses_providers_toml_instead_of_git_submodules() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    package_workflow = RUST_PACKAGE_WORKFLOW.read_text(encoding="utf-8")
 
-    rust_checkout_step = workflow.split(
-        "- name: Checkout provider catalog submodules", 1
-    )[1]
-    rust_checkout_step = rust_checkout_step.split("- name: Setup Rust", 1)[0]
-    schema_checkout_step = workflow.split("- name: Checkout provider submodules", 1)[1]
-    schema_checkout_step = schema_checkout_step.split("- name: Install uv", 1)[0]
-
-    for checkout_step in (rust_checkout_step, schema_checkout_step):
-        assert "languages/AspJulia.jl" in checkout_step
-        assert "languages/asp-gerbil-scheme" in checkout_step
+    assert not (REPO_ROOT / ".gitmodules").exists()
+    assert (REPO_ROOT / "providers.toml").exists()
+    assert (REPO_ROOT / "scripts" / "providers_sync.py").exists()
+    assert "git submodule" not in workflow
+    assert "git submodule" not in package_workflow
+    assert "scripts/providers_sync.py sync --workspace . --profile core" in workflow
+    assert "cargo run --quiet -p agent-semantic-schema-manager" not in workflow
+    assert "cargo run --quiet -p agent-semantic-schema-manager" not in package_workflow
 
 
 def test_root_release_carries_server_managed_graphs_artifact() -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
-    assert "Build atomic ASP and asp-python-graphs service bundle" in workflow
-    assert "cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp" in workflow
+    assert "Verify pure-Rust library workspace and build asp-python-graphs service bundle" in workflow
+    assert "git submodule" not in workflow
+    assert "orgize-ffi" not in workflow
+    assert "agent-semantic-client" not in workflow
+    assert "--bin asp" not in workflow
+    assert "scripts/providers_sync.py sync --workspace . --profile core" in workflow
     assert "uv build --project packages/python/asp_python_graphs --wheel" in workflow
     assert "package/asp-python-graphs.bundle" in workflow
     assert '"artifactKind": "server-managed-service-environment"' in workflow
@@ -112,6 +120,10 @@ def test_root_release_carries_server_managed_graphs_artifact() -> None:
     assert '"publicStandaloneCommand": False' in workflow
     assert "asp-graph-turbo" not in workflow
     assert "asp-graph-turbo-resident" not in workflow
+    assert not (REPO_ROOT / ".github" / "workflows" / "search-data-composition.yml").exists()
+    assert not (
+        REPO_ROOT / ".github" / "workflows" / "large-library-runtime-benchmark.yml"
+    ).exists()
 
 
 def test_tree_sitter_contract_gate_uses_packaged_cli() -> None:
@@ -128,7 +140,7 @@ def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     step = workflow.split("- name: Language facade smoke gate", 1)[1]
-    step = step.split("  rust-provider-gates:", 1)[0]
+    step = step.split("  tree-sitter-query-contract-gates:", 1)[0]
 
     assert (
         "uv run --project packages/python --frozen pytest "
@@ -146,49 +158,17 @@ def test_language_facade_ci_gate_is_static() -> None:
         assert obsolete_setup not in step
 
 
-def test_live_corpus_setup_builds_artifacts_without_installation() -> None:
+def test_justfile_has_zero_legacy_standalone_asp_binary_recipes() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
-    facade = justfile.split("check-language-facade-smoke:", 1)[1]
-    facade = facade.split("check-provider-knowledge-axes:", 1)[0]
-    assert "agent-tools-install" not in facade
-    assert "ASP_LANGUAGE_FACADE" not in facade
-
-    setup = justfile.split("check-live-corpus-search-query-all-setup:", 1)[1]
-    setup = setup.split("check-live-corpus-search-query-all:", 1)[0]
-    assert "just build-live-corpus-test-runtime" in setup
-    assert "target/provider-runtime/asp-rust" not in setup
-    assert "agent-tools-install" not in setup
-    assert 'agent-tools-install-client bin_dir=""' not in justfile
-    assert 'agent-tools-install-global bin_dir=""' not in justfile
-    assert 'agent-tools-install-hook bin_dir=""' not in justfile
-
-    build = justfile.split("build-live-corpus-test-runtime:", 1)[1]
-    build = build.split("check-live-corpus-search-query-resource", 1)[0]
-    assert (
-        "cargo build --release -p agent-semantic-client "
-        "--features live-corpus-test --bin asp"
-    ) in build
-
-    resource = justfile.split("check-live-corpus-search-query-resource resource:", 1)[1]
-    resource = resource.split("check-live-corpus-search-query-all-setup:", 1)[0]
-    qualify = next(line for line in resource.splitlines() if '"${runner}" qualify' in line)
-    assert "--plan benchmarks/live-corpus-scheme-scenarios.v1.toml" in qualify
-    assert "--lock" not in qualify
-
-
-def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
-    justfile = JUSTFILE.read_text(encoding="utf-8")
-
-    runner = justfile.split("_agent-tools-run-asp bin_dir +args:", 1)[1]
-    runner = runner.split("# Install asp, asp-python-graphs", 1)[0]
-
-    assert 'client_bin="${ASP_BIN:-${bin_dir}/asp}"' in runner
-    assert '[ -z "${ASP_BIN:-}" ]' in runner
-    assert '[ target/release/asp -nt "${client_bin}" ]' in runner
-    assert "crates/agent-semantic-protocol/src" in runner
-    assert "agent-semantic-protocol Rust source is newer" in runner
-    assert "run \\`just agent-tools-install-client\\`" in runner
+    assert "agent-semantic-client" not in justfile
+    assert "crates/agent-semantic-protocol" not in justfile
+    assert "target/release/asp" not in justfile
+    assert "just search-engine-bench" not in justfile or "search-engine-bench:" in justfile
+    assert "sysml-check:" in justfile
+    assert "quint-check:" in justfile
+    assert "property-gate:" in justfile
+    assert "search-engine-bench:" in justfile
 
 
 def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budget() -> (
@@ -228,29 +208,15 @@ def test_gerbil_just_build_uses_canonical_provider_entrypoint() -> None:
     assert 'provider=asp-gerbil-scheme' in target
 
 
-def test_julia_full_provider_gate_uses_fresh_compiled_provider_perf_guard() -> None:
+def test_julia_provider_gate_exercises_compiled_provider() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
-    install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
-    install_julia = install_julia.split("agent-hooks-doctor-providers:", 1)[0]
-    assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in install_julia
-    assert "just agent-tools-install-language julia" in install_julia
-    assert 'provider_bin="$${state_home}/runtime/bin/asp-julia"' in install_julia
-
-    live_corpus_setup = justfile.split(
-        "check-live-corpus-search-query-all-setup:", 1
-    )[1]
-    live_corpus_setup = live_corpus_setup.split(
-        "check-live-corpus-search-query-all:", 1
-    )[0]
-    assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in live_corpus_setup
-    assert "./juliac/build_provider.sh" in live_corpus_setup
-    assert "agent-tools-install" not in live_corpus_setup
-    assert ".bin/asp julia guide" not in live_corpus_setup
-
     provider_gate_julia = justfile.split("provider-gate-julia:", 1)[1]
-    provider_gate_julia = provider_gate_julia.split(
-        "provider-gate-semantic-facts-setup:", 1
-    )[0]
+    provider_gate_julia = provider_gate_julia.split("provider-gate-gerbil:", 1)[0]
+    assert "{{asp_julia_compiled_command}} guide {{asp_julia_project}}" in provider_gate_julia
+    assert (
+        "{{asp_julia_compiled_command}} agent doctor --json {{asp_julia_project}}"
+        in provider_gate_julia
+    )
     assert "just check-language-facade-smoke" in provider_gate_julia
     assert "check-language-facade-smoke-all" not in provider_gate_julia
