@@ -48,7 +48,7 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
-agent-semantic-topology = { path = "../agent-semantic-topology" }
+agent-semantic-topology = { path = "../agent-semantic-topology", features = ["embedded-orgize"] }
 agent-semantic-mrr.workspace = true
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 agent-semantic-schema-manager.workspace = true

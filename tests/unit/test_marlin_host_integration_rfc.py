@@ -46,6 +46,10 @@ def _valid_binding() -> dict[str, Any]:
             "asp.graph.evaluate",
             "asp.schema.bundle",
         ],
+        "enginePorts": {
+            "orgPort": "marlin-context-org-fold",
+            "storagePort": "marlin-agent-storage-turso",
+        },
         "correlation": {
             "rootSessionId": "marlin-root-01",
             "sessionId": "marlin-session-02",
@@ -64,6 +68,11 @@ def test_marlin_host_integration_rfc_documents_ownership_and_retirements() -> No
         "marlin-agent-hooks",
         "marlin-agent-sessions",
         "marlin-agent-graph",
+        "marlin-agent-context",
+        "marlin-agent-storage",
+        "OrgDocumentProjectionPort",
+        "SearchEngineStoragePort",
+        "MarlinConvergedSearchEngine",
         "marlin-host-integration.v1.schema.json",
         "asp.workspace.search.playbook",
         "asp.workspace.query.playbook",
@@ -85,6 +94,12 @@ def test_retired_codex_claude_and_hook_surfaces_are_absent() -> None:
         ".agents/plugins",
         "agents",
         "docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org",
+        "crates/agent-semantic-client-db/src/turso_agent_storage.rs",
+        "crates/agent-semantic-client-db/src/turso_mvcc_store.rs",
+        "crates/agent-semantic-client-db/src/turso_cdc_storage.rs",
+        "crates/agent-semantic-client-db/src/turso_encrypted_storage.rs",
+        "crates/agent-semantic-client-db/src/turso_sync_storage.rs",
+        "crates/agent-semantic-client/src/provider_runtime_storage.rs",
     ):
         assert not (_REPO_ROOT / retired).exists(), f"retired path exists: {retired}"
 

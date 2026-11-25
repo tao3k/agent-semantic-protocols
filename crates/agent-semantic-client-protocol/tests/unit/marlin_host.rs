@@ -10,10 +10,13 @@ use super::MARLIN_HOST_INTEGRATION_SCHEMA_VERSION;
 use super::MARLIN_HOST_PLATFORM;
 use super::MarlinAgentLineageId;
 use super::MarlinCapabilityProfile;
+use super::MarlinEnginePortBindings;
 use super::MarlinHostCorrelation;
 use super::MarlinHostIntegrationBinding;
 use super::MarlinHostIntegrationError;
+use super::MarlinOrgPortMode;
 use super::MarlinParentSessionId;
+use super::MarlinStoragePortMode;
 
 #[test]
 fn marlin_host_binding_round_trips_and_validates_default_surface() {
@@ -44,6 +47,13 @@ fn marlin_host_binding_round_trips_and_validates_default_surface() {
     assert_eq!(
         binding.admitted_methods.len(),
         MARLIN_ADMITTED_METHODS.len()
+    );
+    assert_eq!(
+        binding.engine_ports,
+        Some(MarlinEnginePortBindings {
+            org_port: MarlinOrgPortMode::MarlinContextOrgFold,
+            storage_port: MarlinStoragePortMode::MarlinAgentStorageTurso,
+        })
     );
 
     let encoded = serde_json::to_value(&binding).expect("serialize Marlin host binding");

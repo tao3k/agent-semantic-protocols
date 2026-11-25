@@ -116,6 +116,45 @@ pub enum MarlinCapabilityProfile {
     FullWorkspaceGeneration,
 }
 
+/// Authoritative Org parser port wired into ASP's topology and search engine.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarlinOrgPortMode {
+    /// Marlin (`marlin-agent-context` / `orgize-fold`) supplies typed Org projections.
+    MarlinContextOrgFold,
+    /// Optional standalone CLI adapter using ASP's embedded `orgize` feature.
+    EmbeddedOrgize,
+}
+
+/// Authoritative storage backend port wired into ASP's search engine.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarlinStoragePortMode {
+    /// Marlin (`marlin-agent-storage` / `TursoAgentStorage`) owns unified persistence.
+    MarlinAgentStorageTurso,
+    /// Zero-dependency in-memory reference port for unit tests and ephemeral runs.
+    InMemoryReference,
+}
+
+/// Explicit two-port convergence binding between Marlin host services and ASP's search engine.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MarlinEnginePortBindings {
+    pub org_port: MarlinOrgPortMode,
+    pub storage_port: MarlinStoragePortMode,
+}
+
+impl MarlinEnginePortBindings {
+    /// Default converged Marlin embedding: Marlin owns Org parsing and Turso storage.
+    #[must_use]
+    pub const fn marlin_converged_default() -> Self {
+        Self {
+            org_port: MarlinOrgPortMode::MarlinContextOrgFold,
+            storage_port: MarlinStoragePortMode::MarlinAgentStorageTurso,
+        }
+    }
+}
+
 /// Read-only Marlin session lineage metadata propagated for observability correlation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -141,6 +180,8 @@ pub struct MarlinHostIntegrationBinding {
     pub worktree_id: MarlinWorktreeId,
     pub capability_profile: MarlinCapabilityProfile,
     pub admitted_methods: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_ports: Option<MarlinEnginePortBindings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation: Option<MarlinHostCorrelation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -225,6 +266,7 @@ impl MarlinHostIntegrationBinding {
                 .iter()
                 .map(|method| (*method).to_owned())
                 .collect(),
+            engine_ports: Some(MarlinEnginePortBindings::marlin_converged_default()),
             correlation,
             state_home,
         };

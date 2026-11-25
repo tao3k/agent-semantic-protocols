@@ -35,7 +35,7 @@ agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
-agent-semantic-topology = { path = "../agent-semantic-topology" }
+agent-semantic-topology = { path = "../agent-semantic-topology", features = ["embedded-orgize"] }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
@@ -99,10 +99,6 @@ path = "tests/unit/scenario_performance_gate.rs"
 
 [[bench]]
 name = "client_microbench"
-harness = false
-
-[[bench]]
-name = "provider_runtime_storage"
 harness = false
 
 [build-dependencies]

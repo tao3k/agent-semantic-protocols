@@ -11,7 +11,6 @@ license.workspace = true
 
 [features]
 default = []
-turso-sync-server-e2e = []
 
 [dependencies]
 arc-swap.workspace = true
@@ -65,41 +64,8 @@ name = "runtime_server_owner_content_mutation"
 path = "tests/unit/runtime_server_owner_content_mutation.rs"
 
 [[bench]]
-name = "turso_mvcc_concurrent_write"
-harness = false
-
-[[bench]]
-name = "turso_context_run_search_loop"
-harness = false
-
-[[bench]]
-name = "artifact_pointer_cas"
-harness = false
-
-[[bench]]
-name = "turso_sync_local"
-harness = false
-
-[[bench]]
 name = "schema_v1_lifecycle"
 harness = false
-
-[[bench]]
-name = "turso_cdc_profile"
-harness = false
-
-[[bench]]
-name = "turso_encryption_profile"
-harness = false
-
-[[bench]]
-name = "turso_storage_slo_matrix"
-harness = false
-
-[[bench]]
-name = "turso_sync_server_e2e"
-harness = false
-required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]

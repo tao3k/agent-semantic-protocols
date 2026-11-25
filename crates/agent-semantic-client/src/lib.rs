@@ -19,7 +19,6 @@ pub use agent_semantic_context_product as context_product_state;
 
 pub mod exact_projection;
 mod language_command;
-pub mod provider_runtime_storage;
 mod runtime_language_client;
 #[cfg(test)]
 #[path = "../tests/unit/runtime_language_client.rs"]
@@ -29,9 +28,6 @@ mod runtime_language_session_registry;
 mod state_cli;
 mod state_service;
 mod syntax_query_preflight;
-#[cfg(test)]
-#[path = "../tests/unit/support.rs"]
-mod test_support;
 mod tools_cli;
 pub use language_command::LanguageCommandApplication;
 pub use language_command::LanguageCommandClient;
@@ -74,9 +70,6 @@ mod cli_args_tests;
 #[path = "../tests/unit/client_cli.rs"]
 mod client_cli_tests;
 pub mod projection_presentation;
-#[cfg(test)]
-#[path = "../tests/unit/provider_runtime_storage.rs"]
-mod provider_runtime_storage_tests;
 #[cfg(test)]
 #[path = "../tests/unit/syntax_query_preflight.rs"]
 mod syntax_query_preflight_tests;

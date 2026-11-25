@@ -4,16 +4,41 @@
 
 use agent_semantic_search_projection::SearchTopologySettlement;
 use agent_semantic_topology::{
-    ProjectTopologyClosureLimits, ProjectTopologyDirectEdge, ProjectTopologyExpectedRelation,
-    ProjectTopologyGenerationBuilder, ProjectTopologyGenerationIdentity,
-    ProjectTopologyInferenceProgram, ProjectTopologyLibrary, ProjectTopologyManifest,
-    ProjectTopologyRelationCoverage, ProjectTopologySourceNode, ProjectTopologySourceSegment,
+    OrgDocumentProjection, OrgPropertyEntry, OrgSectionProjection, ProjectTopologyClosureLimits,
+    ProjectTopologyDirectEdge, ProjectTopologyExpectedRelation, ProjectTopologyGenerationBuilder,
+    ProjectTopologyGenerationIdentity, ProjectTopologyInferenceProgram, ProjectTopologyLibrary,
+    ProjectTopologyManifest, ProjectTopologyRelationCoverage, ProjectTopologySourceNode,
+    ProjectTopologySourceSegment,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+fn canonical_manifest() -> ProjectTopologyManifest {
+    let projection = OrgDocumentProjection::new(
+        OrgDocumentProjection::digest_for_source("project.workspace-manifest.v1"),
+        vec![OrgPropertyEntry::new(
+            "CONTRACT_ORG",
+            "[[../contracts/project.workspace-manifest.v1.org][project.workspace-manifest.v1]]",
+        )],
+        vec![OrgSectionProjection::new(
+            1,
+            None,
+            vec![
+                OrgPropertyEntry::new("PROJECT_WORKSPACE_ID", "agent-semantic-protocols-root"),
+                OrgPropertyEntry::new(
+                    "PROJECT_WORKSPACE_IDENTITY",
+                    "git+https://github.com/tao3k/agent-semantic-protocols.git#workspace/root",
+                ),
+                OrgPropertyEntry::new("WORKSPACE_ROOT_PATH", "."),
+                OrgPropertyEntry::new("PORTABILITY", "cross-machine"),
+                OrgPropertyEntry::new("REPOSITORY_ALIASES", "[]"),
+            ],
+        )],
+    );
+    ProjectTopologyManifest::from_org_projection(&projection).expect("Project Topology manifest")
+}
+
 fn valid_settlement() -> serde_json::Value {
-    crate::ensure_orgize_native_runtime();
     serde_json::from_str(include_str!(
         "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
     ))
@@ -21,7 +46,6 @@ fn valid_settlement() -> serde_json::Value {
 }
 
 fn valid_library() -> ProjectTopologyLibrary {
-    crate::ensure_orgize_native_runtime();
     let packet: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../schemas/fixtures/project-topology-library/valid-polyglot.v1.json"
     ))
@@ -30,10 +54,7 @@ fn valid_library() -> ProjectTopologyLibrary {
         "topology-rebuild-1".to_owned(),
         packet["fromScratchRebuildReceipt"].clone(),
     )]);
-    let manifest = ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.workspace-manifest.v1.org"
-    ))
-    .expect("Project Topology manifest");
+    let manifest = canonical_manifest();
     ProjectTopologyLibrary::admit_with_receipts(packet, manifest.project_workspace(), &receipts)
         .expect("admitted Project Topology fixture")
 }
@@ -43,11 +64,7 @@ fn digest(byte: char) -> String {
 }
 
 async fn generated_v2_library_with_frontier() -> ProjectTopologyLibrary {
-    crate::ensure_orgize_native_runtime();
-    let manifest = ProjectTopologyManifest::parse_org(include_str!(
-        "../../../../org/templates/project.workspace-manifest.v1.org"
-    ))
-    .expect("Project Topology manifest");
+    let manifest = canonical_manifest();
     let source = ProjectTopologySourceSegment::new(
         "src/registry.rs",
         digest('1'),

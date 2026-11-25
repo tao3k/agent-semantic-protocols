@@ -6,18 +6,15 @@
 
 use std::collections::BTreeMap;
 
-use orgize::ast::{
-    OrgSourceBlock, OrgSourceBlockDocument, OrgSourceBlockHeader, OrgSourceBlockHeaderValue,
-};
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 
 use super::{SearchTopologySettlement, SearchTopologySettlementError};
 use crate::search_topology_settlement_error::error;
 use crate::search_topology_settlement_support::{
-    gql_alias, is_search_result_support_edge, org_render_error, public_node_aliases, quoted,
-    render_edge, render_node, render_result_node, required_array, required_object,
-    required_object_field, required_text, required_u64,
+    gql_alias, is_search_result_support_edge, public_node_aliases, quoted,
+    render_canonical_org_src_block, render_edge, render_node, render_result_node, required_array,
+    required_object, required_object_field, required_text, required_u64,
 };
 
 impl SearchTopologySettlement {
@@ -178,21 +175,6 @@ impl SearchTopologySettlement {
                     ))?,
             ));
         }
-        let block = OrgSourceBlock::new(
-            "gql",
-            vec![
-                OrgSourceBlockHeader::new(
-                    "name",
-                    OrgSourceBlockHeaderValue::token("result").map_err(org_render_error)?,
-                )
-                .map_err(org_render_error)?,
-            ],
-            vec![],
-            lines.join("\n"),
-        )
-        .map_err(org_render_error)?;
-        OrgSourceBlockDocument::new(vec![block])
-            .and_then(|document| document.render())
-            .map_err(org_render_error)
+        render_canonical_org_src_block("gql", "result", &lines)
     }
 }

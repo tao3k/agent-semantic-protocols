@@ -13,7 +13,6 @@ description = "Typed language-neutral search projection model, resident result c
 blake3.workspace = true
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 agent-semantic-topology = { path = "../agent-semantic-topology" }
-orgize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustc-hash.workspace = true

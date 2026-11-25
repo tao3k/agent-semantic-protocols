@@ -8,13 +8,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use agent_semantic_content_identity::CanonicalItemSelector;
-use orgize::Org;
-use orgize::ast::{
-    OrgElementGraph, OrgElementId, OrgElementsIndexCategory, OrgElementsIndexQuery,
-    OrgElementsIndexRecord, OrgElementsIndexSummaryValue, ParsedAnnotation,
-};
 
-use crate::{ProjectTopologyInferenceProgram, ProjectTopologyRelationCoverage};
+use crate::{
+    OrgDocumentProjection, OrgDocumentProjectionPort, OrgPropertyEntry,
+    ProjectTopologyInferenceProgram, ProjectTopologyRelationCoverage,
+};
 
 pub const PROJECT_TOPOLOGY_STANDARD_PROGRAM_RESOURCE: &str =
     "org/templates/asp/topology/program.v1.org";
@@ -82,35 +80,52 @@ pub struct ProjectTopologySourceProgram {
 }
 
 impl ProjectTopologySourceProgram {
-    pub fn standard() -> Result<Self, ProjectTopologySourceProgramError> {
-        Self::parse_org(include_str!(
-            "../../../org/templates/asp/topology/program.v1.org"
-        ))
+    /// Load the standard topology program through a host-supplied [`OrgDocumentProjectionPort`].
+    pub fn standard_with_port(
+        port: &dyn OrgDocumentProjectionPort,
+    ) -> Result<Self, ProjectTopologySourceProgramError> {
+        Self::parse_with_port(
+            include_str!("../../../org/templates/asp/topology/program.v1.org"),
+            port,
+        )
     }
 
+    #[cfg(feature = "embedded-orgize")]
+    pub fn standard() -> Result<Self, ProjectTopologySourceProgramError> {
+        Self::standard_with_port(&crate::EmbeddedOrgizeProjectionPort)
+    }
+
+    /// Parse raw Org program source through a host-supplied [`OrgDocumentProjectionPort`].
+    pub fn parse_with_port(
+        source: &str,
+        port: &dyn OrgDocumentProjectionPort,
+    ) -> Result<Self, ProjectTopologySourceProgramError> {
+        let projection = port
+            .project_document(source)
+            .map_err(|cause| error(cause.reason_kind, cause.message))?;
+        Self::from_org_projection(&projection)
+    }
+
+    #[cfg(feature = "embedded-orgize")]
     pub fn parse_org(source: &str) -> Result<Self, ProjectTopologySourceProgramError> {
-        let document = Org::parse(source).document();
-        let graph = document.org_elements_graph();
-        let contract_drawers = declaration_drawers(&graph, "CONTRACT_ORG", None, Some(0))
-            .into_iter()
-            .filter(|drawer| {
-                drawer.context == "document"
-                    && graph
-                        .parent(drawer.id)
-                        .is_some_and(|owner| owner.id == graph.root_id)
-            })
-            .collect::<Vec<_>>();
-        let [contract_drawer] = contract_drawers.as_slice() else {
-            return invalid(
-                "topology-source-program-contract-mismatch",
-                format!(
-                    "expected one document CONTRACT_ORG declaration, observed {}",
-                    contract_drawers.len()
-                ),
-            );
-        };
-        let document_properties = unique_indexed_properties(&graph, contract_drawer.id)?;
-        let contract = required_property(&document_properties, "CONTRACT_ORG")?;
+        Self::parse_with_port(source, &crate::EmbeddedOrgizeProjectionPort)
+    }
+
+    /// Admit one canonical Org topology source program from a pure-Rust [`OrgDocumentProjection`].
+    pub fn from_org_projection(
+        projection: &OrgDocumentProjection,
+    ) -> Result<Self, ProjectTopologySourceProgramError> {
+        let document_properties = unique_properties(&projection.document_properties)?;
+        let contract = document_properties
+            .get("CONTRACT_ORG")
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                error(
+                    "topology-source-program-contract-mismatch",
+                    "expected one document CONTRACT_ORG declaration, observed 0",
+                )
+            })?;
         if !canonical_contract_reference(contract) {
             return invalid(
                 "topology-source-program-contract-mismatch",
@@ -118,17 +133,20 @@ impl ProjectTopologySourceProgram {
             );
         }
 
-        let programs = declaration_drawers(&graph, "TOPOLOGY_PROGRAM_ID", None, Some(1))
-            .into_iter()
-            .filter_map(|drawer| {
-                let owner = graph.parent(drawer.id)?;
-                (drawer.context == "headline"
-                    && owner.category == OrgElementsIndexCategory::Section
-                    && owner.parent_id == Some(graph.root_id))
-                .then_some((owner, drawer))
+        let programs = projection
+            .sections
+            .iter()
+            .enumerate()
+            .filter(|(_, section)| {
+                section.level == 1
+                    && section.parent_index.is_none()
+                    && section
+                        .properties
+                        .iter()
+                        .any(|property| property.key == "TOPOLOGY_PROGRAM_ID")
             })
             .collect::<Vec<_>>();
-        let [(program_owner, program_drawer)] = programs.as_slice() else {
+        let [(program_index, program_section)] = programs.as_slice() else {
             return invalid(
                 "topology-source-program-ambiguous",
                 format!(
@@ -137,7 +155,8 @@ impl ProjectTopologySourceProgram {
                 ),
             );
         };
-        let program = unique_indexed_properties(&graph, program_drawer.id)?;
+        let program_index = *program_index;
+        let program = unique_properties(&program_section.properties)?;
         let program_id = required_property(&program, "TOPOLOGY_PROGRAM_ID")?.to_owned();
         if program_id != "mrr.topology.standard.v1" {
             return invalid(
@@ -153,16 +172,20 @@ impl ProjectTopologySourceProgram {
             );
         }
 
-        let mut rules = declaration_drawers(&graph, "RULE_ID", Some(program_owner.id), None)
-            .into_iter()
-            .filter(|drawer| {
-                declaration_owner_is_headline(&graph, drawer)
-                    && graph
-                        .parent(drawer.id)
-                        .is_some_and(|owner| owner.id != program_owner.id)
+        let mut rules = projection
+            .sections
+            .iter()
+            .enumerate()
+            .filter(|(index, section)| {
+                *index != program_index
+                    && projection.is_descendant_of(*index, program_index)
+                    && section
+                        .properties
+                        .iter()
+                        .any(|property| property.key == "RULE_ID")
             })
-            .map(|drawer| {
-                let fields = unique_indexed_properties(&graph, drawer.id)?;
+            .map(|(_, section)| {
+                let fields = unique_properties(&section.properties)?;
                 Ok(ProjectTopologySourceRule {
                     rule_id: required_property(&fields, "RULE_ID")?.to_owned(),
                     head_relation: canonical_relation(&fields, "HEAD_RELATION")?,
@@ -186,20 +209,23 @@ impl ProjectTopologySourceProgram {
             );
         }
 
-        let mut expectations =
-            declaration_drawers(&graph, "EXPECTATION_ID", Some(program_owner.id), None)
-                .into_iter()
-                .filter(|drawer| {
-                    declaration_owner_is_headline(&graph, drawer)
-                        && graph
-                            .parent(drawer.id)
-                            .is_some_and(|owner| owner.id != program_owner.id)
-                })
-                .map(|drawer| {
-                    let fields = unique_indexed_properties(&graph, drawer.id)?;
-                    parse_expectation(&fields)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+        let mut expectations = projection
+            .sections
+            .iter()
+            .enumerate()
+            .filter(|(index, section)| {
+                *index != program_index
+                    && projection.is_descendant_of(*index, program_index)
+                    && section
+                        .properties
+                        .iter()
+                        .any(|property| property.key == "EXPECTATION_ID")
+            })
+            .map(|(_, section)| {
+                let fields = unique_properties(&section.properties)?;
+                parse_expectation(&fields)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         expectations.sort_by(|left, right| left.id.cmp(&right.id));
         if expectations.windows(2).any(|pair| pair[0].id == pair[1].id) {
             return invalid(
@@ -207,13 +233,12 @@ impl ProjectTopologySourceProgram {
                 "expected relations must have unique identities",
             );
         }
-        let source_digest = format!("blake3-256:{}", blake3::hash(source.as_bytes()).to_hex());
         Ok(Self {
             program_id,
             engine_profile,
             rules,
             expectations,
-            source_digest,
+            source_digest: projection.source_digest.clone(),
         })
     }
 
@@ -316,78 +341,22 @@ fn canonical_relation(
     Ok(value.to_owned())
 }
 
-fn declaration_drawers<'a>(
-    graph: &'a OrgElementGraph<ParsedAnnotation>,
-    property_key: &str,
-    ancestor: Option<OrgElementId>,
-    outline_path_exact_len: Option<usize>,
-) -> Vec<&'a OrgElementsIndexRecord<ParsedAnnotation>> {
-    let mut query = OrgElementsIndexQuery::new()
-        .category(OrgElementsIndexCategory::Property)
-        .kind("node-property")
-        .context("propertyDrawer")
-        .summary_eq("key", property_key);
-    if let Some(ancestor) = ancestor {
-        query = query.descendant_of(ancestor);
-    }
-    if let Some(outline_path_exact_len) = outline_path_exact_len {
-        query = query.outline_path_exact_len(outline_path_exact_len);
-    }
-    let mut drawers = graph
-        .query(&query)
-        .into_iter()
-        .filter_map(|property| graph.parent(property.id))
-        .collect::<Vec<_>>();
-    drawers.sort_by_key(|drawer| drawer.id);
-    drawers.dedup_by_key(|drawer| drawer.id);
-    drawers
-}
-
-fn declaration_owner_is_headline(
-    graph: &OrgElementGraph<ParsedAnnotation>,
-    drawer: &OrgElementsIndexRecord<ParsedAnnotation>,
-) -> bool {
-    drawer.context == "headline"
-        && graph
-            .parent(drawer.id)
-            .is_some_and(|owner| owner.category == OrgElementsIndexCategory::Section)
-}
-
-fn unique_indexed_properties(
-    graph: &OrgElementGraph<ParsedAnnotation>,
-    drawer_id: OrgElementId,
+fn unique_properties(
+    properties: &[OrgPropertyEntry],
 ) -> Result<BTreeMap<String, String>, ProjectTopologySourceProgramError> {
     let mut values = BTreeMap::new();
-    for property in graph.query(
-        &OrgElementsIndexQuery::new()
-            .category(OrgElementsIndexCategory::Property)
-            .kind("node-property")
-            .context("propertyDrawer")
-            .child_of(drawer_id),
-    ) {
-        let key = indexed_summary_text(property, "key")?;
-        let value = indexed_summary_text(property, "value")?;
-        if values.insert(key.to_owned(), value.to_owned()).is_some() {
+    for property in properties {
+        if values
+            .insert(property.key.clone(), property.value.clone())
+            .is_some()
+        {
             return invalid(
                 "topology-source-program-property-duplicate",
-                format!("property {key} is declared more than once"),
+                format!("property {} is declared more than once", property.key),
             );
         }
     }
     Ok(values)
-}
-
-fn indexed_summary_text<'a>(
-    record: &'a OrgElementsIndexRecord<ParsedAnnotation>,
-    key: &str,
-) -> Result<&'a str, ProjectTopologySourceProgramError> {
-    match record.summary.get(key) {
-        Some(OrgElementsIndexSummaryValue::Text(value)) => Ok(value),
-        _ => invalid(
-            "topology-source-program-index-invalid",
-            format!("indexed node-property has no text {key}"),
-        ),
-    }
 }
 
 fn required_property<'a>(

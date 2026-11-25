@@ -19,7 +19,6 @@ fn limits() -> ProjectTopologyClosureLimits {
 }
 
 fn builder(limits: ProjectTopologyClosureLimits) -> ProjectTopologyClosureBuilder {
-    crate::ensure_orgize_native_runtime();
     ProjectTopologyClosureBuilder::new(
         limits,
         Arc::new(ProjectTopologyInferenceProgram::standard().expect("standard MRR program")),

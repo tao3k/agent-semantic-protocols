@@ -50,11 +50,51 @@ Git history is the sole archive; all retired surfaces are removed cleanly.
 | Hooks & policy enforcement | Marlin (~marlin-agent-hooks~) | Typed TOML + Gerbil Scheme policy extension |
 | Session lifecycle & lineage | Marlin (~marlin-agent-sessions~) | ~MARLIN_HOME~, ~MARLIN_ROOT_SESSION_ID~, ~MARLIN_SESSION_ID~ |
 | Multi-agent graph & dispatch | Marlin (~marlin-agent-graph~) | Readiness-gated Gerbil graph loops |
-| Semantic search & exact query | ASP (~agent-semantic-runtime-server~) | ~asp.workspace.search.playbook~, ~asp.workspace.query.playbook~ |
+| Org parsing & Fold graph projection | Marlin (~marlin-agent-context~) | ~org-source.ss~ / ~gerbil_org.rs~ feeding ASP via ~OrgDocumentProjectionPort~ |
+| Unified Turso persistence & artifact CAS | Marlin (~marlin-agent-storage~) | ~TursoAgentStorage~ / ~TursoContextIndex~ feeding ASP via ~SearchEngineStoragePort~ |
+| Converged search, Merkle generation, ranking & topology engine | ASP (~agent-semantic-search~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, Tantivy + ripgrep + Ascent closure, zero embedded ~orgize~ / ~turso~ |
 | Syntax queries & AST patch verification | ASP (~agent-semantic-client~, providers) | ~asp.workspace.query.syntax~, ~asp ast-patch~ |
-| Language provider supervision | ASP (~agent-semantic-provider-transport~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~, embedded ~orgize~ |
-| Resident workspace generations | ASP (~agent-semantic-client-db~) | Turso + Tantivy + Project Topology under ~ASP_STATE_HOME~ |
+| Language provider supervision | ASP (~agent-semantic-provider-transport~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ |
 | Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~ |
+
+* Two-Port Extreme Convergence (Org Parsing & Unified Turso Storage)
+
+Marlin (~marlin-agent-core~) already owns both Scheme-based Org parsing
+(~marlin-agent-context~ / ~orgize-fold~) and the unified Turso persistence
+layer (~marlin-agent-storage~ / ~TursoAgentStorage~ / ~TursoContextIndex~).
+Embedding a second Gambit/Orgize FFI runtime and a second Turso agent-storage
+engine inside ASP's search core is redundant and creates dual-runtime startup
+conflicts (~orgize::initialize_native_runtime~).
+
+Accordingly, ASP's core search and topology stack (~agent-semantic-topology~
+default features, ~agent-semantic-search-projection~, and
+~agent-semantic-search~) compiles with *zero* ~orgize~ FFI dependency and
+*zero* ~turso_core~ dependency, converging on exactly two host-supplied ports:
+
+1. *Port 1 — ~OrgDocumentProjectionPort~* (~crates/agent-semantic-topology/src/org_projection_port.rs~):
+   - Accepts typed ~OrgDocumentProjection~ (document properties + section hierarchy)
+     and ~OrgOverlayDocumentProjection~ (source + AST digest + headline presence)
+     produced once by Marlin's ~marlin-agent-context~.
+   - ~ProjectTopologyManifest::from_org_projection~,
+     ~ProjectTopologySourceProgram::from_org_projection~, and
+     ~AgentOrgTopologyOverlay::admit_with_org_projection~ run in pure Rust.
+   - ~agent-semantic-search-projection~ renders canonical ~#+begin_src gql :name result~
+     settlement blocks in pure Rust without linking ~orgize~.
+   - Embedded ~orgize~ remains strictly opt-in behind Cargo feature
+     ~embedded-orgize~ for standalone CLI compatibility only.
+2. *Port 2 — ~SearchEngineStoragePort~* (~crates/agent-semantic-search/src/marlin_storage_port.rs~):
+   - Maps 1:1 onto Marlin's ~marlin-agent-storage::AgentStorage~ artifact CAS
+     (~put_artifact~ / ~get_artifact~), compare-and-swap generation pointer
+     (~compare_and_swap_generation_pointer~ / ~get_generation_pointer~), and
+     topology edge tables (~append_topology_edges~ / ~list_topology_edges~).
+   - ~MarlinConvergedSearchEngine~ (~crates/agent-semantic-search/src/marlin_engine.rs~)
+     composes both ports into a single Marlin-embeddable search/ranking/topology
+     engine.
+   - Redundant ASP-side Turso agent-storage modules (~storage_contract~,
+     ~turso_agent_storage~, ~turso_mvcc_*~, ~turso_cdc_storage~,
+     ~turso_encrypted_storage~, ~turso_sync_storage~, ~context_run_mvcc~,
+     ~artifact_pointer_store~, and ~provider_runtime_storage~) are retired in
+     favor of Marlin's unified storage authority.
 
 * Retired Surfaces (Removed Cleanly)
 

@@ -32,6 +32,7 @@ reference_patterns = [
   "integration_test",
   "lexical_generation_plan",
   "lexical_accelerator",
+  "marlin_converged_engine",
   "mod",
   "playbook_receipt",
   "playbook_pipeline_performance",

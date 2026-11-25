@@ -91,7 +91,7 @@ jobs:
           cache-on-failure: true
 
       - name: Consume the committed Orgize FFI bundle
-        if: contains(fromJSON('["agent-semantic-client","agent-semantic-client-db","agent-semantic-runtime-server","agent-semantic-search","agent-semantic-search-projection","agent-semantic-topology"]'), matrix.package)
+        if: contains(fromJSON('["agent-semantic-client","agent-semantic-runtime-server","agent-semantic-topology"]'), matrix.package)
         uses: ./.github/actions/orgize-ffi
 
       - name: Prepare the declared MRR search owner

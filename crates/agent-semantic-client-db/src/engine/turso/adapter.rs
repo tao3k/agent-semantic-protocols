@@ -324,8 +324,38 @@ pub(in crate::engine) async fn bootstrap_turso_schema_version(
             .map_err(|error| {
                 format!("failed to record Turso 0.7 physical-format authority: {error}")
             })?;
+        const ASP_ARTIFACT_POINTER_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS asp_artifact_pointer (
+    repo_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    pointer_kind TEXT NOT NULL,
+    pointer_name TEXT NOT NULL,
+    current_root_hash TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (repo_id, workspace_id, scope_id, pointer_kind, pointer_name)
+);
+CREATE TABLE IF NOT EXISTS asp_failed_artifact_attempt (
+    attempt_id TEXT PRIMARY KEY,
+    repo_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    pointer_kind TEXT NOT NULL,
+    pointer_name TEXT NOT NULL,
+    candidate_root_hash TEXT,
+    error_digest TEXT NOT NULL,
+    evidence BLOB NOT NULL,
+    created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS asp_failed_artifact_pointer_time
+    ON asp_failed_artifact_attempt (
+        repo_id, workspace_id, scope_id, pointer_kind, pointer_name, created_at_ms, attempt_id
+    );
+"#;
+
         transaction
-            .execute_batch(crate::artifact_pointer_store::CREATE_SCHEMA_SQL)
+            .execute_batch(ASP_ARTIFACT_POINTER_SCHEMA_SQL)
             .await
             .map_err(|error| format!("failed to stabilize artifact authority schema: {error}"))?;
         transaction

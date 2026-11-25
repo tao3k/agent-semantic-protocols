@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod agent_org_topology_overlay;
+mod org_projection_port;
 mod project_topology_closure;
 mod project_topology_frontier;
 mod project_topology_generation_builder;
@@ -25,6 +26,12 @@ pub use agent_org_topology_overlay::{
     AgentTopologyRelationship,
 };
 pub use agent_semantic_content_identity::ProjectWorkspaceBinding;
+#[cfg(feature = "embedded-orgize")]
+pub use org_projection_port::EmbeddedOrgizeProjectionPort;
+pub use org_projection_port::{
+    OrgDocumentProjection, OrgDocumentProjectionPort, OrgOverlayDocumentProjection,
+    OrgProjectionPortError, OrgPropertyEntry, OrgSectionProjection,
+};
 pub use project_topology_closure::{
     ProjectTopologyClosure, ProjectTopologyClosureBuilder, ProjectTopologyClosureError,
     ProjectTopologyClosureLimits, ProjectTopologyDirectEdge, ProjectTopologyInferenceProgram,

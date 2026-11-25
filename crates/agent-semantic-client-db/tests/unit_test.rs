@@ -14,8 +14,6 @@ mod fixture;
 mod active_generation_projection_capability;
 #[path = "unit/content_binding.rs"]
 mod content_binding;
-#[path = "unit/context_run_mvcc.rs"]
-mod context_run_mvcc;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]
@@ -106,10 +104,6 @@ mod source_index_fixture;
 mod source_index_refresh_perf;
 #[path = "unit/test_support.rs"]
 mod test_support;
-#[path = "unit/turso_mvcc_benchmark.rs"]
-mod turso_mvcc_benchmark;
-#[path = "unit/turso_mvcc_partition.rs"]
-mod turso_mvcc_partition;
 #[path = "unit/turso_source_index_materialization.rs"]
 mod turso_source_index_materialization;
 #[path = "unit/workspace_db_registry.rs"]

@@ -33,9 +33,17 @@ mod graph_topology_projection;
 mod lexical_accelerator;
 mod lexical_generation_plan;
 mod lexical_overlay;
+pub mod marlin_engine;
+pub mod marlin_storage_port;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
+pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
+pub use marlin_storage_port::{
+    InMemorySearchStoragePort, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
+    SearchGenerationDigest, SearchGenerationPointerRecord, SearchPointerKey, SearchProjectId,
+    SearchStoragePortError, SearchTopologyEdgeId, SearchTopologyEdgeRecord, SearchWorkspaceId,
+};
 pub use memory_search::MemorySearchGeneration;
 pub use memory_search::MemorySearchGenerationReceipt;
 pub use memory_search::MemorySearchItem;
@@ -95,6 +103,9 @@ mod lexical_accelerator_tests;
 #[cfg(test)]
 #[path = "../tests/unit/lexical_generation_plan.rs"]
 mod lexical_generation_plan_tests;
+#[cfg(test)]
+#[path = "../tests/unit/marlin_converged_engine.rs"]
+mod marlin_converged_engine_tests;
 #[cfg(test)]
 #[path = "../tests/unit/playbook_pipeline_performance.rs"]
 #[cfg(feature = "tantivy-accelerator")]
