@@ -8,13 +8,11 @@
 mod bootstrap_projection;
 pub mod build_support;
 #[cfg(feature = "runtime")]
-mod cli;
-#[cfg(feature = "runtime")]
 mod manager;
 #[cfg(feature = "runtime")]
 mod manager_validation;
 #[cfg(feature = "runtime")]
-mod providers_cli;
+pub mod provider_workspace;
 #[cfg(feature = "runtime")]
 mod publication;
 #[cfg(feature = "runtime")]
@@ -39,9 +37,13 @@ pub use bootstrap_projection::{
     LanguageSchemaBootstrapProjection, VerifiedLanguageSchemaBootstrap,
 };
 #[cfg(feature = "runtime")]
-pub use cli::run_cli;
-#[cfg(feature = "runtime")]
 pub use manager::{SchemaManager, load_verified_bundle_receipt, verify_bundle_receipt};
+#[cfg(feature = "runtime")]
+pub use provider_workspace::{
+    ProviderCheckoutState, ProviderCheckoutStatus, ProviderSyncOutcome, ProviderWorkspaceAction,
+    inspect_provider_workspace, link_local_providers, lock_provider_workspace,
+    sync_provider_workspace,
+};
 #[cfg(feature = "runtime")]
 pub use registry::{
     BUNDLE_RECEIPT_FILE, BUNDLE_RECEIPT_SCHEMA_ID, DEFAULT_PROFILE_REGISTRY,
@@ -73,6 +75,10 @@ pub use search_architecture_inventory::SearchArchitectureInventoryError;
 #[cfg(all(test, feature = "runtime"))]
 #[path = "../tests/unit/provider_registry.rs"]
 mod provider_registry_tests;
+
+#[cfg(all(test, feature = "runtime"))]
+#[path = "../tests/unit/provider_workspace.rs"]
+mod provider_workspace_tests;
 
 #[cfg(all(test, feature = "runtime"))]
 #[path = "../tests/unit/schema_manager.rs"]

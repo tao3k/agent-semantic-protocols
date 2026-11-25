@@ -89,9 +89,12 @@ def test_asp_rust_ci_uses_providers_toml_instead_of_git_submodules() -> None:
 
     assert not (REPO_ROOT / ".gitmodules").exists()
     assert (REPO_ROOT / "providers.toml").exists()
+    assert (REPO_ROOT / "scripts" / "providers_sync.py").exists()
     assert "git submodule" not in workflow
     assert "git submodule" not in package_workflow
-    assert "providers sync --workspace . --profile core" in workflow
+    assert "scripts/providers_sync.py sync --workspace . --profile core" in workflow
+    assert "cargo run --quiet -p agent-semantic-schema-manager" not in workflow
+    assert "cargo run --quiet -p agent-semantic-schema-manager" not in package_workflow
 
 
 def test_root_release_carries_server_managed_graphs_artifact() -> None:

@@ -6,11 +6,12 @@
 # Replaces `.gitmodules` so Rust/Cargo consumers (e.g. Marlin) never clone
 # unrelated external language providers or private analyzers during `cargo build`.
 #
-# Usage:
-#   cargo run -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
-#   cargo run -p agent-semantic-schema-manager -- providers status --workspace . --profile all
-#   cargo run -p agent-semantic-schema-manager -- providers link-local --workspace . --profile core --ghq-root "$HOME/ghq"
-#   cargo run -p agent-semantic-schema-manager -- providers lock --workspace . --profile core
+# Usage (Rust hosts embed `agent_semantic_schema_manager::provider_workspace` directly;
+# developer shell & CI use Justfile / stdlib `scripts/providers_sync.py`):
+#   just providers-sync            # or: python3 scripts/providers_sync.py sync --workspace . --profile core
+#   just providers-status          # or: python3 scripts/providers_sync.py status --workspace . --profile all
+#   just providers-link-local      # or: python3 scripts/providers_sync.py link-local --workspace . --profile core --ghq-root "$HOME/ghq"
+#   just providers-lock            # or: python3 scripts/providers_sync.py lock --workspace . --profile core
 
 schema_version = 1
 

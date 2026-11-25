@@ -70,7 +70,7 @@ jobs:
 
       - name: Sync core external providers from providers.toml
         if: ${{ matrix.package == 'agent-semantic-schema-manager' }}
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Prepare the declared MRR search owner
         if: ${{ matrix.package == 'agent-semantic-mrr' }}

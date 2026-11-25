@@ -25,7 +25,7 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
         "  catalog-provider-gates:", 1,
     )[0]
     assert "languages/asp-python" in python_provider
-    assert "providers sync --workspace . --package asp-python" in python_provider
+    assert "scripts/providers_sync.py sync --workspace . --package asp-python" in python_provider
     assert "cargo test" not in python_provider
 
     catalog_provider = workflow.split("  catalog-provider-gates:", 1)[1].split(
@@ -48,3 +48,17 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
     assert "--gate query-corpus" in query_contracts
     assert "--no-build" in query_contracts
     assert "cargo test" not in query_contracts
+
+
+def test_asp_rust_workspace_is_a_pure_library_workspace_with_zero_cli_binaries() -> None:
+    crates_root = CI_WORKFLOW.parents[2] / "crates"
+    main_files = sorted(crates_root.glob("*/src/main.rs"))
+    bin_dirs = sorted(crates_root.glob("*/src/bin/*.rs"))
+    manifests_with_bins = [
+        manifest
+        for manifest in sorted(crates_root.glob("*/Cargo.toml"))
+        if "[[bin]]" in manifest.read_text(encoding="utf-8")
+    ]
+    assert main_files == []
+    assert bin_dirs == []
+    assert manifests_with_bins == []

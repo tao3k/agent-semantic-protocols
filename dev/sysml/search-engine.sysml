@@ -65,8 +65,9 @@ package AspSearchEngine {
         }
         part packageManager {
             doc /* `providers.toml`, `agent-semantic-config::providers_manifest`,
-                   and `agent-semantic-schema-manager::providers_cli` managing
-                   external language repositories without `.gitmodules`. */
+                   and `agent-semantic-schema-manager::provider_workspace`
+                   exposing pure-Rust `gix`-backed library APIs with zero
+                   standalone CLI binaries and zero `.gitmodules`. */
         }
         dependency coreUsesIdentity from searchCore to providerBoundary;
         dependency managerResolvesProviders from packageManager to providerBoundary;
@@ -98,10 +99,10 @@ package AspSearchEngine {
             doc /* Process/gRPC boundary reserved solely for external language
                    providers (TypeScript, Python, Julia, Gerbil Scheme). */
         }
-        part providerManifestCli {
-            doc /* Declarative `providers.toml` sync/status/lock/link-local
-                   tooling using pure-Rust `gix` for fast local Git inspection
-                   and `git` CLI only for authenticated remote fetch/clone. */
+        part providerPackageLibrary {
+            doc /* Embeddable pure-Rust `providers.toml` workspace library
+                   using `gix` for fast local Git inspection (zero standalone
+                   Rust CLI binary in ASP). */
         }
         part qualificationSuite {
             doc /* OpenSysML `dev/sysml`, Quint `dev/quint/search-engine.qnt`
@@ -113,7 +114,7 @@ package AspSearchEngine {
         dependency facadeRunsRanking from convergedFacade to rankingAndIndexing;
         dependency facadeAdmitsTopology from convergedFacade to topologyAndTreeSitter;
         dependency rankingConsumesProviders from rankingAndIndexing to providerTransport;
-        dependency transportSyncedByManifest from providerTransport to providerManifestCli;
+        dependency transportSyncedByManifest from providerTransport to providerPackageLibrary;
         dependency suiteQualifiesFacade from qualificationSuite to convergedFacade;
         dependency suiteQualifiesRanking from qualificationSuite to rankingAndIndexing;
     }
@@ -221,7 +222,7 @@ package AspSearchEngine {
     allocation ownPureRustEngine allocate zeroLegacyPureRustEngine to target.convergedFacade;
     allocation ownHostPorts allocate hostSuppliedPorts to target.convergedFacade;
     allocation ownAtomicCas allocate atomicGenerationCas to target.convergedFacade;
-    allocation ownProviderPackaging allocate declarativeProviderPackaging to target.providerManifestCli;
+    allocation ownProviderPackaging allocate declarativeProviderPackaging to target.providerPackageLibrary;
     allocation ownProviderTransport allocate externalProviderTransportBoundary to target.providerTransport;
     allocation ownFormalTests allocate formalAndStatefulVerification to target.qualificationSuite;
     allocation ownPerfBenches allocate highPerformanceBenchmarks to target.qualificationSuite;

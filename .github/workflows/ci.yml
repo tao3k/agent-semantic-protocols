@@ -144,7 +144,7 @@ jobs:
           cache-on-failure: true
 
       - name: Sync core external providers from providers.toml
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: ASP Rust workspace policy
         run: >-
@@ -179,11 +179,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Sync Python provider from providers.toml
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --package asp-python
+        run: python3 scripts/providers_sync.py sync --workspace . --package asp-python
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -223,7 +220,7 @@ jobs:
           cache-on-failure: true
 
       - name: Sync core external providers from providers.toml
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -260,7 +257,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Sync core external providers from providers.toml
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -285,7 +282,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Sync core external providers from providers.toml
-        run: cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+        run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5

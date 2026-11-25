@@ -25,19 +25,19 @@ devenv +args:
 
 # Sync external language providers/analyzers declared in providers.toml (replaces .gitmodules).
 providers-sync profile="core":
-	cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile "{{profile}}"
+	python3 scripts/providers_sync.py sync --workspace . --profile "{{profile}}"
 
 # Show sync status of external providers/analyzers declared in providers.toml.
 providers-status profile="all":
-	cargo run --quiet -p agent-semantic-schema-manager -- providers status --workspace . --profile "{{profile}}"
+	python3 scripts/providers_sync.py status --workspace . --profile "{{profile}}"
 
 # Lock current checked-out HEAD commits into providers.toml.
 providers-lock profile="core":
-	cargo run --quiet -p agent-semantic-schema-manager -- providers lock --workspace . --profile "{{profile}}"
+	python3 scripts/providers_sync.py lock --workspace . --profile "{{profile}}"
 
 # Symlink local ghq checkouts into languages/ and analyzers/ for multi-repo co-development.
 providers-link-local ghq_root="$HOME/ghq" profile="core":
-	cargo run --quiet -p agent-semantic-schema-manager -- providers link-local --workspace . --profile "{{profile}}" --ghq-root "{{ghq_root}}"
+	python3 scripts/providers_sync.py link-local --workspace . --profile "{{profile}}" --ghq-root "{{ghq_root}}"
 
 _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
@@ -323,7 +323,7 @@ check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{asp_rust_project}}/Cargo.toml --all-features
 
 check-schema-profiles:
-    rtk cargo run --quiet -p agent-semantic-schema-manager -- verify --workspace .
+    rtk cargo test -p agent-semantic-schema-manager canonical_registry_verifies_every_registered_language_bundle --quiet
 
 check-schema-manager: check-schema-proof-plan
 	uv run --project packages/python --frozen --exact asp-schema-manager check --workspace-root . --fail-on-family-local-refs --fail-on-unclassified-schemas --fail-on-mixed-family-refs --fail-on-reference-decision-drift
