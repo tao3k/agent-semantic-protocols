@@ -47,6 +47,7 @@ ignore = { workspace = true }
 serde_json = { workspace = true }
 memmap2.workspace = true
 memchr = "2"
+rayon = "1.12.0"
 regex.workspace = true
 regex-syntax.workspace = true
 rustc-hash.workspace = true
@@ -75,6 +76,10 @@ path = "tests/unit/search_generation_segment.rs"
 [[test]]
 name = "marlin_engine_state_machine"
 path = "tests/unit/marlin_engine_state_machine.rs"
+
+[[test]]
+name = "converged_resident_index_fuzz"
+path = "tests/unit/converged_resident_index_fuzz.rs"
 
 [[bench]]
 name = "search_engine_hot_path"

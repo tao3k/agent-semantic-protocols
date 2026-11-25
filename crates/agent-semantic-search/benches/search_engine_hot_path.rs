@@ -17,8 +17,8 @@ use std::time::Duration;
 use agent_semantic_search::{
     InMemorySearchStoragePort, MarlinConvergedSearchEngine, SearchGenerationDigest,
     SearchProjectId, SearchTopologyEdgeId, SearchTopologyEdgeRecord, SearchWorkspaceId,
-    SourceIndexRankCandidate, SourceIndexRankRequest, analyze_native_rg_argv,
-    analyze_tantivy_query,
+    SourceIndexRankCandidate, SourceIndexRankRequest, WorkspaceIndexConfig, WorkspaceSearchIndex,
+    WorkspaceSearchQuery, analyze_native_rg_argv, analyze_tantivy_query,
 };
 use agent_semantic_search_playbook::{
     GraphNativeBlock, SearchPlaybookComposition, SearchPlaybookLeaf, SearchPlaybookPlanInput,
@@ -306,6 +306,96 @@ fn bench_real_corpus_playbook_execution(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("ASP repo root");
+    let cfg = WorkspaceIndexConfig {
+        skip_dirs: vec![
+            "target".into(),
+            ".git".into(),
+            "node_modules".into(),
+            ".devenv".into(),
+        ],
+        ..WorkspaceIndexConfig::default()
+    };
+    let index = WorkspaceSearchIndex::build_with_config(repo_root, cfg);
+    let rust_lang = vec!["rust".to_owned()];
+
+    let mut group = c.benchmark_group("asp_converged_resident_4axis");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("rg_literal_plus_bm25", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: "admit_search_playbook_plan",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 4,
+        };
+        bencher.iter(|| {
+            let report = index.query(black_box(&query));
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+
+    group.bench_function("rg_regex_in_ram", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: r"re:pub\s+fn\s+execute_admitted_playbook",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 4,
+        };
+        bencher.iter(|| {
+            let report = index.query(black_box(&query));
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+
+    group.bench_function("file_locator_and_fuzzy_path", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: "flcltr",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 2,
+        };
+        bencher.iter(|| {
+            let report = index.query(black_box(&query));
+            black_box(report);
+        });
+    });
+
+    group.bench_function("tantivy_fuzzy_typo_tolerance", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: "playbok",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 2,
+        };
+        bencher.iter(|| {
+            let report = index.query(black_box(&query));
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+
+    group.finish();
+}
+
 fn benchmark_config() -> Criterion {
     Criterion::default()
         .warm_up_time(Duration::from_millis(500))
@@ -321,6 +411,7 @@ criterion_group! {
         bench_playbook_admission,
         bench_generation_cas_and_edges,
         bench_query_analysis_hot_path,
-        bench_real_corpus_playbook_execution
+        bench_real_corpus_playbook_execution,
+        bench_converged_resident_4axis_hot_path
 }
 criterion_main!(benches);

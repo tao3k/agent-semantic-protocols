@@ -7,6 +7,7 @@
 
 pub mod command_diagnostics;
 mod content_generation;
+pub mod converged_resident_index;
 mod derived_attachment_lifecycle;
 mod dynamic_candidates;
 mod dynamic_overlay;
@@ -39,6 +40,10 @@ pub mod marlin_storage_port;
 pub mod memory_search;
 #[cfg(feature = "tantivy-accelerator")]
 mod merkle_search_generation;
+pub use converged_resident_index::{
+    WorkspaceContextLine, WorkspaceIndexConfig, WorkspaceSearchHit, WorkspaceSearchIndex,
+    WorkspaceSearchQuery, WorkspaceSearchReport,
+};
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
 pub use marlin_playbook_executor::{
     ConvergedLineMatch, ConvergedSearchExecutionError, ConvergedSearchExecutionReport,
@@ -77,6 +82,8 @@ mod search_language_files;
 mod sorted_record_table;
 #[cfg(feature = "tantivy-accelerator")]
 mod tantivy_lexical;
+#[cfg(feature = "tantivy-accelerator")]
+mod tantivy_ram_engine;
 mod workspace_playbook_plan;
 mod workspace_playbook_result;
 
