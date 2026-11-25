@@ -146,6 +146,9 @@ jobs:
       - name: Sync core external providers from providers.toml
         run: python3 scripts/providers_sync.py sync --workspace . --profile core
 
+      - name: Sync docs external providers from providers.toml
+        run: python3 scripts/providers_sync.py sync --workspace . --profile docs
+
       - name: ASP Rust workspace policy
         run: >-
           cargo test -p asp-rust-project-harness-policy
