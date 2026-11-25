@@ -1,0 +1,1871 @@
+{
+  "$schema": "./provider-register.schema.json",
+  "schemaId": "agent.semantic-protocols.provider-register",
+  "schemaVersion": "1",
+  "providers": [
+    {
+      "$schema": "../schemas/provider-registration.schema.json",
+      "languageId": "rust",
+      "providerId": "asp-rust",
+      "namespace": "rust",
+      "displayName": "Rust",
+      "binary": "asp-rust",
+      "execution": "provider",
+      "providerDescriptor": {
+        "$ref": "asp-provider-workspace-install.json"
+      },
+      "sourceInventory": {
+        "packageRoots": [],
+        "configFiles": [
+          "Cargo.toml"
+        ],
+        "sourceExtensions": [
+          ".rs"
+        ],
+        "projectResolution": {
+          "entryMarkers": [
+            "Cargo.toml"
+          ]
+        },
+        "documentResolution": null
+      },
+      "searchCapabilities": {
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": true,
+        "dependencyTopologyMetadata": true,
+        "enhancedSyntaxQueryCapability": {
+          "schemaId": "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table",
+          "schemaVersion": "1",
+          "languageId": "rust",
+          "providerId": "asp-rust",
+          "parserAbi": {
+            "id": "asp-rust-syn-native-items",
+            "version": "asp-rust-0.1.2+syn-3.0.4",
+            "digest": "blake3-256:122dae5e98853c9a8a168a7ee9b558d64a200bf4c97516f51f7171293883a4ca"
+          },
+          "queryGrammar": {
+            "id": "tree-sitter-rust",
+            "version": "2026-06-04.v1",
+            "digest": "blake3-256:a5f7d55c6c3dbc57f442790e1d55868f6454f7d92393359fa61807b99b60ac98"
+          },
+          "operatorTableDigest": "blake3-256:e9f88db6f6cab915cad26739fd9c9da58e1dbd8e73b7e314adb08ff6fca45d2a",
+          "tableDigest": "blake3-256:49b5721c82bc2d9b15688e28442e78b19479b5d968cc56c0c810917ee1220e9f",
+          "rows": [
+            {
+              "rowId": "rust.capture.item",
+              "kind": "capture-binding",
+              "sourceName": "item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "selector",
+                "constraintKind": "capture"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.const-item",
+              "kind": "node-type",
+              "sourceName": "const_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "const"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.enum-item",
+              "kind": "node-type",
+              "sourceName": "enum_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "enum"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.function-item",
+              "kind": "node-type",
+              "sourceName": "function_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "function"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.impl-item",
+              "kind": "node-type",
+              "sourceName": "impl_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "impl"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.mod-item",
+              "kind": "node-type",
+              "sourceName": "mod_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "mod"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.static-item",
+              "kind": "node-type",
+              "sourceName": "static_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "static"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.struct-item",
+              "kind": "node-type",
+              "sourceName": "struct_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "struct"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.trait-item",
+              "kind": "node-type",
+              "sourceName": "trait_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "trait"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.type-item",
+              "kind": "node-type",
+              "sourceName": "type_item",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "type"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.use-declaration",
+              "kind": "node-type",
+              "sourceName": "use_declaration",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar",
+                "residentValue": "use"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.field.name",
+              "kind": "field",
+              "sourceName": "name",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "name",
+                "constraintKind": "scalar"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.fact.kind",
+              "kind": "fact-path",
+              "sourceName": "kind",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "kind",
+                "constraintKind": "scalar"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.fact.name",
+              "kind": "fact-path",
+              "sourceName": "name",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "name",
+                "constraintKind": "scalar"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.fact.selector",
+              "kind": "fact-path",
+              "sourceName": "selector",
+              "publicationState": "runtime",
+              "lowering": {
+                "residentFactPath": "selector",
+                "constraintKind": "scalar"
+              },
+              "equivalenceEvidence": {
+                "method": "native-parser-tree-sitter-differential-v1",
+                "corpusDigest": "blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973",
+                "receiptDigest": "blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"
+              }
+            },
+            {
+              "rowId": "rust.node.macro-definition",
+              "kind": "node-type",
+              "sourceName": "macro_definition",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.byte-range",
+              "kind": "fact-path",
+              "sourceName": "byte-range",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.scopes-relation",
+              "kind": "fact-path",
+              "sourceName": "scopes.relation",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.scopes-kind",
+              "kind": "fact-path",
+              "sourceName": "scopes.kind",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.scopes-symbol",
+              "kind": "fact-path",
+              "sourceName": "scopes.symbol",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.query-keys",
+              "kind": "fact-path",
+              "sourceName": "queryKeys",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.projections-kind",
+              "kind": "fact-path",
+              "sourceName": "projections.kind",
+              "publicationState": "provider-local"
+            },
+            {
+              "rowId": "rust.fact.relations",
+              "kind": "fact-path",
+              "sourceName": "relations",
+              "publicationState": "provider-local"
+            }
+          ]
+        },
+        "sourceSnapshot": {
+          "descriptorId": "rust.source-snapshot",
+          "descriptorVersion": "1",
+          "languageId": "rust",
+          "packetSchemaId": "asp.source-snapshot.v1",
+          "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+          "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+          "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+          "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+          "algorithm": "blake3-merkle-v1",
+          "authority": "live-parser",
+          "exactSelectorResolution": "pinned-live-module-graph",
+          "overlayMode": "merkle-delta"
+        }
+      },
+      "queryPackDescriptor": {
+        "descriptorId": "rust.query-pack",
+        "descriptorVersion": "1",
+        "languageId": "rust",
+        "semanticFactsDescriptorId": "rust.semantic-facts",
+        "termRoleOverrides": [],
+        "recipes": [
+          {
+            "recipeId": "rust-concurrency-runtime",
+            "trigger": {
+              "terms": [
+                "concurrency",
+                "runtime",
+                "scheduling"
+              ],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": [
+                  "concurrency",
+                  "runtime",
+                  "scheduling"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "intentAxes": [
+                  "concurrency"
+                ]
+              }
+            ]
+          },
+          {
+            "recipeId": "rust-resource-lifecycle",
+            "trigger": {
+              "terms": [
+                "scope",
+                "lifecycle",
+                "drop"
+              ],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": [
+                  "scope",
+                  "lifecycle",
+                  "drop"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "intentAxes": [
+                  "resource-lifecycle"
+                ]
+              }
+            ]
+          },
+          {
+            "recipeId": "rust-stream-backpressure",
+            "trigger": {
+              "terms": [
+                "queue",
+                "stream",
+                "backpressure"
+              ],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": [
+                  "queue",
+                  "stream",
+                  "backpressure"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "intentAxes": [
+                  "collection",
+                  "stream"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "runtimeContract": {
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "aspClientServer": {
+          "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
+          "schemaVersion": "1",
+          "transport": "http-json",
+          "command": [
+            "serve"
+          ],
+          "healthPath": "/health",
+          "requestPath": "/v1/provider-runtime",
+          "shutdownPath": "/shutdown",
+          "warmupPolicy": "before-ready"
+        },
+        "operations": [
+          {
+            "operation": "syntax-query",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-syntax-query-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-syntax-query-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "projection-batch",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "project-resolution",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+              "schemaVersion": "1"
+            }
+          }
+        ]
+      },
+      "routes": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "rust.projection-batch",
+          "operation": "projection-batch",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "rust",
+            "providerId": "asp-rust"
+          },
+          "inputs": [
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.source-index-projection",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.rust.projection-batch",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "rust.search",
+          "operation": "search",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "rust",
+            "providerId": "asp-rust"
+          },
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-search-request",
+            "schemaVersion": "1"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "operation",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.search-packet",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.rust.search",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "rust.query",
+          "operation": "query",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "rust",
+            "providerId": "asp-rust"
+          },
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "selector",
+              "valueType": "structural-selector",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "projection",
+              "valueType": "presentation",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.query-result",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.rust.query",
+            "attributeSlots": []
+          }
+        }
+      ],
+      "schemas": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "authority": "asp",
+          "path": "schemas/provider-route.schema.json"
+        }
+      ]
+    },
+    {
+      "$schema": "../schemas/provider-registration.schema.json",
+      "languageId": "typescript",
+      "providerId": "asp-typescript",
+      "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
+      "displayName": "TypeScript",
+      "binary": "asp-typescript",
+      "execution": "provider",
+      "providerDescriptor": {
+        "$ref": "asp-provider-workspace-install.json"
+      },
+      "sourceInventory": {
+        "packageRoots": [],
+        "configFiles": [
+          "package.json",
+          "tsconfig.json"
+        ],
+        "sourceExtensions": [
+          ".ts",
+          ".tsx",
+          ".mts",
+          ".cts"
+        ],
+        "projectResolution": {
+          "entryMarkers": [
+            "package.json",
+            "tsconfig.json"
+          ]
+        },
+        "documentResolution": null
+      },
+      "searchCapabilities": {
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": true,
+        "dependencyTopologyMetadata": true
+      },
+      "queryPackDescriptor": {
+        "descriptorId": "typescript.search",
+        "descriptorVersion": "1",
+        "languageId": "typescript",
+        "termRoleOverrides": [],
+        "recipes": []
+      },
+      "runtimeContract": {
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "aspClientServer": {
+          "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
+          "schemaVersion": "1",
+          "transport": "http-json",
+          "command": [
+            "serve"
+          ],
+          "healthPath": "/health",
+          "requestPath": "/v1/provider-runtime",
+          "shutdownPath": "/shutdown",
+          "warmupPolicy": "before-ready"
+        },
+        "operations": [
+          {
+            "operation": "projection-batch",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "project-resolution",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "query",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
+              "schemaVersion": "1"
+            }
+          }
+        ]
+      },
+      "routes": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "typescript.projection-batch",
+          "operation": "projection-batch",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "typescript",
+            "providerId": "asp-typescript"
+          },
+          "inputs": [],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "provider-ready"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.source-index-projection",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.typescript.projection-batch",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "typescript.search",
+          "operation": "search",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-search-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "typescript",
+            "providerId": "asp-typescript"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "operation",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.search-packet",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.typescript.search",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "typescript.query",
+          "operation": "query",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "typescript",
+            "providerId": "asp-typescript"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "selector",
+              "valueType": "structural-selector",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "projection",
+              "valueType": "presentation",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.query-result",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.typescript.query",
+            "attributeSlots": []
+          }
+        }
+      ],
+      "schemas": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "authority": "asp",
+          "path": "schemas/provider-route.schema.json"
+        }
+      ]
+    },
+    {
+      "$schema": "../schemas/provider-registration.schema.json",
+      "languageId": "python",
+      "providerId": "asp-python",
+      "namespace": "agent.semantic-protocols.languages.python.asp-python",
+      "displayName": "Python",
+      "binary": "asp-python",
+      "execution": "provider",
+      "providerDescriptor": {
+        "$ref": "asp-provider-workspace-install.json"
+      },
+      "sourceInventory": {
+        "packageRoots": [],
+        "configFiles": [
+          "pyproject.toml"
+        ],
+        "sourceExtensions": [
+          ".py",
+          ".pyi"
+        ],
+        "projectResolution": {
+          "entryMarkers": [
+            "pyproject.toml"
+          ]
+        },
+        "documentResolution": null
+      },
+      "searchCapabilities": {
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": true,
+        "dependencyTopologyMetadata": true
+      },
+      "queryPackDescriptor": {
+        "descriptorId": "python.search",
+        "descriptorVersion": "1",
+        "languageId": "python",
+        "termRoleOverrides": [],
+        "recipes": []
+      },
+      "runtimeContract": {
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "aspClientServer": {
+          "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
+          "schemaVersion": "1",
+          "transport": "http-json",
+          "command": [
+            "serve"
+          ],
+          "healthPath": "/health",
+          "requestPath": "/v1/provider-runtime",
+          "shutdownPath": "/shutdown",
+          "warmupPolicy": "before-ready"
+        },
+        "operations": [
+          {
+            "operation": "projection-batch",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "project-resolution",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "query",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
+              "schemaVersion": "1"
+            }
+          }
+        ]
+      },
+      "routes": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "python.projection-batch",
+          "operation": "projection-batch",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "python",
+            "providerId": "asp-python"
+          },
+          "inputs": [],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "provider-ready"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.source-index-projection",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.python.projection-batch",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "python.search",
+          "operation": "search",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-search-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "python",
+            "providerId": "asp-python"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "operation",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.search-packet",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.python.search",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "python.query",
+          "operation": "query",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "python",
+            "providerId": "asp-python"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "selector",
+              "valueType": "structural-selector",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "projection",
+              "valueType": "presentation",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.query-result",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.python.query",
+            "attributeSlots": []
+          }
+        }
+      ],
+      "schemas": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "authority": "asp",
+          "path": "schemas/provider-route.schema.json"
+        }
+      ]
+    },
+    {
+      "$schema": "../schemas/provider-registration.schema.json",
+      "languageId": "julia",
+      "providerId": "asp-julia",
+      "namespace": "agent.semantic-protocols.languages.julia.asp-julia",
+      "displayName": "ASP Julia",
+      "binary": "asp-julia",
+      "execution": "provider",
+      "providerDescriptor": {
+        "$ref": "asp-provider-workspace-install.json"
+      },
+      "sourceInventory": {
+        "packageRoots": [],
+        "configFiles": [
+          "Project.toml"
+        ],
+        "sourceExtensions": [
+          ".jl"
+        ],
+        "projectResolution": {
+          "entryMarkers": [
+            "Project.toml"
+          ]
+        },
+        "documentResolution": null
+      },
+      "searchCapabilities": {
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": true,
+        "dependencyTopologyMetadata": true
+      },
+      "queryPackDescriptor": {
+        "descriptorId": "julia.search",
+        "descriptorVersion": "1",
+        "languageId": "julia",
+        "termRoleOverrides": [],
+        "recipes": []
+      },
+      "runtimeContract": {
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "aspClientServer": {
+          "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
+          "schemaVersion": "1",
+          "transport": "http-json",
+          "command": [
+            "serve"
+          ],
+          "healthPath": "/health",
+          "requestPath": "/v1/provider-runtime",
+          "shutdownPath": "/shutdown",
+          "warmupPolicy": "before-ready"
+        },
+        "operations": [
+          {
+            "operation": "projection-batch",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "project-resolution",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+              "schemaVersion": "1"
+            }
+          }
+        ]
+      },
+      "routes": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "julia.projection-batch",
+          "operation": "projection-batch",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "julia",
+            "providerId": "asp-julia"
+          },
+          "inputs": [],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "provider-ready"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.source-index-projection",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.julia.projection-batch",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "julia.search",
+          "operation": "search",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-search-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "julia",
+            "providerId": "asp-julia"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "operation",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.search-packet",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.julia.search",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "julia.query",
+          "operation": "query",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "julia",
+            "providerId": "asp-julia"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "selector",
+              "valueType": "structural-selector",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "projection",
+              "valueType": "presentation",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.query-result",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.julia.query",
+            "attributeSlots": []
+          }
+        }
+      ],
+      "schemas": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "authority": "asp",
+          "path": "schemas/provider-route.schema.json"
+        }
+      ]
+    },
+    {
+      "$schema": "../schemas/provider-registration.schema.json",
+      "languageId": "gerbil-scheme",
+      "providerId": "asp-gerbil-scheme",
+      "namespace": "agent.semantic-protocols.languages.gerbil-scheme.asp-gerbil-scheme",
+      "displayName": "Gerbil Scheme",
+      "binary": "asp-gerbil-scheme",
+      "execution": "provider",
+      "providerDescriptor": {
+        "$ref": "asp-provider-workspace-install.json"
+      },
+      "sourceInventory": {
+        "packageRoots": [],
+        "configFiles": [
+          "gerbil.pkg",
+          "manifest.ss"
+        ],
+        "sourceExtensions": [
+          ".ss",
+          ".scm"
+        ],
+        "projectResolution": {
+          "entryMarkers": [
+            "gerbil.pkg",
+            "manifest.ss"
+          ]
+        },
+        "documentResolution": {
+          "extensions": [
+            ".ss",
+            ".scm"
+          ],
+          "supportsGitCandidates": true
+        }
+      },
+      "searchCapabilities": {
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": true,
+        "dependencyTopologyMetadata": true
+      },
+      "queryPackDescriptor": {
+        "descriptorId": "gerbil-scheme.search",
+        "descriptorVersion": "1",
+        "languageId": "gerbil-scheme",
+        "termRoleOverrides": [],
+        "recipes": []
+      },
+      "runtimeContract": {
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "aspClientServer": {
+          "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
+          "schemaVersion": "1",
+          "transport": "http-json",
+          "command": [
+            "serve"
+          ],
+          "healthPath": "/health",
+          "requestPath": "/v1/provider-runtime",
+          "shutdownPath": "/shutdown",
+          "warmupPolicy": "before-ready"
+        },
+        "operations": [
+          {
+            "operation": "projection-batch",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "project-resolution",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+              "schemaVersion": "1"
+            }
+          },
+          {
+            "operation": "query",
+            "requestSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-request",
+              "schemaVersion": "1"
+            },
+            "responseSchema": {
+              "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
+              "schemaVersion": "1"
+            }
+          }
+        ]
+      },
+      "routes": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "gerbil-scheme.projection-batch",
+          "operation": "projection-batch",
+          "authority": "asp-server",
+          "target": {
+            "languageId": "gerbil-scheme",
+            "providerId": "asp-gerbil-scheme"
+          },
+          "inputs": [],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "provider-ready"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.source-index-projection",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.gerbil-scheme.projection-batch",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "gerbil-scheme.search",
+          "operation": "search",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-search-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "gerbil-scheme",
+            "providerId": "asp-gerbil-scheme"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "operation",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "query",
+              "valueType": "string",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.search-packet",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.gerbil-scheme.search",
+            "attributeSlots": []
+          }
+        },
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "routeId": "gerbil-scheme.query",
+          "operation": "query",
+          "requestSchema": {
+            "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+            "schemaVersion": "1"
+          },
+          "authority": "asp-server",
+          "target": {
+            "languageId": "gerbil-scheme",
+            "providerId": "asp-gerbil-scheme"
+          },
+          "inputs": [
+            {
+              "name": "schemaId",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "schemaVersion",
+              "valueType": "string",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "selector",
+              "valueType": "structural-selector",
+              "cardinality": "required",
+              "source": "request"
+            },
+            {
+              "name": "projection",
+              "valueType": "presentation",
+              "cardinality": "optional",
+              "source": "request"
+            }
+          ],
+          "requirements": [
+            {
+              "kind": "state",
+              "state": "terminal-generation"
+            }
+          ],
+          "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+          },
+          "output": {
+            "schema": {
+              "schemaId": "agent.semantic-protocols.query-result",
+              "schemaVersion": "1"
+            },
+            "mediaType": "application/json"
+          },
+          "failureSchemaIds": [
+            "agent.semantic-protocols.route-failure"
+          ],
+          "cache": {
+            "authority": "asp-server",
+            "scope": "workspace",
+            "keySlots": []
+          },
+          "telemetry": {
+            "spanName": "asp.route.gerbil-scheme.query",
+            "attributeSlots": []
+          }
+        }
+      ],
+      "schemas": [
+        {
+          "schemaId": "agent.semantic-protocols.provider-route",
+          "schemaVersion": "1",
+          "authority": "asp",
+          "path": "schemas/provider-route.schema.json"
+        }
+      ]
+    }
+  ]
+}

@@ -120,6 +120,46 @@ pub fn resolve_provider_register(
     let install_providers = install_register["providers"]
         .as_array()
         .ok_or("provider install register providers must be an array")?;
+    let all_checkouts_present = identities.iter().all(|identity| {
+        install_providers
+            .iter()
+            .find(|entry| {
+                entry["languageId"].as_str() == Some(identity.language_id.as_str())
+                    && entry["providerId"].as_str() == Some(identity.provider_id.as_str())
+            })
+            .and_then(|install| {
+                let source_root = install["sourceRoot"].as_str()?;
+                let workspace_install = install["workspaceInstall"].as_str()?;
+                Some(root.join(source_root).join(workspace_install).is_file())
+            })
+            .unwrap_or(false)
+    });
+    if !all_checkouts_present {
+        let snapshot_path =
+            root.join("crates/agent-semantic-provider-protocol/provider-register.resolved.json");
+        let snapshot = read_json(&snapshot_path)?;
+        let snapshot_providers = snapshot["providers"]
+            .as_array()
+            .ok_or("provider register snapshot providers must be an array")?;
+        if snapshot_providers.len() != identities.len() {
+            return Err("provider register snapshot count mismatch".to_owned());
+        }
+        for (identity, entry) in identities.iter().zip(snapshot_providers.iter()) {
+            if entry["languageId"].as_str() != Some(identity.language_id.as_str())
+                || entry["providerId"].as_str() != Some(identity.provider_id.as_str())
+            {
+                return Err(format!(
+                    "provider register snapshot identity mismatch for {}/{}",
+                    identity.language_id, identity.provider_id
+                ));
+            }
+        }
+        return Ok(ResolvedProviderRegisterBuild {
+            bytes: serde_json::to_vec_pretty(&snapshot).map_err(|error| error.to_string())?,
+            input_paths: vec![index, install_index, snapshot_path],
+            identities,
+        });
+    }
     let mut registrations = Vec::with_capacity(identities.len());
     let mut input_paths = vec![index, install_index];
     for identity in &identities {
