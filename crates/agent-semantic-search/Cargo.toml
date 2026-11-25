@@ -14,7 +14,6 @@ default = ["tantivy-accelerator"]
 tantivy-accelerator = ["dep:tantivy"]
 
 [dependencies]
-agent-semantic-content-identity.workspace = true
 agent-semantic-search-playbook = { path = "../agent-semantic-search-playbook" }
 agent-semantic-topology.workspace = true
 blake3.workspace = true
@@ -32,7 +31,6 @@ tantivy = { workspace = true, optional = true }
 
 [dev-dependencies]
 asp-rust.workspace = true
-agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
 criterion.workspace = true
 tempfile = { workspace = true }
 
@@ -49,16 +47,16 @@ name = "source_index_rank_performance"
 path = "tests/integration/source_index_rank_performance.rs"
 
 [[test]]
-name = "graph_owner_rank_report"
-path = "tests/integration/graph_owner_rank_report/mod.rs"
-
-[[test]]
 name = "marlin_engine_state_machine"
 path = "tests/unit/marlin_engine_state_machine.rs"
 
 [[test]]
 name = "converged_resident_index_fuzz"
 path = "tests/unit/converged_resident_index_fuzz.rs"
+
+[[test]]
+name = "resident_symbol_graph"
+path = "tests/unit/resident_symbol_graph.rs"
 
 [[bench]]
 name = "search_engine_hot_path"

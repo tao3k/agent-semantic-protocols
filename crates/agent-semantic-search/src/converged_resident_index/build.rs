@@ -23,6 +23,7 @@ use super::index::{
     IndexedFile, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
     WorkspaceSearchIndex,
 };
+use super::symbols::extract_file_semantics;
 
 const PARALLEL_BUILD_THRESHOLD: usize = 64;
 
@@ -107,6 +108,7 @@ pub(super) fn assemble_from_snapshot(
         let path_lower = ascii_lower_bytes(rec.relative_path.as_bytes());
         let body_lower = ascii_lower_bytes(rec.body.as_bytes());
         let line_offsets = build_line_offsets(rec.body.as_bytes());
+        let semantics = extract_file_semantics(language, &rec.body);
         path_to_id.insert(rec.relative_path.clone(), file_id);
         files.push(IndexedFile {
             relative_path: rec.relative_path,
@@ -119,6 +121,8 @@ pub(super) fn assemble_from_snapshot(
             body: rec.body,
             body_lower,
             line_offsets,
+            symbols: semantics.symbols,
+            imports: semantics.imports,
         });
     }
 
@@ -629,6 +633,7 @@ fn build_file_record_from_bytes(relative_path: String, bytes: Vec<u8>) -> Option
     let body_lower = ascii_lower_bytes(body.as_bytes());
     let line_offsets = build_line_offsets(body.as_bytes());
     let trigrams = extract_file_trigram_masks(&path_lower, &body_lower);
+    let semantics = extract_file_semantics(language, &body);
 
     Some(BuiltFileRecord {
         file: IndexedFile {
@@ -642,6 +647,8 @@ fn build_file_record_from_bytes(relative_path: String, bytes: Vec<u8>) -> Option
             body,
             body_lower,
             line_offsets,
+            symbols: semantics.symbols,
+            imports: semantics.imports,
         },
         trigrams,
     })

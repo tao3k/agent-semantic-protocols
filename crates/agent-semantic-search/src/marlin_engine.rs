@@ -24,13 +24,12 @@ use agent_semantic_topology::{
 };
 
 use crate::{
-    ConvergedSearchExecutionError, ConvergedSearchExecutionReport, GraphOwnerRankReport,
-    GraphOwnerRankRequest, SearchArtifactBlob, SearchArtifactHash, SearchEngineStoragePort,
-    SearchGenerationDigest, SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest,
-    SearchPointerKey, SearchProjectId, SearchStoragePortError, SearchTopologyEdgeRecord,
-    SearchWorkspaceId, SourceIndexRankReport, SourceIndexRankRequest, WorkspaceSearchIndex,
-    execute_admitted_playbook, execute_admitted_playbook_with_index, rank_graph_owner_report,
-    rank_source_index_report,
+    ConvergedSearchExecutionError, ConvergedSearchExecutionReport, SearchArtifactBlob,
+    SearchArtifactHash, SearchEngineStoragePort, SearchGenerationDigest,
+    SearchGenerationPointerRecord, SearchGenerationPointerSwapRequest, SearchPointerKey,
+    SearchProjectId, SearchStoragePortError, SearchTopologyEdgeRecord, SearchWorkspaceId,
+    SourceIndexRankReport, SourceIndexRankRequest, WorkspaceSearchIndex, execute_admitted_playbook,
+    execute_admitted_playbook_with_index, rank_source_index_report,
 };
 
 /// Default CAS pointer key for one workspace's active search generation.
@@ -186,12 +185,6 @@ impl MarlinConvergedSearchEngine {
         plan: SearchPlaybookPlanInput,
     ) -> Result<ProgressiveSearchPlaybookRequest, ProgressiveSearchPlaybookError> {
         admit_search_playbook_plan(plan)
-    }
-
-    /// Execute deterministic graph-owner ranking over admitted workspace evidence.
-    #[must_use]
-    pub fn rank_graph_owners(&self, request: GraphOwnerRankRequest) -> GraphOwnerRankReport {
-        rank_graph_owner_report(request)
     }
 
     /// Execute deterministic lexical + structural source-index ranking.

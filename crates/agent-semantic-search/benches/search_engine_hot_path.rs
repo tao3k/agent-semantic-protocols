@@ -335,6 +335,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 4,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = index.query(black_box(&query));
@@ -352,6 +353,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 4,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = index.query(black_box(&query));
@@ -369,6 +371,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 2,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = index.query(black_box(&query));
@@ -385,6 +388,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 2,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = index.query(black_box(&query));
@@ -402,6 +406,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 3,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = index.query(black_box(&query));
@@ -434,6 +439,7 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             extension: None,
             max_hits: 32,
             context_radius: 3,
+            ..Default::default()
         };
         bencher.iter(|| {
             let report = mmap_index.query(black_box(&query));

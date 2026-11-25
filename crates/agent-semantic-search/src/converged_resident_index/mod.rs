@@ -9,8 +9,10 @@
 mod build;
 mod index;
 mod query;
+mod symbols;
 
 pub use index::{
     WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
     WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery, WorkspaceSearchReport,
 };
+pub use symbols::{WorkspaceSymbolKind, WorkspaceSymbolMatch};

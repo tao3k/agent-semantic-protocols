@@ -86,13 +86,14 @@ package AspSearchEngine {
                    Marlin's Gerbil Scheme `RootedSchemeObject` ABI. */
         }
         part rankingAndIndexing {
-            doc /* Deterministic `rank_source_index_report`,
-                   `rank_graph_owner_report`, `WorkspaceSearchIndex`
+            doc /* Deterministic `rank_source_index_report`, `WorkspaceSearchIndex`
                    (compact 6B `loc_mask`/`next_mask` trigram postings,
                    `regex-syntax` HIR boolean query planner, zero-copy `mmap`
-                   snapshots, incremental `apply_file_delta` + disk sync),
-                   `FileLocatorIndex`, `execute_admitted_playbook_with_index`,
-                   and in-RAM `Tantivy` BM25/Fuzzy lexical acceleration. */
+                   snapshots, incremental `apply_file_delta` + disk sync,
+                   resident structural symbol extraction & 1-hop import/reference
+                   graph queries), `FileLocatorIndex`,
+                   `execute_admitted_playbook_with_index`, and in-RAM `Tantivy`
+                   BM25/Fuzzy lexical acceleration. */
         }
         part topologyAndTreeSitter {
             doc /* Self-contained builtin `.scm` query catalog, resident syntax

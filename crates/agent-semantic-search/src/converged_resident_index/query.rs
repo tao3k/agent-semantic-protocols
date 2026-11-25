@@ -25,27 +25,64 @@ use super::index::{
     IndexedFile, WorkspaceContextLine, WorkspaceSearchHit, WorkspaceSearchIndex,
     WorkspaceSearchQuery, WorkspaceSearchReport,
 };
+use super::symbols::{
+    WorkspaceSymbolMatch, nearest_symbols_for_line, run_graph_axis, run_symbol_axis,
+};
 
 const MAX_QUERY_PATTERN_BYTES: usize = 1024;
 const PARALLEL_VERIFY_THRESHOLD: usize = 64;
 
-struct FusedHit {
-    file_id: u32,
-    score: u32,
-    axes: Vec<String>,
-    line_matches: Vec<ConvergedLineMatch>,
-    focus_line: Option<usize>,
+pub(super) struct FusedHit {
+    pub(super) file_id: u32,
+    pub(super) score: u32,
+    pub(super) axes: Vec<String>,
+    pub(super) line_matches: Vec<ConvergedLineMatch>,
+    pub(super) focus_line: Option<usize>,
+    pub(super) symbols: Vec<WorkspaceSymbolMatch>,
+    pub(super) graph_relations: Vec<String>,
 }
 
 impl FusedHit {
-    fn add_axis(&mut self, axis: &str) {
+    pub(super) fn new(file_id: u32) -> Self {
+        Self {
+            file_id,
+            score: 0,
+            axes: Vec::new(),
+            line_matches: Vec::new(),
+            focus_line: None,
+            symbols: Vec::new(),
+            graph_relations: Vec::new(),
+        }
+    }
+
+    pub(super) fn add_axis(&mut self, axis: &str) {
         if !self.axes.iter().any(|existing| existing == axis) {
             self.axes.push(axis.to_owned());
         }
     }
+
+    pub(super) fn add_symbol(&mut self, sym: WorkspaceSymbolMatch) {
+        if !self
+            .symbols
+            .iter()
+            .any(|existing| existing.name == sym.name && existing.line_number == sym.line_number)
+        {
+            self.symbols.push(sym);
+        }
+    }
+
+    pub(super) fn add_relation(&mut self, relation: String) {
+        if !self
+            .graph_relations
+            .iter()
+            .any(|existing| existing == &relation)
+        {
+            self.graph_relations.push(relation);
+        }
+    }
 }
 
-struct CompiledFilters {
+pub(super) struct CompiledFilters {
     allowed_exts: Option<BTreeSet<&'static str>>,
     prefix_lower: Option<String>,
     ext_filter: Option<String>,
@@ -72,7 +109,7 @@ impl CompiledFilters {
         }
     }
 
-    fn matches(&self, file: &IndexedFile) -> bool {
+    pub(super) fn matches(&self, file: &IndexedFile) -> bool {
         if let Some(prefix) = self.prefix_lower.as_deref()
             && !file.path_lower.starts_with(prefix.as_bytes())
         {
@@ -100,8 +137,10 @@ pub(super) fn execute_converged_query(
     let max_hits = query.max_hits.max(1);
     let filters = CompiledFilters::from_query(query);
     let raw_pattern = bound_utf8_prefix(query.pattern.trim(), MAX_QUERY_PATTERN_BYTES);
+    let symbol_filter = query.symbol.map(str::trim).filter(|s| !s.is_empty());
+    let graph_filter = query.graph_target.map(str::trim).filter(|s| !s.is_empty());
 
-    if raw_pattern.is_empty() {
+    if raw_pattern.is_empty() && symbol_filter.is_none() && graph_filter.is_none() {
         let hits = list_files_matching_filters(index, &filters, max_hits, query.context_radius);
         let matched = hits.len();
         return WorkspaceSearchReport {
@@ -117,21 +156,66 @@ pub(super) fn execute_converged_query(
     let mut fused: FxHashMap<u32, FusedHit> = FxHashMap::default();
     let mut candidate_count = 0usize;
 
-    let regex_expr = extract_regex_expression(raw_pattern, index.config.enable_rg_regex);
-    if let Some(expr) = regex_expr {
-        candidate_count += run_resident_rg_regex(index, expr, &filters, max_hits, &mut fused);
-    } else {
-        candidate_count +=
-            run_resident_rg_literal(index, raw_pattern, &filters, max_hits, &mut fused);
+    let mut structural_scope: Option<rustc_hash::FxHashSet<u32>> = None;
+    if let Some(sym) = symbol_filter {
+        let mut sym_fused: FxHashMap<u32, FusedHit> = FxHashMap::default();
+        candidate_count += run_symbol_axis(index, sym, &filters, &mut sym_fused);
+        let ids: rustc_hash::FxHashSet<u32> = sym_fused.keys().copied().collect();
+        merge_fused(&mut fused, sym_fused);
+        structural_scope = Some(ids);
+    }
+    if let Some(target) = graph_filter {
+        let mut graph_fused: FxHashMap<u32, FusedHit> = FxHashMap::default();
+        candidate_count += run_graph_axis(index, target, &filters, &mut graph_fused);
+        let ids: rustc_hash::FxHashSet<u32> = graph_fused.keys().copied().collect();
+        merge_fused(&mut fused, graph_fused);
+        structural_scope = Some(match structural_scope {
+            Some(prev) => prev.intersection(&ids).copied().collect(),
+            None => ids,
+        });
+    }
 
-        if index.config.enable_file_locator {
-            run_file_locator_and_fuzzy_paths(index, raw_pattern, &filters, max_hits, &mut fused);
-        }
+    if !raw_pattern.is_empty() {
+        let mut lexical_fused: FxHashMap<u32, FusedHit> = FxHashMap::default();
+        let regex_expr = extract_regex_expression(raw_pattern, index.config.enable_rg_regex);
+        if let Some(expr) = regex_expr {
+            candidate_count +=
+                run_resident_rg_regex(index, expr, &filters, max_hits, &mut lexical_fused);
+        } else {
+            candidate_count +=
+                run_resident_rg_literal(index, raw_pattern, &filters, max_hits, &mut lexical_fused);
 
-        #[cfg(feature = "tantivy-accelerator")]
-        if let Some(tantivy) = index.tantivy.as_ref() {
-            run_tantivy_bm25_and_fuzzy(index, tantivy, raw_pattern, &filters, max_hits, &mut fused);
+            if index.config.enable_file_locator {
+                run_file_locator_and_fuzzy_paths(
+                    index,
+                    raw_pattern,
+                    &filters,
+                    max_hits,
+                    &mut lexical_fused,
+                );
+            }
+
+            #[cfg(feature = "tantivy-accelerator")]
+            if let Some(tantivy) = index.tantivy.as_ref() {
+                run_tantivy_bm25_and_fuzzy(
+                    index,
+                    tantivy,
+                    raw_pattern,
+                    &filters,
+                    max_hits,
+                    &mut lexical_fused,
+                );
+            }
         }
+        if let Some(scope) = structural_scope.as_ref() {
+            lexical_fused.retain(|fid, _| scope.contains(fid));
+            fused.retain(|fid, _| lexical_fused.contains_key(fid));
+            merge_fused(&mut fused, lexical_fused);
+        } else {
+            fused = lexical_fused;
+        }
+    } else if let Some(scope) = structural_scope.as_ref() {
+        fused.retain(|fid, _| scope.contains(fid));
     }
 
     let mut hits: Vec<WorkspaceSearchHit> = fused
@@ -152,6 +236,34 @@ pub(super) fn execute_converged_query(
         matched_files,
         elapsed_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
         hits,
+    }
+}
+
+fn merge_fused(dest: &mut FxHashMap<u32, FusedHit>, src: FxHashMap<u32, FusedHit>) {
+    for (file_id, incoming) in src {
+        match dest.get_mut(&file_id) {
+            Some(existing) => {
+                existing.score = existing.score.saturating_add(incoming.score);
+                for axis in incoming.axes {
+                    existing.add_axis(&axis);
+                }
+                for sym in incoming.symbols {
+                    existing.add_symbol(sym);
+                }
+                for rel in incoming.graph_relations {
+                    existing.add_relation(rel);
+                }
+                if existing.line_matches.is_empty() && !incoming.line_matches.is_empty() {
+                    existing.line_matches = incoming.line_matches;
+                }
+                if existing.focus_line.is_none() {
+                    existing.focus_line = incoming.focus_line;
+                }
+            }
+            None => {
+                dest.insert(file_id, incoming);
+            }
+        }
     }
 }
 
@@ -271,13 +383,9 @@ fn run_resident_rg_regex(
     };
 
     for (file_id, score, line_matches, focus_line) in verified {
-        let entry = fused.entry(file_id).or_insert_with(|| FusedHit {
-            file_id,
-            score: 0,
-            axes: Vec::new(),
-            line_matches: Vec::new(),
-            focus_line: None,
-        });
+        let entry = fused
+            .entry(file_id)
+            .or_insert_with(|| FusedHit::new(file_id));
         entry.score = entry.score.saturating_add(score);
         entry.add_axis("rg-regex");
         if entry.line_matches.is_empty() {
@@ -457,13 +565,9 @@ fn run_resident_rg_literal(
         };
 
     for outcome in verified {
-        let entry = fused.entry(outcome.file_id).or_insert_with(|| FusedHit {
-            file_id: outcome.file_id,
-            score: 0,
-            axes: Vec::new(),
-            line_matches: Vec::new(),
-            focus_line: None,
-        });
+        let entry = fused
+            .entry(outcome.file_id)
+            .or_insert_with(|| FusedHit::new(outcome.file_id));
         entry.score = entry.score.saturating_add(outcome.score);
         if outcome.path_match {
             entry.add_axis("path");
@@ -504,13 +608,9 @@ fn run_file_locator_and_fuzzy_paths(
                 _ => "path",
             };
             let bonus = u32::from(cand.score / 5).max(30);
-            let entry = fused.entry(file_id).or_insert_with(|| FusedHit {
-                file_id,
-                score: 0,
-                axes: Vec::new(),
-                line_matches: Vec::new(),
-                focus_line: None,
-            });
+            let entry = fused
+                .entry(file_id)
+                .or_insert_with(|| FusedHit::new(file_id));
             entry.score = entry.score.saturating_add(bonus);
             entry.add_axis(axis);
         }
@@ -529,13 +629,9 @@ fn run_file_locator_and_fuzzy_paths(
         }
         subseq_hits.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.1));
         for (file_id, sub_score) in subseq_hits.into_iter().take(max_hits / 2) {
-            let entry = fused.entry(file_id).or_insert_with(|| FusedHit {
-                file_id,
-                score: 0,
-                axes: Vec::new(),
-                line_matches: Vec::new(),
-                focus_line: None,
-            });
+            let entry = fused
+                .entry(file_id)
+                .or_insert_with(|| FusedHit::new(file_id));
             entry.score = entry.score.saturating_add(sub_score);
             entry.add_axis("fuzzy-path");
         }
@@ -601,13 +697,9 @@ fn run_tantivy_bm25_and_fuzzy(
         }
         let bm25_bonus = ((th.bm25_score * 14.0).round() as u32).clamp(25, 160);
         let axis = if th.is_fuzzy { "fuzzy" } else { "bm25" };
-        let entry = fused.entry(th.file_id).or_insert_with(|| FusedHit {
-            file_id: th.file_id,
-            score: 0,
-            axes: Vec::new(),
-            line_matches: Vec::new(),
-            focus_line: None,
-        });
+        let entry = fused
+            .entry(th.file_id)
+            .or_insert_with(|| FusedHit::new(th.file_id));
         entry.score = entry.score.saturating_add(if th.is_fuzzy {
             bm25_bonus / 2 + 20
         } else {
@@ -684,6 +776,11 @@ fn finalize_fused_hit(
         context_radius,
         max_preview_chars,
     );
+    let symbols = if entry.symbols.is_empty() {
+        nearest_symbols_for_line(file, first_line.unwrap_or(1))
+    } else {
+        entry.symbols
+    };
 
     Some(WorkspaceSearchHit {
         path: file.relative_path.clone(),
@@ -694,6 +791,8 @@ fn finalize_fused_hit(
         first_line_text,
         line_matches: entry.line_matches,
         context_lines,
+        symbols,
+        graph_relations: entry.graph_relations,
     })
 }
 
@@ -732,6 +831,8 @@ fn list_files_matching_filters(
             first_line_text,
             line_matches: Vec::new(),
             context_lines,
+            symbols: nearest_symbols_for_line(file, 1),
+            graph_relations: Vec::new(),
         });
     }
     hits
@@ -761,7 +862,7 @@ fn extract_context_lines(
     out
 }
 
-fn extract_line_slice(file: &IndexedFile, line_num: usize) -> &str {
+pub(super) fn extract_line_slice(file: &IndexedFile, line_num: usize) -> &str {
     let Some(&start_u32) = file.line_offsets.get(line_num.saturating_sub(1)) else {
         return "";
     };
@@ -776,14 +877,14 @@ fn extract_line_slice(file: &IndexedFile, line_num: usize) -> &str {
         .trim_end_matches(['\r', '\n'])
 }
 
-fn byte_offset_to_line(line_offsets: &[u32], byte_offset: usize) -> usize {
+pub(super) fn byte_offset_to_line(line_offsets: &[u32], byte_offset: usize) -> usize {
     let target = u32::try_from(byte_offset).unwrap_or(u32::MAX);
     line_offsets
         .partition_point(|&start| start <= target)
         .max(1)
 }
 
-fn truncate_line(line: &str, max_chars: usize) -> String {
+pub(super) fn truncate_line(line: &str, max_chars: usize) -> String {
     let mut out = String::new();
     for (i, ch) in line.chars().enumerate() {
         if i >= max_chars {

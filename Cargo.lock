@@ -140,8 +140,6 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
- "agent-semantic-content-identity",
- "agent-semantic-provider-protocol",
  "agent-semantic-search-playbook",
  "agent-semantic-topology",
  "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",

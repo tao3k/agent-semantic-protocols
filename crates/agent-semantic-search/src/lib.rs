@@ -7,11 +7,6 @@
 
 pub mod converged_resident_index;
 pub mod file_locator;
-mod graph_candidate_projection;
-pub mod graph_generation_authority;
-mod graph_node_projection;
-mod graph_owner_rank;
-mod graph_topology_projection;
 pub mod marlin_engine;
 pub mod marlin_playbook_executor;
 pub mod marlin_storage_port;
@@ -32,23 +27,7 @@ pub use agent_semantic_search_playbook::{
 pub use converged_resident_index::{
     WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
     WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery, WorkspaceSearchReport,
-};
-pub use graph_candidate_projection::{
-    GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
-    graph_candidate_hot_node_id, graph_candidate_hot_nodes, graph_candidate_item_node_id,
-    graph_candidate_item_nodes,
-};
-pub use graph_node_projection::{owner_path_graph_nodes, stable_graph_node_id};
-pub use graph_owner_rank::{
-    GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
-    GraphOwnerRankedOwner, rank_graph_owner_report, ranked_graph_owner_paths_for_submodule_paths,
-    ranked_graph_owner_paths_with_topology,
-};
-pub use graph_topology_projection::{
-    GraphOwnerMissingTopologyRequest, GraphTopologyProjection, GraphTopologyProjectionRequest,
-    graph_owner_missing_topology_projection, graph_path_is_under, graph_project_submodule_paths,
-    graph_project_submodule_paths_from_content, graph_project_topology_projection,
-    graph_submodule_owner_edges,
+    WorkspaceSymbolKind, WorkspaceSymbolMatch,
 };
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
 pub use marlin_playbook_executor::{
@@ -75,23 +54,8 @@ pub use trigram_store::{
 extern crate self as agent_semantic_search;
 
 #[cfg(test)]
-#[path = "../tests/unit/graph_candidate_projection.rs"]
-mod graph_candidate_projection_tests;
-#[cfg(test)]
-#[path = "../tests/unit/graph_node_projection.rs"]
-mod graph_node_projection_tests;
-#[cfg(test)]
-#[path = "../tests/unit/graph_owner_rank.rs"]
-mod graph_owner_rank_tests;
-#[cfg(test)]
-#[path = "../tests/unit/graph_topology_projection.rs"]
-mod graph_topology_projection_tests;
-#[cfg(test)]
 #[path = "../tests/unit/marlin_converged_engine.rs"]
 mod marlin_converged_engine_tests;
 #[cfg(test)]
 #[path = "../tests/unit/source_index_rank.rs"]
 mod source_index_rank_tests;
-#[cfg(test)]
-#[path = "../tests/unit/source_snapshot_fixture.rs"]
-mod source_snapshot_fixture;

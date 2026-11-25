@@ -6,6 +6,7 @@
 //! with compact 6-byte trigram postings, HIR boolean query planning, zero-copy `mmap`
 //! snapshots, and incremental delta updates.
 
+use super::symbols::{IndexedSymbol, WorkspaceSymbolMatch};
 use super::{build, query};
 
 use std::path::{Path, PathBuf};
@@ -92,6 +93,8 @@ pub struct WorkspaceSearchHit {
     pub first_line_text: String,
     pub line_matches: Vec<ConvergedLineMatch>,
     pub context_lines: Vec<WorkspaceContextLine>,
+    pub symbols: Vec<WorkspaceSymbolMatch>,
+    pub graph_relations: Vec<String>,
 }
 
 /// Query parameters for sub-millisecond converged resident search execution.
@@ -102,6 +105,8 @@ pub struct WorkspaceSearchQuery<'a> {
     pub documents: &'a [String],
     pub path_prefix: Option<&'a str>,
     pub extension: Option<&'a str>,
+    pub symbol: Option<&'a str>,
+    pub graph_target: Option<&'a str>,
     pub max_hits: usize,
     pub context_radius: usize,
 }
@@ -128,6 +133,8 @@ pub(super) struct IndexedFile {
     pub(super) body: String,
     pub(super) body_lower: Vec<u8>,
     pub(super) line_offsets: Vec<u32>,
+    pub(super) symbols: Vec<IndexedSymbol>,
+    pub(super) imports: Vec<String>,
 }
 
 /// Resident, generation-stamped 4-axis search index owned by ASP.

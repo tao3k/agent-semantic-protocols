@@ -179,7 +179,7 @@ fn central_policy_preserves_member_specific_verification_owners() {
         search
             .latency_sensitive_performance_owners
             .iter()
-            .any(|owner| owner.path == "src/resident_source_index.rs")
+            .any(|owner| owner.path == "src/converged_resident_index/query.rs")
     );
     assert!(
         topology

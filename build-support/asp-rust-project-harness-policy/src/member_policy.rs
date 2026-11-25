@@ -156,16 +156,16 @@ const PROVIDER_TRANSPORT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] =
 
 const SEARCH_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/resident_source_index.rs",
-        rationale: "resident shallow and owner-local search lookup sits on every warm search hot path",
+        path: "src/converged_resident_index/query.rs",
+        rationale: "resident multi-axis query execution sits on every warm search hot path",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/graph_owner_rank.rs",
-        rationale: "owner candidate ranking must remain below the warm search latency gate",
+        path: "src/trigram_store/store.rs",
+        rationale: "compact 6-byte trigram posting intersection governs resident candidate pruning latency",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/search_generation_segment.rs",
-        rationale: "immutable generation segment validation gates resident search admission",
+        path: "src/source_index_rank.rs",
+        rationale: "deterministic candidate ranking must remain below the warm search latency gate",
     },
 ];
 
