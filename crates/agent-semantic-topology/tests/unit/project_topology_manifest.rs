@@ -6,6 +6,7 @@ use agent_semantic_topology::{PROJECT_TOPOLOGY_MANIFEST_PATH, ProjectTopologyMan
 use std::fs;
 
 fn manifest(properties: &str) -> String {
+    crate::ensure_orgize_native_runtime();
     format!(
         r#"#+TITLE: Project Workspace Manifest v1
 :PROPERTIES:

@@ -19,11 +19,6 @@ fn paths_reports_project_root_and_org_state_paths() {
         .workspace_state_paths()
         .expect("canonical workspace paths");
     let expected_org_artifacts = resolved.artifacts.join("org");
-    let expected_paths =
-        agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
-            .expect("resolved project state paths");
-    let expected_hook_state_dir = expected_paths.hook_state_dir;
-    let expected_hook_cache_dir = expected_paths.hook_cache_dir;
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -70,20 +65,8 @@ fn paths_reports_project_root_and_org_state_paths() {
         )),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains(&format!(
-            "hookStateDir={}",
-            expected_hook_state_dir.display()
-        )),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains(&format!(
-            "hookCacheDir={}",
-            expected_hook_cache_dir.display()
-        )),
-        "stdout: {stdout}"
-    );
+    assert!(!stdout.contains("hookStateDir="), "stdout: {stdout}");
+    assert!(!stdout.contains("hookCacheDir="), "stdout: {stdout}");
     assert!(stdout.contains("/workspaces/"), "stdout: {stdout}");
     assert!(!stdout.contains("/projects/by-id/"), "stdout: {stdout}");
     assert!(!root.join(".cache").exists());
@@ -137,11 +120,6 @@ fn paths_json_is_machine_readable() {
         .workspace_state_paths()
         .expect("canonical workspace paths");
     let expected_org_artifacts = resolved.artifacts.join("org");
-    let expected_paths =
-        agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
-            .expect("resolved project state paths");
-    let expected_hook_state_dir = expected_paths.hook_state_dir;
-    let expected_hook_cache_dir = expected_paths.hook_cache_dir;
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -171,21 +149,9 @@ fn paths_json_is_machine_readable() {
         value["orgArtifacts"],
         expected_org_artifacts.display().to_string()
     );
-    assert_eq!(
-        value["hookStateDir"],
-        expected_hook_state_dir.display().to_string()
-    );
-    assert_eq!(
-        value["hookCacheDir"],
-        expected_hook_cache_dir.display().to_string()
-    );
-    assert_eq!(
-        value["activation"],
-        expected_hook_state_dir
-            .join("activation.json")
-            .display()
-            .to_string()
-    );
+    assert!(value.get("hookStateDir").is_none());
+    assert!(value.get("hookCacheDir").is_none());
+    assert!(value.get("activation").is_none());
     assert!(
         value["clientCacheDir"]
             .as_str()

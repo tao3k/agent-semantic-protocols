@@ -9,6 +9,7 @@ fn digest(byte: char) -> String {
 }
 
 fn admitted() -> AgentOrgTopologyOverlay {
+    crate::ensure_orgize_native_runtime();
     AgentOrgTopologyOverlay::admit(
         digest('1'),
         digest('2'),
@@ -39,6 +40,7 @@ fn agent_summary_org_ast_and_overlay_have_independent_identities() {
 
 #[test]
 fn stale_generation_and_unscoped_relationships_fail_closed() {
+    crate::ensure_orgize_native_runtime();
     let invalid_digest = AgentOrgTopologyOverlay::admit(
         "stale",
         digest('2'),

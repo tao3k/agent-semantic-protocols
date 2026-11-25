@@ -6,8 +6,17 @@ use agent_semantic_topology::{
     PROJECT_TOPOLOGY_STANDARD_PROGRAM_RESOURCE, ProjectTopologySourceProgram,
 };
 
+fn parse_org(
+    source: &str,
+) -> Result<ProjectTopologySourceProgram, agent_semantic_topology::ProjectTopologySourceProgramError>
+{
+    crate::ensure_orgize_native_runtime();
+    ProjectTopologySourceProgram::parse_org(source)
+}
+
 #[test]
 fn orgize_projects_the_native_topology_program() {
+    crate::ensure_orgize_native_runtime();
     assert_eq!(
         PROJECT_TOPOLOGY_STANDARD_PROGRAM_RESOURCE,
         "org/templates/asp/topology/program.v1.org"
@@ -25,8 +34,7 @@ fn orgize_projects_the_native_topology_program() {
 fn org_program_rejects_relation_erasure() {
     let source = include_str!("../../../../org/templates/asp/topology/program.v1.org")
         .replace(":RIGHT_RELATION: READS_CONFIG", ":RIGHT_RELATION: COVERS");
-    let error = ProjectTopologySourceProgram::parse_org(&source)
-        .expect_err("COVERS cannot impersonate READS_CONFIG");
+    let error = parse_org(&source).expect_err("COVERS cannot impersonate READS_CONFIG");
     assert_eq!(
         error.reason_kind(),
         "topology-source-program-rule-unsupported"
@@ -45,8 +53,8 @@ fn indexed_query_ignores_declarations_outside_the_program_subtree() {
         include_str!("../../../../org/templates/asp/topology/program.v1.org")
     );
 
-    let program = ProjectTopologySourceProgram::parse_org(&source)
-        .expect("out-of-scope properties are not topology declarations");
+    let program =
+        parse_org(&source).expect("out-of-scope properties are not topology declarations");
     assert_eq!(program.rules().len(), 1);
     assert!(program.expectations().is_empty());
 }
@@ -58,8 +66,8 @@ fn indexed_query_ignores_nested_program_identity_lookalikes() {
         "** Nested Lookalike\n:PROPERTIES:\n:TOPOLOGY_PROGRAM_ID: not-a-program\n:END:\n\n** Depends On Config",
     );
 
-    let program = ProjectTopologySourceProgram::parse_org(&source)
-        .expect("only a top-level indexed declaration owns program identity");
+    let program =
+        parse_org(&source).expect("only a top-level indexed declaration owns program identity");
     assert_eq!(program.program_id(), "mrr.topology.standard.v1");
 }
 
@@ -70,8 +78,8 @@ fn indexed_expectation_changes_source_identity_and_typed_facts() {
         "{source}\n** Expected Documentation\n:PROPERTIES:\n:EXPECTATION_ID: expected-documentation\n:ANCHOR_SELECTOR: rust://src/registry.rs#item/struct/Registry\n:TARGET_SELECTOR: org://docs/publication.org#item/heading/Publication\n:EXPECTED_RELATION: DOCUMENTS\n:TARGET_KIND: heading\n:DEPTH: 2\n:COVERAGE: partial\n:END:\n"
     );
 
-    let before = ProjectTopologySourceProgram::parse_org(source).expect("standard program");
-    let after = ProjectTopologySourceProgram::parse_org(&changed).expect("changed program");
+    let before = parse_org(source).expect("standard program");
+    let after = parse_org(&changed).expect("changed program");
     assert_eq!(after.expectations().len(), 1);
     assert_eq!(after.expectations()[0].relation(), "DOCUMENTS");
     assert_ne!(before.source_digest(), after.source_digest());
@@ -83,8 +91,7 @@ fn v1_rejects_a_program_identity_that_cannot_name_the_executed_bundle() {
         ":TOPOLOGY_PROGRAM_ID: mrr.topology.standard.v1",
         ":TOPOLOGY_PROGRAM_ID: mrr.topology.other.v1",
     );
-    let error = ProjectTopologySourceProgram::parse_org(&source)
-        .expect_err("V1 cannot relabel its fixed executable program");
+    let error = parse_org(&source).expect_err("V1 cannot relabel its fixed executable program");
     assert_eq!(
         error.reason_kind(),
         "topology-source-program-identity-unsupported"
@@ -97,7 +104,7 @@ fn contract_authority_must_be_document_scoped() {
         .replace(":CONTRACT_ORG:", ":IGNORED_CONTRACT_ORG:")
         + "\n* Lookalike Contract\n:PROPERTIES:\n:CONTRACT_ORG: [[program.v1.org][asp.topology.program.v1]]\n:END:\n";
 
-    let error = ProjectTopologySourceProgram::parse_org(&source)
+    let error = parse_org(&source)
         .expect_err("a headline property cannot claim document contract authority");
     assert_eq!(
         error.reason_kind(),

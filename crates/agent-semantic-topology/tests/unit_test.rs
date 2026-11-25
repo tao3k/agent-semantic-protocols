@@ -22,3 +22,10 @@ mod project_topology_source_program;
 mod runtime_project_topology_attachment;
 #[path = "unit/topology_index.rs"]
 mod topology_index;
+
+pub(crate) fn ensure_orgize_native_runtime() {
+    // SAFETY: unit tests in this crate are pure in-memory checks that do not
+    // spawn subprocesses or alter host stdio/signal state; `initialize_native_runtime`
+    // is process-global and idempotent via `OnceLock`.
+    unsafe { orgize::initialize_native_runtime() }.expect("native Org parser startup");
+}

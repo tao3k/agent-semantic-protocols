@@ -241,30 +241,6 @@ fn db_engine_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
     }
 }
 
-pub(crate) fn block_on_db_engine_borrowed<T>(
-    future: impl std::future::Future<Output = Result<T, String>> + Send,
-) -> Result<T, String>
-where
-    T: Send,
-{
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
-            return tokio::task::block_in_place(move || handle.block_on(future));
-        }
-
-        // `block_in_place` panics on a current-thread runtime. The borrowed
-        // future cannot be promoted to `'static`, so use a scoped worker and
-        // drive it on the process-scoped DB runtime instead.
-        return std::thread::scope(|scope| {
-            scope
-                .spawn(move || db_engine_runtime()?.block_on(future))
-                .join()
-                .map_err(|_| "DB Engine borrowed async runtime thread panicked".to_string())?
-        });
-    }
-    db_engine_runtime()?.block_on(future)
-}
-
 /// DB Engine write session over the active Turso adapter.
 pub struct ClientDbEngineWriteSession {
     pub(super) turso_db_path: PathBuf,

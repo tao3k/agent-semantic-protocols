@@ -596,15 +596,6 @@ pub(super) async fn dispatch_resolved_route(
     };
     // Only the daemon publishes authority; the request owns a cancellable wait.
     let result = match route {
-        agent_semantic_client_protocol::ServerClientRoute::AgentSessionRegister => {
-            unreachable!("server-owned AgentSession route is handled before language dispatch")
-        }
-        agent_semantic_client_protocol::ServerClientRoute::MultiAgentHostEvent => {
-            unreachable!("server-owned Host event route requires its typed dispatcher")
-        }
-        agent_semantic_client_protocol::ServerClientRoute::MultiAgentChildren => {
-            unreachable!("server-owned child projection route requires its typed dispatcher")
-        }
         agent_semantic_client_protocol::ServerClientRoute::GraphEvaluate => {
             unreachable!("server-owned graph route is handled before language dispatch")
         }

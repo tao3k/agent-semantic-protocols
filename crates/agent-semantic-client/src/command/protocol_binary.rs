@@ -244,17 +244,6 @@ pub(crate) async fn ensure_protocol_binary_installed(
     .await
 }
 
-#[cfg(test)]
-pub(crate) async fn ensure_protocol_binary_bundle_members_installed_transaction(
-    plan: &ProtocolBinaryInstallPlan,
-    members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],
-) -> Result<ProtocolBinaryInstall, String> {
-    ensure_protocol_binary_bundle_members_installed_transaction_with_binding(
-        plan, members, None, None,
-    )
-    .await
-}
-
 pub(crate) async fn ensure_protocol_binary_bound_bundle_members_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
     members: &[agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactBundleMemberSource<'_>],

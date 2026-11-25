@@ -17,6 +17,7 @@ fn digest(byte: char) -> String {
 }
 
 fn manifest() -> ProjectTopologyManifest {
+    crate::ensure_orgize_native_runtime();
     ProjectTopologyManifest::parse_org(include_str!(
         "../../../../org/templates/project.workspace-manifest.v1.org"
     ))

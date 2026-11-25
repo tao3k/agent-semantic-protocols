@@ -77,16 +77,6 @@ impl WorkspaceDbIpcSession {
         })
     }
 
-    pub(in crate::workspace_db_ipc) fn from_binding_with_profile(
-        endpoint: WorkspaceDbSessionBinding,
-        profile: WorkspaceDbSessionProfile,
-    ) -> Self {
-        Self {
-            endpoint,
-            shared: Self::new_state(profile),
-        }
-    }
-
     pub fn for_runtime_server(
         endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
         workspace_identity: impl Into<String>,

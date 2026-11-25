@@ -15,6 +15,7 @@ fn packet() -> Value {
 }
 
 fn admit(packet: Value) -> Result<ProjectTopologyLibrary, String> {
+    crate::ensure_orgize_native_runtime();
     let manifest = ProjectTopologyManifest::parse_org(include_str!(
         "../../../../org/templates/project.workspace-manifest.v1.org"
     ))

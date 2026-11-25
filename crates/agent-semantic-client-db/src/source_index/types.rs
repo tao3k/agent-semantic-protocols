@@ -145,7 +145,7 @@ source_index_value_type!(ClientDbSourceIndexStructuralSelector);
 source_index_value_type!(ClientDbSourceIndexSelectorPayloadKind);
 
 source_index_value_type!(
-/// Project-relative path retained by the ASP Server source index.
+    /// Project-relative path retained by the ASP Server source index.
     ClientDbSourceIndexPath
 );
 

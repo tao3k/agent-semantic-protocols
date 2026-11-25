@@ -17,7 +17,6 @@ mod source_index_candidate_types;
 mod source_index_facade;
 mod source_index_query_scoring;
 mod turso;
-use turso::connect_turso_client_db;
 mod turso_artifact;
 mod turso_artifact_graph;
 mod turso_batch;
@@ -62,7 +61,6 @@ pub use facade::{
 pub use runtime_observability::runtime_observability_database;
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
-pub(crate) use turso::shared_turso_database;
 pub(crate) use turso_source_index::{
     ClientDbActiveSourceIndexGenerationCandidate, active_turso_source_index_generation_candidate,
 };

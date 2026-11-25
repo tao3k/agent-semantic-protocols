@@ -38,6 +38,5 @@ mod search_config;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(crate) use dispatch::run_protocol_command_started;
-pub(in crate::command) use protocol_binary::ProtocolBinaryInstallPlan;
 pub(in crate::command) use protocol_version::protocol_version_line;
 pub(in crate::command) use protocol_version::run_protocol_version_command;

@@ -17,7 +17,6 @@ use agent_semantic_client_protocol::AspClientWorkspaceSyntaxQueryRequest;
 use agent_semantic_client_protocol::ClientProjectId;
 use agent_semantic_client_protocol::ClientRequestId;
 use agent_semantic_client_protocol::ClientResponsePayload;
-use agent_semantic_client_protocol::ClientSchemaId;
 use agent_semantic_client_protocol::ClientSessionId;
 use agent_semantic_client_protocol::ClientWorkspaceIdentity;
 use agent_semantic_client_protocol::GRAPH_TIMELINE_METHOD;

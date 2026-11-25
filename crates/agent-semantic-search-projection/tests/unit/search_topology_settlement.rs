@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 fn valid_settlement() -> serde_json::Value {
+    crate::ensure_orgize_native_runtime();
     serde_json::from_str(include_str!(
         "../../../../schemas/fixtures/search-topology-settlement/valid-derived-and-proposed.v1.json"
     ))
@@ -20,6 +21,7 @@ fn valid_settlement() -> serde_json::Value {
 }
 
 fn valid_library() -> ProjectTopologyLibrary {
+    crate::ensure_orgize_native_runtime();
     let packet: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../schemas/fixtures/project-topology-library/valid-polyglot.v1.json"
     ))
@@ -41,6 +43,7 @@ fn digest(byte: char) -> String {
 }
 
 async fn generated_v2_library_with_frontier() -> ProjectTopologyLibrary {
+    crate::ensure_orgize_native_runtime();
     let manifest = ProjectTopologyManifest::parse_org(include_str!(
         "../../../../org/templates/project.workspace-manifest.v1.org"
     ))

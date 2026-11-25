@@ -39,19 +39,19 @@ fn generic_client_runtime_does_not_embed_or_directly_depend_on_a_language_provid
         "generic workspace members must use the manifest-only policy path instead of compiling asp-rust"
     );
 
-    let hook_testkit_manifest: toml::Value = toml::from_str(include_str!(
-        "../../../agent-semantic-hook-testkit/Cargo.toml"
-    ))
-    .expect("Hook TestKit manifest");
-    let hook_testkit_policy =
-        hook_testkit_manifest["dependencies"]["asp-rust-project-harness-policy"]
-            .as_table()
-            .expect("Hook TestKit policy dependency");
-    assert_eq!(
-        hook_testkit_policy
-            .get("default-features")
-            .and_then(toml::Value::as_bool),
-        Some(false),
-        "the client dev graph must not regain asp-rust through Hook TestKit"
-    );
+    let workspace_members = workspace_manifest["workspace"]["members"]
+        .as_array()
+        .expect("workspace members");
+    for retired in [
+        "crates/agent-semantic-hook",
+        "crates/agent-semantic-hook-testkit",
+        "crates/agent-semantic-shell-parser",
+    ] {
+        assert!(
+            !workspace_members
+                .iter()
+                .any(|entry| entry.as_str() == Some(retired)),
+            "retired crate {retired} must not remain in workspace members"
+        );
+    }
 }

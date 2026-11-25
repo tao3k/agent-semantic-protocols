@@ -6,8 +6,6 @@
 
 use std::time::Duration;
 
-pub(crate) const TURSO_CLIENT_DB_BUSY_TIMEOUT_MS: u64 = 5_000;
-pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS: usize = 80;
 pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_BASE_MS: u64 = 5;
 pub(crate) const TURSO_CLIENT_DB_LOCK_RETRY_MAX_MS: u64 = 200;
 pub(crate) const TURSO_CLIENT_DB_STATEMENT_LOCK_RETRY_ATTEMPTS: usize = 80;

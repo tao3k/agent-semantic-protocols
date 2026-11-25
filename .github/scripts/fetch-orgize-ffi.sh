@@ -7,8 +7,14 @@ case "$revision" in
 esac
 [[ ${#revision} -eq 40 ]] || exit 1
 case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64) platform=Linux-X64; producer_job="test / ubuntu-latest / runtime-scheme" ;;
-  Darwin-arm64) platform=macOS-ARM64; producer_job="test / macos-26 / runtime-scheme" ;;
+  Linux-x86_64)
+    platform=Linux-X64
+    producer_job="qualify / ubuntu-latest / Rust tests / ubuntu-latest / runtime-scheme"
+    ;;
+  Darwin-arm64)
+    platform=macOS-ARM64
+    producer_job="qualify / macos-26 / Rust tests / macos-26 / runtime-scheme"
+    ;;
   *) echo 'No qualified Orgize FFI artifact for this platform' >&2; exit 1 ;;
 esac
 artifact="orgize-ffi-$revision-$platform"
