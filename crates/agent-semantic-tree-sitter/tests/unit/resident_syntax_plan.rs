@@ -14,7 +14,7 @@ const GENERATION_DIGEST: &str =
 
 fn rust_capability() -> EnhancedQueryCapabilityTable {
     serde_json::from_str(include_str!(
-        "../../../../languages/asp-rust/tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json"
+        "../fixtures/rust-enhanced-query-capabilities.v1.json"
     ))
     .expect("Rust enhanced Query capability table")
 }

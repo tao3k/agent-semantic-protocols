@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub const PROJECT_TOPOLOGY_STANDARD_PROGRAM_RESOURCE: &str =
-    "org/templates/asp/topology/program.v1.org";
+    "crates/agent-semantic-topology/resources/program.v1.org";
 
 const CONTRACT_NAME: &str = "program.v1.org";
 
@@ -84,10 +84,7 @@ impl ProjectTopologySourceProgram {
     pub fn standard_with_port(
         port: &dyn OrgDocumentProjectionPort,
     ) -> Result<Self, ProjectTopologySourceProgramError> {
-        Self::parse_with_port(
-            include_str!("../../../org/templates/asp/topology/program.v1.org"),
-            port,
-        )
+        Self::parse_with_port(include_str!("../resources/program.v1.org"), port)
     }
 
     /// Parse raw Org program source through a host-supplied [`OrgDocumentProjectionPort`].

@@ -1,0 +1,29 @@
+#+TITLE: ASP Native Topology Program v1
+#+AUTHOR: ASP Maintainers
+#+DATE: 2026-09-09
+#+FILETAGS: :asp:topology:mrr:ascent:
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../contracts/asp/topology/program.v1.org][asp.topology.program.v1]]
+:END:
+
+* Native Topology Program
+:PROPERTIES:
+:TOPOLOGY_PROGRAM_ID: mrr.topology.standard.v1
+:ENGINE_PROFILE: ascent-seminaive.v1
+:END:
+
+** Depends On Config
+:PROPERTIES:
+:RULE_ID: mrr.topology.domain.depends-on-config.v1
+:HEAD_RELATION: DEPENDS_ON_CONFIG
+:LEFT_RELATION: CALLS
+:RIGHT_RELATION: READS_CONFIG
+:JOIN: left.to=right.from
+:END:
+
+The rule keeps source relation identity intact:
+=CALLS(x,y) + READS_CONFIG(y,z) => DEPENDS_ON_CONFIG(x,z)=. Generic
+=TOPOLOGY_REACHABLE= remains a separate conclusion and cannot relabel this
+rule or either premise. The Org resource declares the reviewed rule; it does
+not authorize an Agent to write parser facts or promote inferred candidates.

@@ -1,0 +1,43 @@
+{
+  "schemaId": "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table",
+  "schemaVersion": "1",
+  "languageId": "rust",
+  "providerId": "asp-rust",
+  "parserAbi": {
+    "id": "asp-rust-syn-native-items",
+    "version": "asp-rust-0.1.2+syn-3.0.4",
+    "digest": "blake3-256:122dae5e98853c9a8a168a7ee9b558d64a200bf4c97516f51f7171293883a4ca"
+  },
+  "queryGrammar": {
+    "id": "tree-sitter-rust",
+    "version": "2026-06-04.v1",
+    "digest": "blake3-256:a5f7d55c6c3dbc57f442790e1d55868f6454f7d92393359fa61807b99b60ac98"
+  },
+  "operatorTableDigest": "blake3-256:e9f88db6f6cab915cad26739fd9c9da58e1dbd8e73b7e314adb08ff6fca45d2a",
+  "tableDigest": "blake3-256:49b5721c82bc2d9b15688e28442e78b19479b5d968cc56c0c810917ee1220e9f",
+  "rows": [
+    {"rowId":"rust.capture.item","kind":"capture-binding","sourceName":"item","publicationState":"runtime","lowering":{"residentFactPath":"selector","constraintKind":"capture"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.const-item","kind":"node-type","sourceName":"const_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"const"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.enum-item","kind":"node-type","sourceName":"enum_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"enum"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.function-item","kind":"node-type","sourceName":"function_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"function"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.impl-item","kind":"node-type","sourceName":"impl_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"impl"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.mod-item","kind":"node-type","sourceName":"mod_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"mod"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.static-item","kind":"node-type","sourceName":"static_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"static"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.struct-item","kind":"node-type","sourceName":"struct_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"struct"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.trait-item","kind":"node-type","sourceName":"trait_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"trait"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.type-item","kind":"node-type","sourceName":"type_item","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"type"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.use-declaration","kind":"node-type","sourceName":"use_declaration","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar","residentValue":"use"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.field.name","kind":"field","sourceName":"name","publicationState":"runtime","lowering":{"residentFactPath":"name","constraintKind":"scalar"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.fact.kind","kind":"fact-path","sourceName":"kind","publicationState":"runtime","lowering":{"residentFactPath":"kind","constraintKind":"scalar"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.fact.name","kind":"fact-path","sourceName":"name","publicationState":"runtime","lowering":{"residentFactPath":"name","constraintKind":"scalar"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.fact.selector","kind":"fact-path","sourceName":"selector","publicationState":"runtime","lowering":{"residentFactPath":"selector","constraintKind":"scalar"},"equivalenceEvidence":{"method":"native-parser-tree-sitter-differential-v1","corpusDigest":"blake3-256:d44f6ab7b8426640d3e400910c9745d5fdfc3c20f5bb3219560b5a5bc5de1973","receiptDigest":"blake3-256:2cd7fd4a2451386e2d6c2522cddded95ab475ab836ec15992d3e13f60a4e0bac"}},
+    {"rowId":"rust.node.macro-definition","kind":"node-type","sourceName":"macro_definition","publicationState":"provider-local"},
+    {"rowId":"rust.fact.byte-range","kind":"fact-path","sourceName":"byte-range","publicationState":"provider-local"},
+    {"rowId":"rust.fact.scopes-relation","kind":"fact-path","sourceName":"scopes.relation","publicationState":"provider-local"},
+    {"rowId":"rust.fact.scopes-kind","kind":"fact-path","sourceName":"scopes.kind","publicationState":"provider-local"},
+    {"rowId":"rust.fact.scopes-symbol","kind":"fact-path","sourceName":"scopes.symbol","publicationState":"provider-local"},
+    {"rowId":"rust.fact.query-keys","kind":"fact-path","sourceName":"queryKeys","publicationState":"provider-local"},
+    {"rowId":"rust.fact.projections-kind","kind":"fact-path","sourceName":"projections.kind","publicationState":"provider-local"},
+    {"rowId":"rust.fact.relations","kind":"fact-path","sourceName":"relations","publicationState":"provider-local"}
+  ]
+}
