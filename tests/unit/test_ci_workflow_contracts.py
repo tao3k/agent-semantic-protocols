@@ -45,8 +45,7 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "setup-uv" not in workflow
     assert "setup-node" not in workflow
     assert "download-artifact" not in workflow
-    assert "matrix.package == 'agent-semantic-provider-transport'" in workflow
-    assert "fd-find ripgrep" in workflow
+    assert "fd-find ripgrep" not in workflow
     assert "agent-semantic-hook" not in workflow
     assert "agent-semantic-hook-testkit" not in workflow
     assert "agent-semantic-shell-parser" not in workflow

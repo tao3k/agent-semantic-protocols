@@ -79,17 +79,18 @@ fn every_member_build_uses_the_shared_source_policy_crate() {
             std::fs::read_to_string(repository_root.join(policy.crate_root).join("Cargo.toml"))
                 .unwrap_or_else(|error| panic!("{} manifest: {error}", policy.package_name));
         assert!(
-            manifest.contains("[build-dependencies]")
-                && manifest.contains("asp-rust-project-harness-policy"),
-            "{} must share the Cargo Build Support unit",
+            manifest.contains("[dev-dependencies]") && manifest.contains("asp-rust"),
+            "{} must declare asp-rust strictly under [dev-dependencies]",
             policy.package_name
         );
-        let conventional_build = repository_root.join(policy.crate_root).join("build.rs");
-        let source = std::fs::read_to_string(&conventional_build)
-            .unwrap_or_else(|error| panic!("read {}: {error}", conventional_build.display()));
+        let policy_test = repository_root
+            .join(policy.crate_root)
+            .join("tests/unit/policy.rs");
+        let source = std::fs::read_to_string(&policy_test)
+            .unwrap_or_else(|error| panic!("read {}: {error}", policy_test.display()));
         assert!(
-            source.contains("assert_asp_rust_project_harness_member_policy_from_env"),
-            "{} must execute one package-local policy atom",
+            source.contains("asp_rust_cargo_test_gate!"),
+            "{} must mount asp_rust_cargo_test_gate! in tests/unit/policy.rs",
             policy.package_name
         );
     }
@@ -114,18 +115,17 @@ fn every_workspace_package_is_one_cargo_owned_policy_atom() {
         let manifest = std::fs::read_to_string(&manifest_path)
             .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()));
         assert!(
-            manifest.contains("[build-dependencies]")
-                && manifest.contains("asp-rust-project-harness-policy"),
-            "{} must participate in the shared Cargo policy DAG",
+            manifest.contains("[dev-dependencies]") && manifest.contains("asp-rust"),
+            "{} must declare asp-rust strictly under [dev-dependencies]",
             package.package_name
         );
 
-        let build_path = package.package_root.join("build.rs");
-        let build = std::fs::read_to_string(&build_path)
-            .unwrap_or_else(|error| panic!("read {}: {error}", build_path.display()));
+        let policy_test = package.package_root.join("tests/unit/policy.rs");
+        let source = std::fs::read_to_string(&policy_test)
+            .unwrap_or_else(|error| panic!("read {}: {error}", policy_test.display()));
         assert!(
-            build.contains("assert_asp_rust_project_harness_member_policy_from_env"),
-            "{} must run exactly one package-local policy atom",
+            source.contains("asp_rust_cargo_test_gate!"),
+            "{} must mount asp_rust_cargo_test_gate! in tests/unit/policy.rs",
             package.package_name
         );
     }

@@ -63,7 +63,7 @@ pub fn assert_asp_rust_project_harness_member_source_policy_from_env() -> asp_ru
         },
         |policy| policy.contract_digest(),
     );
-    let authority = asp_rust::AspRustBuildGateAuthority::new(
+    let authority = asp_rust::AspRustDevGateAuthority::new(
         cargo_build_gate_cache_root(&project_root, &out_dir)
             .unwrap_or_else(|error| panic!("derive ASP Rust member cache authority: {error}")),
         policy_digest,

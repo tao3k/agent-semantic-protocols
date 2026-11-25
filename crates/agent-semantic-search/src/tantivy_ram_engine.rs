@@ -35,7 +35,8 @@ pub(crate) struct TantivyRamEngine {
 impl TantivyRamEngine {
     pub(crate) fn build(docs: &[(u32, &str, &str)]) -> Option<Self> {
         let mut schema_builder = Schema::builder();
-        let file_id_field = schema_builder.add_u64_field("file_id", STORED | FAST);
+        let file_id_field =
+            schema_builder.add_u64_field("file_id", STORED | FAST | tantivy::schema::INDEXED);
         let title_field = schema_builder.add_text_field("title", TEXT);
         let body_field = schema_builder.add_text_field("body", TEXT);
         let schema = schema_builder.build();
@@ -69,6 +70,37 @@ impl TantivyRamEngine {
             title_field,
             body_field,
         })
+    }
+
+    pub(crate) fn apply_delta(
+        &mut self,
+        deleted_file_ids: &[u32],
+        added_docs: &[(u32, &str, &str)],
+    ) {
+        if deleted_file_ids.is_empty() && added_docs.is_empty() {
+            return;
+        }
+        let Ok(mut writer) = self
+            .index
+            .writer_with_num_threads(1, TANTIVY_WRITER_HEAP_BYTES)
+        else {
+            return;
+        };
+        for &fid in deleted_file_ids {
+            writer.delete_term(Term::from_field_u64(self.file_id_field, u64::from(fid)));
+        }
+        for &(file_id, path, body) in added_docs {
+            let title_tokens = normalize_code_tokens(path, 2048);
+            let body_tokens = normalize_code_tokens(body, MAX_INDEXED_BODY_TOKENS_BYTES);
+            let _ = writer.add_document(doc!(
+                self.file_id_field => u64::from(file_id),
+                self.title_field => title_tokens,
+                self.body_field => body_tokens,
+            ));
+        }
+        if writer.commit().is_ok() {
+            let _ = self.reader.reload();
+        }
     }
 
     pub(crate) fn search(

@@ -14,9 +14,7 @@ const FIXTURE_PATH: &str = "src/lib.rs";
 const FIXTURE_SOURCE: &[u8] = b"pub fn fixture() -> &'static str { \"source-index\" }\n";
 
 pub struct CanonicalTestSnapshot {
-    pub workspace: WorkspaceSnapshot,
     pub evidence: SourceSnapshotEvidence,
-    pub provider_digest: String,
     pub generation:
         agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1,
 }
@@ -25,7 +23,7 @@ pub fn canonical_test_snapshot() -> CanonicalTestSnapshot {
     let source_digest = hash_blob(FIXTURE_SOURCE).value;
     let provider_digest = hash_blob(rust_provider_manifest()).value;
     let workspace = WorkspaceSnapshot::from_file_hashes([(FIXTURE_PATH, source_digest)]);
-    let evidence = workspace.evidence(SourceSnapshotKind::Filesystem, provider_digest.clone());
+    let evidence = workspace.evidence(SourceSnapshotKind::Filesystem, provider_digest);
     let generation =
         agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
             agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
@@ -37,9 +35,7 @@ pub fn canonical_test_snapshot() -> CanonicalTestSnapshot {
         )
         .expect("canonical workspace generation");
     CanonicalTestSnapshot {
-        workspace,
         evidence,
-        provider_digest,
         generation,
     }
 }

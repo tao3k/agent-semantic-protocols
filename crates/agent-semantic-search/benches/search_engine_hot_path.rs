@@ -17,8 +17,8 @@ use std::time::Duration;
 use agent_semantic_search::{
     InMemorySearchStoragePort, MarlinConvergedSearchEngine, SearchGenerationDigest,
     SearchProjectId, SearchTopologyEdgeId, SearchTopologyEdgeRecord, SearchWorkspaceId,
-    SourceIndexRankCandidate, SourceIndexRankRequest, WorkspaceIndexConfig, WorkspaceSearchIndex,
-    WorkspaceSearchQuery, analyze_native_rg_argv, analyze_tantivy_query,
+    SourceIndexRankCandidate, SourceIndexRankRequest, WorkspaceFileDelta, WorkspaceIndexConfig,
+    WorkspaceSearchIndex, WorkspaceSearchQuery, analyze_native_rg_argv, analyze_tantivy_query,
 };
 use agent_semantic_search_playbook::{
     GraphNativeBlock, SearchPlaybookComposition, SearchPlaybookLeaf, SearchPlaybookPlanInput,
@@ -390,6 +390,86 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
             let report = index.query(black_box(&query));
             assert!(report.matched_files >= 1);
             black_box(report);
+        });
+    });
+
+    group.bench_function("tgrep_hir_alternation_regex", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: "re:(WorkspaceSearchIndex|FileLocatorIndex|TantivyRamEngine)",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 3,
+        };
+        bencher.iter(|| {
+            let report = index.query(black_box(&query));
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+
+    let snap_dir = tempfile::tempdir().expect("bench tempdir");
+    let snap_path = snap_dir.path().join("asp.tgrep.bin");
+    index
+        .save_snapshot(&snap_path)
+        .expect("save bench snapshot");
+    let mmap_index = WorkspaceSearchIndex::load_mmap_snapshot(
+        repo_root.to_path_buf(),
+        &snap_path,
+        WorkspaceIndexConfig {
+            enable_tantivy: false,
+            ..WorkspaceIndexConfig::default()
+        },
+    )
+    .expect("load mmap bench snapshot");
+
+    group.bench_function("tgrep_mmap_backed_alternation_query", |bencher| {
+        let query = WorkspaceSearchQuery {
+            pattern: "re:(WorkspaceSearchIndex|FileLocatorIndex|TantivyRamEngine)",
+            languages: &rust_lang,
+            documents: &[],
+            path_prefix: Some("crates/"),
+            extension: None,
+            max_hits: 32,
+            context_radius: 3,
+        };
+        bencher.iter(|| {
+            let report = mmap_index.query(black_box(&query));
+            assert!(report.matched_files >= 1);
+            black_box(report);
+        });
+    });
+
+    let mut delta_index = WorkspaceSearchIndex::build_with_config(
+        repo_root,
+        WorkspaceIndexConfig {
+            skip_dirs: vec![
+                "target".into(),
+                ".git".into(),
+                "node_modules".into(),
+                ".devenv".into(),
+            ],
+            enable_tantivy: false,
+            enable_file_locator: false,
+            ..WorkspaceIndexConfig::default()
+        },
+    );
+    let mut counter = 0usize;
+    group.bench_function("tgrep_incremental_single_file_delta", |bencher| {
+        bencher.iter(|| {
+            counter = counter.wrapping_add(1);
+            let body =
+                format!("pub fn hot_edit_{counter}() -> usize {{ {counter} }}\n").into_bytes();
+            let receipt = delta_index.apply_file_delta(WorkspaceFileDelta {
+                upserts: vec![(
+                    "crates/agent-semantic-search/src/hot_bench.rs".to_owned(),
+                    body,
+                )],
+                deletes: Vec::new(),
+            });
+            black_box(receipt);
         });
     });
 

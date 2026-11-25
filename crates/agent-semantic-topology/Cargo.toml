@@ -20,14 +20,13 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+asp-rust.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 
-[build-dependencies]
-# Topology Index is a latency-sensitive Style-policy atom. This package runs
-# ASP Rust at its build boundary; Runtime and Search consume typed output.
-asp-rust.workspace = true
-asp-rust-project-harness-policy.workspace = true
-
 [lints]
 workspace = true
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"

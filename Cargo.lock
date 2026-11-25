@@ -9,7 +9,7 @@ dependencies = [
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-provider-protocol",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "fs2",
  "libc",
@@ -25,7 +25,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-content-identity",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "serde",
  "serde_json",
@@ -35,7 +35,7 @@ dependencies = [
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "serde",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
@@ -45,7 +45,7 @@ dependencies = [
 name = "agent-semantic-content-identity"
 version = "0.1.0"
 dependencies = [
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "base64 0.22.1",
  "blake3",
  "serde",
@@ -57,7 +57,7 @@ dependencies = [
 name = "agent-semantic-http-json"
 version = "0.1.0"
 dependencies = [
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "bytes",
  "http-body-util",
  "hyper",
@@ -72,7 +72,7 @@ name = "agent-semantic-mrr"
 version = "0.1.0"
 dependencies = [
  "ascent",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "gql-catalog",
  "gql-compiler",
@@ -90,7 +90,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-config",
  "agent-semantic-schema-manager",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "serde",
  "serde_json",
  "toml 0.9.12+spec-1.1.0",
@@ -103,18 +103,14 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-http-json",
  "agent-semantic-provider-protocol",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "base64 0.22.1",
  "bstr",
  "bytes",
  "criterion",
  "futures-util",
- "hyper-util",
- "ignore",
  "libc",
  "memchr",
- "prost",
- "protoc-bin-vendored",
  "reqwest",
  "serde",
  "serde_json",
@@ -122,10 +118,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tower",
  "tracing",
 ]
 
@@ -136,7 +128,7 @@ dependencies = [
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-workspace-scheduler",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "gix",
  "serde",
  "serde_json",
@@ -148,18 +140,12 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
- "agent-semantic-client-protocol",
- "agent-semantic-config",
  "agent-semantic-content-identity",
- "agent-semantic-mrr",
  "agent-semantic-provider-protocol",
  "agent-semantic-search-playbook",
- "agent-semantic-search-projection",
  "agent-semantic-topology",
- "agent-semantic-tree-sitter",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
- "bytes",
  "criterion",
  "globset",
  "ignore",
@@ -171,20 +157,15 @@ dependencies = [
  "rustc-hash 2.1.2",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tantivy",
  "tempfile",
- "tokio",
- "tokio-stream",
- "toml 0.9.12+spec-1.1.0",
- "which",
 ]
 
 [[package]]
 name = "agent-semantic-search-playbook"
 version = "0.1.0"
 dependencies = [
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "serde",
  "tantivy-query-grammar",
@@ -197,7 +178,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-topology",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "jsonschema",
  "rustc-hash 2.1.2",
@@ -213,8 +194,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-mrr",
  "agent-semantic-workspace-scheduler",
- "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "globset",
  "serde",
@@ -230,8 +210,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-protocol",
  "agent-semantic-provider-protocol",
- "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
- "asp-rust-project-harness-policy",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "base64 0.23.1",
  "blake3",
  "regex-automata",
@@ -244,6 +223,7 @@ dependencies = [
 name = "agent-semantic-workspace-scheduler"
 version = "0.1.0"
 dependencies = [
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "asp-rust-project-harness-policy",
  "libc",
  "serde",
@@ -345,12 +325,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.103"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
-
-[[package]]
 name = "arc-swap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,9 +392,9 @@ dependencies = [
 [[package]]
 name = "asp-rust"
 version = "0.1.2"
-source = "git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9#7a659352c0497823b7492fd1c717f451cfbe0be9"
+source = "git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924#1ca41124b846dec947f3d05119cafa07eaa57924"
 dependencies = [
- "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "cargo_toml",
  "globset",
@@ -461,7 +435,7 @@ dependencies = [
 [[package]]
 name = "asp-rust-build-support"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9#7a659352c0497823b7492fd1c717f451cfbe0be9"
+source = "git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924#1ca41124b846dec947f3d05119cafa07eaa57924"
 dependencies = [
  "blake3",
 ]
@@ -478,8 +452,8 @@ dependencies = [
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 dependencies = [
- "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
- "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=1ca41124b846dec947f3d05119cafa07eaa57924)",
  "blake3",
  "criterion",
  "serde",
@@ -508,49 +482,6 @@ name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
-
-[[package]]
-name = "axum"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
-dependencies = [
- "axum-core",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "itoa",
- "matchit",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "serde_core",
- "sync_wrapper",
- "tower",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
-dependencies = [
- "bytes",
- "futures-core",
- "http",
- "http-body",
- "http-body-util",
- "mime",
- "pin-project-lite",
- "sync_wrapper",
- "tower-layer",
- "tower-service",
-]
 
 [[package]]
 name = "base64"
@@ -2621,19 +2552,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-timeout"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
-dependencies = [
- "hyper",
- "hyper-util",
- "pin-project-lite",
- "tokio",
- "tower-service",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3024,12 +2942,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
 
 [[package]]
-name = "matchit"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
-
-[[package]]
 name = "maybe-async"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3110,12 +3022,6 @@ name = "micromap"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a86d3146ed3995b5913c414f6664344b9617457320782e64f0bb44afd49d74"
-
-[[package]]
-name = "mime"
-version = "0.3.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "minimal-lexical"
@@ -3417,12 +3323,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "multimap"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
-
-[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3640,26 +3540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pin-project"
-version = "1.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3765,143 +3645,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf52d87428247c5aa3760ac8e7d8b13ec7b3579b955a8c3f311668b6860acba5"
 dependencies = [
  "parking_lot",
-]
-
-[[package]]
-name = "prost"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
-dependencies = [
- "bytes",
- "prost-derive",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
-dependencies = [
- "heck",
- "itertools 0.14.0",
- "log",
- "multimap",
- "petgraph",
- "prettyplease",
- "prost",
- "prost-types",
- "pulldown-cmark",
- "pulldown-cmark-to-cmark",
- "regex",
- "syn 2.0.118",
- "tempfile",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
-dependencies = [
- "anyhow",
- "itertools 0.14.0",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "prost-types"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
-dependencies = [
- "prost",
-]
-
-[[package]]
-name = "protoc-bin-vendored"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1c381df33c98266b5f08186583660090a4ffa0889e76c7e9a5e175f645a67fa"
-dependencies = [
- "protoc-bin-vendored-linux-aarch_64",
- "protoc-bin-vendored-linux-ppcle_64",
- "protoc-bin-vendored-linux-s390_64",
- "protoc-bin-vendored-linux-x86_32",
- "protoc-bin-vendored-linux-x86_64",
- "protoc-bin-vendored-macos-aarch_64",
- "protoc-bin-vendored-macos-x86_64",
- "protoc-bin-vendored-win32",
-]
-
-[[package]]
-name = "protoc-bin-vendored-linux-aarch_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c350df4d49b5b9e3ca79f7e646fde2377b199e13cfa87320308397e1f37e1a4c"
-
-[[package]]
-name = "protoc-bin-vendored-linux-ppcle_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a55a63e6c7244f19b5c6393f025017eb5d793fd5467823a099740a7a4222440c"
-
-[[package]]
-name = "protoc-bin-vendored-linux-s390_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dba5565db4288e935d5330a07c264a4ee8e4a5b4a4e6f4e83fad824cc32f3b0"
-
-[[package]]
-name = "protoc-bin-vendored-linux-x86_32"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8854774b24ee28b7868cd71dccaae8e02a2365e67a4a87a6cd11ee6cdbdf9cf5"
-
-[[package]]
-name = "protoc-bin-vendored-linux-x86_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b38b07546580df720fa464ce124c4b03630a6fb83e05c336fea2a241df7e5d78"
-
-[[package]]
-name = "protoc-bin-vendored-macos-aarch_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89278a9926ce312e51f1d999fee8825d324d603213344a9a706daa009f1d8092"
-
-[[package]]
-name = "protoc-bin-vendored-macos-x86_64"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81745feda7ccfb9471d7a4de888f0652e806d5795b61480605d4943176299756"
-
-[[package]]
-name = "protoc-bin-vendored-win32"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
-
-[[package]]
-name = "pulldown-cmark"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
-dependencies = [
- "bitflags 2.13.0",
- "memchr",
- "unicase",
-]
-
-[[package]]
-name = "pulldown-cmark-to-cmark"
-version = "22.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab1ad36992cead65f02aa399a373a42730922f1525d988172634fdefdecb8a60"
-dependencies = [
- "pulldown-cmark",
 ]
 
 [[package]]
@@ -4751,74 +4494,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
-name = "tonic"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef"
-dependencies = [
- "async-trait",
- "axum",
- "base64 0.22.1",
- "bytes",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-timeout",
- "hyper-util",
- "percent-encoding",
- "pin-project",
- "socket2",
- "sync_wrapper",
- "tokio",
- "tokio-stream",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "tonic-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c68f61875ac5293cf72e6c8cf0158086428c82c37229e98c840878f1706b0322"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "tonic-prost"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50849f68853be452acf590cde0b146665b8d507b3b8af17261df47e02c209ea0"
-dependencies = [
- "bytes",
- "prost",
- "tonic",
-]
-
-[[package]]
-name = "tonic-prost-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "prost-build",
- "prost-types",
- "quote",
- "syn 2.0.118",
- "tempfile",
- "tonic-build",
-]
-
-[[package]]
 name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4826,15 +4501,11 @@ checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
 dependencies = [
  "futures-core",
  "futures-util",
- "indexmap",
  "pin-project-lite",
- "slab",
  "sync_wrapper",
  "tokio",
- "tokio-util",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -4969,12 +4640,6 @@ dependencies = [
  "quote",
  "syn 2.0.118",
 ]
-
-[[package]]
-name = "unicase"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-bom"
@@ -5174,15 +4839,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "which"
-version = "8.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48d7cd18d4acb58fb3cdfe9ea54e6cd96a4e7d4cc45c56338b236e82dad47248"
-dependencies = [
- "libc",
 ]
 
 [[package]]

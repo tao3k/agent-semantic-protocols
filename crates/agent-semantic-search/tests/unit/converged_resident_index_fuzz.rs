@@ -19,10 +19,14 @@
 //!    ASP `FileLocatorIndex` + fuzzy subsequence path, Tantivy BM25, and typo-tolerant
 //!    `FuzzyTermQuery` over ASP's real repository.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use agent_semantic_search::{WorkspaceIndexConfig, WorkspaceSearchIndex, WorkspaceSearchQuery};
+use agent_semantic_search::{
+    TrigramQuery, TrigramSnapshotError, WorkspaceFileDelta, WorkspaceIndexConfig,
+    WorkspaceSearchIndex, WorkspaceSearchQuery, compile_regex_trigram_query,
+};
+use regex::RegexBuilder;
 
 struct SplitMix64(u64);
 
@@ -410,4 +414,395 @@ fn real_asp_repo_four_axis_converged_engine_verifies_rg_regex_fuzzy_and_bm25() {
         "expected Tantivy FuzzyTermQuery hit for typo `playbok`, got {:?}",
         typo.hits
     );
+}
+
+#[test]
+fn pbt_hir_regex_trigram_query_plan_zero_false_negatives_and_pruning() {
+    let mut rng = SplitMix64::new(0xA590_0004);
+    let corpus = generate_random_corpus(&mut rng, 48);
+    // Include Unicode case-folding edge cases (`ſ` U+017F folds with `s`; `K` U+212A folds with `k`).
+    let mut files: Vec<(String, String)> = corpus;
+    files.push((
+        "crates/core/src/unicode_fold.rs".to_owned(),
+        "pub fn \u{017f}earch_engine() {}\npub fn \u{212a}ey_lookup() {}\n".to_owned(),
+    ));
+
+    let cfg = WorkspaceIndexConfig {
+        enable_tantivy: false,
+        enable_file_locator: false,
+        enable_rg_regex: true,
+        ..WorkspaceIndexConfig::default()
+    };
+    let index = WorkspaceSearchIndex::build_from_memory(
+        PathBuf::from("/virtual/hir-pbt"),
+        files
+            .iter()
+            .map(|(p, b)| (p.clone(), b.as_bytes().to_vec())),
+        cfg,
+    );
+
+    // Extract real tokens from corpus to build diverse regexes.
+    let mut pool: Vec<String> = Vec::new();
+    for (_, body) in &files {
+        for tok in body
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .filter(|t| t.len() >= 4)
+        {
+            if pool.len() < 120 {
+                pool.push(tok.to_owned());
+            }
+        }
+    }
+
+    let mut patterns: Vec<String> = vec![
+        "search_engine".to_owned(),
+        "key_lookup".to_owned(),
+        format!("({}|{})", pool[0], pool[1]),
+        format!("({}|{}|{})", pool[2], pool[3], pool[4]),
+        format!("fn\\s+({}|{})", pool[5], pool[6]),
+        format!("({}|{})_0", &pool[0][..4], &pool[1][..4]),
+        format!("{}.*->\\s+\\w+", pool[7]),
+        format!("{}[a-c]?.*", &pool[8][..4]),
+        format!("(?:{})+", pool[9]),
+        "^[a-z]+_0".to_owned(),
+    ];
+
+    for _ in 0..390 {
+        let a = &pool[rng.range(pool.len())];
+        let b = &pool[rng.range(pool.len())];
+        let c = &pool[rng.range(pool.len())];
+        let pat = match rng.range(6) {
+            0 => format!("({a}|{b})"),
+            1 => format!("({a}|{b}|{c})"),
+            2 => format!("{a}.*{b}"),
+            3 => format!("({a}|{b}).*\\w+"),
+            4 => format!("(?:{a})+(?:{b})?"),
+            _ => format!("{}[a-z0-9_]*{}", &a[..3.min(a.len())], &b[..3.min(b.len())]),
+        };
+        patterns.push(pat);
+    }
+
+    // Verify alternation actually compiles to Or (not All!) and prunes unrelated files.
+    let alt_expr = format!("({}|{})", pool[0], pool[1]);
+    let (alt_plan, alt_cands) = index.plan_regex_candidates(&alt_expr);
+    assert!(
+        !matches!(alt_plan, TrigramQuery::All),
+        "alternation `{alt_expr}` must not relax to TrigramQuery::All; got {alt_plan:?}"
+    );
+    assert!(
+        alt_cands.len() < index.file_count() / 2,
+        "alternation `{alt_expr}` should prune most unrelated files: cands={}, total={}",
+        alt_cands.len(),
+        index.file_count()
+    );
+
+    // Prove ZERO False Negatives across all 400 regexes against full-corpus reference scan.
+    for expr in &patterns {
+        let ci = !expr.chars().any(char::is_uppercase);
+        let re = RegexBuilder::new(expr)
+            .case_insensitive(ci)
+            .build()
+            .expect("valid test regex");
+
+        let expected: BTreeSet<&str> = files
+            .iter()
+            .filter(|(p, b)| re.is_match(p) || re.is_match(b))
+            .map(|(p, _)| p.as_str())
+            .collect();
+
+        let report = index.query(&WorkspaceSearchQuery {
+            pattern: &format!("re:{expr}"),
+            languages: &[],
+            documents: &[],
+            path_prefix: None,
+            extension: None,
+            max_hits: files.len() + 4,
+            context_radius: 1,
+        });
+        let actual: BTreeSet<&str> = report.hits.iter().map(|h| h.path.as_str()).collect();
+        if let Some(missing) = expected.difference(&actual).next() {
+            panic!(
+                "HIR TRIGRAM FALSE NEGATIVE for `{expr}` (plan={:?}): missed `{missing}`",
+                compile_regex_trigram_query(expr, ci)
+            );
+        }
+    }
+}
+
+#[test]
+fn pbt_loc_mask_and_next_mask_prune_misaligned_decoys_with_zero_false_negatives() {
+    let needle = "alpha_beta_gamma";
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+
+    // 8 true-positive files placing `needle` at every offset mod 8 (0..8).
+    for pad in 0..8usize {
+        let prefix = ".".repeat(pad);
+        files.push((
+            format!("src/true_mod_{pad}.rs"),
+            format!("{prefix}{needle}\n").into_bytes(),
+        ));
+    }
+
+    // 24 decoy files containing every trigram of `needle` scattered and misaligned so
+    // naive trigram-set intersection would include all 24, whereas `loc_mask` + `next_mask`
+    // rejects them before touching file bytes!
+    for decoy in 0..24usize {
+        let mut scattered = String::new();
+        for (i, win) in needle.as_bytes().windows(3).enumerate() {
+            let tri = std::str::from_utf8(win).expect("ascii");
+            // Separate each trigram with padding so neither adjacency nor next_byte aligns.
+            scattered.push_str(&format!("zzz{i}_{tri}###"));
+        }
+        files.push((format!("src/decoy_{decoy:02}.rs"), scattered.into_bytes()));
+    }
+
+    let cfg = WorkspaceIndexConfig {
+        enable_tantivy: false,
+        enable_file_locator: false,
+        enable_rg_regex: false,
+        ..WorkspaceIndexConfig::default()
+    };
+    let index =
+        WorkspaceSearchIndex::build_from_memory(PathBuf::from("/virtual/loc-mask"), files, cfg);
+
+    let report = index.query(&WorkspaceSearchQuery {
+        pattern: needle,
+        languages: &[],
+        documents: &[],
+        path_prefix: None,
+        extension: None,
+        max_hits: 64,
+        context_radius: 1,
+    });
+
+    assert_eq!(
+        report.matched_files, 8,
+        "all 8 mod-8 alignments must be recalled"
+    );
+    assert!(
+        report.candidate_files < 16,
+        "loc_mask + next_mask should prune scattered decoys (candidates={}, expected < 16)",
+        report.candidate_files
+    );
+}
+
+#[test]
+fn pbt_incremental_file_delta_matches_full_rebuild_digest_and_queries() {
+    let mut rng = SplitMix64::new(0xA590_0005);
+    let initial = generate_random_corpus(&mut rng, 20);
+    let mut truth: BTreeMap<String, Vec<u8>> = initial
+        .iter()
+        .map(|(p, b)| (p.clone(), b.as_bytes().to_vec()))
+        .collect();
+
+    let cfg = WorkspaceIndexConfig::default();
+    let mut live_index = WorkspaceSearchIndex::build_from_memory(
+        PathBuf::from("/virtual/delta"),
+        truth.iter().map(|(p, b)| (p.clone(), b.clone())),
+        cfg.clone(),
+    );
+
+    for step in 0..50usize {
+        let mut delta = WorkspaceFileDelta::default();
+        let existing_paths: Vec<String> = truth.keys().cloned().collect();
+
+        // Randomly delete 0..=2 files
+        let del_n = rng.range(3).min(existing_paths.len());
+        for _ in 0..del_n {
+            let p = existing_paths[rng.range(existing_paths.len())].clone();
+            truth.remove(&p);
+            delta.deletes.push(p);
+        }
+
+        // Randomly modify 1..=2 existing files and add 1 new file
+        if !existing_paths.is_empty() {
+            let mod_p = existing_paths[rng.range(existing_paths.len())].clone();
+            let new_body =
+                format!("pub fn mutated_step_{step}() {{ let tok = \"delta_token_{step}\"; }}\n")
+                    .into_bytes();
+            truth.insert(mod_p.clone(), new_body.clone());
+            delta.upserts.push((mod_p, new_body));
+        }
+        let added_p = format!("crates/delta/src/step_{step:02}.rs");
+        let added_body =
+            format!("pub fn added_step_{step}() {{ let unique = \"fresh_marker_{step}\"; }}\n")
+                .into_bytes();
+        truth.insert(added_p.clone(), added_body.clone());
+        delta.upserts.push((added_p, added_body));
+
+        let receipt = live_index.apply_file_delta(delta);
+        let rebuilt = WorkspaceSearchIndex::build_from_memory(
+            PathBuf::from("/virtual/delta"),
+            truth.iter().map(|(p, b)| (p.clone(), b.clone())),
+            cfg.clone(),
+        );
+
+        assert_eq!(
+            receipt.generation_digest,
+            *rebuilt.generation_digest(),
+            "step={step}: incremental delta digest diverged from full rebuild"
+        );
+        assert_eq!(live_index.file_count(), rebuilt.file_count());
+
+        // Compare literal + regex alternation queries between incremental and full rebuild.
+        for q_str in [
+            format!("fresh_marker_{step}"),
+            format!("re:(mutated_step_{step}|added_step_{step})"),
+        ] {
+            let q = WorkspaceSearchQuery {
+                pattern: &q_str,
+                languages: &[],
+                documents: &[],
+                path_prefix: None,
+                extension: None,
+                max_hits: 32,
+                context_radius: 2,
+            };
+            let inc_paths: Vec<String> = live_index
+                .query(&q)
+                .hits
+                .into_iter()
+                .map(|h| h.path)
+                .collect();
+            let full_paths: Vec<String> =
+                rebuilt.query(&q).hits.into_iter().map(|h| h.path).collect();
+            assert_eq!(
+                inc_paths, full_paths,
+                "step={step} query=`{q_str}`: incremental results diverged from full rebuild"
+            );
+        }
+    }
+}
+
+#[test]
+fn adversarial_fuzz_mmap_and_binary_snapshot_corruption_never_panics() {
+    let mut rng = SplitMix64::new(0xA590_0006);
+    let corpus = generate_random_corpus(&mut rng, 18);
+    let cfg = WorkspaceIndexConfig::default();
+    let original = WorkspaceSearchIndex::build_from_memory(
+        PathBuf::from("/virtual/snap"),
+        corpus
+            .iter()
+            .map(|(p, b)| (p.clone(), b.as_bytes().to_vec())),
+        cfg.clone(),
+    );
+
+    // 1. Round-trip through zero-copy mmap snapshot on disk.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let snap_path = tmp.path().join("workspace.tgrep.bin");
+    original.save_snapshot(&snap_path).expect("save snapshot");
+    let mmap_index = WorkspaceSearchIndex::load_mmap_snapshot(
+        PathBuf::from("/virtual/snap"),
+        &snap_path,
+        cfg.clone(),
+    )
+    .expect("load mmap snapshot");
+    assert!(mmap_index.is_mmap_backed());
+    assert_eq!(mmap_index.generation_digest(), original.generation_digest());
+    assert_eq!(mmap_index.file_count(), original.file_count());
+    assert_eq!(
+        mmap_index.unique_trigram_count(),
+        original.unique_trigram_count()
+    );
+    assert_eq!(
+        mmap_index.base_posting_count(),
+        original.base_posting_count()
+    );
+
+    // Verify mmap-backed index serves identical literal and regex queries.
+    let sample_tok = corpus[0]
+        .1
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .find(|t| t.len() >= 5)
+        .expect("sample token");
+    for pat in [sample_tok.to_owned(), format!("re:({sample_tok}|fn)")] {
+        let q = WorkspaceSearchQuery {
+            pattern: &pat,
+            languages: &[],
+            documents: &[],
+            path_prefix: None,
+            extension: None,
+            max_hits: 32,
+            context_radius: 2,
+        };
+        assert_eq!(original.query(&q).hits, mmap_index.query(&q).hits);
+    }
+
+    // 2. Adversarial corruption fuzzing (truncation, bit-flips, forged BLAKE3 with bad layout).
+    let valid_bytes = original.encode_snapshot_bytes();
+    let decoded = WorkspaceSearchIndex::decode_snapshot_bytes(
+        PathBuf::from("/virtual/snap"),
+        &valid_bytes,
+        cfg.clone(),
+    )
+    .expect("decode valid bytes");
+    assert_eq!(decoded.generation_digest(), original.generation_digest());
+
+    // Every header truncation 0..80 must fail cleanly.
+    for cut in 0..80 {
+        assert!(matches!(
+            WorkspaceSearchIndex::decode_snapshot_bytes(
+                PathBuf::from("/virtual/snap"),
+                &valid_bytes[..cut],
+                cfg.clone(),
+            ),
+            Err(TrigramSnapshotError::Truncated(_))
+        ));
+    }
+
+    // Bad magic & bad version
+    let mut bad_magic = valid_bytes.clone();
+    bad_magic[0] ^= 0xFF;
+    assert!(matches!(
+        WorkspaceSearchIndex::decode_snapshot_bytes(
+            PathBuf::from("/virtual/snap"),
+            &bad_magic,
+            cfg.clone(),
+        ),
+        Err(TrigramSnapshotError::InvalidMagic)
+    ));
+
+    let mut bad_ver = valid_bytes.clone();
+    bad_ver[8..12].copy_from_slice(&99u32.to_le_bytes());
+    assert!(matches!(
+        WorkspaceSearchIndex::decode_snapshot_bytes(
+            PathBuf::from("/virtual/snap"),
+            &bad_ver,
+            cfg.clone(),
+        ),
+        Err(TrigramSnapshotError::UnsupportedVersion(99))
+    ));
+
+    // 500 random single-byte bit flips and random truncations across the full blob.
+    for _ in 0..500 {
+        let mut mutated = valid_bytes.clone();
+        match rng.range(3) {
+            0 => {
+                // Flip a byte in payload -> must fail checksum
+                let pos = 80 + rng.range(mutated.len().saturating_sub(80).max(1));
+                if pos < mutated.len() {
+                    mutated[pos] ^= 1u8 << (rng.range(8) as u8);
+                }
+            }
+            1 => {
+                // Random truncation
+                let cut = rng.range(mutated.len());
+                mutated.truncate(cut);
+            }
+            _ => {
+                // Corrupt layout AND re-sign BLAKE3 so structural validators are hammered!
+                let field_idx = rng.range(3);
+                let off = 24 + field_idx * 8;
+                mutated[off..off + 8].copy_from_slice(&(rng.next_u64() % 1_000_000).to_le_bytes());
+                let forged_hash = *blake3::hash(&mutated[80..]).as_bytes();
+                mutated[48..80].copy_from_slice(&forged_hash);
+            }
+        }
+        let res = WorkspaceSearchIndex::decode_snapshot_bytes(
+            PathBuf::from("/virtual/snap"),
+            &mutated,
+            cfg.clone(),
+        );
+        assert!(res.is_err(), "corrupted snapshot unexpectedly succeeded");
+    }
 }
