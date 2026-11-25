@@ -1,0 +1,129 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+# Declarative external provider & analyzer package manifest for ASP.
+# Replaces `.gitmodules` so Rust/Cargo consumers (e.g. Marlin) never clone
+# unrelated external language providers or private analyzers during `cargo build`.
+#
+# Usage:
+#   cargo run -p agent-semantic-schema-manager -- providers sync --workspace . --profile core
+#   cargo run -p agent-semantic-schema-manager -- providers status --workspace . --profile all
+#   cargo run -p agent-semantic-schema-manager -- providers link-local --workspace . --profile core --ghq-root "$HOME/ghq"
+#   cargo run -p agent-semantic-schema-manager -- providers lock --workspace . --profile core
+
+schema_version = 1
+
+[profiles]
+core = [
+    "asp-rust",
+    "asp-typescript",
+    "asp-python",
+    "asp-julia",
+    "asp-gerbil-scheme",
+]
+analyzers = [
+    "wendao-graph",
+    "science-research",
+    "asp-graphs-search",
+]
+docs = [
+    "org",
+]
+all = [
+    "asp-rust",
+    "asp-typescript",
+    "asp-python",
+    "asp-julia",
+    "asp-gerbil-scheme",
+    "wendao-graph",
+    "science-research",
+    "asp-graphs-search",
+    "org",
+]
+
+[packages.asp-rust]
+kind = "language-provider"
+language = "rust"
+repo = "https://github.com/tao3k/asp-rust"
+rev = "7a659352c0497823b7492fd1c717f451cfbe0be9"
+path = "languages/asp-rust"
+transport = "native-or-grpc"
+visibility = "public"
+optional = false
+
+[packages.asp-typescript]
+kind = "language-provider"
+language = "typescript"
+repo = "https://github.com/tao3k/asp-typescript"
+rev = "bfbb5c2bb4120502e2cf0b20a04c2ad2bfbe73a2"
+path = "languages/asp-typescript"
+transport = "grpc"
+visibility = "public"
+optional = false
+
+[packages.asp-python]
+kind = "language-provider"
+language = "python"
+repo = "https://github.com/tao3k/asp-python"
+rev = "ac36e4aa19a420ffd2c016d23ef522c01295f6f9"
+path = "languages/asp-python"
+transport = "grpc"
+visibility = "public"
+optional = false
+
+[packages.asp-julia]
+kind = "language-provider"
+language = "julia"
+repo = "https://github.com/JuliaCN/AspJulia.jl"
+rev = "09de5c5d467064a3da3d566c4aa17e722148ca03"
+path = "languages/AspJulia.jl"
+transport = "grpc"
+visibility = "public"
+optional = false
+
+[packages.asp-gerbil-scheme]
+kind = "language-provider"
+language = "gerbil-scheme"
+repo = "https://github.com/tao3k/asp-gerbil-scheme"
+rev = "998e08dbc7ee42fc437c012f4676a60b0536ba5f"
+path = "languages/asp-gerbil-scheme"
+transport = "grpc"
+visibility = "public"
+optional = false
+
+[packages.wendao-graph]
+kind = "analyzer"
+repo = "https://github.com/tao3k/WendaoGraph.jl"
+rev = "ff07e69b9119987f57e4250758c93d40a36ed3e2"
+path = "analyzers/WendaoGraph.jl"
+transport = "local-library"
+visibility = "private"
+optional = true
+
+[packages.science-research]
+kind = "analyzer"
+repo = "https://github.com/tao3k/ScienceResearch.jl"
+rev = "e8016f84189fc6e376f374c2582c81db32add9f8"
+path = "analyzers/ScienceResearch.jl"
+transport = "local-library"
+visibility = "public"
+optional = true
+
+[packages.asp-graphs-search]
+kind = "analyzer"
+repo = "https://github.com/tao3k/AspGraphsSearch.jl"
+rev = "382a1f8f17eb0387d0f3f65fb75bb416444bc86a"
+path = "analyzers/AspGraphsSearch.jl"
+transport = "local-library"
+visibility = "public"
+optional = true
+
+[packages.org]
+kind = "docs"
+repo = "https://github.com/tao3k/org"
+rev = "acb8e084d18fd3871700e6e4e14dd462ef47d28c"
+path = "org"
+transport = "docs"
+visibility = "public"
+optional = true

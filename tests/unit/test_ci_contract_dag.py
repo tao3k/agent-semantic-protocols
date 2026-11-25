@@ -25,8 +25,8 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
         "  catalog-provider-gates:", 1,
     )[0]
     assert "languages/asp-python" in python_provider
+    assert "providers sync --workspace . --package asp-python" in python_provider
     assert "cargo test" not in python_provider
-    assert "Set up Rust" not in python_provider
 
     catalog_provider = workflow.split("  catalog-provider-gates:", 1)[1].split(
         "  language-facade-gates:", 1,
@@ -41,12 +41,10 @@ def test_contract_gates_form_a_parallel_library_dag_without_standalone_asp_binar
         "  tree-sitter-query-contract-gates:", 1,
     )[0]
     assert "Language facade smoke gate" in language_facade
-    assert "Set up Rust" not in language_facade
 
     query_contracts = workflow.split("  tree-sitter-query-contract-gates:", 1)[1]
     assert "--asp-bin" not in query_contracts
     assert "--gate runtime-boundary" in query_contracts
     assert "--gate query-corpus" in query_contracts
     assert "--no-build" in query_contracts
-    assert "Set up Rust" not in query_contracts
     assert "cargo test" not in query_contracts

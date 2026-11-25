@@ -11,9 +11,12 @@ use crate::SchemaManager;
 pub async fn run_cli(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
     let mut arguments = arguments.into_iter();
     let operation = arguments.next().unwrap_or_else(|| "help".to_owned());
+    if operation == "providers" {
+        return crate::providers_cli::run_providers_cli(arguments);
+    }
     if matches!(operation.as_str(), "help" | "--help" | "-h") {
         println!(
-            "usage: asp-schema-manager <materialize|verify|responsibilities|publish-client> --workspace <ROOT> [--language <ID>]... [--output <DIR>]"
+            "usage: asp-schema-manager <materialize|verify|responsibilities|publish-client|providers> --workspace <ROOT> [--language <ID>]... [--output <DIR>]"
         );
         return Ok(());
     }

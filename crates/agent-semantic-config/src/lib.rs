@@ -6,6 +6,7 @@
 //! Unified semantic identity, source-extension registry, and runtime configuration for ASP.
 
 pub mod project_config;
+pub mod providers_manifest;
 pub mod runtime_dev;
 mod semantic_identity;
 pub mod source_extension;
@@ -13,5 +14,10 @@ pub mod source_extension;
 pub use project_config::AspProjectConfigFile;
 pub use project_config::AspProjectDiscoveryConfig;
 pub use project_config::load_asp_project_config_file;
+pub use providers_manifest::{
+    PROVIDERS_MANIFEST_FILE, PROVIDERS_MANIFEST_SCHEMA_VERSION, ProviderGitRev, ProviderPackageId,
+    ProviderPackageKind, ProviderPackageSpec, ProviderTransportKind, ProviderVisibility,
+    ProvidersManifest, ProvidersManifestError, load_providers_manifest, save_providers_manifest,
+};
 pub use semantic_identity::LanguageId;
 pub use semantic_identity::ProviderId;

@@ -14,6 +14,8 @@ mod manager;
 #[cfg(feature = "runtime")]
 mod manager_validation;
 #[cfg(feature = "runtime")]
+mod providers_cli;
+#[cfg(feature = "runtime")]
 mod publication;
 #[cfg(feature = "runtime")]
 mod receipt;

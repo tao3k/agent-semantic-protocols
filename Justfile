@@ -23,6 +23,22 @@ default:
 devenv +args:
 	@scripts/devenv-profile-exec.sh "$@"
 
+# Sync external language providers/analyzers declared in providers.toml (replaces .gitmodules).
+providers-sync profile="core":
+	cargo run --quiet -p agent-semantic-schema-manager -- providers sync --workspace . --profile "{{profile}}"
+
+# Show sync status of external providers/analyzers declared in providers.toml.
+providers-status profile="all":
+	cargo run --quiet -p agent-semantic-schema-manager -- providers status --workspace . --profile "{{profile}}"
+
+# Lock current checked-out HEAD commits into providers.toml.
+providers-lock profile="core":
+	cargo run --quiet -p agent-semantic-schema-manager -- providers lock --workspace . --profile "{{profile}}"
+
+# Symlink local ghq checkouts into languages/ and analyzers/ for multi-repo co-development.
+providers-link-local ghq_root="$HOME/ghq" profile="core":
+	cargo run --quiet -p agent-semantic-schema-manager -- providers link-local --workspace . --profile "{{profile}}" --ghq-root "{{ghq_root}}"
+
 _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \

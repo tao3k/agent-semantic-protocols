@@ -133,6 +133,7 @@ dependencies = [
 name = "agent-semantic-schema-manager"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-workspace-scheduler",
  "asp-rust-project-harness-policy",
@@ -209,7 +210,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-mrr",
  "agent-semantic-workspace-scheduler",
- "asp-rust 0.1.2",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
  "asp-rust-project-harness-policy",
  "blake3",
  "globset",
@@ -226,7 +227,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-protocol",
  "agent-semantic-provider-protocol",
- "asp-rust 0.1.2",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
  "blake3",
@@ -414,8 +415,9 @@ dependencies = [
 [[package]]
 name = "asp-rust"
 version = "0.1.2"
+source = "git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9#7a659352c0497823b7492fd1c717f451cfbe0be9"
 dependencies = [
- "asp-rust-build-support 0.1.0",
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
  "blake3",
  "cargo_toml",
  "globset",
@@ -456,6 +458,7 @@ dependencies = [
 [[package]]
 name = "asp-rust-build-support"
 version = "0.1.0"
+source = "git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9#7a659352c0497823b7492fd1c717f451cfbe0be9"
 dependencies = [
  "blake3",
 ]
@@ -472,8 +475,8 @@ dependencies = [
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 dependencies = [
- "asp-rust 0.1.2",
- "asp-rust-build-support 0.1.0",
+ "asp-rust 0.1.2 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
+ "asp-rust-build-support 0.1.0 (git+https://github.com/tao3k/asp-rust?rev=7a659352c0497823b7492fd1c717f451cfbe0be9)",
  "blake3",
  "criterion",
  "serde",

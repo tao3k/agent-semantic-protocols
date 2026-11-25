@@ -83,19 +83,15 @@ def test_root_schema_gate_references_only_present_test_paths() -> None:
     assert [path for path in referenced_paths if not (REPO_ROOT / path).exists()] == []
 
 
-def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
+def test_asp_rust_ci_uses_providers_toml_instead_of_git_submodules() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    package_workflow = RUST_PACKAGE_WORKFLOW.read_text(encoding="utf-8")
 
-    rust_checkout_step = workflow.split(
-        "- name: Checkout provider catalog submodules", 1
-    )[1]
-    rust_checkout_step = rust_checkout_step.split("- name: Setup Rust", 1)[0]
-    schema_checkout_step = workflow.split("- name: Checkout provider submodules", 1)[1]
-    schema_checkout_step = schema_checkout_step.split("- name: Install uv", 1)[0]
-
-    for checkout_step in (rust_checkout_step, schema_checkout_step):
-        assert "languages/AspJulia.jl" in checkout_step
-        assert "languages/asp-gerbil-scheme" in checkout_step
+    assert not (REPO_ROOT / ".gitmodules").exists()
+    assert (REPO_ROOT / "providers.toml").exists()
+    assert "git submodule" not in workflow
+    assert "git submodule" not in package_workflow
+    assert "providers sync --workspace . --profile core" in workflow
 
 
 def test_root_release_carries_server_managed_graphs_artifact() -> None:

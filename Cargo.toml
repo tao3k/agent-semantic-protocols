@@ -22,7 +22,6 @@ members = [
     "crates/agent-semantic-tree-sitter",
     "crates/agent-semantic-workspace-scheduler",
 ]
-exclude = ["languages/orgize", "languages/asp-rust"]
 resolver = "2"
 
 [workspace.package]
@@ -44,6 +43,7 @@ jsonschema = { version = "0.48.1", default-features = false }
 referencing = "0.48.1"
 aho-corasick = "1.1.5"
 base64 = "0.23.1"
+agent-semantic-config = { path = "crates/agent-semantic-config" }
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 agent-semantic-http-json = { path = "crates/agent-semantic-http-json" }
@@ -82,8 +82,8 @@ insta = "1"
 proc-macro2 = "1"
 libc = "0.2"
 windows-sys = "0.61.2"
-asp-rust = { path = "languages/asp-rust", default-features = false }
-asp-rust-build-support = { path = "languages/asp-rust/build-support" }
+asp-rust = { git = "https://github.com/tao3k/asp-rust", rev = "7a659352c0497823b7492fd1c717f451cfbe0be9", default-features = false }
+asp-rust-build-support = { git = "https://github.com/tao3k/asp-rust", rev = "7a659352c0497823b7492fd1c717f451cfbe0be9" }
 asp-rust-project-harness-policy = { path = "build-support/asp-rust-project-harness-policy", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
