@@ -91,8 +91,9 @@ package AspSearchEngine {
                    `regex-syntax` HIR boolean query planner, zero-copy `mmap`
                    snapshots, incremental `apply_file_delta` + disk sync,
                    resident structural symbol extraction & 1-hop import/reference
-                   graph queries, plus language-agnostic host-rule-driven
-                   `extract_prefiltered_edb` streaming open
+                   graph queries, plus zero-regex protocol-native
+                   `ingest_open_edb_facts` / `project_prefiltered_edb` conforming
+                   to `schemas/semantic-open-edb.v1.schema.json` streaming open
                    `WorkspaceEdbEntityFact`/`WorkspaceEdbEdgeFact` slices to
                    Marlin's `:gerbil-ascent` + `:gerbil-parser` + POO DSL),
                    `FileLocatorIndex`, `execute_admitted_playbook_with_index`,
@@ -100,11 +101,11 @@ package AspSearchEngine {
         }
         part topologyAndOpenEdb {
             doc /* `OrgDocumentProjectionPort`-backed topology manifest/overlay
-                   admission and language-agnostic rule-driven Open EDB fact
-                   projection for Marlin's Scheme `:gerbil-ascent` +
-                   `:gerbil-parser` reasoning plane (zero hardcoded language
-                   matchers in Rust, zero pseudo-Tree-sitter `.scm` query
-                   layer, and zero Rust `ascent`). */
+                   admission and zero-regex generation-scoped Open EDB fact
+                   store (`semantic-open-edb.v1`) for native language providers
+                   and Marlin's Scheme `:gerbil-ascent` + `:gerbil-parser`
+                   reasoning plane (zero regex extractors in Rust, zero
+                   pseudo-Tree-sitter `.scm` query layer, and zero Rust `ascent`). */
         }
         part providerTransport {
             doc /* Process and HTTP-JSON boundary reserved solely for external

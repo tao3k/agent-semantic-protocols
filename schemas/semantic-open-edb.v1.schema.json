@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-open-edb.v1.schema.json",
+  "title": "Semantic Open EDB Fact Batch",
+  "description": "Converged minimal wire protocol for zero-regex Open EDB ingestion from native language providers (HTTP/gRPC) and Marlin Scheme :gerbil-parser into ASP's generation-scoped WorkspaceSearchIndex.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "entities",
+    "edges"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-open-edb"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entityFact"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edgeFact"
+      }
+    }
+  },
+  "$defs": {
+    "factKind": {
+      "enum": [
+        "module",
+        "owner",
+        "item",
+        "function",
+        "method",
+        "class",
+        "struct",
+        "enum",
+        "interface",
+        "trait",
+        "type",
+        "import",
+        "export",
+        "reexport",
+        "argument",
+        "binding",
+        "call",
+        "constant",
+        "doc",
+        "heading",
+        "property",
+        "drawer",
+        "table",
+        "block",
+        "link",
+        "code-fence",
+        "field",
+        "include",
+        "macro",
+        "attribute",
+        "decorator",
+        "test",
+        "public-api",
+        "dependency-api",
+        "config",
+        "custom"
+      ]
+    },
+    "factSource": {
+      "enum": [
+        "native-parser",
+        "gerbil-parser",
+        "type-checker",
+        "resident-index",
+        "manifest",
+        "test-index",
+        "provider-policy",
+        "custom"
+      ]
+    },
+    "attr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "entityFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "line",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "entityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fileId": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "kind": {
+          "$ref": "#/$defs/factKind"
+        },
+        "languageKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/factSource"
+        },
+        "attrs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attr"
+          }
+        }
+      }
+    },
+    "edgeFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "src",
+        "relation",
+        "dst",
+        "path"
+      ],
+      "properties": {
+        "src": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dst": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

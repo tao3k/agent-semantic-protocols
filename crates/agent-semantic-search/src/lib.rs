@@ -25,9 +25,10 @@ pub use agent_semantic_search_playbook::{
     search_playbook_composition_abi_digest,
 };
 pub use converged_resident_index::{
-    WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceEdbAttr, WorkspaceEdbEdgeFact,
-    WorkspaceEdbEdgeRule, WorkspaceEdbEntityFact, WorkspaceEdbEntityRule, WorkspaceEdbFileFact,
-    WorkspaceEdbPrefilter, WorkspaceEdbSnapshot, WorkspaceFileDelta, WorkspaceIndexConfig,
+    SEMANTIC_OPEN_EDB_SCHEMA_ID, SEMANTIC_OPEN_EDB_SCHEMA_VERSION, WorkspaceContextLine,
+    WorkspaceDeltaReceipt, WorkspaceEdbAttr, WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact,
+    WorkspaceEdbFileFact, WorkspaceEdbPrefilter, WorkspaceEdbSnapshot, WorkspaceFileDelta,
+    WorkspaceIndexConfig, WorkspaceOpenEdbIngestBatch, WorkspaceOpenEdbIngestReceipt,
     WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery, WorkspaceSearchReport,
     WorkspaceSymbolKind, WorkspaceSymbolMatch,
 };

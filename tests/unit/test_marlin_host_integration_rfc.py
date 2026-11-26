@@ -20,6 +20,7 @@ _RFC_PATH = (
     / "10.34-marlin-host-integration-protocol.org"
 )
 _SCHEMA_PATH = _REPO_ROOT / "schemas" / "marlin-host-integration.v1.schema.json"
+_OPEN_EDB_SCHEMA_PATH = _REPO_ROOT / "schemas" / "semantic-open-edb.v1.schema.json"
 
 
 def _validator() -> Draft202012Validator:
@@ -127,3 +128,49 @@ def test_marlin_host_integration_schema_rejects_non_marlin_platform_and_retired_
     retired_method = _valid_binding()
     retired_method["admittedMethods"] = ["asp.hook.memory.inbox.publish"]
     assert list(_validator().iter_errors(retired_method))
+
+
+def test_semantic_open_edb_v1_schema_accepts_native_parser_batch_and_rejects_unknown_kind() -> (
+    None
+):
+    schema = json.loads(_OPEN_EDB_SCHEMA_PATH.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema)
+    valid_batch = {
+        "schemaId": "agent.semantic-protocols.semantic-open-edb",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "entities": [
+            {
+                "path": "crates/tooling/src/search.rs",
+                "line": 12,
+                "name": "ResidentSearchHandler",
+                "language": "rust",
+                "kind": "item",
+                "languageKind": "impl_item",
+                "source": "native-parser",
+                "attrs": [{"key": "trait", "value": "ToolRuntime"}],
+            }
+        ],
+        "edges": [
+            {
+                "src": "ResidentSearchHandler",
+                "relation": "implements",
+                "dst": "ToolRuntime",
+                "path": "crates/tooling/src/search.rs",
+                "line": 12,
+            }
+        ],
+    }
+    assert [e.message for e in validator.iter_errors(valid_batch)] == []
+
+    invalid_batch = dict(valid_batch)
+    invalid_batch["entities"] = [
+        {
+            "path": "crates/tooling/src/search.rs",
+            "line": 12,
+            "name": "Bad",
+            "kind": "not-a-valid-kind",
+        }
+    ]
+    assert list(validator.iter_errors(invalid_batch))

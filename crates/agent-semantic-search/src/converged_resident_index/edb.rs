@@ -2,52 +2,43 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-//! Language-agnostic open EDB (Extensional Database) extraction framework for
-//! [`WorkspaceSearchIndex`].
+//! Zero-regex, protocol-native Open EDB (Extensional Database) fact store and
+//! projection layer for [`WorkspaceSearchIndex`].
 //!
-//! ASP's Rust layer owns only sub-millisecond trigram/topology pre-filtering and
-//! generic rule-driven fact projection; all language-specific facet and edge
-//! rules (Rust, Gerbil Scheme POO, SysML, Quint, Org, etc.) are owned by
-//! Marlin's Scheme POO fragments and supplied as typed [`WorkspaceEdbEntityRule`]
-//! / [`WorkspaceEdbEdgeRule`] descriptors.
+//! ASP's Rust search engine never runs ad hoc regex matchers or language mini-parsers:
+//! - Heavy language providers (`asp-rust`, `asp-typescript`, `asp-python`, `asp-julia`,
+//!   `asp-gerbil-scheme` over HTTP/gRPC) emit native compiler/parser AST facts using
+//!   `schemas/semantic-open-edb.v1.schema.json` (`kind` + native `language_kind` + `source`)
+//!   and ingest them via [`WorkspaceSearchIndex::ingest_open_edb_facts`].
+//! - Lightweight/DSL/query languages parsed in Marlin's Scheme plane (`:gerbil-parser`
+//!   or `orgize-fold`) ingest into the same universal Open EDB protocol.
+//! - Files without ingested provider facts yet fall back deterministically to the
+//!   resident index's pre-indexed symbols/imports (`source = "resident-index"`).
+//! - File edits or deletions via [`WorkspaceSearchIndex::apply_file_delta`] automatically
+//!   invalidate stale per-file provider facts on the generation boundary.
 
 use std::time::Instant;
 
-use regex::Regex;
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::SearchGenerationDigest;
 use crate::trigram_query::TrigramQuery;
 
 use super::index::{IndexedFile, WorkspaceSearchIndex};
 use super::query::CompiledFilters;
+use super::symbols::WorkspaceSymbolKind;
+
+/// Canonical JSON Schema identifier for converged Open EDB provider fact batches.
+pub const SEMANTIC_OPEN_EDB_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-open-edb";
+/// Canonical JSON Schema version for converged Open EDB provider fact batches.
+pub const SEMANTIC_OPEN_EDB_SCHEMA_VERSION: &str = "1";
 
 const DEFAULT_MAX_EDB_FILES: usize = 256;
 const DEFAULT_MAX_EDB_FACTS: usize = 4096;
 
-/// Declarative, host-supplied rule projecting matching lines into open
-/// [`WorkspaceEdbEntityFact`] rows.
-///
-/// Named regex capture `name` populates `entity.name`; every other named
-/// capture populates an open `(key, value)` entry in `entity.attrs`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceEdbEntityRule {
-    pub language: Option<String>,
-    pub facet_tag: String,
-    pub pattern: String,
-    pub static_attrs: Vec<WorkspaceEdbAttr>,
-}
-
-/// Declarative, host-supplied rule projecting matching lines into open
-/// [`WorkspaceEdbEdgeFact`] rows using named regex captures `src` and `dst`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceEdbEdgeRule {
-    pub language: Option<String>,
-    pub relation: String,
-    pub pattern: String,
-}
-
-/// Prefilter and host-supplied extraction rules passed from Marlin's Scheme POO
-/// search layer to narrow the workspace and project bounded open EDB facts.
+/// Sub-millisecond trigram and topology prefilter passed from Marlin's Scheme
+/// `:gerbil-ascent` layer to project a bounded Open EDB slice (zero regex rules).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WorkspaceEdbPrefilter<'a> {
     pub languages: &'a [String],
@@ -55,51 +46,93 @@ pub struct WorkspaceEdbPrefilter<'a> {
     pub path_prefix: Option<&'a str>,
     pub extension: Option<&'a str>,
     pub required_tokens: &'a [String],
-    pub entity_rules: &'a [WorkspaceEdbEntityRule],
-    pub edge_rules: &'a [WorkspaceEdbEdgeRule],
     pub max_files: usize,
     pub max_facts: usize,
 }
 
-/// One indexed file fact `file(file_id, path, language)`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One indexed file fact `file(file_id, lang, path)`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdbFileFact {
     pub file_id: u32,
     pub path: String,
     pub language: Option<String>,
 }
 
-/// One open key-value attribute fact `attr(entity_id, key, value)`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One extensible key-value attribute fact `attr(entity_id, key, value)`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdbAttr {
     pub key: String,
     pub value: String,
 }
 
-/// One open structural entity fact `entity(entity_id, file_id, line, name, lang, facet_tag)`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One universal structural entity fact aligned 1:1 with ASP's dual-layer
+/// ontology (`kind` + native parser `language_kind` + `source`):
+/// `entity(entity_id, file_id, language, kind, language_kind, name, line)`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdbEntityFact {
+    #[serde(default)]
     pub entity_id: String,
+    #[serde(default)]
     pub file_id: u32,
     pub path: String,
     pub line: usize,
     pub name: String,
+    #[serde(default)]
     pub language: String,
-    pub facet_tag: String,
+    pub kind: String,
+    #[serde(default)]
+    pub language_kind: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
     pub attrs: Vec<WorkspaceEdbAttr>,
 }
 
-/// One open structural relation fact `edge(src, relation, dst, path, line)`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One universal structural relation fact `edge(src, dst, relation, path, line)`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdbEdgeFact {
     pub src: String,
     pub relation: String,
     pub dst: String,
     pub path: String,
+    #[serde(default)]
     pub line: usize,
 }
 
-/// Generation-bound open EDB fact slice extracted from [`WorkspaceSearchIndex`].
+/// Protocol-native ingestion batch conforming to `schemas/semantic-open-edb.v1.schema.json`.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceOpenEdbIngestBatch {
+    #[serde(default)]
+    pub schema_id: Option<String>,
+    #[serde(default)]
+    pub schema_version: Option<String>,
+    #[serde(default)]
+    pub language_id: Option<String>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub entities: Vec<WorkspaceEdbEntityFact>,
+    #[serde(default)]
+    pub edges: Vec<WorkspaceEdbEdgeFact>,
+}
+
+/// Deterministic receipt returned by [`WorkspaceSearchIndex::ingest_open_edb_facts`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceOpenEdbIngestReceipt {
+    pub generation_digest: SearchGenerationDigest,
+    pub updated_files: usize,
+    pub ingested_entities: usize,
+    pub ingested_edges: usize,
+    pub skipped_facts: usize,
+}
+
+/// Generation-bound Open EDB fact slice projected from [`WorkspaceSearchIndex`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceEdbSnapshot {
     pub generation_digest: SearchGenerationDigest,
@@ -111,27 +144,27 @@ pub struct WorkspaceEdbSnapshot {
     pub elapsed_micros: u64,
 }
 
-struct CompiledEntityRule<'a> {
-    language: Option<&'a str>,
-    facet_tag: &'a str,
-    regex: Regex,
-    capture_names: Vec<String>,
-    static_attrs: &'a [WorkspaceEdbAttr],
+fn map_symbol_kind_to_ontology(kind: WorkspaceSymbolKind) -> (&'static str, &'static str) {
+    match kind {
+        WorkspaceSymbolKind::Function => ("function", "fn"),
+        WorkspaceSymbolKind::Type => ("type", "type"),
+        WorkspaceSymbolKind::Trait => ("trait", "trait"),
+        WorkspaceSymbolKind::Module => ("module", "mod"),
+        WorkspaceSymbolKind::Constant => ("constant", "const"),
+        WorkspaceSymbolKind::Macro => ("macro", "macro"),
+        WorkspaceSymbolKind::Class => ("class", "class"),
+        WorkspaceSymbolKind::Interface => ("interface", "interface"),
+        WorkspaceSymbolKind::Heading => ("heading", "heading"),
+    }
 }
 
-struct CompiledEdgeRule<'a> {
-    language: Option<&'a str>,
-    relation: &'a str,
-    regex: Regex,
-}
-
-struct EdbCollector {
+struct EdbProjector {
     max_facts: usize,
     entities: Vec<WorkspaceEdbEntityFact>,
     edges: Vec<WorkspaceEdbEdgeFact>,
 }
 
-impl EdbCollector {
+impl EdbProjector {
     fn new(max_facts: usize) -> Self {
         Self {
             max_facts,
@@ -144,144 +177,154 @@ impl EdbCollector {
         self.entities.len() + self.edges.len() >= self.max_facts
     }
 
-    fn apply_file(
-        &mut self,
-        file_id: u32,
-        file: &IndexedFile,
-        entity_rules: &[CompiledEntityRule<'_>],
-        edge_rules: &[CompiledEdgeRule<'_>],
-    ) {
-        let language = file.language.unwrap_or("text");
-        let matching_entity_rules: Vec<&CompiledEntityRule<'_>> = entity_rules
-            .iter()
-            .filter(|r| r.language.is_none_or(|lang| lang == language))
-            .collect();
-        let matching_edge_rules: Vec<&CompiledEdgeRule<'_>> = edge_rules
-            .iter()
-            .filter(|r| r.language.is_none_or(|lang| lang == language))
-            .collect();
-
-        if matching_entity_rules.is_empty() && matching_edge_rules.is_empty() {
+    fn project_file(&mut self, file_id: u32, file: &IndexedFile) {
+        if !file.open_edb_entities.is_empty() || !file.open_edb_edges.is_empty() {
+            for entity in &file.open_edb_entities {
+                if self.is_full() {
+                    return;
+                }
+                let mut row = entity.clone();
+                row.file_id = file_id;
+                self.entities.push(row);
+            }
+            for edge in &file.open_edb_edges {
+                if self.is_full() {
+                    return;
+                }
+                self.edges.push(edge.clone());
+            }
             return;
         }
 
-        for (idx, raw_line) in file.body.lines().enumerate() {
+        let language = file.language.unwrap_or("text");
+        for sym in &file.symbols {
             if self.is_full() {
                 return;
             }
-            let trimmed = raw_line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let line = idx + 1;
-            self.match_entity_rules(
-                file_id,
-                &file.relative_path,
-                language,
-                line,
-                trimmed,
-                &matching_entity_rules,
-            );
-            self.match_edge_rules(&file.relative_path, line, trimmed, &matching_edge_rules);
-        }
-    }
-
-    fn match_entity_rules(
-        &mut self,
-        file_id: u32,
-        path: &str,
-        language: &str,
-        line: usize,
-        trimmed: &str,
-        rules: &[&CompiledEntityRule<'_>],
-    ) {
-        for rule in rules {
-            if self.is_full() {
-                return;
-            }
-            let Some(caps) = rule.regex.captures(trimmed) else {
-                continue;
-            };
-            let name = caps
-                .name("name")
-                .or_else(|| caps.get(1))
-                .map(|m| m.as_str().trim().to_owned())
-                .unwrap_or_default();
-            if name.is_empty() {
-                continue;
-            }
-            let mut attrs = rule.static_attrs.to_vec();
-            for cap_name in &rule.capture_names {
-                if cap_name == "name" {
-                    continue;
-                }
-                if let Some(m) = caps.name(cap_name) {
-                    let val = m.as_str().trim();
-                    if !val.is_empty() {
-                        attrs.push(WorkspaceEdbAttr {
-                            key: cap_name.clone(),
-                            value: val.to_owned(),
-                        });
-                    }
-                }
-            }
+            let (kind, language_kind) = map_symbol_kind_to_ontology(sym.kind);
             self.entities.push(WorkspaceEdbEntityFact {
-                entity_id: format!("{language}://{path}#L{line}:{}:{name}", rule.facet_tag),
+                entity_id: format!(
+                    "{language}://{}#L{}:{}:{}",
+                    file.relative_path, sym.line_number, kind, sym.name
+                ),
                 file_id,
-                path: path.to_owned(),
-                line,
-                name,
+                path: file.relative_path.clone(),
+                line: sym.line_number,
+                name: sym.name.clone(),
                 language: language.to_owned(),
-                facet_tag: rule.facet_tag.to_owned(),
-                attrs,
+                kind: kind.to_owned(),
+                language_kind: language_kind.to_owned(),
+                source: "resident-index".to_owned(),
+                attrs: Vec::new(),
             });
         }
-    }
-
-    fn match_edge_rules(
-        &mut self,
-        path: &str,
-        line: usize,
-        trimmed: &str,
-        rules: &[&CompiledEdgeRule<'_>],
-    ) {
-        for rule in rules {
+        for imp in &file.imports {
             if self.is_full() {
                 return;
             }
-            let Some(caps) = rule.regex.captures(trimmed) else {
-                continue;
-            };
-            let src = caps
-                .name("src")
-                .or_else(|| caps.get(1))
-                .map(|m| m.as_str().trim())
-                .unwrap_or(path);
-            let dst = caps
-                .name("dst")
-                .or_else(|| caps.get(2))
-                .map(|m| m.as_str().trim())
-                .unwrap_or("");
-            if src.is_empty() || dst.is_empty() {
-                continue;
-            }
             self.edges.push(WorkspaceEdbEdgeFact {
-                src: src.to_owned(),
-                relation: rule.relation.to_owned(),
-                dst: dst.to_owned(),
-                path: path.to_owned(),
-                line,
+                src: file.relative_path.clone(),
+                relation: "imports".to_owned(),
+                dst: imp.clone(),
+                path: file.relative_path.clone(),
+                line: 1,
             });
         }
     }
 }
 
 impl WorkspaceSearchIndex {
-    /// Extract bounded open EDB facts (`file`, `entity`, `attr`, `edge`) for files
-    /// surviving sub-millisecond trigram, language, and topology pre-filtering using
-    /// host-supplied declarative extraction rules.
+    /// Ingest protocol-native Open EDB facts emitted by external language providers
+    /// (`asp-rust`, `asp-typescript`, `asp-python`, `asp-julia`, `asp-gerbil-scheme`)
+    /// or Marlin's Scheme `:gerbil-parser` plane, replacing cached per-file facts for
+    /// each referenced live workspace file.
+    pub fn ingest_open_edb_facts(
+        &mut self,
+        batch: WorkspaceOpenEdbIngestBatch,
+    ) -> WorkspaceOpenEdbIngestReceipt {
+        let mut by_path: FxHashMap<
+            String,
+            (Vec<WorkspaceEdbEntityFact>, Vec<WorkspaceEdbEdgeFact>),
+        > = FxHashMap::default();
+        let batch_lang = batch.language_id.as_deref();
+
+        for mut entity in batch.entities {
+            let clean_path = entity.path.replace('\\', "/");
+            entity.path = clean_path.clone();
+            by_path.entry(clean_path).or_default().0.push(entity);
+        }
+        for mut edge in batch.edges {
+            let clean_path = edge.path.replace('\\', "/");
+            edge.path = clean_path.clone();
+            by_path.entry(clean_path).or_default().1.push(edge);
+        }
+
+        let mut updated_files = 0usize;
+        let mut ingested_entities = 0usize;
+        let mut ingested_edges = 0usize;
+        let mut skipped_facts = 0usize;
+
+        for (path, (mut entities, edges)) in by_path {
+            let Some(&file_id) = self.path_to_id.get(&path) else {
+                skipped_facts += entities.len() + edges.len();
+                continue;
+            };
+            if self.is_tombstoned(file_id) {
+                skipped_facts += entities.len() + edges.len();
+                continue;
+            }
+            let Some(file) = self.files.get_mut(file_id as usize) else {
+                skipped_facts += entities.len() + edges.len();
+                continue;
+            };
+
+            let fallback_lang = batch_lang.or(file.language).unwrap_or("text");
+            for entity in &mut entities {
+                entity.file_id = file_id;
+                if entity.language.is_empty() {
+                    entity.language = fallback_lang.to_owned();
+                }
+                if entity.language_kind.is_empty() {
+                    entity.language_kind = entity.kind.clone();
+                }
+                if entity.source.is_empty() {
+                    entity.source = "native-parser".to_owned();
+                }
+                if entity.entity_id.is_empty() {
+                    entity.entity_id = format!(
+                        "{}://{}#L{}:{}:{}",
+                        entity.language,
+                        entity.path,
+                        entity.line,
+                        entity.language_kind,
+                        entity.name
+                    );
+                }
+            }
+
+            ingested_entities += entities.len();
+            ingested_edges += edges.len();
+            file.open_edb_entities = entities;
+            file.open_edb_edges = edges;
+            updated_files += 1;
+        }
+
+        WorkspaceOpenEdbIngestReceipt {
+            generation_digest: self.generation_digest.clone(),
+            updated_files,
+            ingested_entities,
+            ingested_edges,
+            skipped_facts,
+        }
+    }
+
+    /// Project bounded Open EDB facts (`file`, `entity`, `edge`, `attr`) for files
+    /// surviving sub-millisecond trigram, language, and topology prefiltering.
+    ///
+    /// Streams ingested native-parser / `:gerbil-parser` facts when attached to a file
+    /// and otherwise projects the file's zero-regex resident symbols/imports.
     #[must_use]
-    pub fn extract_prefiltered_edb(
+    pub fn project_prefiltered_edb(
         &self,
         prefilter: &WorkspaceEdbPrefilter<'_>,
     ) -> WorkspaceEdbSnapshot {
@@ -306,9 +349,7 @@ impl WorkspaceSearchIndex {
         let candidate_ids = self.select_edb_candidate_files(prefilter, &filters, max_files);
         let candidate_files = candidate_ids.len();
 
-        let entity_rules = compile_entity_rules(prefilter.entity_rules);
-        let edge_rules = compile_edge_rules(prefilter.edge_rules);
-        let mut collector = EdbCollector::new(max_facts);
+        let mut projector = EdbProjector::new(max_facts);
         let mut files = Vec::with_capacity(candidate_files);
 
         for file_id in candidate_ids {
@@ -320,8 +361,8 @@ impl WorkspaceSearchIndex {
                 path: file.relative_path.clone(),
                 language: file.language.map(str::to_owned),
             });
-            if !collector.is_full() {
-                collector.apply_file(file_id, file, &entity_rules, &edge_rules);
+            if !projector.is_full() {
+                projector.project_file(file_id, file);
             }
         }
 
@@ -330,9 +371,9 @@ impl WorkspaceSearchIndex {
             indexed_files: self.live_file_count,
             candidate_files,
             files,
-            entities: collector.entities,
-            edges: collector.edges,
-            elapsed_micros: start.elapsed().as_micros() as u64,
+            entities: projector.entities,
+            edges: projector.edges,
+            elapsed_micros: u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX),
         }
     }
 
@@ -377,13 +418,7 @@ impl WorkspaceSearchIndex {
             let Some(file) = self.files.get(file_id as usize) else {
                 continue;
             };
-            if self
-                .tombstones
-                .get(file_id as usize)
-                .copied()
-                .unwrap_or(true)
-                || !filters.matches(file)
-            {
+            if self.is_tombstoned(file_id) || !filters.matches(file) {
                 continue;
             }
             if !lower_tokens.is_empty()
@@ -397,35 +432,4 @@ impl WorkspaceSearchIndex {
         }
         selected
     }
-}
-
-fn compile_entity_rules(rules: &[WorkspaceEdbEntityRule]) -> Vec<CompiledEntityRule<'_>> {
-    rules
-        .iter()
-        .filter_map(|rule| {
-            let regex = Regex::new(&rule.pattern).ok()?;
-            let capture_names = regex.capture_names().flatten().map(str::to_owned).collect();
-            Some(CompiledEntityRule {
-                language: rule.language.as_deref(),
-                facet_tag: &rule.facet_tag,
-                regex,
-                capture_names,
-                static_attrs: &rule.static_attrs,
-            })
-        })
-        .collect()
-}
-
-fn compile_edge_rules(rules: &[WorkspaceEdbEdgeRule]) -> Vec<CompiledEdgeRule<'_>> {
-    rules
-        .iter()
-        .filter_map(|rule| {
-            let regex = Regex::new(&rule.pattern).ok()?;
-            Some(CompiledEdgeRule {
-                language: rule.language.as_deref(),
-                relation: &rule.relation,
-                regex,
-            })
-        })
-        .collect()
 }

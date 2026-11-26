@@ -9,10 +9,11 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use agent_semantic_search::{
-    SearchPlaybookPlanInput, WorkspaceEdbEdgeRule, WorkspaceEdbEntityRule, WorkspaceEdbPrefilter,
-    WorkspaceFileDelta, WorkspaceIndexConfig, WorkspaceSearchIndex, WorkspaceSearchQuery,
-    WorkspaceSymbolKind, admit_search_playbook_plan, execute_admitted_playbook,
-    execute_admitted_playbook_with_index,
+    SEMANTIC_OPEN_EDB_SCHEMA_ID, SEMANTIC_OPEN_EDB_SCHEMA_VERSION, SearchPlaybookPlanInput,
+    WorkspaceEdbAttr, WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact, WorkspaceEdbPrefilter,
+    WorkspaceFileDelta, WorkspaceIndexConfig, WorkspaceOpenEdbIngestBatch, WorkspaceSearchIndex,
+    WorkspaceSearchQuery, WorkspaceSymbolKind, admit_search_playbook_plan,
+    execute_admitted_playbook, execute_admitted_playbook_with_index,
 };
 use agent_semantic_search_playbook::{SearchPlaybookComposition, SearchPlaybookLeaf};
 
@@ -188,7 +189,8 @@ fn resident_symbol_and_graph_axes_locate_definitions_importers_and_callers() {
 }
 
 #[test]
-fn open_edb_extraction_emits_rust_scheme_poo_and_sysml_facts_with_trigram_prefilter() {
+fn open_edb_ingests_native_parser_protocol_facts_falls_back_to_resident_index_and_invalidates_on_delta()
+ {
     let tmp = tempfile::tempdir().expect("tempdir");
     let ws = tmp.path();
     std::fs::create_dir_all(ws.join("crates/tooling/src")).expect("mkdir tooling");
@@ -198,12 +200,12 @@ fn open_edb_extraction_emits_rust_scheme_poo_and_sysml_facts_with_trigram_prefil
 
     std::fs::write(
         ws.join("crates/tooling/src/search.rs"),
-        "use crate::runtime::ToolRuntime;\n#[derive(Clone, Debug)]\npub struct ResidentSearchHandler;\nimpl ToolRuntime for ResidentSearchHandler {\n    pub async fn execute_search(&self) -> usize { 1 }\n}\n",
+        "use crate::runtime::ToolRuntime;\npub struct ResidentSearchHandler;\nimpl ToolRuntime for ResidentSearchHandler {\n    pub async fn execute_search(&self) -> usize { 1 }\n}\nmacro_rules! register_search_tool { () => {}; }\n",
     )
     .expect("write rust");
     std::fs::write(
         ws.join("scheme/search-dsl/objects.ss"),
-        "(import (only-in :clan/poo/object .def .mix))\n(.def RustSearchFragment.\n  language: 'rust)\n(def RustFragmentValue (.mix RustSearchFragment. BaseSearchFragment.))\n(c-define (search-compile root) (int64) int64 \"marlin_search_dsl_compile\" \"extern\")\n",
+        "(import (only-in :clan/poo/object .def .mix))\n(.def RustSearchFragment.\n  language: 'rust)\n(def RustFragmentValue (.mix RustSearchFragment. BaseSearchFragment.))\n",
     )
     .expect("write scheme");
     std::fs::write(
@@ -217,126 +219,210 @@ fn open_edb_extraction_emits_rust_scheme_poo_and_sysml_facts_with_trigram_prefil
     )
     .expect("write noise");
 
-    let index = WorkspaceSearchIndex::build_with_config(ws, WorkspaceIndexConfig::default());
+    let mut index = WorkspaceSearchIndex::build_with_config(ws, WorkspaceIndexConfig::default());
 
-    let rust_entity_rules = vec![
-        WorkspaceEdbEntityRule {
-            language: Some("rust".to_owned()),
-            facet_tag: "trait-impl".to_owned(),
-            pattern: r"^impl\s+(?P<trait>[A-Za-z0-9_:]+)\s+for\s+(?P<name>[A-Za-z0-9_]+)"
-                .to_owned(),
-            static_attrs: Vec::new(),
-        },
-        WorkspaceEdbEntityRule {
-            language: Some("rust".to_owned()),
-            facet_tag: "derive".to_owned(),
-            pattern: r"^#\[derive\([^)]*(?P<name>Debug)[^)]*\)\]".to_owned(),
-            static_attrs: Vec::new(),
-        },
-    ];
-    let rust_edge_rules = vec![WorkspaceEdbEdgeRule {
-        language: Some("rust".to_owned()),
-        relation: "implements".to_owned(),
-        pattern: r"^impl\s+(?P<dst>[A-Za-z0-9_:]+)\s+for\s+(?P<src>[A-Za-z0-9_]+)".to_owned(),
-    }];
-
-    let rust_edb = index.extract_prefiltered_edb(&WorkspaceEdbPrefilter {
+    // 1. Before provider ingestion, project_prefiltered_edb streams zero-regex resident symbols.
+    let baseline = index.project_prefiltered_edb(&WorkspaceEdbPrefilter {
         languages: &["rust".to_owned()],
         required_tokens: &["ToolRuntime".to_owned()],
-        entity_rules: &rust_entity_rules,
-        edge_rules: &rust_edge_rules,
+        ..Default::default()
+    });
+    assert_eq!(baseline.candidate_files, 1);
+    assert_eq!(baseline.files[0].path, "crates/tooling/src/search.rs");
+    assert!(baseline.entities.iter().any(|e| {
+        e.kind == "function" && e.name == "execute_search" && e.source == "resident-index"
+    }));
+    assert!(baseline.entities.iter().any(|e| {
+        e.kind == "macro" && e.name == "register_search_tool" && e.source == "resident-index"
+    }));
+
+    // 2. Deserialize & ingest a semantic-open-edb.v1 JSON payload as emitted by asp-rust.
+    let rust_wire_json = serde_json::json!({
+        "schemaId": SEMANTIC_OPEN_EDB_SCHEMA_ID,
+        "schemaVersion": SEMANTIC_OPEN_EDB_SCHEMA_VERSION,
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "entities": [
+            {
+                "path": "crates/tooling/src/search.rs",
+                "line": 2,
+                "name": "ResidentSearchHandler",
+                "kind": "struct",
+                "languageKind": "struct_item",
+                "source": "native-parser"
+            },
+            {
+                "path": "crates/tooling/src/search.rs",
+                "line": 3,
+                "name": "ResidentSearchHandler",
+                "kind": "item",
+                "languageKind": "impl_item",
+                "source": "native-parser",
+                "attrs": [
+                    { "key": "trait", "value": "ToolRuntime" }
+                ]
+            },
+            {
+                "path": "crates/tooling/src/search.rs",
+                "line": 4,
+                "name": "execute_search",
+                "kind": "method",
+                "languageKind": "fn_item",
+                "source": "native-parser"
+            },
+            {
+                "path": "crates/tooling/src/search.rs",
+                "line": 6,
+                "name": "register_search_tool",
+                "kind": "macro",
+                "languageKind": "macro_rules",
+                "source": "native-parser"
+            }
+        ],
+        "edges": [
+            {
+                "src": "ResidentSearchHandler",
+                "relation": "implements",
+                "dst": "ToolRuntime",
+                "path": "crates/tooling/src/search.rs",
+                "line": 3
+            }
+        ]
+    });
+    let rust_batch: WorkspaceOpenEdbIngestBatch =
+        serde_json::from_value(rust_wire_json).expect("decode semantic-open-edb.v1 batch");
+    let rust_receipt = index.ingest_open_edb_facts(rust_batch);
+    assert_eq!(rust_receipt.updated_files, 1);
+    assert_eq!(rust_receipt.ingested_entities, 4);
+    assert_eq!(rust_receipt.ingested_edges, 1);
+    assert_eq!(rust_receipt.skipped_facts, 0);
+
+    // 3. Ingest Scheme (:gerbil-parser) and SysML native facts directly.
+    let scheme_receipt = index.ingest_open_edb_facts(WorkspaceOpenEdbIngestBatch {
+        schema_id: Some(SEMANTIC_OPEN_EDB_SCHEMA_ID.to_owned()),
+        schema_version: Some(SEMANTIC_OPEN_EDB_SCHEMA_VERSION.to_owned()),
+        language_id: Some("scheme".to_owned()),
+        provider_id: Some("marlin-gerbil-parser".to_owned()),
+        entities: vec![WorkspaceEdbEntityFact {
+            entity_id: String::new(),
+            file_id: 0,
+            path: "scheme/search-dsl/objects.ss".to_owned(),
+            line: 2,
+            name: "RustSearchFragment.".to_owned(),
+            language: "scheme".to_owned(),
+            kind: "item".to_owned(),
+            language_kind: "poo_def".to_owned(),
+            source: "gerbil-parser".to_owned(),
+            attrs: vec![WorkspaceEdbAttr {
+                key: "form".to_owned(),
+                value: ".def".to_owned(),
+            }],
+        }],
+        edges: vec![WorkspaceEdbEdgeFact {
+            src: "RustSearchFragment.".to_owned(),
+            relation: "mixes".to_owned(),
+            dst: "BaseSearchFragment.".to_owned(),
+            path: "scheme/search-dsl/objects.ss".to_owned(),
+            line: 4,
+        }],
+    });
+    assert_eq!(scheme_receipt.updated_files, 1);
+
+    let sysml_receipt = index.ingest_open_edb_facts(WorkspaceOpenEdbIngestBatch {
+        schema_id: Some(SEMANTIC_OPEN_EDB_SCHEMA_ID.to_owned()),
+        schema_version: Some(SEMANTIC_OPEN_EDB_SCHEMA_VERSION.to_owned()),
+        language_id: Some("sysml".to_owned()),
+        provider_id: Some("marlin-gerbil-parser".to_owned()),
+        entities: vec![WorkspaceEdbEntityFact {
+            entity_id: String::new(),
+            file_id: 0,
+            path: "dev/sysml/search.sysml".to_owned(),
+            line: 2,
+            name: "openEdbExtraction".to_owned(),
+            language: "sysml".to_owned(),
+            kind: "item".to_owned(),
+            language_kind: "requirement_def".to_owned(),
+            source: "gerbil-parser".to_owned(),
+            attrs: vec![WorkspaceEdbAttr {
+                key: "reqId".to_owned(),
+                value: "MAR-SRCH-R01".to_owned(),
+            }],
+        }],
+        edges: Vec::new(),
+    });
+    assert_eq!(sysml_receipt.updated_files, 1);
+
+    // 4. Verify trigram-prefiltered projection preserves native kind + language_kind + edges.
+    let rust_edb = index.project_prefiltered_edb(&WorkspaceEdbPrefilter {
+        languages: &["rust".to_owned()],
+        required_tokens: &["ToolRuntime".to_owned()],
         ..Default::default()
     });
     assert_eq!(rust_edb.candidate_files, 1);
-    assert_eq!(rust_edb.files[0].path, "crates/tooling/src/search.rs");
     assert!(rust_edb.entities.iter().any(|e| {
-        e.facet_tag == "trait-impl"
+        e.kind == "item"
+            && e.language_kind == "impl_item"
             && e.name == "ResidentSearchHandler"
+            && e.source == "native-parser"
             && e.attrs
                 .iter()
                 .any(|a| a.key == "trait" && a.value == "ToolRuntime")
     }));
-    assert!(
-        rust_edb
-            .entities
-            .iter()
-            .any(|e| e.facet_tag == "derive" && e.name == "Debug")
-    );
+    assert!(rust_edb.entities.iter().any(|e| {
+        e.kind == "macro" && e.language_kind == "macro_rules" && e.name == "register_search_tool"
+    }));
     assert!(rust_edb.edges.iter().any(|edge| {
         edge.relation == "implements"
             && edge.src == "ResidentSearchHandler"
             && edge.dst == "ToolRuntime"
     }));
 
-    let scheme_entity_rules = vec![
-        WorkspaceEdbEntityRule {
-            language: Some("scheme".to_owned()),
-            facet_tag: "poo-proto".to_owned(),
-            pattern: r"^\(\.def\s+(?P<name>[^\s()]+)".to_owned(),
-            static_attrs: Vec::new(),
-        },
-        WorkspaceEdbEntityRule {
-            language: Some("scheme".to_owned()),
-            facet_tag: "c-define".to_owned(),
-            pattern: r#"^\(c-define\s+\((?P<scheme_fn>[^\s()]+)[^"]*"(?P<name>[^"]+)""#.to_owned(),
-            static_attrs: Vec::new(),
-        },
-    ];
-    let scheme_edge_rules = vec![
-        WorkspaceEdbEdgeRule {
-            language: Some("scheme".to_owned()),
-            relation: "poo-mix".to_owned(),
-            pattern: r"\(\.mix\s+(?P<src>[^\s()]+)\s+(?P<dst>[^\s()]+)".to_owned(),
-        },
-        WorkspaceEdbEdgeRule {
-            language: Some("scheme".to_owned()),
-            relation: "ffi-binds".to_owned(),
-            pattern: r#"^\(c-define\s+\((?P<src>[^\s()]+)[^"]*"(?P<dst>[^"]+)""#.to_owned(),
-        },
-    ];
-
-    let scheme_edb = index.extract_prefiltered_edb(&WorkspaceEdbPrefilter {
+    let scheme_edb = index.project_prefiltered_edb(&WorkspaceEdbPrefilter {
         languages: &["scheme".to_owned()],
-        entity_rules: &scheme_entity_rules,
-        edge_rules: &scheme_edge_rules,
         ..Default::default()
     });
     assert_eq!(scheme_edb.candidate_files, 1);
-    assert!(
-        scheme_edb
-            .entities
-            .iter()
-            .any(|e| e.facet_tag == "poo-proto" && e.name == "RustSearchFragment.")
-    );
-    assert!(
-        scheme_edb
-            .entities
-            .iter()
-            .any(|e| e.facet_tag == "c-define" && e.name == "marlin_search_dsl_compile")
-    );
+    assert!(scheme_edb.entities.iter().any(|e| {
+        e.kind == "item"
+            && e.language_kind == "poo_def"
+            && e.name == "RustSearchFragment."
+            && e.source == "gerbil-parser"
+    }));
     assert!(scheme_edb.edges.iter().any(|edge| {
-        edge.relation == "poo-mix"
+        edge.relation == "mixes"
             && edge.src == "RustSearchFragment."
             && edge.dst == "BaseSearchFragment."
     }));
-    assert!(
-        scheme_edb
-            .edges
-            .iter()
-            .any(|edge| edge.relation == "ffi-binds" && edge.dst == "marlin_search_dsl_compile")
-    );
 
-    let sysml_rules = vec![WorkspaceEdbEntityRule {
-        language: Some("sysml".to_owned()),
-        facet_tag: "requirement".to_owned(),
-        pattern: r"^requirement\s+<[^>]+>\s+(?P<name>[A-Za-z0-9_]+)".to_owned(),
-        static_attrs: Vec::new(),
-    }];
-    let sysml_edb = index.extract_prefiltered_edb(&WorkspaceEdbPrefilter {
+    let sysml_edb = index.project_prefiltered_edb(&WorkspaceEdbPrefilter {
         languages: &["sysml".to_owned()],
-        entity_rules: &sysml_rules,
         ..Default::default()
     });
     assert_eq!(sysml_edb.entities.len(), 1);
+    assert_eq!(sysml_edb.entities[0].language_kind, "requirement_def");
     assert_eq!(sysml_edb.entities[0].name, "openEdbExtraction");
+
+    // 5. Updating a file via apply_file_delta automatically invalidates stale provider facts.
+    index.apply_file_delta(WorkspaceFileDelta {
+        upserts: vec![(
+            "crates/tooling/src/search.rs".to_owned(),
+            b"pub fn execute_search_v2() -> usize { 2 }\n".to_vec(),
+        )],
+        deletes: Vec::new(),
+    });
+    let after_delta = index.project_prefiltered_edb(&WorkspaceEdbPrefilter {
+        languages: &["rust".to_owned()],
+        required_tokens: &["execute_search_v2".to_owned()],
+        ..Default::default()
+    });
+    assert_eq!(after_delta.candidate_files, 1);
+    assert!(
+        !after_delta
+            .entities
+            .iter()
+            .any(|e| e.language_kind == "impl_item")
+    );
+    assert!(after_delta.entities.iter().any(|e| {
+        e.kind == "function" && e.name == "execute_search_v2" && e.source == "resident-index"
+    }));
 }

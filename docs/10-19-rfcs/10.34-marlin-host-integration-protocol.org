@@ -55,10 +55,10 @@ Git history is the sole archive; all retired surfaces are removed cleanly.
 | Multi-agent graph & dispatch | Marlin (~marlin-agent-graph~) | Readiness-gated Gerbil graph loops |
 | Org parsing & Fold graph projection | Marlin (~marlin-agent-context~) | ~org-source.ss~ / ~gerbil_org.rs~ feeding ASP via ~OrgDocumentProjectionPort~ |
 | Unified Turso persistence & artifact CAS | Marlin (~marlin-agent-storage~) | ~TursoAgentStorage~ / ~TursoContextIndex~ feeding ASP via ~SearchEngineStoragePort~ |
-| Converged search, Merkle generation, ranking & open EDB fact extraction | ASP (~agent-semantic-search~, ~agent-semantic-search-playbook~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, language-agnostic rule-driven ~WorkspaceSearchIndex::extract_prefiltered_edb~, Tantivy + ripgrep + compact 6B trigram postings, zero hardcoded language parsers, zero ~orgize~, zero ~turso~, zero pseudo-Tree-sitter ~.scm~, zero Rust ~ascent~ / ~agent-semantic-mrr~ |
-| Unified logical & Dusa finite-choice search DSL, typed structured parsing, POO language fragments & C-ABI projection | Marlin (~scheme/search-dsl/*~, ~scheme/search-engine/*~, ~:gerbil-ascent~, ~:gerbil-parser~, ~crates/marlin-agent-search-engine~) | Real Gerbil Scheme ~:gerbil-ascent~ (relational + Dusa finite-choice ~choice~/~closed~/~open~) + ~:gerbil-parser~ (typed structured DSL/sub-syntax parsing in Scheme instead of Rust) + POO ~LanguageFragment.~ prototypes + ~RootedSchemeObject~ open EDB streaming |
-| Language provider supervision (non-Rust external providers only) | ASP (~agent-semantic-provider-transport~, ~agent-semantic-provider-protocol~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ |
-| Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~ |
+| Converged search, Merkle generation, ranking & zero-regex Open EDB fact store | ASP (~agent-semantic-search~, ~agent-semantic-search-playbook~, ~agent-semantic-topology~, ~agent-semantic-search-projection~) | ~MarlinConvergedSearchEngine~, zero-regex protocol-native ~WorkspaceSearchIndex::ingest_open_edb_facts~ / ~project_prefiltered_edb~ (~schemas/semantic-open-edb.v1.schema.json~), Tantivy + ripgrep + compact 6B trigram postings, zero regex extractors, zero ~orgize~, zero ~turso~, zero pseudo-Tree-sitter ~.scm~, zero Rust ~ascent~ / ~agent-semantic-mrr~ |
+| Unified logical & Dusa finite-choice search DSL, typed structured parsing, POO language fragments, pre-tool-call AST repair hook & C-ABI projection | Marlin (~scheme/search-dsl/*~, ~scheme/search-engine/*~, ~:gerbil-ascent~, ~:gerbil-parser~, ~crates/marlin-agent-search-engine~) | Real Gerbil Scheme ~:gerbil-ascent~ (relational + Dusa finite-choice ~choice~/~closed~/~open~) + ~:gerbil-parser~ + POO ~LanguageFragment.~ prototypes over universal ~(kind, language_kind)~ + safe pre-tool-call AST repair hook + ~RootedSchemeObject~ open EDB streaming |
+| Language provider supervision (non-Rust external providers only) | ASP (~agent-semantic-provider-transport~, ~agent-semantic-provider-protocol~) | ~asp-rust~, ~asp-typescript~, ~asp-python~, ~asp-julia~, ~asp-gerbil-scheme~ emitting native parser AST facts over ~semantic-open-edb.v1~ |
+| Shared protocol & schema contracts | ASP (~agent-semantic-client-protocol~, ~schemas/~) | ~ClientFrame~, ~marlin-host-integration.v1.schema.json~, converged ~semantic-open-edb.v1.schema.json~ |
 
 * Two-Port Extreme Convergence (Org Parsing, Unified Turso Storage & Native Scheme ABI)
 
@@ -195,11 +195,14 @@ Marlin communicates with ASP Runtime Server exclusively through the typed
 5. ~asp.cancellation.probe~ — request cancellation verification
 
 Note: heavy compilation-unit language providers communicate with ASP over
-HTTP/gRPC, while lightweight/sub-syntax/query parsing and relational/Dusa
-choice reasoning live natively in Marlin's Gerbil Scheme plane (~:gerbil-parser~
-+ ~:gerbil-ascent~ + POO ~LanguageFragment.~). ASP's Rust search engine remains
-a minimal, language-agnostic runtime indexing and rule-driven Open EDB
-extraction interface.
+HTTP/gRPC emitting native parser AST facts through the converged
+~schemas/semantic-open-edb.v1.schema.json~ contract (~kind~ + native
+~languageKind~ + ~source~), while lightweight/sub-syntax/query parsing,
+relational/Dusa choice reasoning, and safe model tool-call AST repair live
+natively in Marlin's Gerbil Scheme plane (~:gerbil-parser~ + ~:gerbil-ascent~ +
+POO ~LanguageFragment.~). ASP's Rust search engine remains a minimal,
+zero-regex runtime indexing, generation-scoped Open EDB ingestion, and
+trigram-prefiltered projection interface.
 
 ** Fail-Closed Admission Rules
 

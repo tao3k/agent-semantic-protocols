@@ -13,8 +13,9 @@ mod query;
 mod symbols;
 
 pub use edb::{
-    WorkspaceEdbAttr, WorkspaceEdbEdgeFact, WorkspaceEdbEdgeRule, WorkspaceEdbEntityFact,
-    WorkspaceEdbEntityRule, WorkspaceEdbFileFact, WorkspaceEdbPrefilter, WorkspaceEdbSnapshot,
+    SEMANTIC_OPEN_EDB_SCHEMA_ID, SEMANTIC_OPEN_EDB_SCHEMA_VERSION, WorkspaceEdbAttr,
+    WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact, WorkspaceEdbFileFact, WorkspaceEdbPrefilter,
+    WorkspaceEdbSnapshot, WorkspaceOpenEdbIngestBatch, WorkspaceOpenEdbIngestReceipt,
 };
 pub use index::{
     WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
