@@ -42,3 +42,6 @@ path = "tests/unit/policy.rs"
 name = "ast_engine_hot_path"
 path = "benches/ast_engine_hot_path.rs"
 harness = false
+
+[lints]
+workspace = true

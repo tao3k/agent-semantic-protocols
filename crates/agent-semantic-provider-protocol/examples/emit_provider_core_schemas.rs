@@ -15,8 +15,7 @@ fn main() -> Result<(), String> {
             .map_err(|err| format!("serialize {filename}: {err}"))?;
         encoded.push('\n');
         let target = schemas_dir.join(filename);
-        fs::write(&target, encoded)
-            .map_err(|err| format!("write {}: {err}", target.display()))?;
+        fs::write(&target, encoded).map_err(|err| format!("write {}: {err}", target.display()))?;
         println!("emitted {}", target.display());
     }
     Ok(())

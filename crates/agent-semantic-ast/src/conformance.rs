@@ -61,11 +61,7 @@ fn validate_expected_nodes(
     for node in nodes {
         let s = node.outer_span.start;
         let e = node.outer_span.end;
-        if s > e
-            || e > source.len()
-            || !source.is_char_boundary(s)
-            || !source.is_char_boundary(e)
-        {
+        if s > e || e > source.len() || !source.is_char_boundary(s) || !source.is_char_boundary(e) {
             return Some(format!(
                 "invalid UTF-8 outer_span [{s}, {e}) for node {}",
                 node.locator
@@ -142,7 +138,8 @@ fn evaluate_single_probe(
             failure_reason: Some("ast-inspect rejected valid probe source".to_owned()),
         });
     }
-    let node_err = validate_expected_nodes(&probe.source, &probe.expected_nodes, &inspect_resp.nodes);
+    let node_err =
+        validate_expected_nodes(&probe.source, &probe.expected_nodes, &inspect_resp.nodes);
     Ok(ConformanceProbeReceipt {
         probe_id: probe.probe_id.clone(),
         passed: node_err.is_none(),

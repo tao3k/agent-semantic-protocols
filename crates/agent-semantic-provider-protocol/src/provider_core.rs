@@ -24,7 +24,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Schema ID for the converged provider core manifest.
-pub const PROVIDER_CORE_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.provider-core-manifest";
+pub const PROVIDER_CORE_MANIFEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.provider-core-manifest";
 /// Current schema version carried inside the provider core manifest payload.
 pub const PROVIDER_CORE_MANIFEST_SCHEMA_VERSION: &str = "1";
 /// Schema ID for `ast-inspect` wire messages.
@@ -49,7 +50,9 @@ pub const PROVIDER_CORE_SCHEMAS: &[&str] = &[
 ];
 
 /// Canonical language identifier newtype (e.g. `rust`, `python`, `julia`, `gerbil-scheme`).
-#[derive(Clone, Debug, Deserialize, Eq, Hash, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Debug, Deserialize, Eq, Hash, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(transparent)]
 pub struct ProviderLanguageId(String);
 
@@ -75,7 +78,9 @@ impl ProviderLanguageId {
 }
 
 /// Canonical provider identifier newtype (e.g. `asp-rust`, `asp-julia`, `asp-gerbil-scheme`).
-#[derive(Clone, Debug, Deserialize, Eq, Hash, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Debug, Deserialize, Eq, Hash, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(transparent)]
 pub struct ProviderPackageId(String);
 
@@ -181,7 +186,9 @@ pub struct ProviderCoreManifest {
 }
 
 /// Half-open UTF-8 byte span `[start, end)` referencing immutable source bytes.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceByteSpan {
     pub start: usize,
@@ -371,7 +378,10 @@ fn stamp_canonical_schema(mut value: Value, filename: &str, title: &str, version
             )),
         );
         ordered.insert("title".to_owned(), Value::String(title.to_owned()));
-        ordered.insert("x-schema-version".to_owned(), Value::String(version.to_owned()));
+        ordered.insert(
+            "x-schema-version".to_owned(),
+            Value::String(version.to_owned()),
+        );
         obj.remove("title");
         obj.remove("$id");
         for (k, v) in std::mem::take(obj) {
@@ -418,6 +428,8 @@ pub fn canonical_provider_core_schemas() -> Result<BTreeMap<&'static str, Value>
     ];
     Ok(entries
         .into_iter()
-        .map(|(name, title, version, raw)| (name, stamp_canonical_schema(raw, name, title, version)))
+        .map(|(name, title, version, raw)| {
+            (name, stamp_canonical_schema(raw, name, title, version))
+        })
         .collect())
 }

@@ -162,7 +162,10 @@ fn spawn_python(root: &Path) -> Option<LiveProviderGuard> {
         .env("ASP_PROVIDER_LANGUAGE_ID", "python")
         .env("ASP_PROVIDER_ARTIFACT_DIGEST", dummy_digest("py-art"))
         .env("ASP_PROVIDER_REGISTRATION_DIGEST", dummy_digest("py-reg"))
-        .env("ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST", dummy_digest("py-ctr"))
+        .env(
+            "ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST",
+            dummy_digest("py-ctr"),
+        )
         .env("ASP_PROVIDER_RUNTIME_OPERATIONS_JSON", ops.to_string())
         .env("ASP_CLIENT_SERVER_HOST", "127.0.0.1:0");
     spawn_provider(cmd).ok()
@@ -180,7 +183,10 @@ fn spawn_typescript(root: &Path) -> Option<LiveProviderGuard> {
         .env("ASP_PROVIDER_LANGUAGE_ID", "typescript")
         .env("ASP_PROVIDER_ARTIFACT_DIGEST", dummy_digest("ts-art"))
         .env("ASP_PROVIDER_REGISTRATION_DIGEST", dummy_digest("ts-reg"))
-        .env("ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST", dummy_digest("ts-ctr"))
+        .env(
+            "ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST",
+            dummy_digest("ts-ctr"),
+        )
         .env("ASP_CLIENT_SERVER_HOST", "127.0.0.1:0");
     spawn_provider(cmd).ok()
 }
@@ -202,7 +208,10 @@ fn spawn_julia(root: &Path) -> Option<LiveProviderGuard> {
         .env("ASP_PROVIDER_LANGUAGE_ID", "julia")
         .env("ASP_PROVIDER_ARTIFACT_DIGEST", dummy_digest("jl-art"))
         .env("ASP_PROVIDER_REGISTRATION_DIGEST", dummy_digest("jl-reg"))
-        .env("ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST", dummy_digest("jl-ctr"))
+        .env(
+            "ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST",
+            dummy_digest("jl-ctr"),
+        )
         .env("ASP_CLIENT_SERVER_HOST", "127.0.0.1:0");
     spawn_provider(cmd).ok()
 }
@@ -220,7 +229,12 @@ fn spawn_scheme(root: &Path) -> Option<LiveProviderGuard> {
     spawn_provider(cmd).ok()
 }
 
-type ProviderSpawnSpec<'a> = (&'a str, &'a str, &'a str, fn(&Path) -> Option<LiveProviderGuard>);
+type ProviderSpawnSpec<'a> = (
+    &'a str,
+    &'a str,
+    &'a str,
+    fn(&Path) -> Option<LiveProviderGuard>,
+);
 
 #[tokio::main]
 async fn main() -> Result<(), String> {

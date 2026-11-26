@@ -20,17 +20,16 @@
 //! AND exercised on lossless trivia-preserving AST patching, Frontier 2 native
 //! compiler oracle auto-calibration, and live single-tree Open EDB sync!
 
+use agent_semantic_ast::{
+    AstCalibrationOutcome, AstEngine, AstNodeLocator, AstPatchOp, AstPatchRequest, AstPatchStatus,
+    AstWorkspacePath, LexicalDelimiterProfile, blake3_source_digest, run_language_conformance_pack,
+};
+use agent_semantic_provider_protocol::{LanguageConformancePack, ProviderCoreManifest};
+use agent_semantic_search::WorkspaceSearchIndex;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use agent_semantic_ast::{
-    AstCalibrationOutcome, AstEngine, AstNodeLocator, AstPatchOp, AstPatchRequest, AstPatchStatus,
-    AstWorkspacePath, LexicalDelimiterProfile, blake3_source_digest,
-    run_language_conformance_pack,
-};
-use agent_semantic_provider_protocol::{LanguageConformancePack, ProviderCoreManifest};
-use agent_semantic_search::WorkspaceSearchIndex;
 use tempfile::TempDir;
 
 struct LiveProviderGuard {
@@ -157,7 +156,10 @@ fn spawn_asp_typescript(root: &Path) -> Option<LiveProviderGuard> {
 
 fn spawn_asp_julia(root: &Path) -> Option<LiveProviderGuard> {
     let project_dir = root.join("languages/AspJulia.jl");
-    if !project_dir.join("src/asp_client_server/ast_ops.jl").exists() {
+    if !project_dir
+        .join("src/asp_client_server/ast_ops.jl")
+        .exists()
+    {
         return None;
     }
     let julia_bin = std::env::var_os("HOME")

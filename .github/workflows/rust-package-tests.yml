@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 14
+      max-parallel: 15
       matrix:
         package:
           - agent-semantic-artifacts
+          - agent-semantic-ast
           - agent-semantic-client-protocol
           - agent-semantic-config
           - agent-semantic-content-identity

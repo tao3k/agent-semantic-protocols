@@ -183,7 +183,8 @@ impl AstProviderRegistry {
         let endpoint_str = endpoint.into();
         let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
-        let lexical_profile = LexicalDelimiterProfile::from_syntax_surface(&manifest.syntax_surface);
+        let lexical_profile =
+            LexicalDelimiterProfile::from_syntax_surface(&manifest.syntax_surface);
         let capabilities = AstProviderCapabilities {
             ast_inspect: manifest.capabilities.ast_inspect,
             ast_verify: manifest.capabilities.ast_verify,

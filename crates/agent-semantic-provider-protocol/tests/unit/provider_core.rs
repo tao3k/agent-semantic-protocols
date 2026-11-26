@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::provider_core::{
     LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack, PROVIDER_CORE_MANIFEST_SCHEMA_ID,
-    PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS, PROVIDER_CORE_SCHEMA_VERSION,
+    PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS,
     ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
     ProviderSyntaxSurface, ProviderTransport, canonical_provider_core_schemas,
 };
