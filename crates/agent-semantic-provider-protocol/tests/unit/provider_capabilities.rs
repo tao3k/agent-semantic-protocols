@@ -16,13 +16,6 @@ fn provider_capability_descriptors_round_trip_under_protocol_ownership() {
         "semanticFacts": true,
         "dependencyTopology": true,
         "dependencyTopologyMetadata": false,
-        "enhancedSyntaxQueryCapability": {
-            "schemaId": "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table",
-            "schemaVersion": "1",
-            "languageId": "rust",
-            "providerId": "asp-rust",
-            "tableDigest": "blake3-256:test"
-        },
         "sourceSnapshot": {
             "descriptorId": "rust.source-snapshot",
             "descriptorVersion": "1",
@@ -44,14 +37,6 @@ fn provider_capability_descriptors_round_trip_under_protocol_ownership() {
     assert_eq!(snapshot.descriptor_id(), "rust.source-snapshot");
     assert_eq!(snapshot.language_id(), "rust");
     assert_eq!(snapshot.algorithm(), "blake3-256");
-    assert_eq!(
-        search
-            .enhanced_syntax_query_capability
-            .as_ref()
-            .and_then(|value| value.get("providerId"))
-            .and_then(serde_json::Value::as_str),
-        Some("asp-rust")
-    );
     assert_eq!(serde_json::to_value(&search).unwrap(), search_json);
 
     let facts_json = json!({
@@ -120,7 +105,7 @@ fn provider_capability_descriptors_reject_hook_private_extensions() {
 }
 
 #[test]
-fn builtin_rust_enhanced_query_capability_survives_the_provider_protocol_projection() {
+fn builtin_rust_registration_carries_zero_legacy_tree_sitter_or_query_pack_fields() {
     let rust = builtin_provider_registrations()
         .expect("built-in provider registrations")
         .into_iter()
@@ -130,20 +115,9 @@ fn builtin_rust_enhanced_query_capability_survives_the_provider_protocol_project
         .registration_field("searchCapabilities")
         .expect("Rust search capabilities")
         .clone();
+    assert!(raw.get("enhancedSyntaxQueryCapability").is_none());
+    assert!(rust.registration.get("queryPackDescriptor").is_none());
     let decoded: ProviderSearchCapabilities =
         serde_json::from_value(raw.clone()).expect("provider protocol projection");
-    let capability = decoded
-        .enhanced_syntax_query_capability
-        .as_ref()
-        .expect("enhanced Query capability");
-
     assert_eq!(serde_json::to_value(&decoded).unwrap(), raw);
-    assert_eq!(
-        capability
-            .get("schemaVersion")
-            .and_then(serde_json::Value::as_str),
-        Some("1")
-    );
-    assert!(capability.get("tableDigest").is_some());
-    assert!(capability.get("$ref").is_none());
 }

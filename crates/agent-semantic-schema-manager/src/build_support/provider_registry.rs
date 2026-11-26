@@ -25,69 +25,13 @@ pub struct ProviderIdentityBuild {
     pub provider_id: String,
 }
 
-/// Resolve one provider registration and its source-owned enhanced Query table.
-///
-/// The checked-in registration retains a relative reference so the capability
-/// table has one source owner. Build/install publication embeds the resolved
-/// table in the immutable Runtime Provider Register.
+/// Resolve one provider registration document.
 pub fn resolve_provider_registration(
-    provider_root: &Path,
+    _provider_root: &Path,
     registration_path: &Path,
 ) -> Result<(Value, Vec<PathBuf>), String> {
-    let mut registration = read_json(registration_path)?;
-    let Some(capability) =
-        registration.pointer_mut("/searchCapabilities/enhancedSyntaxQueryCapability")
-    else {
-        return Ok((registration, vec![registration_path.to_path_buf()]));
-    };
-    let reference = capability
-        .get("$ref")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            format!(
-                "provider enhanced Query capability must be one relative $ref: {}",
-                registration_path.display()
-            )
-        })?;
-    let reference_path = Path::new(reference);
-    if reference_path.is_absolute()
-        || reference_path.components().any(|component| {
-            matches!(
-                component,
-                std::path::Component::Prefix(_) | std::path::Component::RootDir
-            )
-        })
-    {
-        return Err("provider enhanced Query capability $ref must be relative".to_owned());
-    }
-    let provider_root = provider_root.canonicalize().map_err(|error| {
-        format!(
-            "canonicalize provider root {}: {error}",
-            provider_root.display()
-        )
-    })?;
-    let capability_path = registration_path
-        .parent()
-        .ok_or_else(|| "provider registration path has no parent".to_owned())?
-        .join(reference_path)
-        .canonicalize()
-        .map_err(|error| {
-            format!(
-                "resolve provider enhanced Query capability {}: {error}",
-                reference
-            )
-        })?;
-    if !capability_path.starts_with(&provider_root) {
-        return Err(format!(
-            "provider enhanced Query capability escapes provider root: {}",
-            capability_path.display()
-        ));
-    }
-    *capability = read_json(&capability_path)?;
-    Ok((
-        registration,
-        vec![registration_path.to_path_buf(), capability_path],
-    ))
+    let registration = read_json(registration_path)?;
+    Ok((registration, vec![registration_path.to_path_buf()]))
 }
 
 /// Resolves canonical provider registrations and their build-script rerun inputs.

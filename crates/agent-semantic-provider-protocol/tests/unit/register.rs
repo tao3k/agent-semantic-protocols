@@ -33,7 +33,6 @@ fn provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocumen
                 "dependencyTopology": false,
                 "dependencyTopologyMetadata": false
             },
-            "queryPackDescriptor": {},
             "routes": [{
                 "schemaId": "agent.semantic-protocols.provider-route",
                 "schemaVersion": "1",

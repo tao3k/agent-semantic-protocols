@@ -182,7 +182,6 @@ impl ProviderRegistrationDocument {
         self.namespace()?;
         self.source_inventory()?;
         self.registration_field("searchCapabilities")?;
-        self.registration_field("queryPackDescriptor")?;
         Ok(())
     }
 }

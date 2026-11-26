@@ -62,52 +62,32 @@ def validate_provider_registries(
 
 
 def _rust_capability_table_failures(root: Path) -> list[str]:
-    """Validate Rust's server-owned V1 capability source without a legacy CLI."""
-    table_path = (
-        root
-        / "languages/asp-rust/tree-sitter/tree-sitter-rust"
-        / "enhanced-query-capabilities.v1.json"
-    )
-    schema_path = (
-        root / "schemas/enhanced-tree-sitter-query-capability-table.v1.schema.json"
-    )
+    """Validate Rust's converged RFC 10.36 provider-core manifest."""
+    manifest_path = root / "languages/asp-rust/provider/provider-core-manifest.json"
+    schema_path = root / "schemas/provider-core-manifest.schema.json"
     registration_path = (
         root / "languages/asp-rust/provider/asp-provider-registration.json"
     )
     try:
-        table = load_json(table_path)
+        manifest = load_json(manifest_path)
         schema = load_json(schema_path)
         registration = load_json(registration_path)
     except (OSError, SystemExit) as error:
-        return [f"rust: capability source unavailable: {error}"]
+        return [f"rust: provider-core manifest unavailable: {error}"]
 
-    errors = sorted(Draft202012Validator(schema).iter_errors(table), key=str)
+    errors = sorted(Draft202012Validator(schema).iter_errors(manifest), key=str)
     if errors:
         return [
-            "rust: capability table schema validation failed: "
+            "rust: provider-core manifest schema validation failed: "
             f"{_format_schema_error(errors[0])}"
         ]
-    capability_ref = (
-        registration.get("searchCapabilities", {})
-        .get("enhancedSyntaxQueryCapability", {})
-        .get("$ref")
-    )
-    expected_ref = "../tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json"
-    if capability_ref != expected_ref:
-        return [
-            "rust: provider registration must bind the canonical V1 capability table: "
-            f"expected={expected_ref!r} actual={capability_ref!r}"
-        ]
-    if table.get("languageId") != registration.get("languageId") or table.get(
+    if manifest.get("languageId") != registration.get("languageId") or manifest.get(
         "providerId"
     ) != registration.get("providerId"):
-        return ["rust: capability table identity does not match provider registration"]
+        return ["rust: provider-core manifest identity does not match provider registration"]
 
-    runtime_rows = sum(
-        row.get("publicationState") == "runtime" for row in table.get("rows", [])
-    )
     sys.stdout.write(
-        f"rust ok capabilityRows={len(table['rows'])} runtimeRows={runtime_rows}\n"
+        f"rust ok providerCoreOperations={len(manifest.get('operations', []))}\n"
     )
     return []
 
