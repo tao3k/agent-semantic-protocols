@@ -25,8 +25,11 @@ use serde::{Deserialize, Serialize};
 use crate::SearchGenerationDigest;
 use crate::trigram_query::TrigramQuery;
 
-use super::index::{IndexedFile, WorkspaceSearchIndex};
-use super::query::CompiledFilters;
+use super::index::{IndexedFile, WorkspaceContextLine, WorkspaceSearchIndex};
+use super::provider_ingest::{
+    parse_native_syntax_fact_index_json, parse_provider_projection_batch_json,
+};
+use super::query::{CompiledFilters, extract_line_slice};
 use super::symbols::WorkspaceSymbolKind;
 
 /// Canonical JSON Schema identifier for converged Open EDB provider fact batches.
@@ -119,6 +122,28 @@ pub struct WorkspaceOpenEdbIngestBatch {
     pub entities: Vec<WorkspaceEdbEntityFact>,
     #[serde(default)]
     pub edges: Vec<WorkspaceEdbEdgeFact>,
+}
+
+impl WorkspaceOpenEdbIngestBatch {
+    /// Convert an ASP `semantic-native-syntax-fact-index.v1.schema.json` payload
+    /// directly into a converged Open EDB ingestion batch (zero regex).
+    pub fn from_native_syntax_fact_index_json(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        parse_native_syntax_fact_index_json(bytes)
+    }
+
+    /// Convert an ASP `provider-language-projection-batch-response` payload
+    /// directly into a converged Open EDB ingestion batch (zero regex).
+    pub fn from_provider_projection_batch_json(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        parse_provider_projection_batch_json(bytes)
+    }
+}
+
+/// One live workspace file awaiting native-parser or `:gerbil-parser` Open EDB hydration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceOpenEdbPendingFile {
+    pub path: String,
+    pub language: String,
+    pub body: String,
 }
 
 /// Deterministic receipt returned by [`WorkspaceSearchIndex::ingest_open_edb_facts`].
@@ -234,6 +259,77 @@ impl EdbProjector {
 }
 
 impl WorkspaceSearchIndex {
+    /// Return surrounding RAM source lines for a live workspace file at
+    /// 1-based `focus_line` (used by Helm split-pane preview for `:gerbil-ascent`
+    /// and Dusa query answer rows with zero disk I/O).
+    #[must_use]
+    pub fn live_file_context(
+        &self,
+        relative_path: &str,
+        focus_line: usize,
+        radius: usize,
+    ) -> Vec<WorkspaceContextLine> {
+        let clean = relative_path.replace('\\', "/");
+        let Some(&file_id) = self.path_to_id.get(&clean) else {
+            return Vec::new();
+        };
+        if self.is_tombstoned(file_id) {
+            return Vec::new();
+        }
+        let Some(file) = self.files.get(file_id as usize) else {
+            return Vec::new();
+        };
+        let total_lines = file.line_offsets.len().max(1);
+        let focus = focus_line.clamp(1, total_lines);
+        let start = focus.saturating_sub(radius).max(1);
+        let end = focus.saturating_add(radius).min(total_lines);
+        let mut out = Vec::with_capacity(end.saturating_sub(start) + 1);
+        for line_number in start..=end {
+            out.push(WorkspaceContextLine {
+                line_number,
+                text: extract_line_slice(file, line_number).to_owned(),
+                is_match: line_number == focus,
+            });
+        }
+        out
+    }
+
+    /// Return live workspace files matching `languages` that do not yet have
+    /// ingested Open EDB facts attached (for incremental native/Scheme hydration).
+    #[must_use]
+    pub fn live_files_needing_open_edb(
+        &self,
+        languages: &[&str],
+        max_files: usize,
+    ) -> Vec<WorkspaceOpenEdbPendingFile> {
+        let limit = if max_files == 0 {
+            usize::MAX
+        } else {
+            max_files
+        };
+        let mut out = Vec::new();
+        for (_, file) in self.live_files() {
+            if out.len() >= limit {
+                break;
+            }
+            if !file.open_edb_entities.is_empty() || !file.open_edb_edges.is_empty() {
+                continue;
+            }
+            let Some(lang) = file.language else {
+                continue;
+            };
+            if !languages.is_empty() && !languages.contains(&lang) {
+                continue;
+            }
+            out.push(WorkspaceOpenEdbPendingFile {
+                path: file.relative_path.clone(),
+                language: lang.to_owned(),
+                body: file.body.clone(),
+            });
+        }
+        out
+    }
+
     /// Ingest protocol-native Open EDB facts emitted by external language providers
     /// (`asp-rust`, `asp-typescript`, `asp-python`, `asp-julia`, `asp-gerbil-scheme`)
     /// or Marlin's Scheme `:gerbil-parser` plane, replacing cached per-file facts for

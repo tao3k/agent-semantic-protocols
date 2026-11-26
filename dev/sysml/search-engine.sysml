@@ -90,22 +90,28 @@ package AspSearchEngine {
                    (compact 6B `loc_mask`/`next_mask` trigram postings,
                    `regex-syntax` HIR boolean query planner, zero-copy `mmap`
                    snapshots, incremental `apply_file_delta` + disk sync,
-                   resident structural symbol extraction & 1-hop import/reference
+                   live RAM `live_file_context` preview slicing, resident
+                   structural symbol extraction & 1-hop import/reference
                    graph queries, plus zero-regex protocol-native
                    `ingest_open_edb_facts` / `project_prefiltered_edb` conforming
-                   to `schemas/semantic-open-edb.v1.schema.json` streaming open
-                   `WorkspaceEdbEntityFact`/`WorkspaceEdbEdgeFact` slices to
-                   Marlin's `:gerbil-ascent` + `:gerbil-parser` + POO DSL),
-                   `FileLocatorIndex`, `execute_admitted_playbook_with_index`,
+                   to `schemas/semantic-open-edb.v1.schema.json`, lossless V1
+                   provider wire adapters `parse_native_syntax_fact_index_json`
+                   and `parse_provider_projection_batch_json`, and BLAKE3
+                   `content_hash`-verified persistent `WorkspaceOpenEdbCache`
+                   streaming open `WorkspaceEdbEntityFact`/`WorkspaceEdbEdgeFact`
+                   slices to Marlin's `:gerbil-ascent` + `:gerbil-parser` + POO
+                   DSL), `FileLocatorIndex`, `execute_admitted_playbook_with_index`,
                    and in-RAM `Tantivy` BM25/Fuzzy lexical acceleration. */
         }
         part topologyAndOpenEdb {
             doc /* `OrgDocumentProjectionPort`-backed topology manifest/overlay
                    admission and zero-regex generation-scoped Open EDB fact
-                   store (`semantic-open-edb.v1`) for native language providers
-                   and Marlin's Scheme `:gerbil-ascent` + `:gerbil-parser`
-                   reasoning plane (zero regex extractors in Rust, zero
-                   pseudo-Tree-sitter `.scm` query layer, and zero Rust `ascent`). */
+                   store (`semantic-open-edb.v1` + BLAKE3 `content_hash` cache +
+                   `live_files_needing_open_edb` hydration queue) for native
+                   language providers and Marlin's Scheme `:gerbil-ascent` +
+                   `:gerbil-parser` reasoning plane (zero regex extractors in
+                   Rust, zero pseudo-Tree-sitter `.scm` query layer, and zero
+                   Rust `ascent`). */
         }
         part providerTransport {
             doc /* Process and HTTP-JSON boundary reserved solely for external

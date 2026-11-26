@@ -201,8 +201,39 @@ HTTP/gRPC emitting native parser AST facts through the converged
 relational/Dusa choice reasoning, and safe model tool-call AST repair live
 natively in Marlin's Gerbil Scheme plane (~:gerbil-parser~ + ~:gerbil-ascent~ +
 POO ~LanguageFragment.~). ASP's Rust search engine remains a minimal,
-zero-regex runtime indexing, generation-scoped Open EDB ingestion, and
+zero-regex runtime indexing, generation-scoped Open EDB ingestion,
+BLAKE3 ~content_hash~-verified persistent cache (~WorkspaceOpenEdbCache~), and
 trigram-prefiltered projection interface.
+
+* Schema Convergence & Leverage Plan (~semantic-open-edb.v1~)
+
+An audit of ASP's ~schemas/~ directory (453 ~*.schema.json~ files across 5
+profile root sets) identifies *19 fragmented syntax/tree-sitter/projection
+schemas* that ~schemas/semantic-open-edb.v1.schema.json~ converges onto one
+minimal, zero-regex dual-layer (~kind~, native ~languageKind~, ~source~, open
+~attrs~, directed ~edges~) wire protocol leveraged dynamically by Marlin's
+Scheme POO ~LanguageFragment.~ prototypes:
+
+| Legacy Schema Cluster | Count | Convergence Status |
+|-----------------------+-------+--------------------|
+| Tree-sitter & syntax query plan (~semantic-tree-sitter-{query,grammar-profile,provenance}~, ~enhanced-tree-sitter-query-{operator,capability}-table~, ~resident-syntax-query-plan~, ~asp-client-workspace-syntax-{query,plan-context}-{request,response}~, ~provider-syntax-query-{request,response}~) | 12 | *Superseded* by ~semantic-open-edb.v1~ + Marlin ~:gerbil-ascent~ / ~:gerbil-parser~ / POO; frozen solely for V1 external provider bundle compatibility until coordinated V2 retirement |
+| Provider fact & projection envelopes (~semantic-native-syntax-fact-index.v1~, ~provider-language-projection-batch-{request,response}~, ~semantic-language-projection.v1~, ~semantic-fact-{ontology,graph}.v1~, ~semantic-structural-index.v1~) | 7 | *Losslessly bridged today* via zero-regex Rust wire adapters (~WorkspaceOpenEdbIngestBatch::from_native_syntax_fact_index_json~ and ~from_provider_projection_batch_json~) into ~WorkspaceSearchIndex::ingest_open_edb_facts~ |
+
+** Zero-Stale-Fact Open EDB Cache & Measured Criterion Hot Path
+
+~WorkspaceSearchIndex~ persists Open EDB facts via ~save_open_edb_cache~ /
+~load_and_restore_open_edb_cache~ keyed strictly by ~(path, content_hash)~
+(BLAKE3-256). Any file modified or deleted on disk fails closed and is skipped
+automatically, surfacing via ~live_files_needing_open_edb~ for incremental
+re-hydration.
+
+Measured Criterion benchmark baseline (~cargo bench -p agent-semantic-search --bench search_engine_hot_path -- asp_open_edb_hot_path~):
+
+| Benchmark | Median Time | Throughput |
+|-----------+-------------+------------|
+| ~ingest_open_edb_facts_512~ (512 native entities + edges) | ~278 µs~ | ~1.84 Melem/s~ |
+| ~project_prefiltered_edb_trigram~ (trigram prefilter -> Open EDB snapshot) | ~1.396 µs~ | ~716 Kelem/s~ |
+| ~restore_open_edb_cache_256_files~ (BLAKE3 ~content_hash~ verified restore) | ~268 µs~ | ~3.73 Kelem/s~ |
 
 ** Fail-Closed Admission Rules
 

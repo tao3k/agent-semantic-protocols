@@ -426,3 +426,134 @@ fn open_edb_ingests_native_parser_protocol_facts_falls_back_to_resident_index_an
         e.kind == "function" && e.name == "execute_search_v2" && e.source == "resident-index"
     }));
 }
+
+#[test]
+fn provider_wire_adapters_and_content_hash_edb_cache_guarantee_zero_stale_facts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let ws = tmp.path().join("ws");
+    let cache_path = tmp.path().join("cache/workspace.open-edb.json");
+    std::fs::create_dir_all(ws.join("src")).expect("mkdir src");
+    std::fs::write(
+        ws.join("src/engine.rs"),
+        "pub struct Engine;\nimpl Runner for Engine {\n    pub fn run_engine(&self) {}\n}\n",
+    )
+    .expect("write engine");
+    std::fs::write(
+        ws.join("src/helper.rs"),
+        "pub fn helper_fn() -> usize { 1 }\n",
+    )
+    .expect("write helper");
+
+    let mut index = WorkspaceSearchIndex::build_with_config(&ws, WorkspaceIndexConfig::default());
+    assert_eq!(index.live_files_needing_open_edb(&["rust"], 0).len(), 2);
+
+    // 1. Existing ASP `semantic-native-syntax-fact-index.v1` payload ingests zero-regex.
+    let native_index_json = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-native-syntax-fact-index",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "projectRoot": ws.to_string_lossy(),
+        "facts": [
+            {
+                "id": "fact-impl-1",
+                "kind": "item",
+                "source": "native-parser",
+                "languageKind": "impl_item",
+                "name": "Engine",
+                "ownerPath": "src/engine.rs",
+                "location": { "line": 2 },
+                "visibility": "public",
+                "relations": [
+                    { "kind": "implements", "target": "Runner" }
+                ],
+                "fields": { "trait": "Runner" }
+            }
+        ]
+    });
+    let batch1 = WorkspaceOpenEdbIngestBatch::from_native_syntax_fact_index_json(
+        &serde_json::to_vec(&native_index_json).expect("serialize native index"),
+    )
+    .expect("parse native syntax fact index");
+    let r1 = index.ingest_open_edb_facts(batch1);
+    assert_eq!(r1.updated_files, 1);
+    assert_eq!(r1.ingested_entities, 1);
+    assert_eq!(r1.ingested_edges, 1);
+
+    // 2. Existing ASP `provider-language-projection-batch-response` payload ingests zero-regex.
+    let proj_batch_json = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.provider-language-projection-batch-response",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "asp-rust",
+        "owners": [
+            {
+                "ownerPath": "src/helper.rs",
+                "items": [
+                    {
+                        "itemId": "item-helper-1",
+                        "kind": "function",
+                        "name": "helper_fn",
+                        "selector": "rust::src/helper.rs#helper_fn",
+                        "sourceByteStart": 0,
+                        "line": 1
+                    }
+                ],
+                "relations": []
+            }
+        ]
+    });
+    let batch2 = WorkspaceOpenEdbIngestBatch::from_provider_projection_batch_json(
+        &serde_json::to_vec(&proj_batch_json).expect("serialize projection batch"),
+    )
+    .expect("parse projection batch");
+    let r2 = index.ingest_open_edb_facts(batch2);
+    assert_eq!(r2.updated_files, 1);
+    assert_eq!(index.live_files_needing_open_edb(&["rust"], 0).len(), 0);
+
+    // 3. RAM context window lookup works for Helm split-pane preview.
+    let ctx = index.live_file_context("src/engine.rs", 2, 1);
+    assert_eq!(ctx.len(), 3);
+    assert!(
+        ctx.iter()
+            .any(|c| c.line_number == 2 && c.is_match && c.text.contains("impl Runner"))
+    );
+
+    // 4. Persist cache, modify one file on disk, rebuild cold, and verify zero-stale restore.
+    index.save_open_edb_cache(&cache_path).expect("save cache");
+    std::fs::write(
+        ws.join("src/helper.rs"),
+        "pub fn helper_fn_changed() -> usize { 2 }\n",
+    )
+    .expect("modify helper");
+
+    let mut cold = WorkspaceSearchIndex::build_with_config(&ws, WorkspaceIndexConfig::default());
+    let restore = cold
+        .load_and_restore_open_edb_cache(&cache_path)
+        .expect("restore cache");
+    assert_eq!(restore.restored_files, 1);
+    assert_eq!(restore.restored_entities, 1);
+    assert_eq!(restore.restored_edges, 1);
+    assert_eq!(restore.stale_or_missing_files, 1);
+
+    // Only the changed file needs incremental re-hydration!
+    let pending = cold.live_files_needing_open_edb(&["rust"], 0);
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].path, "src/helper.rs");
+
+    // Unchanged engine.rs retained its native impl_item fact across cold restart!
+    let edb = cold.project_prefiltered_edb(&WorkspaceEdbPrefilter {
+        languages: &["rust".to_owned()],
+        required_tokens: &["Runner".to_owned()],
+        ..Default::default()
+    });
+    assert!(edb.entities.iter().any(|e| {
+        e.language_kind == "impl_item"
+            && e.name == "Engine"
+            && e.attrs
+                .iter()
+                .any(|a| a.key == "trait" && a.value == "Runner")
+    }));
+}

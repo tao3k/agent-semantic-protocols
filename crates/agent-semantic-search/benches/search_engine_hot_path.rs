@@ -17,7 +17,8 @@ use std::time::Duration;
 use agent_semantic_search::{
     InMemorySearchStoragePort, MarlinConvergedSearchEngine, SearchGenerationDigest,
     SearchProjectId, SearchTopologyEdgeId, SearchTopologyEdgeRecord, SearchWorkspaceId,
-    SourceIndexRankCandidate, SourceIndexRankRequest, WorkspaceFileDelta, WorkspaceIndexConfig,
+    SourceIndexRankCandidate, SourceIndexRankRequest, WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact,
+    WorkspaceEdbPrefilter, WorkspaceFileDelta, WorkspaceIndexConfig, WorkspaceOpenEdbIngestBatch,
     WorkspaceSearchIndex, WorkspaceSearchQuery, analyze_native_rg_argv, analyze_tantivy_query,
 };
 use agent_semantic_search_playbook::{
@@ -482,6 +483,102 @@ fn bench_converged_resident_4axis_hot_path(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_open_edb_hot_path(c: &mut Criterion) {
+    let mut files = Vec::with_capacity(256);
+    let mut entities = Vec::with_capacity(256 * 4);
+    let mut edges = Vec::with_capacity(256);
+    for idx in 0..256usize {
+        let path = format!("crates/pkg_{}/src/mod_{idx:03}.rs", idx % 16);
+        let body = format!(
+            "pub struct Handler{idx};\nimpl ToolRuntime for Handler{idx} {{ pub fn run_{idx}() {{}} }}\n"
+        );
+        files.push((path.clone(), body.into_bytes()));
+        entities.push(WorkspaceEdbEntityFact {
+            entity_id: String::new(),
+            file_id: 0,
+            path: path.clone(),
+            line: 1,
+            name: format!("Handler{idx}"),
+            language: "rust".to_owned(),
+            kind: "struct".to_owned(),
+            language_kind: "struct_item".to_owned(),
+            source: "native-parser".to_owned(),
+            attrs: Vec::new(),
+        });
+        entities.push(WorkspaceEdbEntityFact {
+            entity_id: String::new(),
+            file_id: 0,
+            path: path.clone(),
+            line: 2,
+            name: format!("Handler{idx}"),
+            language: "rust".to_owned(),
+            kind: "item".to_owned(),
+            language_kind: "impl_item".to_owned(),
+            source: "native-parser".to_owned(),
+            attrs: Vec::new(),
+        });
+        edges.push(WorkspaceEdbEdgeFact {
+            src: format!("Handler{idx}"),
+            relation: "implements".to_owned(),
+            dst: "ToolRuntime".to_owned(),
+            path,
+            line: 2,
+        });
+    }
+    let mut index = WorkspaceSearchIndex::build_from_memory(
+        std::path::PathBuf::from("/virtual/open-edb-bench"),
+        files,
+        WorkspaceIndexConfig {
+            enable_tantivy: false,
+            enable_file_locator: false,
+            ..WorkspaceIndexConfig::default()
+        },
+    );
+    let batch = WorkspaceOpenEdbIngestBatch {
+        language_id: Some("rust".to_owned()),
+        provider_id: Some("asp-rust".to_owned()),
+        entities,
+        edges,
+        ..Default::default()
+    };
+
+    let mut group = c.benchmark_group("asp_open_edb_hot_path");
+    group.throughput(Throughput::Elements(batch.entities.len() as u64));
+    group.bench_function("ingest_open_edb_facts_512", |bencher| {
+        bencher.iter(|| {
+            let receipt = index.ingest_open_edb_facts(black_box(&batch).clone());
+            black_box(receipt);
+        });
+    });
+
+    let _ = index.ingest_open_edb_facts(batch);
+    let langs = vec!["rust".to_owned()];
+    let tokens = vec!["Handler128".to_owned()];
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("project_prefiltered_edb_trigram", |bencher| {
+        let prefilter = WorkspaceEdbPrefilter {
+            languages: &langs,
+            required_tokens: &tokens,
+            ..Default::default()
+        };
+        bencher.iter(|| {
+            let snap = index.project_prefiltered_edb(black_box(&prefilter));
+            assert_eq!(snap.candidate_files, 1);
+            black_box(snap);
+        });
+    });
+
+    let cache = index.export_open_edb_cache();
+    group.bench_function("restore_open_edb_cache_256_files", |bencher| {
+        bencher.iter(|| {
+            let receipt = index.restore_open_edb_cache(black_box(&cache).clone());
+            assert_eq!(receipt.restored_files, 256);
+            black_box(receipt);
+        });
+    });
+    group.finish();
+}
+
 fn benchmark_config() -> Criterion {
     Criterion::default()
         .warm_up_time(Duration::from_millis(500))
@@ -498,6 +595,7 @@ criterion_group! {
         bench_generation_cas_and_edges,
         bench_query_analysis_hot_path,
         bench_real_corpus_playbook_execution,
-        bench_converged_resident_4axis_hot_path
+        bench_converged_resident_4axis_hot_path,
+        bench_open_edb_hot_path
 }
 criterion_main!(benches);

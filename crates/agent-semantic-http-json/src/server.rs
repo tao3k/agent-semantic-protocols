@@ -71,7 +71,9 @@ pub async fn post_json(
             .map_err(|error| format!("HTTP JSON client connection: {error}"))
     });
     let request = Request::post(path)
+        .header("host", authority.as_str())
         .header("content-type", "application/json")
+        .header("connection", "close")
         .body(Full::new(body))
         .map_err(|error| format!("build HTTP JSON request: {error}"))?;
     let response = sender
@@ -85,6 +87,7 @@ pub async fn post_json(
         .await
         .map_err(|error| format!("read HTTP JSON response: {error}"))?
         .to_bytes();
+    drop(sender);
     connection_task
         .await
         .map_err(|error| format!("join HTTP JSON client connection: {error}"))??;
