@@ -26,13 +26,23 @@ use agent_semantic_search::WorkspaceOpenEdbIngestBatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
-use tokio::sync::watch;
+use tokio::sync::{Semaphore, watch};
+use tokio::task::JoinSet;
 
 use crate::open_edb_projection::project_nodes_to_open_edb_batch;
-use crate::provider_port::AstInspectRequest;
-use crate::registry::{AstProviderRegisterReceipt, AstProviderRegistry};
+use crate::provider_port::{AstInspectRequest, AstProviderPort};
+use crate::registry::{
+    AstProviderDescriptor, AstProviderRegisterReceipt, AstProviderRegistry,
+    AstProviderTransportKind,
+};
 use crate::span_overlay::blake3_source_digest;
-use crate::types::{AstEngineError, AstLanguageId, AstWorkspacePath};
+use crate::types::{
+    AstEngineError, AstLanguageId, AstProviderCapabilities, AstProviderId, AstWorkspacePath,
+    LexicalDelimiterProfile,
+};
+
+const MAX_GLOBAL_INSPECT_CONCURRENCY: usize = 16;
+const MAX_PER_PROVIDER_INSPECT_CONCURRENCY: usize = 4;
 
 /// Schema ID for the ASP provider forwarding catalog response.
 pub const PROVIDER_FORWARDING_CATALOG_SCHEMA_ID: &str =
@@ -94,6 +104,16 @@ pub struct ForwardedInspectFilesRequest {
     pub files: Vec<ForwardedInspectFileInput>,
 }
 
+/// Per-file provider inspection failure isolated from sibling languages/files.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardedInspectFailure {
+    pub path: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub error: String,
+}
+
 /// General JSON Open EDB forwarding response returned by `POST /v1/open-edb/inspect-files`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +125,8 @@ pub struct ForwardedOpenEdbResponse {
     pub elapsed_micros: u64,
     pub batches: Vec<WorkspaceOpenEdbIngestBatch>,
     pub skipped_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_paths: Vec<ForwardedInspectFailure>,
 }
 
 /// Derive a Yuanxu-compatible targeted JSON Schema enforcing a language's exact
@@ -152,10 +174,22 @@ pub fn derive_targeted_entity_schema(
 
 /// Language-agnostic HTTP-JSON forwarding gateway pairing an [`AstProviderRegistry`]
 /// with dynamically forwarded provider manifests, targeted schemas, and DSL packs.
-#[derive(Default)]
 pub struct AspForwardingGateway {
     registry: RwLock<AstProviderRegistry>,
     envelopes: RwLock<BTreeMap<AstLanguageId, ProviderForwardingEnvelope>>,
+    global_inspect_semaphore: Arc<Semaphore>,
+    provider_semaphores: RwLock<BTreeMap<AstLanguageId, Arc<Semaphore>>>,
+}
+
+impl Default for AspForwardingGateway {
+    fn default() -> Self {
+        Self {
+            registry: RwLock::new(AstProviderRegistry::default()),
+            envelopes: RwLock::new(BTreeMap::new()),
+            global_inspect_semaphore: Arc::new(Semaphore::new(MAX_GLOBAL_INSPECT_CONCURRENCY)),
+            provider_semaphores: RwLock::new(BTreeMap::new()),
+        }
+    }
 }
 
 impl AspForwardingGateway {
@@ -163,6 +197,28 @@ impl AspForwardingGateway {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn provider_semaphore(
+        &self,
+        language_id: &AstLanguageId,
+    ) -> Result<Arc<Semaphore>, AstEngineError> {
+        if let Some(existing) = self
+            .provider_semaphores
+            .read()
+            .map_err(|_| AstEngineError::ProviderError("semaphore map poisoned".to_owned()))?
+            .get(language_id)
+            .cloned()
+        {
+            return Ok(existing);
+        }
+        let mut map = self
+            .provider_semaphores
+            .write()
+            .map_err(|_| AstEngineError::ProviderError("semaphore map poisoned".to_owned()))?;
+        Ok(Arc::clone(map.entry(language_id.clone()).or_insert_with(
+            || Arc::new(Semaphore::new(MAX_PER_PROVIDER_INSPECT_CONCURRENCY)),
+        )))
     }
 
     /// Register one live HTTP-JSON external language provider along with its
@@ -183,6 +239,54 @@ impl AspForwardingGateway {
                 .write()
                 .map_err(|_| AstEngineError::ProviderError("registry lock poisoned".to_owned()))?;
             reg.register_http_from_manifest(&manifest, endpoint)?
+        };
+        let mut envs = self
+            .envelopes
+            .write()
+            .map_err(|_| AstEngineError::ProviderError("envelopes lock poisoned".to_owned()))?;
+        envs.insert(
+            language_id,
+            ProviderForwardingEnvelope {
+                manifest,
+                targeted_schema: schema,
+                dsl_pack,
+            },
+        );
+        Ok(receipt)
+    }
+
+    /// Register an in-process embedded [`AstProviderPort`] provider with its
+    /// manifest, optional DSL pack, and targeted JSON Schema.
+    pub fn register_embedded_provider(
+        &self,
+        manifest: ProviderCoreManifest,
+        port: Arc<dyn AstProviderPort>,
+        dsl_pack: Option<LanguageConformancePack>,
+        targeted_schema: Option<Value>,
+    ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
+        let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
+        let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
+        let schema = targeted_schema
+            .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
+        let descriptor = AstProviderDescriptor {
+            provider_id,
+            language_id: language_id.clone(),
+            source_extensions: manifest.extensions.clone(),
+            lexical_profile: LexicalDelimiterProfile::from_syntax_surface(&manifest.syntax_surface),
+            capabilities: AstProviderCapabilities {
+                ast_inspect: manifest.capabilities.ast_inspect,
+                ast_verify: manifest.capabilities.ast_verify,
+                open_edb_facts: manifest.capabilities.open_edb,
+            },
+            transport_kind: AstProviderTransportKind::EmbeddedPort,
+            endpoint: None,
+        };
+        let receipt = {
+            let mut reg = self
+                .registry
+                .write()
+                .map_err(|_| AstEngineError::ProviderError("registry lock poisoned".to_owned()))?;
+            reg.register(descriptor, port)?
         };
         let mut envs = self
             .envelopes
@@ -248,18 +352,22 @@ impl AspForwardingGateway {
         })
     }
 
-    /// Inspect a batch of workspace files by routing each through its registered
-    /// native compiler provider and projecting uniform Open EDB General JSON batches.
+    /// Inspect a batch of workspace files concurrently across registered native
+    /// compiler providers (with bounded global & per-provider concurrency lanes
+    /// and per-file fault isolation) and project uniform Open EDB batches in
+    /// deterministic input order.
     pub async fn inspect_files_to_open_edb(
         self: &Arc<Self>,
         request: ForwardedInspectFilesRequest,
     ) -> Result<ForwardedOpenEdbResponse, AstEngineError> {
         let started = Instant::now();
-        let mut batches = Vec::with_capacity(request.files.len());
         let mut skipped_paths = Vec::new();
-        let mut total_entities = 0usize;
+        let mut join_set: JoinSet<(
+            usize,
+            Result<WorkspaceOpenEdbIngestBatch, ForwardedInspectFailure>,
+        )> = JoinSet::new();
 
-        for file in request.files {
+        for (order_idx, file) in request.files.into_iter().enumerate() {
             let path = AstWorkspacePath::new(&file.path)?;
             let override_lang = match file.language_override.as_deref() {
                 Some(raw) => Some(AstLanguageId::new(raw)?),
@@ -275,6 +383,8 @@ impl AspForwardingGateway {
                 skipped_paths.push(file.path);
                 continue;
             };
+            let lang_sem = self.provider_semaphore(&provider.descriptor.language_id)?;
+            let global_sem = Arc::clone(&self.global_inspect_semaphore);
             let source_hash = blake3_source_digest(file.source_utf8.as_bytes());
             let inspect_req = AstInspectRequest {
                 path: path.clone(),
@@ -282,18 +392,79 @@ impl AspForwardingGateway {
                 source_hash,
             };
             let port = Arc::clone(&provider.port);
-            let inspected = tokio::task::spawn_blocking(move || port.inspect(&inspect_req))
-                .await
-                .map_err(|err| AstEngineError::ProviderError(format!("inspect join: {err}")))??;
-            let batch = project_nodes_to_open_edb_batch(
-                &path,
-                &provider.descriptor.language_id,
-                &provider.descriptor.provider_id,
-                &inspected.nodes,
-            );
-            total_entities += batch.entities.len();
-            batches.push(batch);
+            let language_id = provider.descriptor.language_id.clone();
+            let provider_id = provider.descriptor.provider_id.clone();
+            let raw_path = file.path;
+
+            join_set.spawn(async move {
+                let Ok(_global_permit) = global_sem.acquire_owned().await else {
+                    return (
+                        order_idx,
+                        Err(ForwardedInspectFailure {
+                            path: raw_path,
+                            language_id: language_id.as_str().to_owned(),
+                            provider_id: provider_id.as_str().to_owned(),
+                            error: "global inspect semaphore closed".to_owned(),
+                        }),
+                    );
+                };
+                let Ok(_lang_permit) = lang_sem.acquire_owned().await else {
+                    return (
+                        order_idx,
+                        Err(ForwardedInspectFailure {
+                            path: raw_path,
+                            language_id: language_id.as_str().to_owned(),
+                            provider_id: provider_id.as_str().to_owned(),
+                            error: "provider inspect semaphore closed".to_owned(),
+                        }),
+                    );
+                };
+                let inspected = tokio::task::spawn_blocking(move || port.inspect(&inspect_req))
+                    .await
+                    .map_err(|err| format!("inspect worker join error: {err}"))
+                    .and_then(|res| res.map_err(|err| err.to_string()));
+                match inspected {
+                    Ok(resp) => (
+                        order_idx,
+                        Ok(project_nodes_to_open_edb_batch(
+                            &path,
+                            &language_id,
+                            &provider_id,
+                            &resp.nodes,
+                        )),
+                    ),
+                    Err(error) => (
+                        order_idx,
+                        Err(ForwardedInspectFailure {
+                            path: raw_path,
+                            language_id: language_id.as_str().to_owned(),
+                            provider_id: provider_id.as_str().to_owned(),
+                            error,
+                        }),
+                    ),
+                }
+            });
         }
+
+        let mut ordered_batches: Vec<(usize, WorkspaceOpenEdbIngestBatch)> = Vec::new();
+        let mut ordered_failures: Vec<(usize, ForwardedInspectFailure)> = Vec::new();
+        while let Some(joined) = join_set.join_next().await {
+            let (order_idx, outcome) = joined.map_err(|err| {
+                AstEngineError::ProviderError(format!("inspect task join: {err}"))
+            })?;
+            match outcome {
+                Ok(batch) => ordered_batches.push((order_idx, batch)),
+                Err(failure) => ordered_failures.push((order_idx, failure)),
+            }
+        }
+        ordered_batches.sort_by_key(|(idx, _)| *idx);
+        ordered_failures.sort_by_key(|(idx, _)| *idx);
+
+        let batches: Vec<WorkspaceOpenEdbIngestBatch> =
+            ordered_batches.into_iter().map(|(_, b)| b).collect();
+        let failed_paths: Vec<ForwardedInspectFailure> =
+            ordered_failures.into_iter().map(|(_, f)| f).collect();
+        let total_entities = batches.iter().map(|b| b.entities.len()).sum();
 
         let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
         Ok(ForwardedOpenEdbResponse {
@@ -304,6 +475,7 @@ impl AspForwardingGateway {
             elapsed_micros,
             batches,
             skipped_paths,
+            failed_paths,
         })
     }
 

@@ -18,7 +18,7 @@ blake3.workspace = true
 bytes.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-tokio = { workspace = true, features = ["net", "rt"] }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
 [dev-dependencies]
 asp-rust.workspace = true

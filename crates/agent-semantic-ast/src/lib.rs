@@ -34,10 +34,10 @@ pub use conformance::{
     ConformanceProbeReceipt, LanguageConformanceReport, run_language_conformance_pack,
 };
 pub use http_gateway::{
-    AspForwardingGateway, DynamicProviderRegistrationRequest, ForwardedInspectFileInput,
-    ForwardedInspectFilesRequest, ForwardedOpenEdbResponse, OPEN_EDB_FORWARDING_RESPONSE_SCHEMA_ID,
-    PROVIDER_FORWARDING_CATALOG_SCHEMA_ID, ProviderForwardingCatalog, ProviderForwardingEnvelope,
-    derive_targeted_entity_schema,
+    AspForwardingGateway, DynamicProviderRegistrationRequest, ForwardedInspectFailure,
+    ForwardedInspectFileInput, ForwardedInspectFilesRequest, ForwardedOpenEdbResponse,
+    OPEN_EDB_FORWARDING_RESPONSE_SCHEMA_ID, PROVIDER_FORWARDING_CATALOG_SCHEMA_ID,
+    ProviderForwardingCatalog, ProviderForwardingEnvelope, derive_targeted_entity_schema,
 };
 pub use open_edb_projection::project_nodes_to_open_edb_batch;
 pub use provider_port::{

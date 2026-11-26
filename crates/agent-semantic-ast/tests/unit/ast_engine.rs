@@ -422,3 +422,178 @@ async fn resident_actor_provider_integrates_with_registry_and_open_edb() {
 
     let _ = authority.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_multi_provider_inspection_runs_providers_in_parallel_with_fault_isolation() {
+    use agent_semantic_ast::{
+        AspForwardingGateway, AstInspectResponse, AstNodeSpanRecord, AstUniversalKind, ByteSpan,
+        ForwardedInspectFileInput, ForwardedInspectFilesRequest,
+    };
+    use agent_semantic_provider_protocol::{
+        PROVIDER_CORE_MANIFEST_SCHEMA_ID, PROVIDER_CORE_MANIFEST_SCHEMA_VERSION,
+        ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
+        ProviderSyntaxSurface, ProviderTransport,
+    };
+    use std::time::{Duration, Instant};
+
+    struct DelayedPort {
+        pid: AstProviderId,
+        lid: AstLanguageId,
+        delay: Duration,
+        fail: bool,
+    }
+    impl AstProviderPort for DelayedPort {
+        fn provider_id(&self) -> &AstProviderId {
+            &self.pid
+        }
+        fn language_id(&self) -> &AstLanguageId {
+            &self.lid
+        }
+        fn lexical_profile(&self) -> LexicalDelimiterProfile {
+            LexicalDelimiterProfile::rust()
+        }
+        fn inspect(&self, req: &AstInspectRequest) -> Result<AstInspectResponse, AstEngineError> {
+            std::thread::sleep(self.delay);
+            if self.fail {
+                return Err(AstEngineError::ProviderError(format!(
+                    "simulated provider crash on {}",
+                    req.path.as_str()
+                )));
+            }
+            Ok(AstInspectResponse {
+                accepted: true,
+                nodes: vec![AstNodeSpanRecord {
+                    locator: AstNodeLocator::new(format!("{}#fn:demo", req.path.as_str()))
+                        .expect("loc"),
+                    kind: AstUniversalKind::Function,
+                    language_kind: agent_semantic_ast::AstLanguageKind::new("fn_decl").expect("lk"),
+                    name: format!("fn_{}", self.lid.as_str()),
+                    line: 1,
+                    outer_span: ByteSpan::new(0, req.source_utf8.len().max(1)).expect("span"),
+                    inner_span: ByteSpan::new(0, req.source_utf8.len().max(1)).expect("span"),
+                    body_span: None,
+                    parent: None,
+                    attrs: Vec::new(),
+                }],
+                diagnostics: Vec::new(),
+                syntax_surface: None,
+            })
+        }
+        fn verify(&self, _req: &AstVerifyRequest) -> Result<AstVerifyResponse, AstEngineError> {
+            Ok(AstVerifyResponse {
+                results: Vec::new(),
+            })
+        }
+    }
+
+    fn mk_manifest(lang: &str, ext: &str) -> ProviderCoreManifest {
+        ProviderCoreManifest {
+            schema_id: PROVIDER_CORE_MANIFEST_SCHEMA_ID.to_owned(),
+            schema_version: PROVIDER_CORE_MANIFEST_SCHEMA_VERSION.to_owned(),
+            language_id: ProviderLanguageId::new(lang).expect("lang"),
+            provider_id: ProviderPackageId::new(format!("asp-{lang}")).expect("pid"),
+            display_name: lang.to_owned(),
+            extensions: vec![ext.to_owned()],
+            project_markers: Vec::new(),
+            syntax_surface: ProviderSyntaxSurface {
+                line_comment: Some("//".to_owned()),
+                block_comment: None,
+                delimiter_pairs: vec![["(".to_owned(), ")".to_owned()]],
+                statement_terminator: Some(";".to_owned()),
+                string_delimiters: vec!["\"".to_owned()],
+            },
+            transport: ProviderTransport {
+                transport: "http-json".to_owned(),
+                command: vec!["serve".to_owned()],
+                health_path: "/health".to_owned(),
+                request_path: "/v1/provider-runtime".to_owned(),
+                shutdown_path: "/shutdown".to_owned(),
+            },
+            capabilities: ProviderCapabilities {
+                ast_inspect: true,
+                ast_verify: true,
+                open_edb: true,
+                project_resolution: false,
+            },
+        }
+    }
+
+    let gateway = Arc::new(AspForwardingGateway::new());
+    for (lang, ext, fail) in [
+        ("langa", ".la", false),
+        ("langb", ".lb", false),
+        ("langc", ".lc", false),
+        ("broken", ".brk", true),
+    ] {
+        gateway
+            .register_embedded_provider(
+                mk_manifest(lang, ext),
+                Arc::new(DelayedPort {
+                    pid: AstProviderId::new(format!("asp-{lang}")).expect("pid"),
+                    lid: AstLanguageId::new(lang).expect("lid"),
+                    delay: Duration::from_millis(80),
+                    fail,
+                }),
+                None,
+                None,
+            )
+            .expect("register embedded provider");
+    }
+
+    let started = Instant::now();
+    let resp = gateway
+        .inspect_files_to_open_edb(ForwardedInspectFilesRequest {
+            files: vec![
+                ForwardedInspectFileInput {
+                    path: "src/one.la".to_owned(),
+                    source_utf8: "fn a() {}".to_owned(),
+                    language_override: None,
+                },
+                ForwardedInspectFileInput {
+                    path: "src/crash.brk".to_owned(),
+                    source_utf8: "boom".to_owned(),
+                    language_override: None,
+                },
+                ForwardedInspectFileInput {
+                    path: "src/two.lb".to_owned(),
+                    source_utf8: "fn b() {}".to_owned(),
+                    language_override: None,
+                },
+                ForwardedInspectFileInput {
+                    path: "src/ignored.xyz".to_owned(),
+                    source_utf8: "noop".to_owned(),
+                    language_override: None,
+                },
+                ForwardedInspectFileInput {
+                    path: "src/three.lc".to_owned(),
+                    source_utf8: "fn c() {}".to_owned(),
+                    language_override: None,
+                },
+            ],
+        })
+        .await
+        .expect("concurrent gateway inspection");
+    let wall = started.elapsed();
+
+    // 4 x 80ms = 320ms serial; parallel multi-provider dispatch must stay well below 240ms.
+    assert!(
+        wall < Duration::from_millis(240),
+        "expected concurrent multi-provider speedup (<240ms), got {wall:?}"
+    );
+    assert_eq!(resp.inspected_files, 3);
+    assert_eq!(resp.total_entities, 3);
+    assert_eq!(resp.skipped_paths, vec!["src/ignored.xyz"]);
+    assert_eq!(resp.failed_paths.len(), 1);
+    assert_eq!(resp.failed_paths[0].path, "src/crash.brk");
+    assert_eq!(resp.failed_paths[0].language_id, "broken");
+    // Deterministic input ordering preserved despite parallel completion!
+    let batch_langs: Vec<Option<&str>> = resp
+        .batches
+        .iter()
+        .map(|b| b.language_id.as_deref())
+        .collect();
+    assert_eq!(
+        batch_langs,
+        vec![Some("langa"), Some("langb"), Some("langc")]
+    );
+}
