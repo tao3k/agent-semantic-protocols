@@ -19,7 +19,7 @@ use agent_semantic_search::{
 };
 
 use crate::calibration::{CalibrationRequest, calibrate_with_oracle};
-use crate::open_edb_projection::project_nodes_to_open_edb_batch;
+use crate::open_edb_projection::project_inspection_to_open_edb_batch;
 use crate::provider_port::{AstInspectRequest, AstProviderPort};
 use crate::registry::AstProviderRegistry;
 use crate::span_overlay::{
@@ -101,11 +101,12 @@ impl AstEngine {
             source_utf8: source,
             source_hash: source_hash.clone(),
         })?;
-        let open_edb_batch = project_nodes_to_open_edb_batch(
+        let open_edb_batch = project_inspection_to_open_edb_batch(
             path,
             &resolved.descriptor.language_id,
             &resolved.descriptor.provider_id,
             &inspected.nodes,
+            &inspected.edges,
         );
         Ok(AstFileInspection {
             path: path.clone(),
@@ -220,6 +221,7 @@ impl AstEngine {
                     &final_source,
                     provider,
                     &final_inspect.nodes,
+                    &final_inspect.edges,
                 );
             }
         }
@@ -293,6 +295,7 @@ fn sync_open_edb(
     final_source: &str,
     provider: &dyn AstProviderPort,
     nodes: &[AstNodeSpanRecord],
+    edges: &[crate::types::AstSemanticEdgeRecord],
 ) -> usize {
     let _ = live_index.apply_file_delta(WorkspaceFileDelta {
         upserts: vec![(
@@ -301,11 +304,12 @@ fn sync_open_edb(
         )],
         deletes: Vec::new(),
     });
-    let batch = project_nodes_to_open_edb_batch(
+    let batch = project_inspection_to_open_edb_batch(
         &request.path,
         provider.language_id(),
         provider.provider_id(),
         nodes,
+        edges,
     );
     live_index.ingest_open_edb_facts(batch).ingested_entities
 }

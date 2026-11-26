@@ -21,7 +21,8 @@ use serde::{Deserialize, Serialize};
 use crate::tokio_runtime::run_provider_io;
 use crate::types::{
     AstEngineError, AstLanguageId, AstNodeSpanRecord, AstProviderCapabilities, AstProviderId,
-    AstSyntaxDiagnostic, AstWorkspacePath, Blake3SourceDigest, LexicalDelimiterProfile,
+    AstSemanticEdgeRecord, AstSyntaxDiagnostic, AstWorkspacePath, Blake3SourceDigest,
+    LexicalDelimiterProfile,
 };
 
 /// `POST /v1/provider-runtime` operation returning authoritative native AST spans.
@@ -55,6 +56,8 @@ pub struct AstInspectRequest {
 pub struct AstInspectResponse {
     pub accepted: bool,
     pub nodes: Vec<AstNodeSpanRecord>,
+    #[serde(default)]
+    pub edges: Vec<AstSemanticEdgeRecord>,
     #[serde(default)]
     pub diagnostics: Vec<AstSyntaxDiagnostic>,
     /// Native lexical syntax surface reported directly by the language provider

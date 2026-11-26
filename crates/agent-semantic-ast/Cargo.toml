@@ -18,7 +18,11 @@ blake3.workspace = true
 bytes.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
+
+[[bin]]
+name = "asp-gateway"
+path = "src/bin/asp-gateway.rs"
 
 [dev-dependencies]
 asp-rust.workspace = true
@@ -29,6 +33,10 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 [[test]]
 name = "ast_engine"
 path = "tests/unit/ast_engine.rs"
+
+[[test]]
+name = "gateway_governance"
+path = "tests/unit/gateway_governance.rs"
 
 [[test]]
 name = "live_providers"

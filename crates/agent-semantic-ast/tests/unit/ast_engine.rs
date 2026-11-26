@@ -475,6 +475,7 @@ async fn concurrent_multi_provider_inspection_runs_providers_in_parallel_with_fa
                     parent: None,
                     attrs: Vec::new(),
                 }],
+                edges: Vec::new(),
                 diagnostics: Vec::new(),
                 syntax_surface: None,
             })

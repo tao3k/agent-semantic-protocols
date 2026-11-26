@@ -29,7 +29,16 @@ use tokio::net::TcpListener;
 use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinSet;
 
-use crate::open_edb_projection::project_nodes_to_open_edb_batch;
+use crate::gateway_governance::{
+    GatewaySessionToken, ProviderCircuitBreakerPolicy, ProviderGovernanceTable,
+    ProviderHealthReceipt, ProviderLifecycleState, ProviderRuntimeKind, ProviderSpawnMode,
+};
+use crate::gateway_patch::{
+    ForwardedAstPatchRequest, ForwardedAstPatchResponse, apply_forwarded_patch_on_provider,
+};
+use crate::open_edb_projection::{
+    derive_targeted_entity_schema, project_inspection_to_open_edb_batch,
+};
 use crate::provider_port::{AstInspectRequest, AstProviderPort};
 use crate::registry::{
     AstProviderDescriptor, AstProviderRegisterReceipt, AstProviderRegistry,
@@ -127,76 +136,73 @@ pub struct ForwardedOpenEdbResponse {
     pub skipped_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed_paths: Vec<ForwardedInspectFailure>,
-}
-
-/// Derive a Yuanxu-compatible targeted JSON Schema enforcing a language's exact
-/// `languageId`, `kind`, and native `languageKind` surface from its DSL pack.
-#[must_use]
-pub fn derive_targeted_entity_schema(
-    language_id: &AstLanguageId,
-    dsl_pack: Option<&LanguageConformancePack>,
-) -> Value {
-    let mut native_kinds = Vec::new();
-    let mut general_kinds = Vec::new();
-    if let Some(pack) = dsl_pack {
-        for mapping in &pack.kind_mappings {
-            if !native_kinds.contains(&mapping.native_language_kind) {
-                native_kinds.push(mapping.native_language_kind.clone());
-            }
-            if !general_kinds.contains(&mapping.general_kind) {
-                general_kinds.push(mapping.general_kind.clone());
-            }
-        }
-    }
-    let kind_prop = if general_kinds.is_empty() {
-        json!({ "type": "string", "minLength": 1 })
-    } else {
-        json!({ "type": "string", "enum": general_kinds })
-    };
-    let language_kind_prop = if native_kinds.is_empty() {
-        json!({ "type": "string", "minLength": 1 })
-    } else {
-        json!({ "type": "string", "enum": native_kinds })
-    };
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["languageId", "kind", "languageKind", "name", "line"],
-        "properties": {
-            "languageId": { "type": "string", "const": language_id.as_str() },
-            "kind": kind_prop,
-            "languageKind": language_kind_prop,
-            "name": { "type": "string", "minLength": 1 },
-            "line": { "type": "integer", "minimum": 1 }
-        }
-    })
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub per_language_micros: BTreeMap<String, u64>,
 }
 
 /// Language-agnostic HTTP-JSON forwarding gateway pairing an [`AstProviderRegistry`]
-/// with dynamically forwarded provider manifests, targeted schemas, and DSL packs.
+/// with dynamically forwarded provider manifests, targeted schemas, DSL packs,
+/// per-language circuit breakers, latency telemetry, and optional loopback
+/// control-plane Bearer token authentication.
 pub struct AspForwardingGateway {
     registry: RwLock<AstProviderRegistry>,
     envelopes: RwLock<BTreeMap<AstLanguageId, ProviderForwardingEnvelope>>,
     global_inspect_semaphore: Arc<Semaphore>,
     provider_semaphores: RwLock<BTreeMap<AstLanguageId, Arc<Semaphore>>>,
+    governance: Arc<ProviderGovernanceTable>,
+    control_token: Option<GatewaySessionToken>,
 }
 
 impl Default for AspForwardingGateway {
     fn default() -> Self {
+        Self::with_governance(ProviderCircuitBreakerPolicy::default(), None)
+    }
+}
+
+impl AspForwardingGateway {
+    /// Construct an empty [`AspForwardingGateway`] with default circuit-breaker policy.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Construct an [`AspForwardingGateway`] with explicit circuit-breaker policy
+    /// and optional loopback Bearer control-plane token.
+    #[must_use]
+    pub fn with_governance(
+        circuit_policy: ProviderCircuitBreakerPolicy,
+        control_token: Option<GatewaySessionToken>,
+    ) -> Self {
         Self {
             registry: RwLock::new(AstProviderRegistry::default()),
             envelopes: RwLock::new(BTreeMap::new()),
             global_inspect_semaphore: Arc::new(Semaphore::new(MAX_GLOBAL_INSPECT_CONCURRENCY)),
             provider_semaphores: RwLock::new(BTreeMap::new()),
+            governance: Arc::new(ProviderGovernanceTable::new(circuit_policy)),
+            control_token,
         }
     }
-}
 
-impl AspForwardingGateway {
-    /// Construct an empty [`AspForwardingGateway`].
+    /// Return the active loopback control-plane Bearer token, if configured.
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn control_token(&self) -> Option<&GatewaySessionToken> {
+        self.control_token.as_ref()
+    }
+
+    /// Snapshot per-language health, circuit-breaker, and latency receipts.
+    pub fn health_receipts(&self) -> Result<Vec<ProviderHealthReceipt>, AstEngineError> {
+        self.governance.health_receipts()
+    }
+
+    /// Update a managed provider's live lifecycle state (`dormant` / `warm` / `degraded`).
+    pub fn set_provider_lifecycle_state(
+        &self,
+        language_id: &AstLanguageId,
+        state: ProviderLifecycleState,
+        counted_eviction: bool,
+    ) {
+        self.governance
+            .set_lifecycle_state(language_id, state, counted_eviction);
     }
 
     fn provider_semaphore(
@@ -231,6 +237,7 @@ impl AspForwardingGateway {
         targeted_schema: Option<Value>,
     ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
+        let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
         let schema = targeted_schema
             .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
         let receipt = {
@@ -245,31 +252,42 @@ impl AspForwardingGateway {
             .write()
             .map_err(|_| AstEngineError::ProviderError("envelopes lock poisoned".to_owned()))?;
         envs.insert(
-            language_id,
+            language_id.clone(),
             ProviderForwardingEnvelope {
                 manifest,
                 targeted_schema: schema,
                 dsl_pack,
             },
         );
+        self.governance.register_provider(
+            language_id,
+            provider_id,
+            ProviderRuntimeKind::ExternalHttp,
+            ProviderSpawnMode::External,
+            ProviderLifecycleState::Warm,
+        )?;
         Ok(receipt)
     }
 
-    /// Register an in-process embedded [`AstProviderPort`] provider with its
-    /// manifest, optional DSL pack, and targeted JSON Schema.
-    pub fn register_embedded_provider(
+    /// Register a supervised or embedded [`AstProviderPort`] with explicit
+    /// runtime classification, spawn mode, and initial lifecycle state.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_managed_provider(
         &self,
         manifest: ProviderCoreManifest,
         port: Arc<dyn AstProviderPort>,
         dsl_pack: Option<LanguageConformancePack>,
         targeted_schema: Option<Value>,
+        runtime_kind: ProviderRuntimeKind,
+        spawn_mode: ProviderSpawnMode,
+        initial_state: ProviderLifecycleState,
     ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
         let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
         let schema = targeted_schema
             .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
         let descriptor = AstProviderDescriptor {
-            provider_id,
+            provider_id: provider_id.clone(),
             language_id: language_id.clone(),
             source_extensions: manifest.extensions.clone(),
             lexical_profile: LexicalDelimiterProfile::from_syntax_surface(&manifest.syntax_surface),
@@ -293,14 +311,41 @@ impl AspForwardingGateway {
             .write()
             .map_err(|_| AstEngineError::ProviderError("envelopes lock poisoned".to_owned()))?;
         envs.insert(
-            language_id,
+            language_id.clone(),
             ProviderForwardingEnvelope {
                 manifest,
                 targeted_schema: schema,
                 dsl_pack,
             },
         );
+        self.governance.register_provider(
+            language_id,
+            provider_id,
+            runtime_kind,
+            spawn_mode,
+            initial_state,
+        )?;
         Ok(receipt)
+    }
+
+    /// Register an in-process embedded [`AstProviderPort`] provider with its
+    /// manifest, optional DSL pack, and targeted JSON Schema.
+    pub fn register_embedded_provider(
+        &self,
+        manifest: ProviderCoreManifest,
+        port: Arc<dyn AstProviderPort>,
+        dsl_pack: Option<LanguageConformancePack>,
+        targeted_schema: Option<Value>,
+    ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
+        self.register_managed_provider(
+            manifest,
+            port,
+            dsl_pack,
+            targeted_schema,
+            ProviderRuntimeKind::EmbeddedPort,
+            ProviderSpawnMode::External,
+            ProviderLifecycleState::Warm,
+        )
     }
 
     /// Register a schema/DSL-only provider envelope (or update an existing
@@ -312,6 +357,7 @@ impl AspForwardingGateway {
         targeted_schema: Option<Value>,
     ) -> Result<ProviderForwardingEnvelope, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
+        let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
         let schema = targeted_schema
             .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
         let envelope = ProviderForwardingEnvelope {
@@ -323,7 +369,14 @@ impl AspForwardingGateway {
             .envelopes
             .write()
             .map_err(|_| AstEngineError::ProviderError("envelopes lock poisoned".to_owned()))?;
-        envs.insert(language_id, envelope.clone());
+        envs.insert(language_id.clone(), envelope.clone());
+        self.governance.register_provider(
+            language_id,
+            provider_id,
+            ProviderRuntimeKind::DescriptorOnly,
+            ProviderSpawnMode::External,
+            ProviderLifecycleState::Dormant,
+        )?;
         Ok(envelope)
     }
 
@@ -364,6 +417,8 @@ impl AspForwardingGateway {
         let mut skipped_paths = Vec::new();
         let mut join_set: JoinSet<(
             usize,
+            String,
+            u64,
             Result<WorkspaceOpenEdbIngestBatch, ForwardedInspectFailure>,
         )> = JoinSet::new();
 
@@ -385,6 +440,7 @@ impl AspForwardingGateway {
             };
             let lang_sem = self.provider_semaphore(&provider.descriptor.language_id)?;
             let global_sem = Arc::clone(&self.global_inspect_semaphore);
+            let governance = Arc::clone(&self.governance);
             let source_hash = blake3_source_digest(file.source_utf8.as_bytes());
             let inspect_req = AstInspectRequest {
                 path: path.clone(),
@@ -397,12 +453,28 @@ impl AspForwardingGateway {
             let raw_path = file.path;
 
             join_set.spawn(async move {
+                let lang_name = language_id.as_str().to_owned();
+                if let Err(cb_err) = governance.check_circuit_admits(&language_id) {
+                    return (
+                        order_idx,
+                        lang_name.clone(),
+                        0,
+                        Err(ForwardedInspectFailure {
+                            path: raw_path,
+                            language_id: lang_name,
+                            provider_id: provider_id.as_str().to_owned(),
+                            error: cb_err,
+                        }),
+                    );
+                }
                 let Ok(_global_permit) = global_sem.acquire_owned().await else {
                     return (
                         order_idx,
+                        lang_name.clone(),
+                        0,
                         Err(ForwardedInspectFailure {
                             path: raw_path,
-                            language_id: language_id.as_str().to_owned(),
+                            language_id: lang_name,
                             provider_id: provider_id.as_str().to_owned(),
                             error: "global inspect semaphore closed".to_owned(),
                         }),
@@ -411,47 +483,66 @@ impl AspForwardingGateway {
                 let Ok(_lang_permit) = lang_sem.acquire_owned().await else {
                     return (
                         order_idx,
+                        lang_name.clone(),
+                        0,
                         Err(ForwardedInspectFailure {
                             path: raw_path,
-                            language_id: language_id.as_str().to_owned(),
+                            language_id: lang_name,
                             provider_id: provider_id.as_str().to_owned(),
                             error: "provider inspect semaphore closed".to_owned(),
                         }),
                     );
                 };
+                let call_started = Instant::now();
                 let inspected = tokio::task::spawn_blocking(move || port.inspect(&inspect_req))
                     .await
                     .map_err(|err| format!("inspect worker join error: {err}"))
                     .and_then(|res| res.map_err(|err| err.to_string()));
+                let call_micros =
+                    u64::try_from(call_started.elapsed().as_micros()).unwrap_or(u64::MAX);
                 match inspected {
-                    Ok(resp) => (
-                        order_idx,
-                        Ok(project_nodes_to_open_edb_batch(
-                            &path,
-                            &language_id,
-                            &provider_id,
-                            &resp.nodes,
-                        )),
-                    ),
-                    Err(error) => (
-                        order_idx,
-                        Err(ForwardedInspectFailure {
-                            path: raw_path,
-                            language_id: language_id.as_str().to_owned(),
-                            provider_id: provider_id.as_str().to_owned(),
-                            error,
-                        }),
-                    ),
+                    Ok(resp) => {
+                        governance.record_success(&language_id, call_micros);
+                        (
+                            order_idx,
+                            lang_name,
+                            call_micros,
+                            Ok(project_inspection_to_open_edb_batch(
+                                &path,
+                                &language_id,
+                                &provider_id,
+                                &resp.nodes,
+                                &resp.edges,
+                            )),
+                        )
+                    }
+                    Err(error) => {
+                        governance.record_failure(&language_id, call_micros);
+                        (
+                            order_idx,
+                            lang_name.clone(),
+                            call_micros,
+                            Err(ForwardedInspectFailure {
+                                path: raw_path,
+                                language_id: lang_name,
+                                provider_id: provider_id.as_str().to_owned(),
+                                error,
+                            }),
+                        )
+                    }
                 }
             });
         }
 
         let mut ordered_batches: Vec<(usize, WorkspaceOpenEdbIngestBatch)> = Vec::new();
         let mut ordered_failures: Vec<(usize, ForwardedInspectFailure)> = Vec::new();
+        let mut per_language_micros: BTreeMap<String, u64> = BTreeMap::new();
         while let Some(joined) = join_set.join_next().await {
-            let (order_idx, outcome) = joined.map_err(|err| {
+            let (order_idx, lang_name, call_micros, outcome) = joined.map_err(|err| {
                 AstEngineError::ProviderError(format!("inspect task join: {err}"))
             })?;
+            let entry = per_language_micros.entry(lang_name).or_insert(0);
+            *entry = entry.saturating_add(call_micros);
             match outcome {
                 Ok(batch) => ordered_batches.push((order_idx, batch)),
                 Err(failure) => ordered_failures.push((order_idx, failure)),
@@ -476,7 +567,71 @@ impl AspForwardingGateway {
             batches,
             skipped_paths,
             failed_paths,
+            per_language_micros,
         })
+    }
+
+    /// Execute one closed-loop lossless AST patch transaction through the
+    /// resolved native language provider with circuit-breaker governance and
+    /// return the calibrated source plus fresh `semantic-open-edb.v1` batch.
+    pub async fn apply_ast_patch(
+        self: &Arc<Self>,
+        request: ForwardedAstPatchRequest,
+    ) -> Result<ForwardedAstPatchResponse, AstEngineError> {
+        let path = AstWorkspacePath::new(&request.path)?;
+        let override_lang = match request.language_override.as_deref() {
+            Some(raw) => Some(AstLanguageId::new(raw)?),
+            None => None,
+        };
+        let provider = {
+            let reg = self
+                .registry
+                .read()
+                .map_err(|_| AstEngineError::ProviderError("registry lock poisoned".to_owned()))?;
+            reg.resolve(&path, override_lang.as_ref())?
+        };
+        let language_id = provider.descriptor.language_id.clone();
+        let provider_id = provider.descriptor.provider_id.clone();
+        self.governance
+            .check_circuit_admits(&language_id)
+            .map_err(AstEngineError::ProviderError)?;
+
+        let lang_sem = self.provider_semaphore(&language_id)?;
+        let _global_permit = self
+            .global_inspect_semaphore
+            .acquire()
+            .await
+            .map_err(|_| AstEngineError::ProviderError("global semaphore closed".to_owned()))?;
+        let _lang_permit = lang_sem
+            .acquire()
+            .await
+            .map_err(|_| AstEngineError::ProviderError("provider semaphore closed".to_owned()))?;
+
+        let port = Arc::clone(&provider.port);
+        let lang_for_task = language_id.clone();
+        let call_started = Instant::now();
+        let outcome = tokio::task::spawn_blocking(move || {
+            apply_forwarded_patch_on_provider(
+                port.as_ref(),
+                path,
+                lang_for_task,
+                provider_id,
+                &request,
+            )
+        })
+        .await
+        .map_err(|err| AstEngineError::ProviderError(format!("patch worker join error: {err}")))?;
+        let call_micros = u64::try_from(call_started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        match outcome {
+            Ok(resp) => {
+                self.governance.record_success(&language_id, call_micros);
+                Ok(resp)
+            }
+            Err(err) => {
+                self.governance.record_failure(&language_id, call_micros);
+                Err(err)
+            }
+        }
     }
 
     /// Serve this gateway over loopback HTTP/1.1 until `/shutdown` or `shutdown_rx`.
@@ -496,6 +651,22 @@ impl AspForwardingGateway {
     }
 }
 
+fn verify_control_plane_auth(
+    gateway: &AspForwardingGateway,
+    req: &HttpJsonRequest,
+) -> Option<Result<HttpJsonResponse, String>> {
+    let token = gateway.control_token()?;
+    if token.verify_authorization_header(req.authorization.as_deref()) {
+        return None;
+    }
+    Some(HttpJsonResponse::json(
+        401,
+        &json!({
+            "error": "unauthorized: control-plane route requires valid loopback Bearer token"
+        }),
+    ))
+}
+
 async fn handle_gateway_request(
     gateway: Arc<AspForwardingGateway>,
     shutdown_tx: watch::Sender<bool>,
@@ -504,13 +675,21 @@ async fn handle_gateway_request(
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/health") => {
             let cat = gateway.catalog().map_err(|e| e.to_string())?;
+            let providers = gateway.health_receipts().map_err(|e| e.to_string())?;
+            let warm_count = providers
+                .iter()
+                .filter(|p| p.lifecycle_state == ProviderLifecycleState::Warm)
+                .count();
             HttpJsonResponse::json(
                 200,
                 &json!({
                     "status": "ready",
                     "providerCount": cat.providers.len(),
+                    "activeRuntimeCount": warm_count,
+                    "controlAuthRequired": gateway.control_token().is_some(),
                     "generation": cat.generation,
-                    "registryDigest": cat.registry_digest
+                    "registryDigest": cat.registry_digest,
+                    "providers": providers
                 }),
             )
         }
@@ -520,6 +699,9 @@ async fn handle_gateway_request(
             HttpJsonResponse::json(200, &val)
         }
         ("POST", "/v1/providers/register") => {
+            if let Some(denied) = verify_control_plane_auth(&gateway, &req) {
+                return denied;
+            }
             let payload: DynamicProviderRegistrationRequest = serde_json::from_slice(&req.body)
                 .map_err(|e| format!("decode register request: {e}"))?;
             let response = match payload.endpoint {
@@ -567,7 +749,23 @@ async fn handle_gateway_request(
             let val = serde_json::to_value(&result).map_err(|e| e.to_string())?;
             HttpJsonResponse::json(200, &val)
         }
+        ("POST", "/v1/ast/patch") => {
+            if let Some(denied) = verify_control_plane_auth(&gateway, &req) {
+                return denied;
+            }
+            let payload: ForwardedAstPatchRequest = serde_json::from_slice(&req.body)
+                .map_err(|e| format!("decode ast-patch request: {e}"))?;
+            let result = gateway
+                .apply_ast_patch(payload)
+                .await
+                .map_err(|e| e.to_string())?;
+            let val = serde_json::to_value(&result).map_err(|e| e.to_string())?;
+            HttpJsonResponse::json(200, &val)
+        }
         ("POST", "/shutdown") => {
+            if let Some(denied) = verify_control_plane_auth(&gateway, &req) {
+                return denied;
+            }
             let _ = shutdown_tx.send(true);
             HttpJsonResponse::json(200, &json!({ "status": "draining" }))
         }

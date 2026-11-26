@@ -40,6 +40,7 @@ impl AstProviderPort for BenchProvider {
         Ok(AstInspectResponse {
             accepted: true,
             nodes: Vec::new(),
+            edges: Vec::new(),
             diagnostics: Vec::new(),
             syntax_surface: None,
         })

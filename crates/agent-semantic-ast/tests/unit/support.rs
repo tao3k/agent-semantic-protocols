@@ -48,6 +48,7 @@ pub fn inspect_braced_source(path: &AstWorkspacePath, source: &str) -> AstInspec
     AstInspectResponse {
         accepted: diagnostics.is_empty(),
         nodes,
+        edges: Vec::new(),
         diagnostics,
         syntax_surface: None,
     }
@@ -155,6 +156,7 @@ pub fn inspect_sexp_source(path: &AstWorkspacePath, source: &str) -> AstInspectR
     AstInspectResponse {
         accepted: diagnostics.is_empty(),
         nodes,
+        edges: Vec::new(),
         diagnostics,
         syntax_surface: None,
     }

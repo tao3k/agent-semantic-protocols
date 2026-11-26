@@ -229,6 +229,18 @@ pub struct AstNodeAttr {
     pub value: String,
 }
 
+/// Directed semantic graph edge emitted by a native language compiler
+/// (`imports`, `calls`, `implements`, `references`, `contains`).
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AstSemanticEdgeRecord {
+    pub src: String,
+    pub dst: String,
+    pub relation: String,
+    #[serde(default)]
+    pub line: usize,
+}
+
 /// Authoritative native AST node span anchored into immutable source bytes.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
