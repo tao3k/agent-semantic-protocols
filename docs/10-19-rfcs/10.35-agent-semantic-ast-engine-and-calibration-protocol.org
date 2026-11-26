@@ -1,0 +1,475 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: RFC 10.35: ASP Rust AST Engine (crates/agent-semantic-ast), Lossless External-Provider Splicing, Auto Syntax Calibration & Ascent Code Elevation
+#+AUTHOR: tao3k team and Contributors
+#+DATE: 2026-11-26
+#+STATUS: Proposed (Research & Framework Design Baseline)
+#+DEPENDS: docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org (007), docs/10-19-rfcs/10.34-marlin-host-integration-protocol.org (034)
+#+SEE_ALSO: docs/30-39-research/31.32-relational-coding-style-ast-elevation-and-calibration-research.org
+
+* Summary
+
+This RFC establishes the research foundation and Rust framework architecture for
+~crates/agent-semantic-ast~ inside Agent Semantic Protocols (ASP) — a pure-Rust,
+transactional, lossless AST execution, calibration, and structural rewriting
+engine designed to supersede text-plane code patching (such as Codex
+~apply_patch~ and Aider ~SEARCH/REPLACE~) without introducing Tree-sitter or
+duplicating native language compilers.
+
+Modern LLMs already produce syntactically valid code 90–98% of the time. The
+true frontier for AI-native programming infrastructure collapses cleanly into
+*two orthogonal problems*, both anchored on the same lossless AST substrate:
+
+1. *Frontier 1 — Higher-Level Code Elevation (Coding Style + ~:gerbil-ascent~ -> AST Rewrite)*:
+   Although LLMs write working code, they default to verbose, imperative,
+   low-level boilerplate that violates repository architecture and coding-style
+   standards (~asp-rust-rules.md~, Marlin ~CODING-STYLE.org~). By combining
+   native AST relational projection with ~:gerbil-ascent~ Datalog style
+   constraints, cost-guided equality-saturation-style (~egglog~) rewrites, and
+   Dusa finite-choice planning, the system elevates LLM code to concise,
+   idiomatic, architecture-compliant forms — automatically for provably
+   semantics-preserving local idioms, and via structured ~AstPatch~ proposals
+   for API/module-level refactorings.
+2. *Frontier 2 — Zero-Round-Trip Automatic Syntax Calibration*:
+   In the remaining 2–10% of cases where an LLM drops or duplicates a delimiter
+   (~)~, ~}~, ~]~), omits a semicolon/comma, or makes a local punctuation slip,
+   ~crates/agent-semantic-ast~ repairs the syntax deterministically *inside the
+   AST edit/call transaction* in sub-millisecond to single-hop time with zero
+   wasted LLM retry turns, under strict mathematical safety invariants
+   (*unique minimum-cost fix* + *authoritative native parser re-parse proof* +
+   *fail-closed Typed Hole diagnostics*).
+
+Crucially, ~crates/agent-semantic-ast~ *preserves Single Parser Authority* by
+leveraging ASP's existing native language providers (~asp-rust~ ~syn~,
+~asp-typescript~ ~tsc~, ~asp-python~ ~ast~, ~AspJulia.jl~ ~JuliaSyntax.jl~,
+~asp-gerbil-scheme~) over the existing loopback HTTP-JSON
+~POST /v1/provider-runtime~ boundary alongside ~:gerbil-parser~'s full-strength
+Rust AOT runtime (~gerbil-parser-runtime~ / ~gerbil-parser-artifact~).
+
+* Research Foundation & Why Existing Agent Patchers Hit a Ceiling
+
+** Ceiling of Codex ~apply_patch~ & Aider ~SEARCH/REPLACE~
+
+| Dimension | Codex ~apply_patch~ / Aider ~SEARCH/REPLACE~ | ~crates/agent-semantic-ast~ + Native Providers + ~:gerbil-ascent~ |
+|-----------+----------------------------------------------+-------------------------------------------------------------------|
+| Addressing authority | Fragile text context lines; breaks on compact outlines, repeated lines, or shifted formatting (see ~31.13-ast-apply-patch-direction-report.org~) | Canonical AST node locators (~src/engine.rs#impl:Engine#fn:execute~) + BLAKE3 file preimage custody |
+| Parser authority | Codex: none. Aider: Tree-sitter read-only ~RepoMap~ (lossy, syntax-only), then drops back to raw text diffs on writes | 100% native compiler/language parsers (~syn~, ~tsc~, ~ast~, ~JuliaSyntax~, Gerbil, ~:gerbil-parser~) — zero Tree-sitter, zero duplicate parser drift |
+| Lossless formatting | Relies on LLM reproducing exact surrounding whitespace/comments verbatim | *Source-Backed Span-Indexed Lossless Overlay*: untouched bytes (95%+ of file: comments, docstrings, layout) remain bit-for-bit identical |
+| Syntax slips (2–10%) | Writes broken syntax or rejects hunk -> wastes 3–15s + thousands of prompt tokens on LLM retry | Bounded min-cost syntax calibration verified by the authoritative native parser -> 0 LLM retry turns, auditable ~CalibrationReceipt~ |
+| Code quality / redundancy | Accepts verbose, low-level code; relies on slow post-mortem linter -> LLM rewrite loops | Pre-gen precision style contract + ~:gerbil-ascent~ AST smell detection + cost-guided semantics-preserving elevation |
+| Index freshness | Search index becomes stale immediately after disk write | Same atomic transaction emits updated ~semantic-open-edb.v1~ facts directly into ~WorkspaceSearchIndex~ |
+
+** Four Academic & Compiler Engineering Pillars
+
+1. *Lossless Syntax Trees & Source-Backed Span Overlays* (~rowan~ / ~rust-analyzer~,
+   OpenRewrite LST, ~JuliaSyntax.jl~, ~:gerbil-parser~ RFC 0003 ~ParseArtifact v1~):
+   Never re-serialize a whole AST back to text; preserve exact UTF-8 byte spans
+   over immutable source bytes so every comment, blank line, and unrelated
+   construct is untouched bit-for-bit.
+2. *CPCT+ Minimum-Cost LR Error Recovery* (Diekmann & Tratt, 2020,
+   /"Don't Panic! Better, Fewer, Syntax Errors for LR Parsers"/):
+   Compute the complete set of minimum-cost local edit sequences (~MISSING~,
+   ~SKIPPED~, ~ERROR~) directly on an LR failure frontier (~LRFailureFrontier~
+   in ~:gerbil-parser/src/runtime/recovery.ss~). Enforce *uniqueness*: auto-apply
+   only a unique minimum-cost repair; ties fail closed.
+3. *Typed Holes for Incomplete Programs* (Omar et al., Hazel / Tylr, POPL/ICFP;
+   Mündler et al., PLDI 2025, /Type-Constrained Code Generation/):
+   Model every edit site and uncalibrated error as a *Typed Hole* carrying exact
+   AST node span, enclosing grammatical context, expected node/type constraints,
+   and ranked in-scope candidates — never an unstructured error log.
+4. *Datalog + Equality Saturation & Cost-Guided AST Extraction* (Zhang et al.,
+   PLDI 2023, /egglog: Better Together: Unifying Datalog and Equality Saturation/;
+   ~EggMind~ 2025):
+   Represent AST structure and repository coding-style constraints as relations
+   in ~:gerbil-ascent~; evaluate semantics-preserving idiomatic rewrites under a
+   declarative Coding-Style cost model (penalizing nesting depth, mutable
+   accumulators, primitive obsession, boilerplate; rewarding idiomatic
+   higher-level combinators).
+
+* Solving the Core Lossless Challenge for External Native Parsers
+
+A central architectural question is:
+
+#+begin_quote
+External native language parsers (such as Rust ~syn~, Python stdlib ~ast~,
+TypeScript ~tsc~, Julia ~JuliaSyntax.jl~, and Gerbil's native reader/expander)
+have the *most complete, spec-authoritative syntax coverage* and already expose
+loopback HTTP-JSON services under ~languages/asp-*~. However, parsers like Rust
+~syn~ and Python ~ast~ drop comments and whitespace from their AST node structs,
+and stop at the first syntax error. How do we guarantee *100% lossless AST
+editing* and *automatic syntax calibration* while keeping them as the sole
+parser authority?
+#+end_quote
+
+The answer combines two clean, general mechanisms implemented once inside
+~crates/agent-semantic-ast~:
+
+** Mechanism 1: Source-Backed Span-Indexed Lossless Overlay (No Full-AST Pretty-Printing!)
+
+~crates/agent-semantic-ast~ NEVER pretty-prints a parsed AST back into a file.
+Instead, every native provider already exposes exact UTF-8 byte coordinates
+referencing the immutable original source buffer ~B = [0 .. N)~:
+
+| Native Provider | Parser Authority | Byte-Span Extraction | Trivia / Comment Preservation |
+|-----------------+------------------+----------------------+-------------------------------|
+| ~asp-rust~ | ~syn~ + ~proc-macro2~ (~span-locations~) | ~Spanned::span(node).byte_range()~ (already used in ~exact_source_parse_artifact.rs~) | Outer doc/attr span + untouched byte gaps ~[prev.end .. next.start)~ preserve 100% of comments & formatting; optional ~rustfmt~ runs only on spliced region or validated file |
+| ~asp-typescript~ | TypeScript Compiler API (~tsc~) | ~node.getFullStart()~ (with leading trivia), ~node.getStart()~, ~node.getEnd()~ | Natively 100% lossless via ~tsc~ full-start trivia ranges |
+| ~asp-python~ | Python stdlib ~ast~ + ~tokenize~ | UTF-8 byte offsets mapped from ~(lineno, col_offset, end_lineno, end_col_offset)~ + ~tokenize~ comment intervals | Untouched byte gaps + ~tokenize~ comment anchoring preserve 100% of comments, blank lines, and indentation; optional ~ruff format~ |
+| ~AspJulia.jl~ | ~JuliaSyntax.jl~ | ~JuliaSyntax.first_byte(node)..last_byte(node)~ | Natively a ~rowan~-style 100% lossless green tree |
+| ~asp-gerbil-scheme~ / Marlin | Gerbil native reader + ~:gerbil-parser~ | ~ParseArtifact v1~ ordered UTF-8 byte-span event stream | Natively 100% lossless (every source byte belongs to exactly one token event) |
+
+For every structural edit operation ~op~ targeting node ~u~:
+1. Resolve ~u~ via its canonical AST locator against the native provider's
+   authoritative span index:
+   - ~outer_span = [full_start .. full_end)~ (includes attached doc comments & attributes/decorators)
+   - ~inner_span = [code_start .. code_end)~ (syntax body only)
+   - ~body_span  = Some([open_delim_end .. close_delim_start))~ (interior of block / impl / class / arg list)
+   - ~indent_prefix~ (exact leading whitespace bytes sliced directly from ~B~)
+2. Compute a bounded set of non-overlapping byte-range replacements
+   ~[(start_i, end_i, replacement_bytes_i)]~ solely inside the target spans.
+3. Apply replacements in *strict reverse byte order* over an in-memory copy of ~B~.
+4. All bytes outside edited spans remain *bit-for-bit identical* to ~B~.
+
+** Mechanism 2: Dual-Track Oracle-Verified Syntax Calibration (Zero Duplicate Language Parsers)
+
+When an edited file or LLM snippet fails to parse (the 2–10% syntax slip case),
+~crates/agent-semantic-ast~ selects one of two calibration engines depending on
+the language backend — *never* inventing a second full language parser:
+
+*** Track A — ~:gerbil-parser~ Grammars (Native LR CPCT+ Engine)
+For any language or DSL backed by ~:gerbil-parser~ (compiled via ~deflanguage~
+to ~gerbil-parser-runtime~ Rust AOT or Scheme runtime — whether a full
+programming/specification language like Bash 5.3 / TLA+ / HCL / GQL / SysML /
+Quint or a reasoning DSL like ~:gerbil-ascent~ / Dusa):
+1. Parse produces a lossless ~ParseArtifact v1~ or exact ~LRFailureFrontier~
+   (LR parser state, grammar-admissible ~expected_terminals~, ~remaining_tokens~).
+2. Run *bounded CPCT+ minimum-cost search* (Diekmann & Tratt 2020) directly on
+   the compiled LR automaton with budget ~max_cost <= 3~ over typed operations
+   ~MISSING(expected_literal)~, ~SKIPPED(token)~, ~ERROR(token -> expected_literal)~.
+3. Admit ONLY if there exists a *unique minimum-cost repair sequence* whose
+   resumed parse completes to ~ParseArtifact(status = accepted)~.
+
+*** Track B — External Native Compiler Providers (Oracle-Verified Bounded Calibration)
+For external HTTP-JSON providers whose parser is non-recovering (~syn~, Python
+~ast~) or partially recovering (~tsc~, ~JuliaSyntax~):
+1. *Fast Path (90–98%)*: Send contextual candidate to the authoritative native
+   provider's ~ast-verify~ endpoint. If ~accepted == true~, 0 calibration work.
+2. *Bounded Candidate Proposal (Pure Rust, Language-Profile Parameterized)*:
+   When ~ast-verify~ reports a syntax error at byte offset ~e~ (with message /
+   expected token):
+   - A tiny, token-aware *Lexical Delimiter Skeleton* (parameterized solely by
+     the language's lexical profile: string/raw-string/char/comment delimiters,
+     bracket pairs ~()/{}/[]~, statement terminator ~;~ — ~150 lines of Rust,
+     *zero* grammar duplication) identifies unmatched delimiters or missing
+     terminators *strictly anchored to error span ~e~* and the edited hole
+     boundary.
+   - Generates a small bounded candidate set (~<= 8~ candidates, edit cost ~<= 2~):
+     - Insert missing closing delimiter (~)~ / ~}~ / ~]~) at error offset ~e~ or
+       hole end;
+     - Delete 1–2 extra unmatched closing delimiters;
+     - Insert missing statement/item separator (~;~ or ~,~) when the native
+       parser diagnostic explicitly expects it at offset ~e~;
+     - Strip accidental outer markdown code fence from a tool snippet.
+3. *Authoritative Native Oracle Verification*:
+   - Batch-verify the ~<= 8~ candidates against the *authoritative native
+     provider* (~syn~ / ~tsc~ / ~ast~ / ~JuliaSyntax~ / Gerbil) in a single
+     pipelined HTTP-JSON (or in-process Rust) ~ast-verify~ call.
+   - *Strict Acceptance Rule*:
+     - Exactly *1* minimum-cost candidate passes native full-file verification
+       with *0 syntax errors* -> *ADMITTED* with auditable ~CalibrationReceipt~.
+     - *0* candidates pass OR *>= 2* distinct minimum-cost candidates tie ->
+       *FAIL-CLOSED*: zero disk writes, return exact native diagnostic +
+       *Typed Hole* context.
+
+*Key Theorem*: Even when the underlying native parser (~syn~ / Python ~ast~)
+has zero built-in error recovery, *Oracle-Verified Bounded Calibration* is
+*100% sound with respect to the real language compiler* because no repaired
+source can ever be admitted without passing the authoritative native parser!
+
+* Architecture of ~crates/agent-semantic-ast~
+
+** Crate Placement & Module Topology
+
+~crates/agent-semantic-ast~ lives inside ASP as a first-class pure-Rust library
+crate sibling to ~crates/agent-semantic-search~ and
+~crates/agent-semantic-provider-transport~, embedded directly into Marlin with
+zero gRPC hop between Marlin and ASP:
+
+#+begin_example
+agent-semantic-protocols/crates/agent-semantic-ast/
+├── Cargo.toml                  # Pure language-agnostic Rust Backend Runtime:
+│                               #   ZERO syn, ZERO Tree-sitter, ZERO hardcoded style rules!
+└── src/
+    ├── lib.rs                  # Public interface & re-exports only (RUST-MOD-R001)
+    ├── types.rs                # Domain newtypes: AstLanguageId, AstLanguageKind,
+    │                           #   AstProviderId, AstNodeLocator, AstWorkspacePath,
+    │                           #   ByteSpan, AstNodeSpanRecord, AstPatchOp,
+    │                           #   CalibrationReceipt, TypedHoleDiagnostic
+    ├── registry.rs             # AI-Native Language Server AST Provider Register Engine
+    │                           #   (bridges ProviderRegistrationDocument + extension/
+    │                           #    language routing + generation & BLAKE3 digest)
+    ├── span_overlay.rs         # Source-Backed Lossless Span Splicer
+    │                           #   (BLAKE3 preimage guard, indentation alignment,
+    │                           #    reverse-offset splice, unified diff renderer)
+    ├── provider_port.rs        # Trait AstProviderPort + ResidentActorAstProvider
+    │                           #   (ProviderRuntimeActorClient) + HttpJsonAstProviderClient
+    │                           #   over POST /v1/provider-runtime
+    │                           #   ("ast-inspect" and "ast-verify" ONLY!)
+    ├── tokio_runtime.rs        # Dedicated Tokio runtime boundary for provider I/O
+    ├── calibration.rs          # Unified Calibrator: Track A (LR CPCT+) +
+    │                           #   Track B (Lexical Delimiter Skeleton parameterized by
+    │                           #    registered provider profile + Native Oracle)
+    │                           #   + Uniqueness & Re-Parse Proof gate
+    ├── transaction.rs          # Pure Rust Runtime AstEngine: inspect_file() streams
+    │                           #   AST spans & Open EDB to Scheme :gerbil-ascent;
+    │                           #   apply_patch() executes typed AstPatchOp (incl.
+    │                           #   ApplySpanEdits emitted by Scheme policy) atomically
+    └── open_edb_projection.rs  # Lossless AstNodeSpanRecord -> WorkspaceOpenEdbIngestBatch
+                                #   (single-tree sync with agent-semantic-search)
+#+end_example
+
+** Extension to ASP's Existing HTTP-JSON Provider Runtime (~POST /v1/provider-runtime~)
+
+All external language providers (~asp-rust~, ~asp-typescript~, ~asp-python~,
+~AspJulia.jl~, ~asp-gerbil-scheme~) already implement
+~POST /v1/provider-runtime~ using ~ProviderRuntimeRequestFrame~ /
+~ProviderRuntimeResponseFrame~ (~crates/agent-semantic-provider-transport~) and
+register into ASP via ~ProviderRegistrationDocument~
+(~crates/agent-semantic-provider-protocol~).
+~crates/agent-semantic-ast~ NEVER embeds a language parser (~syn~, ~tsc~,
+~tree-sitter~) and NEVER hardcodes Coding Style rules in Rust; instead it
+provides *~AstProviderRegistry~* (the AI-Native Language Server Provider
+Register Engine) and defines strictly *two* pure compiler primitives over that
+existing transport — zero new server processes, zero new transport layers:
+
+| Operation | Request Payload | Response Payload | Authority Role |
+|-----------+-----------------+------------------+----------------|
+| ~ast-inspect~ | ~{ path, sourceUtf8, sourceHash }~ | ~{ accepted, nodes: [{ locator, kind, languageKind, name, line, outerSpan, innerSpan, bodySpan, parent, attrs }], diagnostics }~ | Authoritative native compiler span index + Open EDB facts streamed to Scheme ~:gerbil-ascent~ |
+| ~ast-verify~ | ~{ path, candidates: [{ candidateId, sourceUtf8 }] }~ | ~{ results: [{ candidateId, accepted, diagnostics: [{ byteStart, byteEnd, message, expectedTokens }] }] }~ | Batched native compiler soundness oracle for fast-path + Frontier 2 calibration + post-edit proof |
+
+*AI-Native Language Server + Scheme Policy Leverage*:
+- Adding a new language to ASP's lossless AST engine requires *zero lines
+  changed* inside ~crates/agent-semantic-ast~: the provider simply registers
+  via ~ProviderRegistrationDocument~ with ~ResidentActorAstProvider~ or
+  ~HttpJsonAstProviderClient~ exposing ~ast-inspect~ + ~ast-verify~.
+- Adding or evolving Coding Style rules requires *zero Rust recompilation*:
+  users and agents author declarative ~:gerbil-ascent~ + POO style packs in
+  Marlin Scheme (~scheme/ast-style/~), evaluate them over the native AST / Open
+  EDB facts streamed by ~AstEngine::inspect_file~, and execute admitted
+  rewrites through ~AstEngine::apply_patch~ (~AstPatchOp::ApplySpanEdits~).
+
+** Core Rust Domain Contract (Sketch)
+
+#+begin_src rust
+/// Authoritative native AST node span anchored into immutable UTF-8 source bytes.
+pub struct AstNodeSpanRecord {
+    pub locator: AstNodeLocator,         // e.g. "src/engine.rs#impl:Engine#fn:execute"
+    pub kind: AstUniversalKind,          // function | method | struct | item | block | stmt | expr | import | ...
+    pub language_kind: AstLanguageKind,  // exact native kind: "impl_item", "FunctionDef", "macro_rules", ...
+    pub outer_span: ByteSpan,            // includes attached doc-comments & attributes/decorators
+    pub inner_span: ByteSpan,            // exact syntactic item span
+    pub body_span: Option<ByteSpan>,     // interior span of `{ ... }` / indented block / arg list
+    pub parent: Option<AstNodeLocator>,
+}
+
+/// High-level structural edit operations (superset of RFC 10.07 semantic-ast-patch.v1).
+pub enum AstPatchOp {
+    ReplaceItem { target: AstNodeLocator, snippet: String },
+    AppendToBlock { target: AstNodeLocator, snippet: String },
+    InsertBeforeNode { target: AstNodeLocator, snippet: String },
+    InsertAfterNode { target: AstNodeLocator, snippet: String },
+    ReplaceCallArg { target: AstNodeLocator, arg_index: usize, snippet: String },
+    InsertImport { owner: WorkspacePath, import_spec: String },
+    RemoveNode { target: AstNodeLocator },
+    SplitOwnerItems { target: AstNodeLocator, destination: WorkspacePath, module_name: String },
+    /// Direction 1: deterministic semantics-preserving elevation emitted by :gerbil-ascent.
+    ApplyElevationBatch { rule_ids: Vec<StyleRuleId>, edits: Vec<CalibratedSpanEdit> },
+}
+
+/// Auditable proof receipt emitted for every dry-run, calibration, or atomic commit.
+pub struct AstPatchReceipt {
+    pub status: AstPatchStatus,                // Verified | Applied | CalibratedAndApplied | RejectedHole
+    pub preimage_hash: Blake3Digest,
+    pub postimage_hash: Option<Blake3Digest>,
+    pub calibration: Option<CalibrationReceipt>, // exact syntax edits + cost + uniqueness proof
+    pub elevation_rules_applied: Vec<StyleRuleId>,
+    pub reparse_verified: bool,
+    pub typed_hole: Option<TypedHoleDiagnostic>, // populated fail-closed on rejection
+    pub unified_diff: Option<String>,            // human/audit diff only, never mutation input
+    pub open_edb_updated: bool,
+}
+#+end_src
+
+* Frontier 1 Protocol: Machine-Native Relational Coding Style & Higher-Level Code Elevation
+
+** Core Principle: Relational & Mathematical Style Theories Instead of Human Prose
+
+Natural-language coding guidelines (~AGENTS.md~, prose rulebooks) are optimized
+for human readers, not LLMs: prose suffers from polysemy, attention dilution,
+and verifier drift (see empirical & literature analysis in
+[31.32-relational-coding-style-ast-elevation-and-calibration-research.org](file:../30-39-research/31.32-relational-coding-style-ast-elevation-and-calibration-research.org)).
+Accordingly, Coding Style in ASP + Marlin is *never* owned solely by
+free-form natural language; it is expressed as an *executable mathematical and
+relational theory* across *three cooperating DSLs*:
+
+1. *~:gerbil-parser~ Structural DSL* (~deflanguage~ + ~QueryPattern~ +
+   ~ProjectionPlan~) producing lossless CST relations for declarative
+   grammars and Gerbil Scheme.
+2. *External Native Language AST DSL* (~languages/asp-*~ HTTP-JSON
+   ~ast-inspect~ / ~ast-verify~) producing compiler-authoritative AST and
+   semantic relations for Rust (~syn~), TypeScript (~tsc~), Python (~ast~),
+   Julia (~JuliaSyntax~), and external Gerbil packages.
+3. *~:gerbil-ascent~ Mathematical Style Engine* (Horn clauses ~<--~,
+   stratified negation ~not~, cost lattice $\preceq_{\text{style}}$,
+   equivalence schemas $\text{LHS} \leadsto \text{RHS}$, and Dusa POPL 2025
+   finite-choice):
+   - *Single Source of Truth*: The exact same ~:gerbil-ascent~ style theory
+     both *verifies/elevates* ASTs deterministically *and* projects a compact,
+     machine-native symbolic contract ($\Pi_{\text{LLM}}$: quantifiers
+     $\forall / \neg\exists$, relation signatures, algebraic rewrite schemas,
+     and live in-scope domain types from Open EDB) to guide the LLM before
+     generation — eliminating prose ambiguity and reducing prompt token cost.
+
+** Architectural Separation: Rust Owns Lossless Execution, ~:gerbil-ascent~ Owns Higher-Order Style Reasoning
+
+Hardcoding 74+ coding-style rules as imperative Rust AST visitors (as in legacy
+linters) is brittle and cannot reason relationally across modules, types, call
+graphs, and Scheme POO prototypes. Instead:
+
+1. *~crates/agent-semantic-ast~* extracts compact, language-neutral relational
+   AST facts from the native provider's ~ast-inspect~ result (alongside ASP's
+   resident Open EDB):
+   - ~(ast_node id parent_id kind language_kind start_byte end_byte)~
+   - ~(ast_attr id key val)~ (e.g. ~is_async="true"~, ~mut_acc="true"~,
+     ~nesting_depth="4"~, ~param_count="6"~, ~param_type="String"~)
+   - ~(ast_call caller_id callee_name span)~
+   - ~(ast_in_loop node_id loop_id)~
+2. *Marlin ~:gerbil-ascent~ + POO Coding Style Packs* declare higher-level style
+   & architectural rules declaratively over those facts:
+   - ~RustStyleFragment.~ (encoding ~asp-rust-rules.md~ idioms: iterator
+     elevation ~RUST-AGENT-ITER-*~, precomputed set lookup
+     ~RUST-AGENT-DATA-MEMBERSHIP-029~, domain newtypes ~RUST-AGENT-API-TYPE-012~,
+     guard/match shape ~RUST-AGENT-CFG-PUBLIC-015~, pure facade ~RUST-MOD-R001~,
+     async lock hygiene ~RUST-AGENT-ASYNC-SYNC-LOCK-031~).
+   - ~SchemePooStyleFragment.~ (encoding Marlin ~CODING-STYLE.org~: POO
+     ~(slot := expr)~ lexical constant capture, ~.def~/~.mix~ composition,
+     ~.new/checked~, ~defrules~ structural sugar, functional state transitions).
+   - Project-specific POO style mixins compose cleanly via ~.mix~ without
+     recompiling Rust!
+
+** Three-Gear Elevation Pipeline
+
+#+begin_src mermaid
+flowchart LR
+    G1["Gear 1: Pre-Gen Precision Style Contract\n:gerbil-ascent queries target AST locator + Open EDB\n-> emits 3-5 line in-scope types/helpers/rules"]
+    LLM["LLM Generates Concise AstPatchOp"]
+    G2["Gear 2: Post-Gen Declarative Smell & Idiom Detection\nagent-semantic-ast projects candidate AST -> :gerbil-ascent\n-> derives redundancy & style findings with exact ByteSpans"]
+    G3A["Gear 3A: Auto Semantics-Preserving Elevation\n(Cost-guided egglog-style local rewrite)\n• manual filter+push loop -> iterator chain\n• redundant match/if-let -> .map / ? / let-else\n• Scheme let-value -> POO (slot := ...)\n-> Verified by native ast-verify + tests"]
+    G3B["Gear 3B: Architectural Refactoring Proposal\n(Dusa finite-choice over multi-step plans)\n• String -> Domain Newtype\n• Split oversized module / broad fn\n-> Emits witness + ready AstPatchOp skeleton"]
+
+    G1 --> LLM --> G2
+    G2 -->|"provably semantics-preserving\n& lower style cost"| G3A
+    G2 -->|"API/module-level\narchitectural change"| G3B
+#+end_src
+
+** Strict Elevation Safety Boundary
+
+Every Coding-Style rule in ~:gerbil-ascent~ MUST declare its *elevation class*:
+- *Class 1 — ~AutoElevate~ (Local Semantics-Preserving)*:
+  Strictly local, behavior-preserving algebraic equivalence with strictly lower
+  style cost (nesting depth, mutable accumulator count, redundant wrapper count).
+  Requires both: (a) native ~ast-verify~ acceptance, and (b) differential unit
+  equivalence fixtures in CI before promotion to ~AutoElevate~.
+- *Class 2 — ~ProposeAstPatch~ (Architectural / API-Shaping)*:
+  Changes public signatures, introduces newtypes, or splits modules. Never
+  silently applied; emitted as a structured, witness-backed ~AstPatchOp~
+  proposal (with Dusa choice ranking when multiple legal refactorings exist).
+- *Class 3 — ~PreGenContract~ (Preventive Guidance)*:
+  Injected compactly *before* generation when the agent locates a target node,
+  preventing redundant helper reinvention and primitive obsession at the source.
+
+* Frontier 2 Protocol: Formal Safety Invariants for Auto Syntax Calibration
+
+~crates/agent-semantic-ast::calibration~ enforces *four non-negotiable
+invariants* (to be formally modeled in Quint ~dev/quint/ast-engine.qnt~ and
+proved for LR CPCT+ minimality in Lean):
+
+1. *Soundness (Oracle Proof)*:
+   No calibrated source ~S'~ may be admitted unless the authoritative native
+   parser (~ast-verify~ or ~gerbil-parser-runtime~) returns ~accepted = true~
+   with *zero* syntax diagnostics on the complete post-splice file.
+2. *Minimality & Unambiguity (CPCT+ Rule)*:
+   Let ~C(S, B)~ be the set of valid repairs of edit cost ~<= B~ (default ~B = 3~
+   for LR CPCT+, ~B = 2~ for external oracle calibration). Auto-calibration
+   succeeds *iff* ~argmin_{r in C} cost(r)~ has cardinality *exactly 1*. If two
+   distinct repairs tie at minimal cost, calibration *fails closed* and emits a
+   ~TypedHoleDiagnostic~ showing both candidate interpretations.
+3. *Non-Semantic-Invention*:
+   Auto-calibration is restricted strictly to *delimiter balance, statement/item
+   punctuation, fence stripping, and grammar-literal tokens* (e.g., ~)~, ~}~,
+   ~]~, ~;~, ~,~, ~<--~). It NEVER invents identifiers, literals, branch
+   conditions, or type expressions.
+4. *Transactional Atomicity & Auditability*:
+   Every calibrated edit records a content-addressed ~CalibrationReceipt~
+   (~preimageHash~, ~rawSnippetHash~, ~calibratedHash~, ~edits[]~, ~totalCost~,
+   ~oracleProviderId~). If formatting, re-parse, or any sibling file in a
+   multi-file ~AstTransaction~ fails, *zero bytes* are written to disk.
+
+* Single-Tree Closed Loop with ~agent-semantic-search~ (Open EDB)
+
+Once an ~AstTransaction~ commits atomically:
+1. ~agent-semantic-ast~ already holds the freshly verified ~ast-inspect~ node
+   table (or ~ParseArtifact v1~) for every mutated file.
+2. ~open_edb_projection.rs~ converts those nodes losslessly into a
+   ~WorkspaceOpenEdbIngestBatch~ (~semantic-open-edb.v1~) with
+   ~source = "native-parser"~ or ~"gerbil-parser"~.
+3. The host feeds that batch + file delta directly into
+   ~WorkspaceSearchIndex::apply_file_delta~ + ~ingest_open_edb_facts~ +
+   BLAKE3 ~content_hash~ Open EDB cache update.
+4. Result: *0 ms stale search window*, *0 duplicate parses*, *0 regexes*.
+
+* Formal Verification, Benchmarks & Phased Delivery Plan
+
+** Formal & Stateful Qualification
+
+1. *OpenSysML v2 Model*: ~dev/sysml/ast-engine.sysml~ (created alongside this
+   RFC) defines component ownership, ~AstPatchTransactionLifecycle~, and
+   requirements ~ASP-AST-R01~..~R07~.
+2. *Quint Transaction Safety Model* (~dev/quint/ast-engine.qnt~, Phase 2):
+   Verifies with negative mutation controls that (a) stale BLAKE3 preimages
+   never commit, (b) ambiguous calibration ties never auto-apply, (c) failed
+   re-parse or partial multi-file failure leaves disk state identical to
+   preimage, and (d) committed Open EDB digest always matches committed disk hash.
+3. *Comparative Evaluation Benchmark (Falsifiable vs. Codex ~apply_patch~ & Aider)*:
+   A frozen real-code corpus drawn from Marlin & ASP (Rust, TypeScript, Python,
+   Gerbil Scheme, SysML/Quint/Ascent DSL) measuring:
+   - *Direction 1 metrics*: coding-style rule violations (~asp-rust-rules~ /
+     ~CODING-STYLE~), AST nesting depth, lines of boilerplate, and semantic
+     test-pass preservation before vs. after Elevation.
+   - *Direction 2 metrics*: single-turn syntax pass rate on injected 1–3
+     delimiter/punctuation faults, false-positive repair rate (target: *0.0%*
+     via Uniqueness + Oracle gate), calibration latency (p50/p95), and LLM
+     retry turns saved.
+   - *Patching metrics*: prompt + completion tokens vs. Codex ~apply_patch~ and
+     Aider ~SEARCH/REPLACE~ on 500–1000 line real files.
+
+** Ordered Delivery Phases
+
+- *Phase 1 (Complete in this RFC)*: Research synthesis, ~crates/agent-semantic-ast~
+  framework specification, ~dev/sysml/ast-engine.sysml~, and Marlin companion
+  RFC 40.185.
+- *Phase 2*: Implement ~crates/agent-semantic-ast~ core (~span_overlay~,
+  ~provider_port~, ~calibration~, ~transaction~, ~open_edb_projection~) +
+  Quint model + ~asp-rust~ ~ast-inspect~/~ast-verify~ provider operations.
+- *Phase 3*: Upgrade ~:gerbil-parser~ (~recovery.ss~ + ~gerbil-parser-runtime~)
+  from 1-edit recovery to bounded CPCT+ minimum-cost LR recovery, and connect
+  ~gerbil_parser_adapter.rs~ inside ~agent-semantic-ast~.
+- *Phase 4*: Implement Direction 1 ~:gerbil-ascent~ Coding Style packs
+  (~RustStyleFragment.~, ~SchemePooStyleFragment.~) + Class-1 ~AutoElevate~
+  rewrites + Class-2 Dusa proposals, wire Marlin ~ast_patch~ tool, and delete
+  legacy ad-hoc ~scheme/search-dsl/{repair.ss,extract.ss}~.
+- *Phase 5*: Enable ~ast-inspect~/~ast-verify~ across ~asp-typescript~ (~tsc~),
+  ~asp-python~ (~ast~ + ~tokenize~), ~AspJulia.jl~ (~JuliaSyntax~), and
+  ~asp-gerbil-scheme~, then publish the matched comparative benchmark report.

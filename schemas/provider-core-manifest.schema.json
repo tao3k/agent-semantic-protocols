@@ -1,0 +1,199 @@
+{
+  "$defs": {
+    "ProviderCapabilities": {
+      "additionalProperties": false,
+      "description": "Minimal capability flags published by a native language provider.",
+      "properties": {
+        "astInspect": {
+          "description": "Provider implements `ast-inspect` returning authoritative UTF-8 byte spans.",
+          "type": "boolean"
+        },
+        "astVerify": {
+          "description": "Provider implements `ast-verify` batched compiler soundness oracle.",
+          "type": "boolean"
+        },
+        "openEdb": {
+          "description": "Provider emits Open EDB facts directly or via `ast-inspect`.",
+          "type": "boolean"
+        },
+        "projectResolution": {
+          "default": false,
+          "description": "Provider optionally implements `project-resolution` workspace membership.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "astInspect",
+        "astVerify",
+        "openEdb"
+      ],
+      "type": "object"
+    },
+    "ProviderLanguageId": {
+      "description": "Canonical language identifier newtype (e.g. `rust`, `python`, `julia`, `gerbil-scheme`).",
+      "type": "string"
+    },
+    "ProviderPackageId": {
+      "description": "Canonical provider identifier newtype (e.g. `asp-rust`, `asp-julia`, `asp-gerbil-scheme`).",
+      "type": "string"
+    },
+    "ProviderSyntaxSurface": {
+      "additionalProperties": false,
+      "description": "Provider-reported native lexical syntax surface (owned by the language provider,\nnever duplicated in Scheme ontology definitions).",
+      "properties": {
+        "blockComment": {
+          "description": "Block comment `[open, close]` pair reported by the native parser (e.g. `[\"/*\", \"*/\"]`, `[\"#|\", \"|#\"]`, `[\"#=\", \"=#\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "delimiterPairs": {
+          "default": [],
+          "description": "Balanced delimiter `[open, close]` pairs native to this language.",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "lineComment": {
+          "description": "Line comment opener reported by the native parser (e.g. `//`, `#`, `;`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "statementTerminator": {
+          "description": "Optional statement terminator token (e.g. `;` for Rust/TypeScript, absent for Python/Julia/Scheme).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stringDelimiters": {
+          "default": [],
+          "description": "Native string literal quote delimiters (e.g. `[\"\\\"\"]`, `[\"\\\"\", \"'\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ProviderTransport": {
+      "additionalProperties": false,
+      "description": "Minimal HTTP-JSON transport descriptor for a provider server.",
+      "properties": {
+        "command": {
+          "description": "Subcommand arguments launching the resident provider server (e.g. `[\"serve\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "healthPath": {
+          "description": "Health and handshake endpoint path (default `/health`).",
+          "type": "string"
+        },
+        "requestPath": {
+          "description": "Request frame dispatch endpoint path (default `/v1/provider-runtime`).",
+          "type": "string"
+        },
+        "shutdownPath": {
+          "description": "Graceful drain endpoint path (default `/shutdown`).",
+          "type": "string"
+        },
+        "transport": {
+          "description": "Wire transport kind (`http-json`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport",
+        "command",
+        "healthPath",
+        "requestPath",
+        "shutdownPath"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://agent-semantic-protocols.local/schemas/provider-core-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Converged Provider Core Manifest (`provider-core-manifest.schema.json`).",
+  "properties": {
+    "capabilities": {
+      "$ref": "#/$defs/ProviderCapabilities",
+      "description": "Admitted compiler primitives."
+    },
+    "displayName": {
+      "description": "Human-readable display name.",
+      "type": "string"
+    },
+    "extensions": {
+      "description": "Lowercase leading-dot source extensions owned by this provider (e.g. `[\".rs\"]`).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "languageId": {
+      "$ref": "#/$defs/ProviderLanguageId",
+      "description": "Canonical language identifier served by this provider."
+    },
+    "projectMarkers": {
+      "default": [],
+      "description": "Project root marker files (e.g. `[\"Cargo.toml\"]`, `[\"Project.toml\"]`).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "providerId": {
+      "$ref": "#/$defs/ProviderPackageId",
+      "description": "Canonical provider package identifier."
+    },
+    "schemaId": {
+      "description": "Canonical schema identifier (`agent.semantic-protocols.provider-core-manifest`).",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "description": "Schema version carried inside the document payload (not in the filename).",
+      "type": "string"
+    },
+    "syntaxSurface": {
+      "$ref": "#/$defs/ProviderSyntaxSurface",
+      "description": "Native lexical syntax surface reported by the provider itself."
+    },
+    "transport": {
+      "$ref": "#/$defs/ProviderTransport",
+      "description": "Resident HTTP-JSON server launch and route descriptor."
+    }
+  },
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "displayName",
+    "extensions",
+    "syntaxSurface",
+    "transport",
+    "capabilities"
+  ],
+  "title": "ASP Provider Core Manifest",
+  "type": "object",
+  "x-schema-version": "1"
+}

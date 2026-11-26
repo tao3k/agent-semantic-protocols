@@ -1,0 +1,147 @@
+{
+  "$defs": {
+    "ExpectedConformanceNode": {
+      "additionalProperties": false,
+      "description": "Expected AST entity assertion inside a Scheme-projected conformance probe.",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "languageKind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "languageKind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "LanguageConformanceProbe": {
+      "additionalProperties": false,
+      "description": "Minimal golden conformance probe verifying a native provider's `ast-inspect` and `ast-verify`.",
+      "properties": {
+        "expectValid": {
+          "type": "boolean"
+        },
+        "expectedNodes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExpectedConformanceNode"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "probeId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "probeId",
+        "path",
+        "source",
+        "expectValid"
+      ],
+      "type": "object"
+    },
+    "OntologyKindMapping": {
+      "additionalProperties": false,
+      "description": "Mapping from a language's native AST `language_kind` to ASP's General Ontology `kind`.",
+      "properties": {
+        "description": {
+          "description": "Concise semantic description inherited from Scheme's `defasp-language`.",
+          "type": "string"
+        },
+        "generalKind": {
+          "description": "Universal General Ontology kind (e.g. `function`, `struct`, `class`, `macro`, `item`).",
+          "type": "string"
+        },
+        "nativeLanguageKind": {
+          "description": "Native compiler AST node kind (e.g. `fn_item`, `FunctionDef`, `struct`, `poo_def`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nativeLanguageKind",
+        "generalKind",
+        "description"
+      ],
+      "type": "object"
+    },
+    "ProviderLanguageId": {
+      "description": "Canonical language identifier newtype (e.g. `rust`, `python`, `julia`, `gerbil-scheme`).",
+      "type": "string"
+    }
+  },
+  "$id": "https://agent-semantic-protocols.local/schemas/language-conformance-pack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Compact pure-data Language Conformance Pack projected from Marlin's Gerbil Scheme\n`defasp-language` POO General Ontology and consumed by ASP's black-box provider harness.\n\nContains ZERO low-level lexical rules (comment/pair syntax is reported by the native\nprovider itself via [`ProviderSyntaxSurface`]).",
+  "properties": {
+    "extensions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "kindMappings": {
+      "items": {
+        "$ref": "#/$defs/OntologyKindMapping"
+      },
+      "type": "array"
+    },
+    "languageId": {
+      "$ref": "#/$defs/ProviderLanguageId"
+    },
+    "probes": {
+      "items": {
+        "$ref": "#/$defs/LanguageConformanceProbe"
+      },
+      "type": "array"
+    },
+    "projectMarkers": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "providerLanguageId": {
+      "$ref": "#/$defs/ProviderLanguageId"
+    },
+    "schemaId": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "specialRelations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerLanguageId",
+    "extensions",
+    "kindMappings",
+    "probes"
+  ],
+  "title": "ASP Language Conformance Pack",
+  "type": "object",
+  "x-schema-version": "1"
+}

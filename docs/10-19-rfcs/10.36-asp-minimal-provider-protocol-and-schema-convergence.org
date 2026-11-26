@@ -1,0 +1,43 @@
+#+TITLE: RFC 10.36: ASP Provider Core Protocol, Two-Plane Schema Convergence, and General Language Ontology
+#+SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+#+SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+
+* Status
+Accepted and Implemented.
+
+* Context & Motivation
+Historical schema evolution in ASP accumulated 460+ hand-authored JSON Schema files across =schemas/=, duplicated =language-schema-profiles.json= (~46 KB each) into every external language provider repository, and coupled thin native language servers (=asp-rust=, =asp-python=, =asp-typescript=, =AspJulia.jl=, =asp-gerbil-scheme=) to 100+ internal client/runtime/storage/tree-sitter schemas.
+
+Simultaneously, embedding version suffixes (=*.v1.schema.json=, =*.v2.schema.json=) in filenames and duplicating lexical rules (delimiter pairs, comment prefixes) inside high-level language specifications created cross-layer drift and unnecessary boilerplate.
+
+* Decision: Two-Plane Orthogonal Single Source of Truth
+
+** Plane 1: Rust-Owned Provider Core Wire Spine (=schemars= SSoT, Version-Free Filenames)
+The Rust crate =agent-semantic-provider-protocol= (=src/provider_core.rs=) is the sole source of truth for the minimal cross-process provider boundary. Draft 2020-12 JSON Schemas are generated directly from strongly typed Rust structs via =schemars= with strict CI byte-for-byte drift checks and **version-free filenames** (schema versions live strictly inside =schemaVersion= / =x-schema-version=):
+
+1. =schemas/provider-core-manifest.schema.json= (=ProviderCoreManifest=): language identity, file extensions, project markers, HTTP-JSON transport, capability bits, and **provider-reported** =ProviderSyntaxSurface=.
+2. =schemas/provider-runtime-request-frame.schema.json= & =schemas/provider-runtime-response-frame.schema.json=: unified =POST /v1/provider-runtime= frame envelope.
+3. =schemas/semantic-open-edb.v1.schema.json=: universal 4-relation Open EDB fact batch =(file, entity, edge, attr)=.
+4. =schemas/ast-inspect.schema.json= (=AstInspectContract=): authoritative UTF-8 =SourceByteSpan= AST node records + provider-reported =ProviderSyntaxSurface=.
+5. =schemas/ast-verify.schema.json= (=AstVerifyContract=): batched compiler-soundness oracle verification.
+6. =schemas/language-conformance-pack.schema.json= (=LanguageConformancePack=): pure-data ontology mapping & golden conformance probes projected from Plane 2.
+
+*** Provider-Reported Native Syntax Surface
+Low-level lexical syntax (line comment prefix =//= vs =#= vs =;=, block comments, balanced delimiters, statement terminator, string quotes) belongs exclusively to the native compiler provider. External providers report =ProviderSyntaxSurface= upward in their manifest and =ast-inspect= responses; high-level Scheme ontology definitions never hardcode lexical pairs or comment lexers.
+
+** Plane 2: Gerbil Scheme General Language Ontology & POO Extensions (=defasp-language=)
+All high-order search relations, cross-language semantic abstractions, and Frontier 1 Coding Style rules live exclusively in Gerbil Scheme (=marlin-agent-core/scheme/search-dsl= & =scheme/ast-style=):
+
+- **General Language Ontology (=GeneralLanguageOntologyFragment.=)**: defines universal cross-language =:gerbil-ascent= relations (=callable=, =type_decl=, =module_decl=, =import_decl=, =binding_decl=, =macro_decl=, =comment_node=, =test_decl=) over ASP's Open EDB so any newly registered native provider immediately participates in general semantic search.
+- **POO Language Mapping & Special Extensions (=defasp-language= via =.mix=)**: each language declares only (1) native compiler =language_kind= -> General Ontology =kind= mappings, (2) language-specific special relations (=rust_impl=, =scheme_poo_def=, =julia_macro=, =ts_interface=, =py_class=), and (3) minimal golden conformance probes.
+- **Black-Box Provider Conformance Harness**: ASP's =agent-semantic-ast= consumes projected =LanguageConformancePack= payloads to verify any external language provider over =POST /v1/provider-runtime= without requiring external providers to depend on Gerbil Scheme or re-implement query engines.
+
+* Physical Refactoring & Zero Legacy Baggage
+- Physically removed 117 dead schemas from =schemas/= (including all retired =turso-*= schemas, dead =runtime-server-*=, dead =rust-project-harness-*=, dead =storage-session-*=, dead =enhanced-tree-sitter-query-operator-table=, and unused legacy receipts).
+- Physically removed all 5 duplicated =languages/*/schemas/language-schema-profiles.json= files (~220 KB of unreferenced copies).
+- Added the converged =provider-core= rootSet and =asp.schema-family.provider-core= ownership family in =schemas/language-schema-profiles.json= and re-sealed all provider bundle receipts via =SchemaManager=.
+
+* Verification
+- =cargo test -p agent-semantic-provider-protocol -p agent-semantic-schema-manager -p agent-semantic-ast= (including =schemars= zero-drift verification and =asp-rust= policy gates).
+- =just scheme-test t/search-dsl-test.ss= & =just scheme-test t/ast-style-test.ss= in Marlin.
+- 5-language live integration & conformance suite spanning =asp-rust=, =asp-python=, =asp-typescript=, =AspJulia.jl=, and =asp-gerbil-scheme=.

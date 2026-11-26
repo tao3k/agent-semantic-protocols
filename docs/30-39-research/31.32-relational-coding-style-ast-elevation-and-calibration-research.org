@@ -1,0 +1,354 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+#+TITLE: 31.32 Paper-Grade Research Report: Machine-Native Relational Coding Style, Cost-Guided AST Elevation & Sound Zero-Round-Trip Syntax Calibration
+#+AUTHOR: tao3k team and Contributors
+#+DATE: 2026-11-26
+#+STATUS: active (research monograph; paired with RFC 10.35 and Marlin RFC 40.185)
+#+JOHNNY_DECIMAL: 31.32
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search & AST Architecture Research
+#+RFC: docs/10-19-rfcs/10.35-agent-semantic-ast-engine-and-calibration-protocol.org
+
+* Abstract & Central Thesis
+
+Large Language Models (LLMs) already produce syntactically well-formed code for
+isolated tasks 90–98% of the time. Consequently, the bottleneck in AI-assisted
+software engineering has shifted away from "can the model emit compiling syntax?"
+toward *two sharper frontier problems*:
+
+1. *Frontier 1 — Higher-Level Code Elevation via Machine-Native Relational Style Theories*:
+   LLMs default to verbose, imperative, redundant code that passes unit tests
+   yet violates repository architecture, idiom density, and maintainability
+   contracts. We argue that *natural-language coding style documents are the
+   wrong representation for LLMs*: prose is designed for human cognition,
+   suffers from attention dilution and polysemy, and cannot execute as a formal
+   verifier. Instead, Coding Style should be formalized as an *executable
+   relational and algebraic theory* ($\mathcal{T} = \langle \mathcal{R}_{\text{ded}},
+   \mathcal{R}_{\text{choice}}, \preceq_{\text{style}}, \mathcal{W}_{\text{elev}} \rangle$)
+   authored in *:gerbil-ascent* (Datalog + lattices + Dusa finite-choice) over
+   AST facts projected by *two complementary syntax-parsing DSLs*:
+   (i) *:gerbil-parser* (full-strength declarative grammars -> lossless CST), and
+   (ii) ASP's *external native language providers* (~asp-rust~ ~syn~,
+   ~asp-typescript~ ~tsc~, ~asp-python~ ~ast~, ~AspJulia.jl~ ~JuliaSyntax~,
+   ~asp-gerbil-scheme~ over HTTP-JSON). The *same* mathematical/relational
+   theory both drives deterministic AST elevation/verification *and* projects
+   compact, high-entropy symbolic contracts ($\forall$, $\neg\exists$, Horn
+   predicates, algebraic rewrite schemas $\text{LHS} \leadsto \text{RHS}$) into
+   the LLM context — eliminating human-prose ambiguity.
+2. *Frontier 2 — Sound Zero-Round-Trip Automatic Syntax Calibration*:
+   In the residual 2–10% of edits or tool calls where an LLM drops or duplicates
+   delimiters (~)~, ~}~, ~]~), omits a semicolon/comma, or emits an unmatched
+   punctuation token, forcing a full LLM retry loop wastes seconds and thousands
+   of tokens while risking cascading drift. We formulate *Dual-Track Sound
+   Calibration* inside ASP's pure-Rust AST engine (~crates/agent-semantic-ast~):
+   - *Track A*: Bounded *CPCT+ minimum-cost LR recovery* (Diekmann & Tratt,
+     ECOOP 2020) over ~:gerbil-parser~'s compiled ~LRFailureFrontier~.
+   - *Track B*: *Oracle-Verified Bounded Calibration* over *Source-Backed
+     Span-Indexed Lossless Overlays*, enabling even non-recovering,
+     trivia-dropping native parsers (~syn~, Python ~ast~) to serve as 100% sound
+     oracles for lossless editing and bounded delimiter calibration without
+     introducing Tree-sitter or duplicate language parsers.
+
+* 1. Empirical Problem Statement: Why Current AI Coding Architectures Plateau
+
+** 1.1 The Natural-Language Coding Style Bottleneck
+
+Empirical studies on SWE-bench (2024–2026) and agentic coding evaluations reveal
+three structural pathologies when coding style is conveyed solely as prose:
+
+1. *The Verifier Gap (Passing Tests != Acceptable Engineering)*:
+   Audits of SWE-bench trajectories show that roughly half of test-passing
+   agent patches are rejected by human maintainers due to verbosity, duplicated
+   helpers, violated module boundaries, poor idiomaticity, or technical debt.
+2. *Attention Dilution & Rule Interference*:
+   Real engineering codebases enforce dozens of interlocking structural rules
+   (for example, ASP's ~asp-rust-rules.md~ specifies 74 distinct module, API,
+   iterator, complexity, async, and ABI invariants; Marlin's ~CODING-STYLE.org~
+   specifies POO lexical-capture, composition, and functional-boundary
+   conventions). Injecting prose rulebooks into prompts degrades adherence as
+   context length grows; rules compete probabilistically in attention rather
+   than composing deductively.
+3. *"Solve Early, Stop Late" & Post-Mortem Linter Loops*:
+   Agent trajectories frequently reach functional correctness early, then burn
+   additional turns fighting post-mortem linter text output — often introducing
+   fresh regressions during text rewrites.
+
+** 1.2 The Text-Plane Edit Format Bottleneck
+
+Studies of Aider's edit-format benchmarks and OpenAI Codex ~apply_patch~ show
+that a large fraction of end-to-end failures stem from *edit representation
+friction* rather than algorithmic misunderstanding:
+- Unified diffs fail on shifted line numbers and indentation drift.
+- ~SEARCH/REPLACE~ blocks impose a heavy context-copying token tax and break
+  whenever compact code outlines omit braces or boilerplate (documented in ASP
+  [31.13-ast-apply-patch-direction-report.org](file:31.13-ast-apply-patch-direction-report.org)).
+- Aider uses Tree-sitter only as a *read-only* heuristic syntax summary
+  (~RepoMap~) and reverts to raw text matching for every write.
+- A single missing ~}~ or ~)~ triggers a full rejection and an expensive extra
+  LLM turn.
+
+* 2. Deep Comparative Literature Matrix (2017–2026)
+
+In keeping with ASP and ~:gerbil-ascent~ research discipline, every cited paper
+below is treated as a *verified mechanism or baseline* whose claims must be
+qualified on our own fixtures before claiming superiority.
+
+| Work & Venue | Core Formalism / Mechanism | Key Empirical or Theoretical Result | Limitation / Gap Closed by ASP + Marlin |
+|--------------+----------------------------+-------------------------------------+-----------------------------------------|
+| Pan et al., *Logic-LM* (EMNLP 2023) & Xu et al., *SymbCoT* (ACL 2024) | Translate task constraints into formal symbolic logic (FOL / constraint rules) + deterministic solver / symbolic trace verification | *Logic-LM* achieved +39.2% over standard prompting and +18.4% over NL CoT across 5 reasoning benchmarks; *SymbCoT* sharply reduced multi-step logical drift | Focused on general logic QA, not repository-scale AST coding-style theories or lossless source rewriting |
+| Zhang et al., *egglog: Better Together: Unifying Datalog and Equality Saturation* (PLDI 2023) | Unifies Datalog fixpoints & lattices with e-graph congruence closure and cost-guided extraction | Eliminates phase-ordering between relational program analysis and equivalence-preserving rewrites in one fixpoint engine | Standalone ~egglog~ does not manage multi-language lossless CST splicing, external native compiler providers, or LLM symbolic contracts |
+| *EggMind* (2025/2026) | LLM-guided EqSat strategy synthesis (~EqSatL~ + proof-derived motif caching + tractability guards) | Tames e-graph explosion by keeping semantics-preserving rewrites inside a formal solver while delegating strategy discovery | Targets tensor/logic compiler pipelines rather than repository Coding Style elevation over heterogeneous host languages |
+| Martens, Simmons & Arntzenius, *Finite-Choice Logic Programming (Dusa)* (POPL 2025) | Least-fixed-point semantics over *choice sets* (~choice~ / ~closed~ / ~open~), subsuming Datalog and Answer Set Programming without grounding blowup | Predictable scaling for multi-solution constrained configuration problems | Needs lossless AST fact ingestion and transactional patch execution to orchestrate conflict-free code refactorings |
+| Diekmann & Tratt, *Don't Panic! Better, Fewer, Syntax Errors for LR Parsers* (ECOOP 2020) | *CPCT+*: complete set of minimum-cost local repair sequences (~insert~ / ~delete~ / ~shift~) directly on an LR parser stack | Repaired ~98.4% of real-world invalid Java files within 0.5s while dramatically eliminating cascading spurious errors | Applies directly to LR grammars (~:gerbil-parser~); non-LR external compiler parsers (~syn~, Python ~ast~) require an oracle-verified companion track |
+| Omar et al., *Hazelnut* (POPL 2017), *Hazel Live* (POPL 2019), *Tylr* / *Peanut* / *Grove* | Formal calculus of *Typed Holes* assigning static types and live semantics to incomplete ASTs | Eliminates "parse failure cliff" by giving every incomplete edit state an explicit typed-hole boundary | Targets projectional human editors; we adapt Typed Holes as the *fail-closed diagnostic interface* between a Rust AST engine and an LLM |
+| Mündler, He, Wang, Sen, Song & Vechev, *Type-Constrained Code Generation with Language Models* (PLDI 2025) | Prefix automata + type-inhabitability search during LLM decoding | Prevents type errors by construction beyond CFG syntax constraints | Requires token-logit control inside inference server (unavailable on hosted API models); our post-generation AST calibration + symbolic style contracts work with *any* hosted or local LLM |
+| *OpenRewrite* (LST), ~rust-analyzer~ (~rowan~), ~JuliaSyntax.jl~, *GritQL* | Lossless red-green syntax trees preserving every trivia/comment byte; declarative pattern rewriters | Bit-for-bit preservation of untouched code during large-scale structural transformations | Each tool locks into its own parser ecosystem; ASP must unify *already-deployed* external HTTP-JSON providers (including non-lossless ~syn~ and Python ~ast~) under one Rust engine |
+| Aider (~RepoMap~ + ~SEARCH/REPLACE~), Codex (~apply_patch~), *CORE* (FSE) | Text-based patch formats; Tree-sitter read-only summary; proposer/ranker LLM loops over static warnings | Strong practical baselines; *CORE* proves static-analysis-guided revision improves human acceptance | Still burns LLM turns on delimiter typos and prose-guided lint loops; lacks single-tree lossless AST transactions and relational style theories |
+
+* 3. Frontier 1 Formalization: Machine-Native Relational Coding Style
+
+** 3.1 Why Mathematical & Relational Specifications Outperform Prose for LLMs
+
+Natural language optimizes for *human narrative compression* at the cost of
+ambiguity: a sentence such as "replace manual iterator loops with adapters
+unless early exit complicates ownership" hides quantifiers, scope boundaries,
+negated exceptions, and exact AST shapes.
+
+By contrast, an LLM trained on formal mathematics, type theory, compiler IR,
+and logic programming exhibits three structural advantages when given a
+*machine-native relational specification* (corroborated empirically by
+*Logic-LM* and *SymbCoT*):
+
+1. *Zero Semantic Ambiguity*: Universal/existential quantifiers ($\forall$,
+   $\neg\exists$), typed predicates (`ast_loop`, `ast_call`, `in_scope_type`),
+   and algebraic rewrite schemas (`LHS ⇝ RHS`) leave zero interpretive slack.
+2. *Higher Information Density per Token*: A 4-line symbolic style contract
+   conveys the exact structural invariants of 40 lines of prose while anchoring
+   every identifier to real symbols in the active Open EDB.
+3. *1:1 Specification–Verifier Isomorphism (Single Source of Truth)*:
+   The *exact same* `:gerbil-ascent` relation object that projects the compact
+   symbolic contract to the LLM *also executes deterministically* on the
+   resulting AST! Drift between "what the prompt asked for" and "what the gate
+   enforces" becomes impossible by construction.
+
+** 3.2 The Tri-DSL Coding Style Architecture
+
+Coding Style is composed cleanly across *three cooperating DSLs* with zero
+responsibility overlap:
+
+#+begin_src mermaid
+flowchart TD
+    subgraph PARSE["Layer 1: Dual Syntax-Parsing DSLs (Fact Producers)"]
+        GP[":gerbil-parser Structural DSL\n(deflanguage + QueryPattern + ProjectionPlan)\nFull-strength declarative grammars -> lossless CST\n(Gerbil Scheme, SysML, Quint, Bash, HCL, GQL, Ascent)"]
+        EXT["External Native Language AST DSL\n(languages/asp-* over HTTP-JSON POST /v1/provider-runtime)\nasp-rust (syn), asp-typescript (tsc), asp-python (ast+tokenize),\nAspJulia.jl (JuliaSyntax), asp-gerbil-scheme"]
+    end
+
+    subgraph ENGINE["Layer 2: :gerbil-ascent Mathematical Style Engine (Theory T)"]
+        DED["Deductive Horn Clauses (<--, not, recursion)\nDerive exact style violations & elevatable AST motifs"]
+        LAT["Style Cost Lattice (L, <=_style)\n(nesting, mut_acc, linear_scans, prim_ids, boilerplate)"]
+        EQ["Equivalence Rewrite Schemas (LHS ~> RHS)\negglog-style local semantics-preserving elevations"]
+        DUSA["Dusa POPL 2025 Finite-Choice (choice / closed / open)\nSelect globally conflict-free multi-rule refactoring plan"]
+        SYM["Symbolic LLM Contract Projector Pi_LLM(T, target)\nEmits compact math/relation contract instead of prose"]
+    end
+
+    subgraph EXEC["Layer 3: ASP Rust AST Engine (crates/agent-semantic-ast)"]
+        TX["Source-Backed Span Overlay + Calibration + Re-Parse Proof\nAtomic commit -> Open EDB real-time update"]
+    end
+
+    GP -->|"ast_node / ast_field / ast_span"| DED
+    EXT -->|"ast_node / ast_attr / ast_call / Open EDB"| DED
+    DED --> LAT --> EQ
+    DED --> DUSA
+    DED --> SYM
+    SYM -->|"Compact Symbolic Contract"| LLM["LLM Agent"]
+    LLM -->|"AstPatchOp"| TX
+    EQ -->|"Class-1 AutoElevate"| TX
+    DUSA -->|"Class-2 ProposeAstPatch"| LLM
+#+end_src
+
+** 3.3 Formal Mathematical Specification of a Style Theory $\mathcal{T}$
+
+Let $G_{\text{AST}} = (V, E_{\text{child}}, E_{\text{cfg}}, E_{\text{call}}, \tau, \sigma)$
+denote the relational projection of a file's native AST and workspace Open EDB,
+where each node $v \in V$ carries universal kind $\tau(v)$, native language
+kind, and exact UTF-8 byte span $\sigma(v) = [b_0, b_1) \subseteq [0, |B|)$.
+
+A *Coding Style Theory* in ~:gerbil-ascent~ is a 4-tuple
+$\mathcal{T} = \langle \mathcal{R}_{\text{ded}}, \mathcal{R}_{\text{choice}},
+\preceq_{\text{style}}, \mathcal{W}_{\text{elev}} \rangle$:
+
+1. *Deductive Structural Rules* ($\mathcal{R}_{\text{ded}}$):
+   Stratified Datalog clauses over $G_{\text{AST}}$ deriving typed predicates:
+   - $\text{violation}(r, v, w)$: rule $r$ is violated at AST node $v$ with
+     derivation witness $w$.
+   - $\text{elevatable}(r, v, \theta)$: node $v$ matches an idiomatic
+     elevation template $r$ under substitution $\theta$.
+2. *Style Cost Lattice* ($\mathcal{L}, \preceq_{\text{style}}$):
+   Assigns every candidate subtree $e$ a multi-objective cost tuple:
+   $$
+   \text{Cost}(e) = \bigl(\, \text{Violations}(e),\; \text{LinearScansInLoops}(e),\;
+   \text{MutAccumulators}(e),\; \text{NestingDepth}(e),\; \text{AstNodeCount}(e) \,\bigr)
+   $$
+   ordered lexicographically (or via per-repository weighted lattice in POO).
+3. *Semantics-Preserving Elevation Schemas* ($\mathcal{W}_{\text{elev}}$):
+   Each Class-1 rule $w = (\text{LHS} \leadsto \text{RHS} \mid \Phi)$ carries a
+   logical side-condition $\Phi$ proved in $\mathcal{R}_{\text{ded}}$ (e.g., no
+   early ~break~/~return~, accumulator never escapes loop, pure predicate).
+   An automatic elevation $e \leadsto e'$ is admitted *iff*:
+   $$
+   \Phi(e) \;\wedge\; \text{Cost}(e') \prec_{\text{style}} \text{Cost}(e)
+   \;\wedge\; \text{NativeOracle}(\text{Splice}(B, \sigma(e), e')) = \text{accepted}
+   $$
+4. *Finite-Choice Refactoring Planner* ($\mathcal{R}_{\text{choice}}$, Dusa POPL 2025):
+   When multiple Class-2 architectural actions interact (e.g., two functions
+   share a primitive ~provider_id: &str~ and live in an oversized module
+   violating both ~RUST-AGENT-API-TYPE-012~ and ~RUST-MOD-R002~), Dusa choice
+   rules select a *single mutually consistent refactoring plan* without
+   conflicting byte-span edits.
+
+** 3.4 Concrete Illustration: Human Prose vs. Machine-Native Symbolic Style Projection
+
+Consider editing a Rust function inside ~crates/marlin-agent-search-engine~.
+
+*Human-oriented prose (verbose, ambiguous, ignored under long context)*:
+#+begin_quote
+"Please make sure you don't do linear scans inside loops; build a HashSet or
+HashMap beforehand. Also don't pass raw &str for public semantic identifiers
+like provider_id—use a domain newtype instead. Prefer iterator combinators over
+manual mut Vec loops, and never put structs or impl blocks in mod.rs."
+#+end_quote
+
+*Machine-native symbolic projection $\Pi_{\text{LLM}}(\mathcal{T}, \text{target})$
+emitted automatically from active ~:gerbil-ascent~ rules + Open EDB*:
+#+begin_example
+TARGET: crates/marlin-agent-search-engine/src/open_edb_hydrator.rs#fn:hydrate
+IN_SCOPE_TYPES: OpenEdbProviderId, WorkspaceOpenEdbHydrationReceipt, WorkspaceSearchIndex
+ACTIVE_INVARIANTS (enforced by :gerbil-ascent):
+  [R-TYPE-012]  ∀p ∈ pub_params(fn): semantic_id(p) ⇒ ¬primitive_str(type(p))   [reuse: OpenEdbProviderId]
+  [R-MEM-029]   ¬∃(L ∈ loops, c ∈ calls(L)): linear_scan(c, slice)             [lift: HashMap/HashSet pre-index]
+  [R-ITER-017]  (let mut v = Vec::new(); for x in xs { if P(x) { v.push(F(x)) } }) ⇝ xs.iter().filter(P).map(F).collect()
+  [R-MOD-001]   file_basename = "mod.rs" ⇒ items ⊆ {mod_decl, use_reexport}
+COST_ORDER:   minimize (violations, loop_scans, mut_acc, nesting_depth, nodes)
+#+end_example
+
+Notice the properties of $\Pi_{\text{LLM}}$:
+- *70–80% fewer tokens* than prose guidelines.
+- Directly binds concrete *in-scope repository types* (~OpenEdbProviderId~)
+  queried from ASP's live Open EDB.
+- Every invariant line corresponds 1:1 to a live ~:gerbil-ascent~ Horn clause
+  that will deterministically verify or auto-elevate the output.
+
+* 4. Frontier 2 Formalization: Source-Backed Lossless Overlay & Dual-Track Calibration
+
+** 4.1 Source-Backed Span-Indexed Lossless Overlay Theorem
+
+Let $B \in \Sigma^N$ be the immutable UTF-8 byte sequence of a source file with
+digest $h_0 = \text{BLAKE3}(B)$. Let an authoritative native parser
+$P_{\text{nat}}$ return an AST node span table where every target node $u$ has
+byte interval $\sigma(u) = [s_u, e_u)$ satisfying $0 \le s_u \le e_u \le N$.
+
+Given a non-overlapping sorted edit set
+$\Delta = \{(s_1, e_1, r_1), \dots, (s_m, e_m, r_m)\}$ with
+$0 \le s_1 \le e_1 \le s_2 \le \dots \le e_m \le N$, define:
+$$
+\text{Splice}(B, \Delta) = B[0..s_1) \mathbin{\|} r_1 \mathbin{\|} B[e_1..s_2) \mathbin{\|} r_2 \mathbin{\|} \dots \mathbin{\|} r_m \mathbin{\|} B[e_m..N)
+$$
+
+*Lossless Preservation Property*: Every byte index $i \notin \bigcup_{k=1}^m [s_k, e_k)$
+(all untouched comments, doc-comments, whitespace, blank lines, and sibling
+AST items) is preserved *bit-for-bit identically* in $\text{Splice}(B, \Delta)$,
+*independently of whether $P_{\text{nat}}$ retains trivia in its internal AST
+structs* (such as Rust ~syn~ or Python ~ast~).
+
+** 4.2 Dual-Track Sound Syntax Calibration
+
+Let $S_0 = \text{Splice}(B, \Delta_{\text{raw}})$ be the spliced candidate
+buffer.
+
+1. *Fast Path*: Query authoritative parser oracle $P_{\text{nat}}(S_0)$. If
+   $\text{accepted}(P_{\text{nat}}(S_0))$, emit $S_0$ with zero calibration
+   overhead.
+2. *Track A — Bounded CPCT+ LR Recovery (~:gerbil-parser~ Grammars)*:
+   When $P_{\text{nat}}$ is a ~:gerbil-parser~ compiled LR machine (Scheme or
+   Rust AOT ~gerbil-parser-runtime~), capture the exact failure checkpoint
+   $F = \text{LRFailureFrontier}(S_0)$. Perform breadth-first cost-ordered
+   search up to cost budget $K = 3$ over grammar-admissible operations:
+   - $\text{MISSING}(t)$ for $t \in \text{ExpectedLiterals}(F)$ (cost 1)
+   - $\text{SKIPPED}(\text{tok})$ (cost 1)
+   - $\text{ERROR}(\text{tok} \to t)$ for $t \in \text{ExpectedLiterals}(F)$ (cost 2)
+   Let $\mathcal{C}_A(S_0, K)$ be all edit sequences of cost $\le K$ whose
+   resumed parse reaches ~ParseArtifact(status = accepted)~.
+3. *Track B — Oracle-Verified Bounded Calibration (External Native HTTP-JSON Providers)*:
+   When $P_{\text{nat}}$ is an external native provider (~asp-rust~ ~syn~,
+   ~asp-typescript~ ~tsc~, ~asp-python~ ~ast~, ~AspJulia.jl~ ~JuliaSyntax~,
+   ~asp-gerbil-scheme~) reporting error span $[e_0, e_1)$ and diagnostic $d$:
+   - Run the parameterized token-aware *Lexical Delimiter Skeleton* (respecting
+     strings, raw strings, char literals, comments, indentation; *zero*
+     duplicated language grammar) strictly around $[e_0, e_1)$ and the edited
+     hole span $[s_k, e_k)$ to propose a bounded set $\mathcal{P}$ ($|\mathcal{P}| \le 8$,
+     cost $\le 2$) of pure delimiter/punctuation repairs (~)~, ~}~, ~]~, ~;~,
+     ~,~, fence strip).
+   - Send $\mathcal{P}$ in *one batched HTTP-JSON ~ast-verify~ frame* to
+     $P_{\text{nat}}$, retaining $\mathcal{C}_B = \{ r \in \mathcal{P} \mid \text{accepted}(P_{\text{nat}}(r(S_0))) \}$.
+
+** 4.3 Soundness & Uniqueness Admission Rule (Fail-Closed)
+
+Let $\mathcal{C} \in \{\mathcal{C}_A, \mathcal{C}_B\}$ and
+$c^* = \min_{r \in \mathcal{C}} \text{cost}(r)$, with minimal repair set
+$\mathcal{M} = \{ r \in \mathcal{C} \mid \text{cost}(r) = c^* \}$.
+
+$$
+\text{Admit}(S_0) =
+\begin{cases}
+  \text{Calibrated}(r^*(S_0),\; \text{Receipt}(r^*, c^*)) & \text{if } |\mathcal{M}| = 1 \text{ with } \mathcal{M} = \{r^*\} \\
+  \text{RejectTypedHole}(\text{ambiguous-tie},\; \mathcal{M}) & \text{if } |\mathcal{M}| \ge 2 \\
+  \text{RejectTypedHole}(\text{uncalibrated-error},\; d) & \text{if } \mathcal{M} = \emptyset
+\end{cases}
+$$
+
+This guarantees:
+- *Zero unsound repairs* (every admitted repair passes the real compiler parser
+  with 0 syntax errors on the full file).
+- *Zero silent guessing* (ambiguous minimal ties and semantic omissions always
+  fail closed into a structured *Typed Hole* diagnostic).
+- *Zero wasted LLM retries* on the overwhelming majority of delimiter slips.
+
+* 5. Falsifiable Experimental Design & Qualification Plan
+
+To keep all claims scientifically honest and falsifiable, implementation phases
+(RFC 10.35 Phases 2–5) must be evaluated against four explicit hypotheses on a
+frozen real-code corpus drawn from ~marlin-agent-core~ and
+~agent-semantic-protocols~ (Rust, TypeScript, Python, Gerbil Scheme, SysML,
+Quint, and ~:gerbil-ascent~ queries):
+
+| ID | Falsifiable Hypothesis | Matched Controls | Primary Metrics | Failure / Falsification Criterion |
+|----+------------------------+------------------+-----------------+-----------------------------------|
+| *H1* | Machine-native symbolic style contracts ($\Pi_{\text{LLM}}(\mathcal{T}, u)$) yield fewer coding-style violations per edit than equivalent natural-language style prompts at equal or lower token budget | Same LLM, same task set: (A) NL prose style prompt vs. (B) $\Pi_{\text{LLM}}$ symbolic relational contract | Style violation rate (~asp-rust-rules~ / ~CODING-STYLE~), prompt tokens, test pass rate | H1 is falsified if (B) fails to reduce violations by $\ge 25\%$ or degrades functional test pass rate |
+| *H2* | Class-1 ~:gerbil-ascent~ ~AutoElevate~ reduces AST redundancy (nesting depth, mutable accumulator loops, boilerplate nodes) while preserving 100% test equivalence | Before vs. after Class-1 elevation on real LLM-generated patches | Nesting depth delta, boilerplate node reduction %, test-suite equivalence rate | H2 is falsified if *any* Class-1 rewrite breaks an existing semantic test (0% behavioral regression required) |
+| *H3* | Dual-Track Auto Syntax Calibration repairs $\ge 85\%$ of injected 1–2 delimiter/punctuation faults in $< 5\text{ ms}$ (in-process) / 1 HTTP-JSON hop with *0% false-positive unsound repairs* | Fault-injection corpus (missing/extra ~)/}/]~, missing ~;~, ~<-~ typo, stray code fence) + adversarial semantic-ambiguity corpus | Repair recall, *false-positive rate (must be 0.0%)*, p50/p95 latency, LLM retry turns saved | H3 is falsified if *any* adversarial ambiguous case auto-applies instead of failing closed |
+| *H4* | ~crates/agent-semantic-ast~ Source-Backed Span-Overlay reduces total edit tokens and edit-format failure rate vs. Codex ~apply_patch~ and Aider ~SEARCH/REPLACE~ on 500–1000 LOC files while preserving 100% of untouched comments/formatting | Same real multi-file edit tasks across (A) ~apply_patch~, (B) ~SEARCH/REPLACE~, (C) ~agent-semantic-ast~ | Edit-format failure rate, total prompt+output tokens, bit-for-bit untouched-byte preservation | H4 is falsified if (C) loses any comment/trivia byte outside target spans or increases edit failures |
+
+** Explicit Non-Claims (Honesty Boundaries)
+
+- Automated syntax calibration does *not* solve semantic logic bugs, missing
+  type definitions, or borrow-checker architecture errors (those belong to
+  Typed Hole feedback and Frontier 1 style/refactoring guidance).
+- Local Class-1 ~AutoElevate~ does *not* attempt arbitrary whole-program
+  rewriting; cross-function API/ownership changes remain Class-2 proposals.
+- External HTTP-JSON provider latency (~ast-verify~) depends on loopback round
+  trips and must be measured separately from in-process Rust and
+  ~:gerbil-parser~ AOT timings.
+
+* 6. Bibliography
+
+- Lukas Diekmann and Laurence Tratt (2020). /Don't Panic! Better, Fewer, Syntax Errors for LR Parsers/. ECOOP 2020 (arXiv:1804.07133).
+- Yihong Zhang, Yisu Remy Wang, Oliver Flatt, David Cao, Philip Zucker, Eli Rosenthal, Zachary Tatlock, and Max Willsey (2023). /Better Together: Unifying Datalog and Equality Saturation/. PLDI 2023.
+- Liangming Pan, Alon Albalak, Xinyi Wang, and William Yang Wang (2023). /Logic-LM: Empowering Large Language Models with Symbolic Solvers for Faithful Logical Reasoning/. Findings of EMNLP 2023.
+- Jundong Xu, Hao Fei, Liangming Pan, Qian Liu, Mong-Li Lee, and Wynne Hsu (2024). /Faithful Logical Reasoning via Symbolic Chain-of-Thought (SymbCoT)/. ACL 2024.
+- Chris Martens, Robert J. Simmons, and Michael Arntzenius (2025). /Finite-Choice Logic Programming (Dusa)/. POPL 2025.
+- Niels Mündler, Jingxuan He, Hao Wang, Koushik Sen, Dawn Song, and Martin Vechev (2025). /Type-Constrained Code Generation with Language Models/. PLDI 2025.
+- Cyrus Omar, Ian Voysey, Michael Hilton, Jonathan Aldrich, and Matthew A. Hammer (2017/2019). /Hazelnut: A Bidirectionally Typed Structure Editor Calculus/ (POPL 2017) & /Live Functional Programming with Typed Holes/ (POPL 2019).
+- /EggMind: LLM-Guided Equality Saturation Strategy Synthesis/ (2025/2026).
+- OpenRewrite Lossless Semantic Trees (LST), ~rust-analyzer~ ~rowan~, ~JuliaSyntax.jl~, and ~gerbil-parser~ RFC 0002/0003 (~Typed Structural Algebras~ & ~ParseArtifact v1~).

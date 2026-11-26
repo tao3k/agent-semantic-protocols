@@ -7,6 +7,7 @@
 members = [
     "build-support/asp-rust-project-harness-policy",
     "crates/agent-semantic-artifacts",
+    "crates/agent-semantic-ast",
     "crates/agent-semantic-config",
     "crates/agent-semantic-content-identity",
     "crates/agent-semantic-client-protocol",
@@ -43,6 +44,7 @@ base64 = "0.23.1"
 agent-semantic-config = { path = "crates/agent-semantic-config" }
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
+agent-semantic-ast = { path = "crates/agent-semantic-ast" }
 agent-semantic-http-json = { path = "crates/agent-semantic-http-json" }
 agent-semantic-topology = { path = "crates/agent-semantic-topology" }
 agent-semantic-workspace-scheduler = { path = "crates/agent-semantic-workspace-scheduler" }
@@ -79,6 +81,7 @@ asp-rust-build-support = { git = "https://github.com/tao3k/asp-rust", rev = "1ca
 asp-rust-project-harness-policy = { path = "build-support/asp-rust-project-harness-policy", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+schemars = "1.2.3"
 postcard = { version = "1.1.3", features = ["alloc"] }
 regex-automata = "0.4.18"
 regex-syntax = "0.8.11"

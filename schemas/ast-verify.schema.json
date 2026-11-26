@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "AstVerifyCandidate": {
+      "additionalProperties": false,
+      "description": "One candidate buffer submitted to the `ast-verify` compiler soundness oracle.",
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "sourceUtf8": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidateId",
+        "sourceUtf8"
+      ],
+      "type": "object"
+    },
+    "AstVerifyDiagnostic": {
+      "additionalProperties": false,
+      "description": "Compiler parse/syntax diagnostic returned by `ast-inspect` or `ast-verify`.",
+      "properties": {
+        "byteEnd": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "byteStart": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedTokens": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "byteStart",
+        "byteEnd",
+        "message"
+      ],
+      "type": "object"
+    },
+    "AstVerifyOutcome": {
+      "additionalProperties": false,
+      "description": "Outcome for one candidate evaluated by `ast-verify`.",
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "candidateId": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AstVerifyDiagnostic"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidateId",
+        "accepted"
+      ],
+      "type": "object"
+    },
+    "AstVerifyRequest": {
+      "additionalProperties": false,
+      "description": "Request payload for the `ast-verify` provider primitive.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/AstVerifyCandidate"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "candidates"
+      ],
+      "type": "object"
+    },
+    "AstVerifyResponse": {
+      "additionalProperties": false,
+      "description": "Response payload for the `ast-verify` provider primitive.",
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/AstVerifyOutcome"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://agent-semantic-protocols.local/schemas/ast-verify.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Combined wire contract document for `ast-verify.schema.json`.",
+  "properties": {
+    "request": {
+      "$ref": "#/$defs/AstVerifyRequest"
+    },
+    "response": {
+      "$ref": "#/$defs/AstVerifyResponse"
+    },
+    "schemaVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "request",
+    "response"
+  ],
+  "title": "ASP Provider AST Verify Contract",
+  "type": "object",
+  "x-schema-version": "1"
+}

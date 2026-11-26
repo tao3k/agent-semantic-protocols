@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "AstInspectNode": {
+      "additionalProperties": false,
+      "description": "Authoritative native AST node span emitted by `ast-inspect`.",
+      "properties": {
+        "attrs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AstNodeAttribute"
+          },
+          "type": "array"
+        },
+        "bodySpan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceByteSpan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "innerSpan": {
+          "$ref": "#/$defs/SourceByteSpan"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "languageKind": {
+          "type": "string"
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outerSpan": {
+          "$ref": "#/$defs/SourceByteSpan"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "locator",
+        "kind",
+        "languageKind",
+        "name",
+        "line",
+        "outerSpan",
+        "innerSpan"
+      ],
+      "type": "object"
+    },
+    "AstInspectRequest": {
+      "additionalProperties": false,
+      "description": "Request payload for the `ast-inspect` provider primitive.",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sourceHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceUtf8": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sourceUtf8"
+      ],
+      "type": "object"
+    },
+    "AstInspectResponse": {
+      "additionalProperties": false,
+      "description": "Response payload for the `ast-inspect` provider primitive.",
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AstVerifyDiagnostic"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/AstInspectNode"
+          },
+          "type": "array"
+        },
+        "syntaxSurface": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderSyntaxSurface"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "accepted",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "AstNodeAttribute": {
+      "additionalProperties": false,
+      "description": "Open key/value attribute facet attached to an inspected AST node.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "AstVerifyDiagnostic": {
+      "additionalProperties": false,
+      "description": "Compiler parse/syntax diagnostic returned by `ast-inspect` or `ast-verify`.",
+      "properties": {
+        "byteEnd": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "byteStart": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedTokens": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "byteStart",
+        "byteEnd",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ProviderSyntaxSurface": {
+      "additionalProperties": false,
+      "description": "Provider-reported native lexical syntax surface (owned by the language provider,\nnever duplicated in Scheme ontology definitions).",
+      "properties": {
+        "blockComment": {
+          "description": "Block comment `[open, close]` pair reported by the native parser (e.g. `[\"/*\", \"*/\"]`, `[\"#|\", \"|#\"]`, `[\"#=\", \"=#\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "delimiterPairs": {
+          "default": [],
+          "description": "Balanced delimiter `[open, close]` pairs native to this language.",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "lineComment": {
+          "description": "Line comment opener reported by the native parser (e.g. `//`, `#`, `;`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "statementTerminator": {
+          "description": "Optional statement terminator token (e.g. `;` for Rust/TypeScript, absent for Python/Julia/Scheme).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stringDelimiters": {
+          "default": [],
+          "description": "Native string literal quote delimiters (e.g. `[\"\\\"\"]`, `[\"\\\"\", \"'\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SourceByteSpan": {
+      "additionalProperties": false,
+      "description": "Half-open UTF-8 byte span `[start, end)` referencing immutable source bytes.",
+      "properties": {
+        "end": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://agent-semantic-protocols.local/schemas/ast-inspect.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Combined wire contract document for `ast-inspect.schema.json`.",
+  "properties": {
+    "request": {
+      "$ref": "#/$defs/AstInspectRequest"
+    },
+    "response": {
+      "$ref": "#/$defs/AstInspectResponse"
+    },
+    "schemaVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "request",
+    "response"
+  ],
+  "title": "ASP Provider AST Inspect Contract",
+  "type": "object",
+  "x-schema-version": "1"
+}

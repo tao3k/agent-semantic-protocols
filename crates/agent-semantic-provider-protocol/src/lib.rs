@@ -6,6 +6,7 @@
 //! Language-neutral Provider Registration Protocol shared by ASP Server and providers.
 
 mod install_register;
+pub mod provider_core;
 mod provider_capabilities;
 mod provider_stream;
 mod register;
@@ -16,6 +17,16 @@ pub use install_register::ProviderInstallArtifactDomain;
 pub use install_register::ProviderInstallRegister;
 pub use install_register::ProviderInstallRegistration;
 pub use install_register::parse_provider_install_register;
+pub use provider_core::{
+    AST_INSPECT_SCHEMA_ID, AST_VERIFY_SCHEMA_ID, AstInspectContract, AstInspectNode,
+    AstInspectRequest, AstInspectResponse, AstNodeAttribute, AstVerifyCandidate, AstVerifyContract,
+    AstVerifyDiagnostic, AstVerifyOutcome, AstVerifyRequest, AstVerifyResponse,
+    ExpectedConformanceNode, LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack,
+    LanguageConformanceProbe, OntologyKindMapping, PROVIDER_CORE_MANIFEST_SCHEMA_ID,
+    PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS, PROVIDER_CORE_SCHEMA_VERSION,
+    ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
+    ProviderSyntaxSurface, ProviderTransport, SourceByteSpan, canonical_provider_core_schemas,
+};
 pub use provider_capabilities::ProviderQueryPackClause;
 pub use provider_capabilities::ProviderQueryPackDescriptor;
 pub use provider_capabilities::ProviderQueryPackRecipe;
@@ -84,6 +95,9 @@ pub use workspace_install::WorkspaceCommandDescriptor;
 pub use workspace_install::WorkspaceLaunchDescriptor;
 pub use workspace_install::WorkspaceRuntimeDependencyDescriptor;
 
+#[cfg(test)]
+#[path = "../tests/unit/provider_core.rs"]
+mod provider_core_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_capabilities.rs"]
 mod provider_capabilities_tests;
