@@ -342,6 +342,7 @@ fn run_resident_rg_regex(
     let smart_case_insensitive = !expr.chars().any(char::is_uppercase);
     let Ok(regex) = RegexBuilder::new(expr)
         .case_insensitive(smart_case_insensitive)
+        .multi_line(true)
         .size_limit(2 * 1024 * 1024)
         .dfa_size_limit(2 * 1024 * 1024)
         .build()

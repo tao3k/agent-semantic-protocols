@@ -8,6 +8,7 @@
   "rootSets": {
     "provider-core": [
       "provider-core-manifest.schema.json",
+      "universal-search-protocol.schema.json",
       "provider-runtime-request-frame.schema.json",
       "provider-runtime-response-frame.schema.json",
       "semantic-open-edb.v1.schema.json",
@@ -295,6 +296,7 @@
       "namespace": {
         "filenamePrefixes": [
           "provider-core-manifest.",
+          "universal-search-protocol.",
           "ast-inspect.",
           "ast-verify.",
           "language-conformance-pack."

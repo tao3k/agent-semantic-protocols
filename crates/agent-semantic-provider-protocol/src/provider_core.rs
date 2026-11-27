@@ -35,12 +35,16 @@ pub const AST_VERIFY_SCHEMA_ID: &str = "agent.semantic-protocols.ast-verify";
 /// Schema ID for Scheme-projected language conformance packs.
 pub const LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID: &str =
     "agent.semantic-protocols.language-conformance-pack";
-/// Current schema version carried inside AST operation & conformance pack payloads.
+/// Schema ID for the universal cross-language search/query protocol schema.
+pub const UNIVERSAL_SEARCH_PROTOCOL_SCHEMA_ID: &str =
+    "agent.semantic-protocols.universal-search-protocol";
+/// Current schema version carried inside AST operation, universal search, & conformance pack payloads.
 pub const PROVIDER_CORE_SCHEMA_VERSION: &str = "1";
 
 /// Canonical filenames of the converged Provider Core Schema Bundle (version-free filenames).
 pub const PROVIDER_CORE_SCHEMAS: &[&str] = &[
     "provider-core-manifest.schema.json",
+    "universal-search-protocol.schema.json",
     "provider-runtime-request-frame.schema.json",
     "provider-runtime-response-frame.schema.json",
     "semantic-open-edb.v1.schema.json",
@@ -127,11 +131,11 @@ pub struct ProviderSyntaxSurface {
     pub string_delimiters: Vec<String>,
 }
 
-/// Minimal HTTP-JSON transport descriptor for a provider server.
+/// Minimal HTTP-JSON / gRPC transport descriptor for a provider server.
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderTransport {
-    /// Wire transport kind (`http-json`).
+    /// Wire transport kind (`http-json` or `grpc`).
     pub transport: String,
     /// Subcommand arguments launching the resident provider server (e.g. `["serve"]`).
     pub command: Vec<String>,
@@ -158,8 +162,48 @@ pub struct ProviderCapabilities {
     pub project_resolution: bool,
 }
 
+/// Unified project entrypoint, root marker, and configuration surface owned by a provider.
+#[derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProjectSurface {
+    /// Project root marker files (e.g. `["Cargo.toml"]`, `["pyproject.toml"]`).
+    #[serde(default)]
+    pub markers: Vec<String>,
+    /// Canonical source entrypoint filenames (e.g. `["src/lib.rs", "src/main.rs"]`).
+    #[serde(default)]
+    pub entry_files: Vec<String>,
+    /// Workspace or lockfile manifests anchoring multi-package resolution.
+    #[serde(default)]
+    pub workspace_files: Vec<String>,
+    /// Language or toolchain configuration files (e.g. `["tsconfig.json", "rustfmt.toml"]`).
+    #[serde(default)]
+    pub config_files: Vec<String>,
+}
+
+/// Language-owned special protocol extension layered onto ASP's universal protocol.
+///
+/// Each provider under `languages/asp-*` declares its own native `kindMappings`,
+/// `:gerbil-ascent` `specialRelations`, and optional Draft 2020-12 JSON Schema
+/// fragment (`schema`) describing language-specific query facets & enum domains.
+/// ASP merges and forwards these over HTTP/gRPC so Marlin projects dynamic
+/// completions and relations with zero language hardcoding.
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderSpecialExtension {
+    /// Native compiler `languageKind` -> ASP General Ontology `kind` mappings.
+    #[serde(default)]
+    pub kind_mappings: Vec<OntologyKindMapping>,
+    /// Language-specific `:gerbil-ascent` relation names owned by this provider.
+    #[serde(default)]
+    pub special_relations: Vec<String>,
+    /// Provider-owned Draft 2020-12 JSON Schema object declaring language-specific
+    /// query properties, attributes, and enum values merged into `targetedSchema`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<Value>,
+}
+
 /// Converged Provider Core Manifest (`provider-core-manifest.schema.json`).
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderCoreManifest {
     /// Canonical schema identifier (`agent.semantic-protocols.provider-core-manifest`).
@@ -174,15 +218,42 @@ pub struct ProviderCoreManifest {
     pub display_name: String,
     /// Lowercase leading-dot source extensions owned by this provider (e.g. `[".rs"]`).
     pub extensions: Vec<String>,
-    /// Project root marker files (e.g. `["Cargo.toml"]`, `["Project.toml"]`).
+    /// Legacy flat project root marker files (e.g. `["Cargo.toml"]`); prefer unified `project.markers`.
     #[serde(default)]
     pub project_markers: Vec<String>,
+    /// Unified project root markers, entrypoint files, workspace manifests, and config files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProviderProjectSurface>,
     /// Native lexical syntax surface reported by the provider itself.
     pub syntax_surface: ProviderSyntaxSurface,
-    /// Resident HTTP-JSON server launch and route descriptor.
+    /// Resident HTTP-JSON / gRPC server launch and route descriptor.
     pub transport: ProviderTransport,
     /// Admitted compiler primitives.
     pub capabilities: ProviderCapabilities,
+    /// Optional language-owned special protocol extension (native kinds, relations, JSON Schema facets).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special: Option<ProviderSpecialExtension>,
+}
+
+impl ProviderCoreManifest {
+    /// Return deduplicated project root marker files uniting `project.markers` and `project_markers`.
+    #[must_use]
+    pub fn effective_project_markers(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(proj) = self.project.as_ref() {
+            for marker in &proj.markers {
+                if !out.contains(marker) {
+                    out.push(marker.clone());
+                }
+            }
+        }
+        for marker in &self.project_markers {
+            if !out.contains(marker) {
+                out.push(marker.clone());
+            }
+        }
+        out
+    }
 }
 
 /// Half-open UTF-8 byte span `[start, end)` referencing immutable source bytes.
@@ -392,17 +463,138 @@ fn stamp_canonical_schema(mut value: Value, filename: &str, title: &str, version
     value
 }
 
+/// Universal cross-language General Ontology symbol kind domain shared across all ASP providers.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UniversalSearchKind {
+    Any,
+    Function,
+    Method,
+    Struct,
+    Enum,
+    Trait,
+    Interface,
+    Class,
+    Type,
+    Impl,
+    Macro,
+    Module,
+    Constant,
+    Binding,
+    Item,
+    Import,
+    Test,
+}
+
+/// Universal result projection surface shared by ASP search/query endpoints.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UniversalSearchProjection {
+    Matches,
+    Source,
+    CallableSkeleton,
+}
+
+/// Universal ASP Search & Query Protocol Contract (`universal-search-protocol.schema.json`).
+///
+/// Single language-neutral Draft 2020-12 protocol schema forwarded by ASP `GET /v1/providers`
+/// (`universalProtocolSchema`). External language providers (`asp-rust`, `asp-python`,
+/// `asp-typescript`, `AspJulia.jl`, `asp-gerbil-scheme`, ...) extend this base contract via
+/// [`ProviderSpecialExtension`] over HTTP/gRPC without modifying ASP or Marlin core.
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct UniversalSearchQueryContract {
+    /// Canonical language identifier served by an ASP provider (or `"any"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
+    /// Universal General Ontology symbol kind filter (refined per language by `special`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<UniversalSearchKind>,
+    /// Native compiler AST node kind (populated dynamically from each provider's `special` schema).
+    #[serde(
+        default,
+        rename = "languageKind",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub language_kind: Option<String>,
+    /// Workspace-relative directory or file path prefix scoping the query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_prefix: Option<String>,
+    /// Workspace-relative path prefix excluded from results.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclude_path_prefix: Option<String>,
+    /// Exclude test files and test modules from results.
+    #[serde(
+        default,
+        rename = "exclude-tests?",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exclude_tests: Option<bool>,
+    /// Case-insensitive substring or token list matched against symbol names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_contains: Option<String>,
+    /// Exact symbol anchor name for zero-I/O file reads or impact analysis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    /// Source file extension filter without leading dot (projected from provider manifests).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<String>,
+    /// Minimum distinct files sharing a symbol name in `find-collisions` (2..4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_files: Option<usize>,
+    /// Maximum scoped modules passed into finite-choice `solve-placement`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_limit: Option<usize>,
+    /// Bounded Dusa finite-choice exploration state budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_budget: Option<usize>,
+    /// Maximum returned hits or rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    /// Maximum symbols emitted per file in multi-file `file-outline`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_per_file: Option<usize>,
+    /// Source context lines shown around each match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<usize>,
+    /// Result projection surface (`matches`, `source`, `callable-skeleton`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projection: Option<UniversalSearchProjection>,
+    /// Optional language-specific `special` extension filters validated against the active provider's schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special: Option<BTreeMap<String, Value>>,
+}
+
+/// Generate the canonical Draft 2020-12 JSON Schema for ASP's universal search protocol.
+pub fn universal_search_protocol_schema() -> Result<Value, String> {
+    let raw = serde_json::to_value(schema_for!(UniversalSearchQueryContract))
+        .map_err(|e| format!("encode universal-search-protocol schema: {e}"))?;
+    Ok(stamp_canonical_schema(
+        raw,
+        "universal-search-protocol.schema.json",
+        "ASP Universal Search Protocol",
+        PROVIDER_CORE_SCHEMA_VERSION,
+    ))
+}
+
 /// Generate all Rust-owned Provider Core canonical Draft 2020-12 JSON Schema documents
 /// directly from typed protocol structs via `schemars` (zero hand-written JSON,
 /// version metadata carried inside the schema rather than in filenames).
 pub fn canonical_provider_core_schemas() -> Result<BTreeMap<&'static str, Value>, String> {
-    let entries: [(&'static str, &'static str, &'static str, Value); 4] = [
+    let entries: [(&'static str, &'static str, &'static str, Value); 5] = [
         (
             "provider-core-manifest.schema.json",
             "ASP Provider Core Manifest",
             PROVIDER_CORE_MANIFEST_SCHEMA_VERSION,
             serde_json::to_value(schema_for!(ProviderCoreManifest))
                 .map_err(|e| format!("encode provider-core-manifest schema: {e}"))?,
+        ),
+        (
+            "universal-search-protocol.schema.json",
+            "ASP Universal Search Protocol",
+            PROVIDER_CORE_SCHEMA_VERSION,
+            serde_json::to_value(schema_for!(UniversalSearchQueryContract))
+                .map_err(|e| format!("encode universal-search-protocol schema: {e}"))?,
         ),
         (
             "ast-inspect.schema.json",

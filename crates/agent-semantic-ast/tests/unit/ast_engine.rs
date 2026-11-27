@@ -496,6 +496,7 @@ async fn concurrent_multi_provider_inspection_runs_providers_in_parallel_with_fa
             display_name: lang.to_owned(),
             extensions: vec![ext.to_owned()],
             project_markers: Vec::new(),
+            project: None,
             syntax_surface: ProviderSyntaxSurface {
                 line_comment: Some("//".to_owned()),
                 block_comment: None,
@@ -516,6 +517,7 @@ async fn concurrent_multi_provider_inspection_runs_providers_in_parallel_with_fa
                 open_edb: true,
                 project_resolution: false,
             },
+            special: None,
         }
     }
 

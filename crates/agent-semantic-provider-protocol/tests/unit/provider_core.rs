@@ -6,10 +6,12 @@ use std::fs;
 use std::path::Path;
 
 use crate::provider_core::{
-    LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack, PROVIDER_CORE_MANIFEST_SCHEMA_ID,
-    PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS,
-    ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
-    ProviderSyntaxSurface, ProviderTransport, canonical_provider_core_schemas,
+    LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack, OntologyKindMapping,
+    PROVIDER_CORE_MANIFEST_SCHEMA_ID, PROVIDER_CORE_MANIFEST_SCHEMA_VERSION,
+    PROVIDER_CORE_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS, ProviderCapabilities,
+    ProviderCoreManifest, ProviderLanguageId, ProviderPackageId, ProviderProjectSurface,
+    ProviderSpecialExtension, ProviderSyntaxSurface, ProviderTransport,
+    canonical_provider_core_schemas, universal_search_protocol_schema,
 };
 
 #[test]
@@ -17,7 +19,12 @@ fn schemars_generated_provider_core_schemas_match_committed_files_byte_for_byte(
     let schemas_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
     let generated =
         canonical_provider_core_schemas().expect("generate Provider Core canonical schemas");
-    assert_eq!(generated.len(), 4);
+    assert_eq!(generated.len(), 5);
+    let universal = universal_search_protocol_schema().expect("universal search protocol schema");
+    assert_eq!(
+        generated.get("universal-search-protocol.schema.json"),
+        Some(&universal)
+    );
     for (filename, expected_value) in generated {
         assert!(
             !filename.contains(".v1.") && !filename.contains(".v2."),
@@ -55,6 +62,12 @@ fn provider_core_manifest_and_conformance_pack_round_trip() {
         display_name: "Julia".to_owned(),
         extensions: vec![".jl".to_owned()],
         project_markers: vec!["Project.toml".to_owned()],
+        project: Some(ProviderProjectSurface {
+            markers: vec!["Project.toml".to_owned()],
+            entry_files: vec!["src/Main.jl".to_owned()],
+            workspace_files: vec!["Manifest.toml".to_owned()],
+            config_files: Vec::new(),
+        }),
         syntax_surface: ProviderSyntaxSurface {
             line_comment: Some("#".to_owned()),
             block_comment: Some(["#=".to_owned(), "=#".to_owned()]),
@@ -79,11 +92,26 @@ fn provider_core_manifest_and_conformance_pack_round_trip() {
             open_edb: true,
             project_resolution: true,
         },
+        special: Some(ProviderSpecialExtension {
+            kind_mappings: vec![OntologyKindMapping {
+                native_language_kind: "function".to_owned(),
+                general_kind: "function".to_owned(),
+                description: "Julia function definition".to_owned(),
+            }],
+            special_relations: vec!["julia_macro".to_owned()],
+            schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "exported": { "type": "boolean" }
+                }
+            })),
+        }),
     };
     let encoded = serde_json::to_string(&manifest).expect("encode provider core manifest");
     let decoded: ProviderCoreManifest =
         serde_json::from_str(&encoded).expect("decode provider core manifest");
     assert_eq!(decoded, manifest);
+    assert_eq!(decoded.effective_project_markers(), vec!["Project.toml"]);
     assert_eq!(decoded.syntax_surface.line_comment.as_deref(), Some("#"));
 
     let pack_json = serde_json::json!({

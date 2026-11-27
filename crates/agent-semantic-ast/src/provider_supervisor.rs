@@ -147,19 +147,20 @@ pub struct DiscoveredProviderSpec {
 }
 
 struct ActiveManagedProvider {
-    _guard: LiveProviderGuard,
+    guard: LiveProviderGuard,
     client: HttpJsonAstProviderClient,
     last_used: Instant,
 }
 
 /// Lazy-on-demand supervised [`AstProviderPort`] supporting single-flight
-/// spawning, crash recovery on subsequent requests, and idle eviction.
+/// spawning, exponential crash-restart backoff, PID/RSS tracking, and idle eviction.
 pub struct LazySupervisedProviderPort {
     config: AstProviderClientConfig,
     runtime_kind: ProviderRuntimeKind,
     spawn_factory: ProviderSpawnFactory,
     gateway: Arc<AspForwardingGateway>,
     active: Mutex<Option<ActiveManagedProvider>>,
+    restart_backoff: Mutex<(u32, Option<Instant>)>,
 }
 
 impl LazySupervisedProviderPort {
@@ -177,6 +178,7 @@ impl LazySupervisedProviderPort {
             spawn_factory,
             gateway,
             active: Mutex::new(None),
+            restart_backoff: Mutex::new((0, None)),
         }
     }
 
@@ -210,6 +212,7 @@ impl LazySupervisedProviderPort {
                 &self.config.language_id,
                 ProviderLifecycleState::Dormant,
                 true,
+                None,
             );
             true
         } else {
@@ -226,7 +229,41 @@ impl LazySupervisedProviderPort {
                 &self.config.language_id,
                 ProviderLifecycleState::Dormant,
                 false,
+                None,
             );
+        }
+    }
+
+    fn check_restart_backoff(&self) -> Result<(), AstEngineError> {
+        let Ok(backoff) = self.restart_backoff.lock() else {
+            return Ok(());
+        };
+        let (failures, last_fail) = *backoff;
+        if failures == 0 {
+            return Ok(());
+        }
+        let delay_ms = 100u64
+            .saturating_mul(1u64 << failures.saturating_sub(1).min(5))
+            .min(5_000);
+        if let Some(at) = last_fail
+            && at.elapsed() < Duration::from_millis(delay_ms)
+        {
+            return Err(AstEngineError::ProviderError(format!(
+                "provider `{}` in crash-restart backoff ({delay_ms}ms after {failures} spawn failures)",
+                self.config.language_id.as_str()
+            )));
+        }
+        Ok(())
+    }
+
+    fn record_spawn_outcome(&self, ok: bool) {
+        if let Ok(mut backoff) = self.restart_backoff.lock() {
+            if ok {
+                *backoff = (0, None);
+            } else {
+                backoff.0 = backoff.0.saturating_add(1);
+                backoff.1 = Some(Instant::now());
+            }
         }
     }
 
@@ -235,20 +272,38 @@ impl LazySupervisedProviderPort {
         slot: &'a mut Option<ActiveManagedProvider>,
     ) -> Result<&'a mut ActiveManagedProvider, AstEngineError> {
         let needs_spawn = match slot.as_mut() {
-            Some(live) => matches!(live._guard.child.try_wait(), Ok(Some(_))),
+            Some(live) => matches!(live.guard.child.try_wait(), Ok(Some(_))),
             None => true,
         };
         if needs_spawn {
             let _ = slot.take();
-            let guard = (self.spawn_factory)().map_err(AstEngineError::ProviderError)?;
+            self.check_restart_backoff()?;
+            let guard = match (self.spawn_factory)() {
+                Ok(g) => {
+                    self.record_spawn_outcome(true);
+                    g
+                }
+                Err(err) => {
+                    self.record_spawn_outcome(false);
+                    self.gateway.set_provider_lifecycle_state(
+                        &self.config.language_id,
+                        ProviderLifecycleState::Degraded,
+                        false,
+                        None,
+                    );
+                    return Err(AstEngineError::ProviderError(err));
+                }
+            };
+            let pid = guard.child.id();
             let client = HttpJsonAstProviderClient::new(guard.endpoint(), self.config.clone());
             self.gateway.set_provider_lifecycle_state(
                 &self.config.language_id,
                 ProviderLifecycleState::Warm,
                 false,
+                Some(pid),
             );
             *slot = Some(ActiveManagedProvider {
-                _guard: guard,
+                guard,
                 client,
                 last_used: Instant::now(),
             });
@@ -281,7 +336,7 @@ impl AstProviderPort for LazySupervisedProviderPort {
             .map_err(|_| AstEngineError::ProviderError("provider slot poisoned".to_owned()))?;
         let live = self.ensure_active_locked(&mut slot)?;
         let res = live.client.inspect(request);
-        if res.is_err() && matches!(live._guard.child.try_wait(), Ok(Some(_))) {
+        if res.is_err() && matches!(live.guard.child.try_wait(), Ok(Some(_))) {
             let _ = slot.take();
         }
         res
@@ -294,7 +349,7 @@ impl AstProviderPort for LazySupervisedProviderPort {
             .map_err(|_| AstEngineError::ProviderError("provider slot poisoned".to_owned()))?;
         let live = self.ensure_active_locked(&mut slot)?;
         let res = live.client.verify(request);
-        if res.is_err() && matches!(live._guard.child.try_wait(), Ok(Some(_))) {
+        if res.is_err() && matches!(live.guard.child.try_wait(), Ok(Some(_))) {
             let _ = slot.take();
         }
         res

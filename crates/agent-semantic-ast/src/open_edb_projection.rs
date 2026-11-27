@@ -8,36 +8,61 @@
 
 use std::collections::BTreeSet;
 
-use agent_semantic_provider_protocol::LanguageConformancePack;
+use agent_semantic_provider_protocol::{
+    LanguageConformancePack, OntologyKindMapping, ProviderSpecialExtension,
+};
 use agent_semantic_search::{
     SEMANTIC_OPEN_EDB_SCHEMA_ID, SEMANTIC_OPEN_EDB_SCHEMA_VERSION, WorkspaceEdbAttr,
     WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact, WorkspaceOpenEdbIngestBatch,
 };
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::types::{
     AstLanguageId, AstNodeSpanRecord, AstProviderId, AstSemanticEdgeRecord, AstUniversalKind,
     AstWorkspacePath,
 };
 
-/// Derive a Yuanxu-compatible targeted JSON Schema enforcing a language's exact
-/// `languageId`, `kind`, and native `languageKind` surface from its DSL pack.
+fn collect_kind_mappings(
+    mappings: &[OntologyKindMapping],
+    native_kinds: &mut Vec<String>,
+    general_kinds: &mut Vec<String>,
+) {
+    for mapping in mappings {
+        if !native_kinds.contains(&mapping.native_language_kind) {
+            native_kinds.push(mapping.native_language_kind.clone());
+        }
+        if !general_kinds.contains(&mapping.general_kind) {
+            general_kinds.push(mapping.general_kind.clone());
+        }
+    }
+}
+
+/// Derive a Yuanxu-compatible Draft 2020-12 targeted JSON Schema enforcing a language's
+/// exact `languageId`, `kind`, native `languageKind`, AND any provider-owned `special`
+/// JSON Schema property extensions (language-agnostic composition).
 #[must_use]
 pub fn derive_targeted_entity_schema(
     language_id: &AstLanguageId,
     dsl_pack: Option<&LanguageConformancePack>,
 ) -> Value {
+    derive_targeted_entity_schema_with_special(language_id, None, dsl_pack)
+}
+
+/// Compose a provider's targeted JSON Schema from the universal entity contract,
+/// `manifest.special` (`kindMappings` + custom `schema` properties), and optional `dsl_pack`.
+#[must_use]
+pub fn derive_targeted_entity_schema_with_special(
+    language_id: &AstLanguageId,
+    special: Option<&ProviderSpecialExtension>,
+    dsl_pack: Option<&LanguageConformancePack>,
+) -> Value {
     let mut native_kinds = Vec::new();
     let mut general_kinds = Vec::new();
+    if let Some(ext) = special {
+        collect_kind_mappings(&ext.kind_mappings, &mut native_kinds, &mut general_kinds);
+    }
     if let Some(pack) = dsl_pack {
-        for mapping in &pack.kind_mappings {
-            if !native_kinds.contains(&mapping.native_language_kind) {
-                native_kinds.push(mapping.native_language_kind.clone());
-            }
-            if !general_kinds.contains(&mapping.general_kind) {
-                general_kinds.push(mapping.general_kind.clone());
-            }
-        }
+        collect_kind_mappings(&pack.kind_mappings, &mut native_kinds, &mut general_kinds);
     }
     let kind_prop = if general_kinds.is_empty() {
         json!({ "type": "string", "minLength": 1 })
@@ -49,18 +74,49 @@ pub fn derive_targeted_entity_schema(
     } else {
         json!({ "type": "string", "enum": native_kinds })
     };
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["languageId", "kind", "languageKind", "name", "line"],
-        "properties": {
-            "languageId": { "type": "string", "const": language_id.as_str() },
-            "kind": kind_prop,
-            "languageKind": language_kind_prop,
-            "name": { "type": "string", "minLength": 1 },
-            "line": { "type": "integer", "minimum": 1 }
+    let mut properties = Map::new();
+    properties.insert(
+        "languageId".to_owned(),
+        json!({ "type": "string", "const": language_id.as_str() }),
+    );
+    properties.insert("kind".to_owned(), kind_prop);
+    properties.insert("languageKind".to_owned(), language_kind_prop);
+    properties.insert("name".to_owned(), json!({ "type": "string", "minLength": 1 }));
+    properties.insert(
+        "line".to_owned(),
+        json!({ "type": "integer", "minimum": 1 }),
+    );
+
+    let mut defs = Map::new();
+    if let Some(ext_schema) = special.and_then(|s| s.schema.as_ref()) {
+        if let Some(ext_props) = ext_schema.get("properties").and_then(Value::as_object) {
+            for (k, v) in ext_props {
+                properties.entry(k.clone()).or_insert_with(|| v.clone());
+            }
         }
-    })
+        if let Some(ext_defs) = ext_schema.get("$defs").and_then(Value::as_object) {
+            for (k, v) in ext_defs {
+                defs.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    let mut root = Map::new();
+    root.insert(
+        "$schema".to_owned(),
+        Value::String("https://json-schema.org/draft/2020-12/schema".to_owned()),
+    );
+    root.insert("type".to_owned(), Value::String("object".to_owned()));
+    root.insert("additionalProperties".to_owned(), Value::Bool(false));
+    root.insert(
+        "required".to_owned(),
+        json!(["languageId", "kind", "languageKind", "name", "line"]),
+    );
+    root.insert("properties".to_owned(), Value::Object(properties));
+    if !defs.is_empty() {
+        root.insert("$defs".to_owned(), Value::Object(defs));
+    }
+    Value::Object(root)
 }
 
 fn build_entity_attrs(node: &AstNodeSpanRecord) -> Vec<WorkspaceEdbAttr> {

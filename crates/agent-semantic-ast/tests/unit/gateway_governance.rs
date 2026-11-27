@@ -94,6 +94,7 @@ fn demo_manifest(lang: &str, ext: &str) -> ProviderCoreManifest {
         display_name: lang.to_owned(),
         extensions: vec![ext.to_owned()],
         project_markers: Vec::new(),
+        project: None,
         syntax_surface: ProviderSyntaxSurface {
             line_comment: Some("//".to_owned()),
             block_comment: None,
@@ -114,6 +115,7 @@ fn demo_manifest(lang: &str, ext: &str) -> ProviderCoreManifest {
             open_edb: true,
             project_resolution: false,
         },
+        special: None,
     }
 }
 
@@ -443,4 +445,196 @@ fn asp_gateway_lazy_boot_idle_eviction_and_stdin_eof_watchdog() {
         exited,
         "stdin-EOF parent-death watchdog must terminate asp-gateway cleanly"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_single_flight_blake3_dedup_coalesces_16_agents_into_1_compiler_call() {
+    struct SlowCountedProvider {
+        pid: AstProviderId,
+        lid: AstLanguageId,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl AstProviderPort for SlowCountedProvider {
+        fn provider_id(&self) -> &AstProviderId {
+            &self.pid
+        }
+        fn language_id(&self) -> &AstLanguageId {
+            &self.lid
+        }
+        fn lexical_profile(&self) -> LexicalDelimiterProfile {
+            LexicalDelimiterProfile::rust()
+        }
+        fn inspect(
+            &self,
+            request: &AstInspectRequest,
+        ) -> Result<AstInspectResponse, AstEngineError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(60));
+            Ok(AstInspectResponse {
+                accepted: true,
+                nodes: vec![AstNodeSpanRecord {
+                    locator: AstNodeLocator::new(format!("{}#fn:shared", request.path.as_str()))
+                        .expect("loc"),
+                    kind: AstUniversalKind::Function,
+                    language_kind: AstLanguageKind::new("fn_decl").expect("lk"),
+                    name: "shared".to_owned(),
+                    line: 1,
+                    outer_span: ByteSpan::new(0, request.source_utf8.len()).expect("span"),
+                    inner_span: ByteSpan::new(0, request.source_utf8.len()).expect("span"),
+                    body_span: None,
+                    parent: None,
+                    attrs: Vec::new(),
+                }],
+                edges: Vec::new(),
+                diagnostics: Vec::new(),
+                syntax_surface: None,
+            })
+        }
+        fn verify(&self, _request: &AstVerifyRequest) -> Result<AstVerifyResponse, AstEngineError> {
+            Ok(AstVerifyResponse {
+                results: Vec::new(),
+            })
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let gateway = Arc::new(AspForwardingGateway::new());
+    gateway
+        .register_embedded_provider(
+            demo_manifest("dedup", ".ddp"),
+            Arc::new(SlowCountedProvider {
+                pid: AstProviderId::new("asp-dedup").expect("pid"),
+                lid: AstLanguageId::new("dedup").expect("lid"),
+                calls: Arc::clone(&calls),
+            }),
+            None,
+            None,
+        )
+        .expect("register dedup provider");
+
+    // 16 concurrent agents request inspection of the exact same file simultaneously!
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..16 {
+        let gw = Arc::clone(&gateway);
+        set.spawn(async move {
+            gw.inspect_files_to_open_edb(ForwardedInspectFilesRequest {
+                files: vec![ForwardedInspectFileInput {
+                    path: "src/shared.ddp".to_owned(),
+                    source_utf8: "fn shared() { 42 }".to_owned(),
+                    language_override: None,
+                }],
+            })
+            .await
+            .expect("inspect")
+        });
+    }
+    while let Some(res) = set.join_next().await {
+        let resp = res.expect("join");
+        assert_eq!(resp.inspected_files, 1);
+        assert_eq!(resp.total_entities, 1);
+    }
+
+    // All 16 concurrent callers coalesced into EXACTLY ONE native compiler invocation!
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let stats = gateway.inspect_cache_stats();
+    assert_eq!(stats.cache_misses, 1);
+    assert_eq!(stats.single_flight_coalesced + stats.cache_hits, 15);
+
+    // Next sequential call hits the warm BLAKE3 cache with 0 compiler invocations!
+    let cached_resp = gateway
+        .inspect_files_to_open_edb(ForwardedInspectFilesRequest {
+            files: vec![ForwardedInspectFileInput {
+                path: "src/shared.ddp".to_owned(),
+                source_utf8: "fn shared() { 42 }".to_owned(),
+                language_override: None,
+            }],
+        })
+        .await
+        .expect("cached inspect");
+    assert_eq!(cached_resp.total_entities, 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(gateway.inspect_cache_stats().cache_hits >= 1);
+}
+
+#[test]
+fn gateway_catalog_forwards_universal_protocol_schema_and_merges_provider_special_extensions() {
+    use agent_semantic_provider_protocol::{
+        OntologyKindMapping, ProviderProjectSurface, ProviderSpecialExtension,
+    };
+
+    let mut manifest = demo_manifest("zig", ".zig");
+    manifest.project = Some(ProviderProjectSurface {
+        markers: vec!["build.zig".to_owned()],
+        entry_files: vec!["src/root.zig".to_owned(), "src/main.zig".to_owned()],
+        workspace_files: vec!["build.zig.zon".to_owned()],
+        config_files: Vec::new(),
+    });
+    manifest.special = Some(ProviderSpecialExtension {
+        kind_mappings: vec![OntologyKindMapping {
+            native_language_kind: "fn_proto".to_owned(),
+            general_kind: "function".to_owned(),
+            description: "Zig function declaration".to_owned(),
+        }],
+        special_relations: vec!["zig_comptime".to_owned()],
+        schema: Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "comptimeMode": {
+                    "type": "string",
+                    "enum": ["inline", "generic"]
+                }
+            }
+        })),
+    });
+
+    let gateway = AspForwardingGateway::new();
+    gateway
+        .register_descriptor_only(manifest, None, None)
+        .expect("register descriptor with special extension");
+
+    let catalog = gateway.catalog().expect("catalog");
+    let universal = catalog
+        .universal_protocol_schema
+        .as_ref()
+        .expect("GET /v1/providers must forward ASP universalProtocolSchema");
+    assert!(universal.pointer("/properties/exclude-tests?").is_some());
+    assert!(universal.pointer("/properties/path-prefix").is_some());
+    assert!(universal.pointer("/properties/kind").is_some());
+
+    let zig_env = catalog
+        .providers
+        .iter()
+        .find(|p| p.manifest.language_id.as_str() == "zig")
+        .expect("zig envelope");
+    assert_eq!(
+        zig_env.targeted_schema.pointer("/properties/comptimeMode/enum"),
+        Some(&serde_json::json!(["inline", "generic"]))
+    );
+    assert_eq!(
+        zig_env.targeted_schema.pointer("/properties/languageKind/enum"),
+        Some(&serde_json::json!(["fn_proto"]))
+    );
+    let pack = zig_env
+        .dsl_pack
+        .as_ref()
+        .expect("manifest.special should synthesize dslPack automatically");
+    assert_eq!(pack.special_relations, vec!["zig_comptime"]);
+
+    // Verify all 5 checked-in language provider manifests decode with unified `project` + `special`.
+    let asp_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for rel in [
+        "languages/asp-rust/provider/provider-core-manifest.json",
+        "languages/asp-python/provider/provider-core-manifest.json",
+        "languages/asp-typescript/provider/provider-core-manifest.json",
+        "languages/AspJulia.jl/juliac/provider-core-manifest.json",
+        "languages/asp-gerbil-scheme/provider/provider-core-manifest.json",
+    ] {
+        let raw = std::fs::read_to_string(asp_root.join(rel))
+            .unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let m: ProviderCoreManifest =
+            serde_json::from_str(&raw).unwrap_or_else(|e| panic!("decode {rel}: {e}"));
+        assert!(m.project.is_some(), "missing unified project surface in {rel}");
+        assert!(m.special.is_some(), "missing special extension in {rel}");
+    }
 }

@@ -21,7 +21,10 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use agent_semantic_http_json::{HttpJsonRequest, HttpJsonResponse, serve_http_json};
-use agent_semantic_provider_protocol::{LanguageConformancePack, ProviderCoreManifest};
+use agent_semantic_provider_protocol::{
+    LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack, PROVIDER_CORE_SCHEMA_VERSION,
+    ProviderCoreManifest, universal_search_protocol_schema,
+};
 use agent_semantic_search::WorkspaceOpenEdbIngestBatch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -29,6 +32,10 @@ use tokio::net::TcpListener;
 use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinSet;
 
+use crate::gateway_cache::{
+    CachedInspectInvocation, InspectCacheStats, InspectSingleFlightCache,
+    execute_cached_single_flight_inspect,
+};
 use crate::gateway_governance::{
     GatewaySessionToken, ProviderCircuitBreakerPolicy, ProviderGovernanceTable,
     ProviderHealthReceipt, ProviderLifecycleState, ProviderRuntimeKind, ProviderSpawnMode,
@@ -36,9 +43,7 @@ use crate::gateway_governance::{
 use crate::gateway_patch::{
     ForwardedAstPatchRequest, ForwardedAstPatchResponse, apply_forwarded_patch_on_provider,
 };
-use crate::open_edb_projection::{
-    derive_targeted_entity_schema, project_inspection_to_open_edb_batch,
-};
+use crate::open_edb_projection::derive_targeted_entity_schema_with_special;
 use crate::provider_port::{AstInspectRequest, AstProviderPort};
 use crate::registry::{
     AstProviderDescriptor, AstProviderRegisterReceipt, AstProviderRegistry,
@@ -73,6 +78,10 @@ pub struct ProviderForwardingEnvelope {
 }
 
 /// Catalog payload returned by `GET /v1/providers`.
+///
+/// Carries ASP's universal cross-language protocol JSON Schema (`universalProtocolSchema`)
+/// together with every registered language provider's manifest (`project`, `syntaxSurface`,
+/// `special`), composed `targetedSchema`, and `dslPack`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderForwardingCatalog {
@@ -80,7 +89,33 @@ pub struct ProviderForwardingCatalog {
     pub schema_version: String,
     pub generation: u64,
     pub registry_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub universal_protocol_schema: Option<Value>,
     pub providers: Vec<ProviderForwardingEnvelope>,
+}
+
+fn synthesize_pack_from_special(
+    manifest: &ProviderCoreManifest,
+    dsl_pack: Option<LanguageConformancePack>,
+) -> Option<LanguageConformancePack> {
+    if dsl_pack.is_some() {
+        return dsl_pack;
+    }
+    let special = manifest.special.as_ref()?;
+    if special.kind_mappings.is_empty() && special.special_relations.is_empty() {
+        return None;
+    }
+    Some(LanguageConformancePack {
+        schema_id: LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID.to_owned(),
+        schema_version: PROVIDER_CORE_SCHEMA_VERSION.to_owned(),
+        language_id: manifest.language_id.clone(),
+        provider_language_id: manifest.language_id.clone(),
+        extensions: manifest.extensions.clone(),
+        project_markers: manifest.effective_project_markers(),
+        kind_mappings: special.kind_mappings.clone(),
+        special_relations: special.special_relations.clone(),
+        probes: Vec::new(),
+    })
 }
 
 /// Dynamic runtime provider registration frame accepted by `POST /v1/providers/register`.
@@ -150,6 +185,7 @@ pub struct AspForwardingGateway {
     global_inspect_semaphore: Arc<Semaphore>,
     provider_semaphores: RwLock<BTreeMap<AstLanguageId, Arc<Semaphore>>>,
     governance: Arc<ProviderGovernanceTable>,
+    inspect_cache: Arc<InspectSingleFlightCache>,
     control_token: Option<GatewaySessionToken>,
 }
 
@@ -179,8 +215,15 @@ impl AspForwardingGateway {
             global_inspect_semaphore: Arc::new(Semaphore::new(MAX_GLOBAL_INSPECT_CONCURRENCY)),
             provider_semaphores: RwLock::new(BTreeMap::new()),
             governance: Arc::new(ProviderGovernanceTable::new(circuit_policy)),
+            inspect_cache: Arc::new(InspectSingleFlightCache::new()),
             control_token,
         }
+    }
+
+    /// Return current BLAKE3 single-flight inspection cache telemetry.
+    #[must_use]
+    pub fn inspect_cache_stats(&self) -> InspectCacheStats {
+        self.inspect_cache.stats()
     }
 
     /// Return the active loopback control-plane Bearer token, if configured.
@@ -200,9 +243,10 @@ impl AspForwardingGateway {
         language_id: &AstLanguageId,
         state: ProviderLifecycleState,
         counted_eviction: bool,
+        process_pid: Option<u32>,
     ) {
         self.governance
-            .set_lifecycle_state(language_id, state, counted_eviction);
+            .set_lifecycle_state(language_id, state, counted_eviction, process_pid);
     }
 
     fn provider_semaphore(
@@ -238,8 +282,14 @@ impl AspForwardingGateway {
     ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
         let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
-        let schema = targeted_schema
-            .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
+        let effective_pack = synthesize_pack_from_special(&manifest, dsl_pack);
+        let schema = targeted_schema.unwrap_or_else(|| {
+            derive_targeted_entity_schema_with_special(
+                &language_id,
+                manifest.special.as_ref(),
+                effective_pack.as_ref(),
+            )
+        });
         let receipt = {
             let mut reg = self
                 .registry
@@ -256,7 +306,7 @@ impl AspForwardingGateway {
             ProviderForwardingEnvelope {
                 manifest,
                 targeted_schema: schema,
-                dsl_pack,
+                dsl_pack: effective_pack,
             },
         );
         self.governance.register_provider(
@@ -284,8 +334,14 @@ impl AspForwardingGateway {
     ) -> Result<AstProviderRegisterReceipt, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
         let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
-        let schema = targeted_schema
-            .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
+        let effective_pack = synthesize_pack_from_special(&manifest, dsl_pack);
+        let schema = targeted_schema.unwrap_or_else(|| {
+            derive_targeted_entity_schema_with_special(
+                &language_id,
+                manifest.special.as_ref(),
+                effective_pack.as_ref(),
+            )
+        });
         let descriptor = AstProviderDescriptor {
             provider_id: provider_id.clone(),
             language_id: language_id.clone(),
@@ -315,7 +371,7 @@ impl AspForwardingGateway {
             ProviderForwardingEnvelope {
                 manifest,
                 targeted_schema: schema,
-                dsl_pack,
+                dsl_pack: effective_pack,
             },
         );
         self.governance.register_provider(
@@ -358,12 +414,18 @@ impl AspForwardingGateway {
     ) -> Result<ProviderForwardingEnvelope, AstEngineError> {
         let language_id = AstLanguageId::new(manifest.language_id.as_str())?;
         let provider_id = AstProviderId::new(manifest.provider_id.as_str())?;
-        let schema = targeted_schema
-            .unwrap_or_else(|| derive_targeted_entity_schema(&language_id, dsl_pack.as_ref()));
+        let effective_pack = synthesize_pack_from_special(&manifest, dsl_pack);
+        let schema = targeted_schema.unwrap_or_else(|| {
+            derive_targeted_entity_schema_with_special(
+                &language_id,
+                manifest.special.as_ref(),
+                effective_pack.as_ref(),
+            )
+        });
         let envelope = ProviderForwardingEnvelope {
             manifest,
             targeted_schema: schema,
-            dsl_pack,
+            dsl_pack: effective_pack,
         };
         let mut envs = self
             .envelopes
@@ -401,6 +463,7 @@ impl AspForwardingGateway {
             schema_version: "1".to_owned(),
             generation,
             registry_digest: digest.as_str().to_owned(),
+            universal_protocol_schema: universal_search_protocol_schema().ok(),
             providers,
         })
     }
@@ -441,6 +504,7 @@ impl AspForwardingGateway {
             let lang_sem = self.provider_semaphore(&provider.descriptor.language_id)?;
             let global_sem = Arc::clone(&self.global_inspect_semaphore);
             let governance = Arc::clone(&self.governance);
+            let cache = Arc::clone(&self.inspect_cache);
             let source_hash = blake3_source_digest(file.source_utf8.as_bytes());
             let inspect_req = AstInspectRequest {
                 path: path.clone(),
@@ -454,82 +518,33 @@ impl AspForwardingGateway {
 
             join_set.spawn(async move {
                 let lang_name = language_id.as_str().to_owned();
-                if let Err(cb_err) = governance.check_circuit_admits(&language_id) {
-                    return (
+                let pid_name = provider_id.as_str().to_owned();
+                let (call_micros, result) =
+                    execute_cached_single_flight_inspect(CachedInspectInvocation {
+                        path,
+                        language_id,
+                        provider_id,
+                        inspect_req,
+                        port,
+                        global_sem,
+                        lang_sem,
+                        governance,
+                        cache,
+                    })
+                    .await;
+                match result {
+                    Ok(batch) => (order_idx, lang_name, call_micros, Ok(batch)),
+                    Err(error) => (
                         order_idx,
                         lang_name.clone(),
-                        0,
+                        call_micros,
                         Err(ForwardedInspectFailure {
                             path: raw_path,
                             language_id: lang_name,
-                            provider_id: provider_id.as_str().to_owned(),
-                            error: cb_err,
+                            provider_id: pid_name,
+                            error,
                         }),
-                    );
-                }
-                let Ok(_global_permit) = global_sem.acquire_owned().await else {
-                    return (
-                        order_idx,
-                        lang_name.clone(),
-                        0,
-                        Err(ForwardedInspectFailure {
-                            path: raw_path,
-                            language_id: lang_name,
-                            provider_id: provider_id.as_str().to_owned(),
-                            error: "global inspect semaphore closed".to_owned(),
-                        }),
-                    );
-                };
-                let Ok(_lang_permit) = lang_sem.acquire_owned().await else {
-                    return (
-                        order_idx,
-                        lang_name.clone(),
-                        0,
-                        Err(ForwardedInspectFailure {
-                            path: raw_path,
-                            language_id: lang_name,
-                            provider_id: provider_id.as_str().to_owned(),
-                            error: "provider inspect semaphore closed".to_owned(),
-                        }),
-                    );
-                };
-                let call_started = Instant::now();
-                let inspected = tokio::task::spawn_blocking(move || port.inspect(&inspect_req))
-                    .await
-                    .map_err(|err| format!("inspect worker join error: {err}"))
-                    .and_then(|res| res.map_err(|err| err.to_string()));
-                let call_micros =
-                    u64::try_from(call_started.elapsed().as_micros()).unwrap_or(u64::MAX);
-                match inspected {
-                    Ok(resp) => {
-                        governance.record_success(&language_id, call_micros);
-                        (
-                            order_idx,
-                            lang_name,
-                            call_micros,
-                            Ok(project_inspection_to_open_edb_batch(
-                                &path,
-                                &language_id,
-                                &provider_id,
-                                &resp.nodes,
-                                &resp.edges,
-                            )),
-                        )
-                    }
-                    Err(error) => {
-                        governance.record_failure(&language_id, call_micros);
-                        (
-                            order_idx,
-                            lang_name.clone(),
-                            call_micros,
-                            Err(ForwardedInspectFailure {
-                                path: raw_path,
-                                language_id: lang_name,
-                                provider_id: provider_id.as_str().to_owned(),
-                                error,
-                            }),
-                        )
-                    }
+                    ),
                 }
             });
         }
@@ -676,6 +691,7 @@ async fn handle_gateway_request(
         ("GET", "/health") => {
             let cat = gateway.catalog().map_err(|e| e.to_string())?;
             let providers = gateway.health_receipts().map_err(|e| e.to_string())?;
+            let cache_stats = gateway.inspect_cache_stats();
             let warm_count = providers
                 .iter()
                 .filter(|p| p.lifecycle_state == ProviderLifecycleState::Warm)
@@ -689,6 +705,12 @@ async fn handle_gateway_request(
                     "controlAuthRequired": gateway.control_token().is_some(),
                     "generation": cat.generation,
                     "registryDigest": cat.registry_digest,
+                    "inspectCache": {
+                        "entries": cache_stats.entries,
+                        "cacheHits": cache_stats.cache_hits,
+                        "singleFlightCoalesced": cache_stats.single_flight_coalesced,
+                        "cacheMisses": cache_stats.cache_misses
+                    },
                     "providers": providers
                 }),
             )

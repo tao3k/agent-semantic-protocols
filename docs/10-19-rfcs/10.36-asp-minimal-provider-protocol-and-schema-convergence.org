@@ -15,12 +15,16 @@ Simultaneously, embedding version suffixes (=*.v1.schema.json=, =*.v2.schema.jso
 ** Plane 1: Rust-Owned Provider Core Wire Spine (=schemars= SSoT, Version-Free Filenames)
 The Rust crate =agent-semantic-provider-protocol= (=src/provider_core.rs=) is the sole source of truth for the minimal cross-process provider boundary. Draft 2020-12 JSON Schemas are generated directly from strongly typed Rust structs via =schemars= with strict CI byte-for-byte drift checks and **version-free filenames** (schema versions live strictly inside =schemaVersion= / =x-schema-version=):
 
-1. =schemas/provider-core-manifest.schema.json= (=ProviderCoreManifest=): language identity, file extensions, project markers, HTTP-JSON transport, capability bits, and **provider-reported** =ProviderSyntaxSurface=.
-2. =schemas/provider-runtime-request-frame.schema.json= & =schemas/provider-runtime-response-frame.schema.json=: unified =POST /v1/provider-runtime= frame envelope.
-3. =schemas/semantic-open-edb.v1.schema.json=: universal 4-relation Open EDB fact batch =(file, entity, edge, attr)=.
-4. =schemas/ast-inspect.schema.json= (=AstInspectContract=): authoritative UTF-8 =SourceByteSpan= AST node records + provider-reported =ProviderSyntaxSurface=.
-5. =schemas/ast-verify.schema.json= (=AstVerifyContract=): batched compiler-soundness oracle verification.
-6. =schemas/language-conformance-pack.schema.json= (=LanguageConformancePack=): pure-data ontology mapping & golden conformance probes projected from Plane 2.
+1. =schemas/provider-core-manifest.schema.json= (=ProviderCoreManifest=): unified language identity, file extensions, unified =project= entrypoint/marker surface (=ProviderProjectSurface=), provider-reported =ProviderSyntaxSurface=, HTTP-JSON / gRPC transport, capability bits, and provider-owned =special= extension (=ProviderSpecialExtension=: native =kindMappings=, =specialRelations=, and language-specific Draft 2020-12 JSON Schema fragment).
+2. =schemas/universal-search-protocol.schema.json= (=UniversalSearchQueryContract=): single language-neutral Draft 2020-12 universal search/query/outline/read/solve contract forwarded by ASP =GET /v1/providers= (=universalProtocolSchema=). Language providers extend this contract via =manifest.special= without modifying ASP or Marlin core.
+3. =schemas/provider-runtime-request-frame.schema.json= & =schemas/provider-runtime-response-frame.schema.json=: unified =POST /v1/provider-runtime= frame envelope.
+4. =schemas/semantic-open-edb.v1.schema.json=: universal 4-relation Open EDB fact batch =(file, entity, edge, attr)=.
+5. =schemas/ast-inspect.schema.json= (=AstInspectContract=): authoritative UTF-8 =SourceByteSpan= AST node records + provider-reported =ProviderSyntaxSurface=.
+6. =schemas/ast-verify.schema.json= (=AstVerifyContract=): batched compiler-soundness oracle verification.
+7. =schemas/language-conformance-pack.schema.json= (=LanguageConformancePack=): pure-data ontology mapping & golden conformance probes projected from Plane 2.
+
+*** Universal Protocol -> Language =special= Extension -> HTTP/gRPC Forwarding -> Marlin Flow
+External providers (=languages/asp-rust=, =languages/asp-python=, =languages/asp-typescript=, =languages/AspJulia.jl=, =languages/asp-gerbil-scheme=, and future dynamic providers) extend ASP's universal protocol via their own =project=, =syntaxSurface=, and =special= manifest fields, and transmit them over HTTP-JSON / gRPC to =asp-gateway=. ASP composes each provider's =targetedSchema= from the universal entity contract + =manifest.special= and forwards =universalProtocolSchema= + all provider envelopes in =GET /v1/providers= so Marlin drives both Yuanxu =json-schema= normalization and TUI Helm Copilot completion with zero hardcoded languages or keywords.
 
 *** Provider-Reported Native Syntax Surface
 Low-level lexical syntax (line comment prefix =//= vs =#= vs =;=, block comments, balanced delimiters, statement terminator, string quotes) belongs exclusively to the native compiler provider. External providers report =ProviderSyntaxSurface= upward in their manifest and =ast-inspect= responses; high-level Scheme ontology definitions never hardcode lexical pairs or comment lexers.

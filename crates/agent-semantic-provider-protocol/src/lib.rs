@@ -35,7 +35,10 @@ pub use provider_core::{
     LanguageConformanceProbe, OntologyKindMapping, PROVIDER_CORE_MANIFEST_SCHEMA_ID,
     PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS,
     ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
-    ProviderSyntaxSurface, ProviderTransport, SourceByteSpan, canonical_provider_core_schemas,
+    ProviderProjectSurface, ProviderSpecialExtension, ProviderSyntaxSurface, ProviderTransport,
+    SourceByteSpan, UNIVERSAL_SEARCH_PROTOCOL_SCHEMA_ID, UniversalSearchKind,
+    UniversalSearchProjection, UniversalSearchQueryContract, canonical_provider_core_schemas,
+    universal_search_protocol_schema,
 };
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;

@@ -160,6 +160,10 @@ pub struct ProviderHealthReceipt {
     pub last_latency_micros: u64,
     pub avg_latency_micros: u64,
     pub idle_evictions: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss_kb: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -175,6 +179,29 @@ struct ProviderTelemetryRecord {
     total_latency_micros: u128,
     last_latency_micros: u64,
     idle_evictions: u64,
+    process_pid: Option<u32>,
+}
+
+fn sample_process_rss_kb(pid: u32) -> Option<u64> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("/bin/ps")
+            .args(["-o", "rss=", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
+    }
 }
 
 impl ProviderTelemetryRecord {
@@ -205,6 +232,7 @@ impl ProviderTelemetryRecord {
             u64::try_from(self.total_latency_micros / u128::from(self.total_requests))
                 .unwrap_or(u64::MAX)
         };
+        let rss_kb = self.process_pid.and_then(sample_process_rss_kb);
         ProviderHealthReceipt {
             language_id: language_id.as_str().to_owned(),
             provider_id: self.provider_id.as_str().to_owned(),
@@ -218,6 +246,8 @@ impl ProviderTelemetryRecord {
             last_latency_micros: self.last_latency_micros,
             avg_latency_micros,
             idle_evictions: self.idle_evictions,
+            process_pid: self.process_pid,
+            rss_kb,
         }
     }
 }
@@ -278,6 +308,7 @@ impl ProviderGovernanceTable {
                 total_latency_micros: 0,
                 last_latency_micros: 0,
                 idle_evictions: 0,
+                process_pid: None,
             },
         );
         Ok(())
@@ -346,12 +377,14 @@ impl ProviderGovernanceTable {
         language_id: &AstLanguageId,
         lifecycle_state: ProviderLifecycleState,
         counted_eviction: bool,
+        process_pid: Option<u32>,
     ) {
         let Ok(mut records) = self.records.write() else {
             return;
         };
         if let Some(rec) = records.get_mut(language_id) {
             rec.lifecycle_state = lifecycle_state;
+            rec.process_pid = process_pid;
             if counted_eviction {
                 rec.idle_evictions = rec.idle_evictions.saturating_add(1);
             }

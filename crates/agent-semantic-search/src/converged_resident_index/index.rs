@@ -249,6 +249,7 @@ impl WorkspaceSearchIndex {
         {
             let receipt = idx.sync_workspace_from_disk();
             if receipt.upserted_files > 0 || receipt.deleted_files > 0 {
+                idx.compact();
                 let _ = idx.save_snapshot(snapshot_path);
             }
             return idx;

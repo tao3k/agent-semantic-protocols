@@ -1,5 +1,29 @@
 {
   "$defs": {
+    "OntologyKindMapping": {
+      "additionalProperties": false,
+      "description": "Mapping from a language's native AST `language_kind` to ASP's General Ontology `kind`.",
+      "properties": {
+        "description": {
+          "description": "Concise semantic description inherited from Scheme's `defasp-language`.",
+          "type": "string"
+        },
+        "generalKind": {
+          "description": "Universal General Ontology kind (e.g. `function`, `struct`, `class`, `macro`, `item`).",
+          "type": "string"
+        },
+        "nativeLanguageKind": {
+          "description": "Native compiler AST node kind (e.g. `fn_item`, `FunctionDef`, `struct`, `poo_def`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nativeLanguageKind",
+        "generalKind",
+        "description"
+      ],
+      "type": "object"
+    },
     "ProviderCapabilities": {
       "additionalProperties": false,
       "description": "Minimal capability flags published by a native language provider.",
@@ -36,6 +60,71 @@
     "ProviderPackageId": {
       "description": "Canonical provider identifier newtype (e.g. `asp-rust`, `asp-julia`, `asp-gerbil-scheme`).",
       "type": "string"
+    },
+    "ProviderProjectSurface": {
+      "additionalProperties": false,
+      "description": "Unified project entrypoint, root marker, and configuration surface owned by a provider.",
+      "properties": {
+        "configFiles": {
+          "default": [],
+          "description": "Language or toolchain configuration files (e.g. `[\"tsconfig.json\", \"rustfmt.toml\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "entryFiles": {
+          "default": [],
+          "description": "Canonical source entrypoint filenames (e.g. `[\"src/lib.rs\", \"src/main.rs\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "markers": {
+          "default": [],
+          "description": "Project root marker files (e.g. `[\"Cargo.toml\"]`, `[\"pyproject.toml\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspaceFiles": {
+          "default": [],
+          "description": "Workspace or lockfile manifests anchoring multi-package resolution.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ProviderSpecialExtension": {
+      "additionalProperties": false,
+      "description": "Language-owned special protocol extension layered onto ASP's universal protocol.\n\nEach provider under `languages/asp-*` declares its own native `kindMappings`,\n`:gerbil-ascent` `specialRelations`, and optional Draft 2020-12 JSON Schema\nfragment (`schema`) describing language-specific query facets & enum domains.\nASP merges and forwards these over HTTP/gRPC so Marlin projects dynamic\ncompletions and relations with zero language hardcoding.",
+      "properties": {
+        "kindMappings": {
+          "default": [],
+          "description": "Native compiler `languageKind` -> ASP General Ontology `kind` mappings.",
+          "items": {
+            "$ref": "#/$defs/OntologyKindMapping"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "description": "Provider-owned Draft 2020-12 JSON Schema object declaring language-specific\nquery properties, attributes, and enum values merged into `targetedSchema`."
+        },
+        "specialRelations": {
+          "default": [],
+          "description": "Language-specific `:gerbil-ascent` relation names owned by this provider.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
     },
     "ProviderSyntaxSurface": {
       "additionalProperties": false,
@@ -93,7 +182,7 @@
     },
     "ProviderTransport": {
       "additionalProperties": false,
-      "description": "Minimal HTTP-JSON transport descriptor for a provider server.",
+      "description": "Minimal HTTP-JSON / gRPC transport descriptor for a provider server.",
       "properties": {
         "command": {
           "description": "Subcommand arguments launching the resident provider server (e.g. `[\"serve\"]`).",
@@ -115,7 +204,7 @@
           "type": "string"
         },
         "transport": {
-          "description": "Wire transport kind (`http-json`).",
+          "description": "Wire transport kind (`http-json` or `grpc`).",
           "type": "string"
         }
       },
@@ -153,9 +242,20 @@
       "$ref": "#/$defs/ProviderLanguageId",
       "description": "Canonical language identifier served by this provider."
     },
+    "project": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderProjectSurface"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Unified project root markers, entrypoint files, workspace manifests, and config files."
+    },
     "projectMarkers": {
       "default": [],
-      "description": "Project root marker files (e.g. `[\"Cargo.toml\"]`, `[\"Project.toml\"]`).",
+      "description": "Legacy flat project root marker files (e.g. `[\"Cargo.toml\"]`); prefer unified `project.markers`.",
       "items": {
         "type": "string"
       },
@@ -173,13 +273,24 @@
       "description": "Schema version carried inside the document payload (not in the filename).",
       "type": "string"
     },
+    "special": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderSpecialExtension"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Optional language-owned special protocol extension (native kinds, relations, JSON Schema facets)."
+    },
     "syntaxSurface": {
       "$ref": "#/$defs/ProviderSyntaxSurface",
       "description": "Native lexical syntax surface reported by the provider itself."
     },
     "transport": {
       "$ref": "#/$defs/ProviderTransport",
-      "description": "Resident HTTP-JSON server launch and route descriptor."
+      "description": "Resident HTTP-JSON / gRPC server launch and route descriptor."
     }
   },
   "required": [

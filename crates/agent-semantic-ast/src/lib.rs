@@ -20,6 +20,7 @@
 
 mod calibration;
 mod conformance;
+mod gateway_cache;
 mod gateway_governance;
 mod gateway_patch;
 mod http_gateway;
@@ -36,6 +37,7 @@ pub use calibration::{CalibrationOutcome, CalibrationRequest, calibrate_with_ora
 pub use conformance::{
     ConformanceProbeReceipt, LanguageConformanceReport, run_language_conformance_pack,
 };
+pub use gateway_cache::{InspectCacheKey, InspectCacheStats, InspectSingleFlightCache};
 pub use gateway_governance::{
     CircuitBreakerState, GatewaySessionToken, ProviderCircuitBreakerPolicy,
     ProviderGovernanceTable, ProviderHealthReceipt, ProviderLifecycleState, ProviderRuntimeKind,
