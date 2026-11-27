@@ -36,6 +36,7 @@ ignored_dir_names = [
   ".tox",
   ".venv",
   "__pycache__",
+  "asp-gerbil-scheme",
   "build",
   "dist",
   "expected-output",

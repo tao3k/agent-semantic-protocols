@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 tao3k team and Contributors
+#
+# SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
+
+[package]
+name = "agent-semantic-ast"
+version = "0.1.0"
+edition.workspace = true
+description = "Language-agnostic AI-Native Language Server AST Provider Registry, lossless span patch, syntax calibration, and relational style elevation engine for ASP."
+license.workspace = true
+
+[dependencies]
+agent-semantic-http-json.workspace = true
+agent-semantic-provider-protocol.workspace = true
+agent-semantic-provider-transport.workspace = true
+agent-semantic-search = { path = "../agent-semantic-search" }
+blake3.workspace = true
+bytes.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
+
+[[bin]]
+name = "asp-gateway"
+path = "src/bin/asp-gateway.rs"
+
+[dev-dependencies]
+asp-rust.workspace = true
+criterion.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "ast_engine"
+path = "tests/unit/ast_engine.rs"
+
+[[test]]
+name = "gateway_governance"
+path = "tests/unit/gateway_governance.rs"
+
+[[test]]
+name = "live_providers"
+path = "tests/integration/live_providers.rs"
+
+[[test]]
+name = "policy"
+path = "tests/unit/policy.rs"
+
+[[bench]]
+name = "ast_engine_hot_path"
+path = "benches/ast_engine_hot_path.rs"
+harness = false
+
+[lints]
+workspace = true

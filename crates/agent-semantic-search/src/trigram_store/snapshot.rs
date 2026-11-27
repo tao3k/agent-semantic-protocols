@@ -153,17 +153,39 @@ pub(crate) fn save_snapshot(
     path: &Path,
     live_files: &[SnapshotFileRecord],
 ) -> Result<(), TrigramSnapshotError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TMP_NONCE: AtomicU64 = AtomicU64::new(0);
+
     let bytes = encode_snapshot_bytes(store, live_files);
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
         std::fs::create_dir_all(parent).map_err(|e| TrigramSnapshotError::Io(e.to_string()))?;
     }
-    let mut file = File::create(path).map_err(|e| TrigramSnapshotError::Io(e.to_string()))?;
-    file.write_all(&bytes)
-        .map_err(|e| TrigramSnapshotError::Io(e.to_string()))?;
-    file.sync_all()
-        .map_err(|e| TrigramSnapshotError::Io(e.to_string()))?;
+    let nonce = TMP_NONCE.fetch_add(1, Ordering::Relaxed);
+    let tmp_name = format!(
+        ".{}.tmp.{}.{nonce}",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("snapshot"),
+        std::process::id(),
+    );
+    let tmp_path = path.with_file_name(tmp_name);
+    let write_res = (|| -> Result<(), std::io::Error> {
+        let mut file = File::create(&tmp_path)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = write_res {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(TrigramSnapshotError::Io(err.to_string()));
+    }
+    if let Err(err) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(TrigramSnapshotError::Io(err.to_string()));
+    }
     Ok(())
 }
 

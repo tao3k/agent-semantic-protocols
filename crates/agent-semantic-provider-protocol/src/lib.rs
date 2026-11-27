@@ -7,11 +7,11 @@
 
 mod install_register;
 mod provider_capabilities;
+pub mod provider_core;
 mod provider_stream;
 mod register;
 mod release_catalog;
 mod route;
-mod syntax_query;
 mod workspace_install;
 pub use install_register::ProviderInstallArtifactDomain;
 pub use install_register::ProviderInstallRegister;
@@ -27,6 +27,19 @@ pub use provider_capabilities::ProviderSearchCapabilities;
 pub use provider_capabilities::ProviderSemanticFactsDescriptor;
 pub use provider_capabilities::ProviderSemanticFactsIntentAxis;
 pub use provider_capabilities::ProviderSourceSnapshotDescriptor;
+pub use provider_core::{
+    AST_INSPECT_SCHEMA_ID, AST_VERIFY_SCHEMA_ID, AstInspectContract, AstInspectNode,
+    AstInspectRequest, AstInspectResponse, AstNodeAttribute, AstVerifyCandidate, AstVerifyContract,
+    AstVerifyDiagnostic, AstVerifyOutcome, AstVerifyRequest, AstVerifyResponse,
+    ExpectedConformanceNode, LANGUAGE_CONFORMANCE_PACK_SCHEMA_ID, LanguageConformancePack,
+    LanguageConformanceProbe, OntologyKindMapping, PROVIDER_CORE_MANIFEST_SCHEMA_ID,
+    PROVIDER_CORE_MANIFEST_SCHEMA_VERSION, PROVIDER_CORE_SCHEMA_VERSION, PROVIDER_CORE_SCHEMAS,
+    ProviderCapabilities, ProviderCoreManifest, ProviderLanguageId, ProviderPackageId,
+    ProviderProjectSurface, ProviderSpecialExtension, ProviderSyntaxSurface, ProviderTransport,
+    SourceByteSpan, UNIVERSAL_SEARCH_PROTOCOL_SCHEMA_ID, UniversalSearchKind,
+    UniversalSearchProjection, UniversalSearchQueryContract, canonical_provider_core_schemas,
+    universal_search_protocol_schema,
+};
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_ID;
 pub use provider_stream::PROVIDER_STREAM_SCHEMA_VERSION;
 pub use provider_stream::ProviderStreamEnvelopeIdentity;
@@ -74,17 +87,6 @@ pub use route::ProviderRouteTelemetry;
 pub use route::ProviderRouteTelemetryPolicy;
 pub use route::ProviderRouteValueType;
 pub use route::ProviderSchemaReference;
-pub use syntax_query::PROVIDER_SYNTAX_QUERY_OPERATION;
-pub use syntax_query::PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID;
-pub use syntax_query::PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID;
-pub use syntax_query::ProviderSyntaxQueryCapture;
-pub use syntax_query::ProviderSyntaxQueryRequest;
-pub use syntax_query::ProviderSyntaxQueryResponse;
-pub use syntax_query::SyntaxQueryPattern;
-pub use syntax_query::SyntaxQueryPlan;
-pub use syntax_query::SyntaxQueryPredicate;
-pub use syntax_query::SyntaxQueryPredicateOp;
-pub use syntax_query::SyntaxQueryPredicateValue;
 pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_AUTHORITY;
 pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE;
 pub use workspace_install::PROVIDER_WORKSPACE_INSTALL_SCHEMA_ID;
@@ -99,6 +101,9 @@ pub use workspace_install::WorkspaceRuntimeDependencyDescriptor;
 #[cfg(test)]
 #[path = "../tests/unit/provider_capabilities.rs"]
 mod provider_capabilities_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_core.rs"]
+mod provider_core_tests;
 #[cfg(test)]
 #[path = "../tests/unit/release_catalog.rs"]
 mod release_catalog_tests;

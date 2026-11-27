@@ -26,16 +26,24 @@ _CENTRAL_ONLY_SCHEMAS = (
 
 
 def test_language_schema_bundles_do_not_own_central_graph_artifacts() -> None:
+    canonical_profile = json.loads(
+        (_REPO_ROOT / "schemas" / "language-schema-profiles.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert all(
+        schema_name not in root_set
+        for root_set in canonical_profile["rootSets"].values()
+        for schema_name in _CENTRAL_ONLY_SCHEMAS
+    )
     for package_root in _LANGUAGE_PACKAGE_ROOTS:
         schema_root = package_root / "schemas"
-        profile = json.loads(
-            (schema_root / "language-schema-profiles.json").read_text(encoding="utf-8")
+        assert (schema_root / ".asp-schema-manager-receipt.json").is_file(), (
+            package_root
         )
-        assert all(
-            schema_name not in root_set
-            for root_set in profile["rootSets"].values()
-            for schema_name in _CENTRAL_ONLY_SCHEMAS
-        ), package_root
+        assert not (schema_root / "language-schema-profiles.json").exists(), (
+            package_root
+        )
         for schema_name in _CENTRAL_ONLY_SCHEMAS:
             assert not (schema_root / schema_name).exists(), package_root
 

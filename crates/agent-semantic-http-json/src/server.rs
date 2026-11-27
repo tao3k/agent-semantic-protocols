@@ -30,6 +30,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 pub struct HttpJsonRequest {
     pub method: String,
     pub path: String,
+    pub authorization: Option<String>,
     pub body: Bytes,
 }
 
@@ -71,7 +72,9 @@ pub async fn post_json(
             .map_err(|error| format!("HTTP JSON client connection: {error}"))
     });
     let request = Request::post(path)
+        .header("host", authority.as_str())
         .header("content-type", "application/json")
+        .header("connection", "close")
         .body(Full::new(body))
         .map_err(|error| format!("build HTTP JSON request: {error}"))?;
     let response = sender
@@ -85,6 +88,7 @@ pub async fn post_json(
         .await
         .map_err(|error| format!("read HTTP JSON response: {error}"))?
         .to_bytes();
+    drop(sender);
     connection_task
         .await
         .map_err(|error| format!("join HTTP JSON client connection: {error}"))??;
@@ -232,6 +236,11 @@ where
 {
     let method = request.method().as_str().to_owned();
     let path = request.uri().path().to_owned();
+    let authorization = request
+        .headers()
+        .get(hyper::header::AUTHORIZATION)
+        .and_then(|val| val.to_str().ok())
+        .map(str::to_owned);
     const MAX_HTTP_JSON_BODY_BYTES: usize = 1024 * 1024;
     let body = match http_body_util::Limited::new(request.into_body(), MAX_HTTP_JSON_BODY_BYTES)
         .collect()
@@ -245,7 +254,14 @@ where
             ));
         }
     };
-    let response = match handler(HttpJsonRequest { method, path, body }).await {
+    let response = match handler(HttpJsonRequest {
+        method,
+        path,
+        authorization,
+        body,
+    })
+    .await
+    {
         Ok(response) => response,
         Err(error) => return Ok(json_error(StatusCode::INTERNAL_SERVER_ERROR, error)),
     };

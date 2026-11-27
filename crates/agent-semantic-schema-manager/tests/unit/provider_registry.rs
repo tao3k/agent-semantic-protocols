@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::build_support::provider_registry::resolve_provider_register;
 
 #[test]
-fn resolves_canonical_provider_registration_from_the_install_register() {
+fn resolves_canonical_provider_registration_without_legacy_tree_sitter_or_query_pack() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let result = resolve_provider_register(source_root).unwrap();
     assert!(result.input_paths.len() > 2);
@@ -26,14 +26,16 @@ fn resolves_canonical_provider_registration_from_the_install_register() {
         .find(|provider| provider["languageId"] == "rust")
         .unwrap();
     assert!(rust.get("searchCapabilities").is_some());
-    assert!(rust.get("queryPackDescriptor").is_some());
-    let capability = &rust["searchCapabilities"]["enhancedSyntaxQueryCapability"];
-    assert_eq!(
-        capability["schemaId"],
-        "agent.semantic-protocols.enhanced-tree-sitter-query-capability-table"
+    assert!(rust.get("queryPackDescriptor").is_none());
+    assert!(
+        rust["searchCapabilities"]
+            .get("enhancedSyntaxQueryCapability")
+            .is_none()
     );
-    assert!(capability.get("$ref").is_none());
-    assert!(result.input_paths.iter().any(|path| {
-        path.ends_with("tree-sitter/tree-sitter-rust/enhanced-query-capabilities.v1.json")
-    }));
+    assert!(
+        !result
+            .input_paths
+            .iter()
+            .any(|path| path.to_string_lossy().contains("tree-sitter"))
+    );
 }

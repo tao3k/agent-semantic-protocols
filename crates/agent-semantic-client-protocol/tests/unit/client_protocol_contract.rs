@@ -2,134 +2,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0 AND LGPL-2.1-or-later
 
-use serde_json::json;
-
-fn resident_syntax_plan_fixture() -> crate::ResidentSyntaxQueryPlan {
-    let digest = format!("blake3-256:{}", "1".repeat(64));
-    serde_json::from_value(json!({
-        "schemaId": "agent.semantic-protocols.resident-syntax-query-plan",
-        "schemaVersion": "1",
-        "profileId": "asp.enhanced-tree-sitter-query.v1",
-        "planDigest": digest,
-        "queryDigest": digest,
-        "languageId": "rust",
-        "providerId": "asp-rust",
-        "parserAbiDigest": digest,
-        "queryGrammarDigest": digest,
-        "operatorTableDigest": digest,
-        "capabilityTableDigest": digest,
-        "generationDigest": digest,
-        "patterns": [{
-            "index": 0,
-            "captures": [{
-                "name": "item",
-                "residentFactPath": "selector",
-                "cardinality": {"minimum": 1, "maximum": 1},
-                "capabilityRowId": "rust.capture.item"
-            }],
-            "structure": {"kind": "true", "origin": {
-                "kind": "capture", "capabilityRowId": "rust.capture.item"
-            }},
-            "predicates": []
-        }],
-        "selectedFields": ["selector"],
-        "requiredCapabilityRows": ["rust.capture.item"],
-        "regexPrograms": []
-    }))
-    .expect("resident syntax plan fixture")
-}
-
-fn enhanced_query_capability_fixture() -> crate::EnhancedQueryCapabilityTable {
-    let digest = format!("blake3-256:{}", "2".repeat(64));
-    let mut table = crate::EnhancedQueryCapabilityTable {
-        schema_id: crate::ENHANCED_QUERY_CAPABILITY_TABLE_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        language_id: "rust".to_owned(),
-        provider_id: "asp-rust".to_owned(),
-        parser_abi: crate::EnhancedQueryVersionedIdentity {
-            id: "tree-sitter-rust".to_owned(),
-            version: "0.24.0".to_owned(),
-            digest: digest.clone(),
-        },
-        query_grammar: crate::EnhancedQueryVersionedIdentity {
-            id: "tree-sitter-query".to_owned(),
-            version: "0.1.0".to_owned(),
-            digest: digest.clone(),
-        },
-        operator_table_digest: digest.clone(),
-        table_digest: digest.clone(),
-        rows: vec![crate::EnhancedQueryCapabilityRow {
-            row_id: "rust.node.function_item".to_owned(),
-            kind: crate::EnhancedQueryCapabilityRowKind::NodeType,
-            source_name: "function_item".to_owned(),
-            publication_state: crate::EnhancedQueryPublicationState::Runtime,
-            lowering: Some(crate::EnhancedQueryCapabilityLowering {
-                resident_fact_path: crate::ResidentSyntaxQueryFactPath::Kind,
-                constraint_kind: crate::EnhancedQueryConstraintKind::Scalar,
-                resident_value: Some("function".to_owned()),
-            }),
-            equivalence_evidence: Some(crate::EnhancedQueryEquivalenceEvidence {
-                method: "native-parser-tree-sitter-differential-v1".to_owned(),
-                corpus_digest: digest.clone(),
-                receipt_digest: digest,
-            }),
-        }],
-    };
-    let mut value = serde_json::to_value(&table).expect("serialize capability fixture");
-    value
-        .as_object_mut()
-        .expect("capability table object")
-        .remove("tableDigest");
-    let canonical = crate::canonical_json::to_jcs_vec(&value).expect("canonical capability");
-    table.table_digest = format!("blake3-256:{}", blake3::hash(&canonical).to_hex());
-    table
-}
-
-#[test]
-fn syntax_plan_context_contract_is_typed_and_digest_bound() {
-    let request = crate::AspClientWorkspaceSyntaxPlanContextRequest {
-        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request"
-            .to_owned(),
-        schema_version: "1".to_owned(),
-        producer: "rust".to_owned(),
-    };
-    request
-        .validate_schema_identity()
-        .expect("complete context request");
-    let mut blank = request.clone();
-    blank.producer = " ".to_owned();
-    assert!(blank.validate_schema_identity().is_err());
-
-    let generation_digest = format!("blake3-256:{}", "3".repeat(64));
-    let response = crate::AspClientWorkspaceSyntaxPlanContextResponse {
-        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response"
-            .to_owned(),
-        schema_version: "1".to_owned(),
-        generation_digest,
-        capability: enhanced_query_capability_fixture(),
-    };
-    response.validate().expect("exact context response");
-
-    let mut tampered_generation = response.clone();
-    tampered_generation.generation_digest = "blake3-256:short".to_owned();
-    assert!(tampered_generation.validate().is_err());
-
-    let mut tampered_capability = response;
-    tampered_capability.capability.table_digest = format!("blake3-256:{}", "4".repeat(64));
-    assert!(tampered_capability.validate().is_err());
-
-    let unknown_field = json!({
-        "schemaId": "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request",
-        "schemaVersion": "1",
-        "producer": "rust",
-        "query": "(function_item) @item"
-    });
-    assert!(
-        serde_json::from_value::<crate::AspClientWorkspaceSyntaxPlanContextRequest>(unknown_field)
-            .is_err()
-    );
-}
-
 #[test]
 fn cancellation_probe_has_a_language_neutral_route_operation() {
     assert_eq!(
@@ -268,7 +140,6 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
             "title:\"Runtime ASP client\"^2 OR body:transport".to_owned(),
         ]]),
         topology: None,
-        syntax: None,
         native_syntax: None,
         graph: None,
         composition: crate::AspClientSearchPlaybookComposition::Intersect {
@@ -319,22 +190,6 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         .validate_schema_identity()
         .expect("workspace Query Playbook identity");
 
-    let syntax_query = crate::AspClientWorkspaceSyntaxQueryRequest {
-        schema_id: "agent.semantic-protocols.asp-client-workspace-syntax-query-request".to_owned(),
-        schema_version: "1".to_owned(),
-        languages: None,
-        documents: None,
-        workspace: None,
-        syntax: vec![crate::AspClientSearchPlaybookSyntaxBlock {
-            producer: "rust".to_owned(),
-            plan: resident_syntax_plan_fixture(),
-        }],
-        projection: "matches".to_owned(),
-    };
-    syntax_query
-        .validate_schema_identity()
-        .expect("workspace syntax Query identity");
-
     let source_index = crate::AspClientSourceIndexLookupRequest {
         schema_id: "agent.semantic-protocols.asp-client-source-index-lookup-request".to_owned(),
         schema_version: "1".to_owned(),
@@ -382,7 +237,6 @@ fn workspace_playbook_clause_order_is_priority_and_graph_barrier() {
             "title:\"Client frame\"^2 OR body:Endpoint".to_owned(),
         ]]),
         topology: None,
-        syntax: None,
         native_syntax: None,
         graph: Some(vec![AspClientSearchPlaybookGraphBlock {
             language: "gql".to_owned(),
@@ -481,7 +335,6 @@ fn workspace_search_v1_admits_independent_engine_routes() {
         rg: Some(vec![vec!["RuntimeClient|ResolvedRoute".to_owned()]]),
         tantivy: None,
         topology: None,
-        syntax: None,
         native_syntax: None,
         graph: None,
         composition: crate::AspClientSearchPlaybookComposition::Leaf {
@@ -540,17 +393,14 @@ fn workspace_search_v1_admits_independent_engine_routes() {
 
     let structural = crate::AspClientWorkspaceSearchPlaybookRequest {
         rg: None,
-        syntax: Some(vec![crate::AspClientSearchPlaybookSyntaxBlock {
-            producer: "rust".to_owned(),
-            plan: resident_syntax_plan_fixture(),
-        }]),
+        native_syntax: Some(vec!["rust://src/lib.rs#item/function/example".to_owned()]),
         clause_order: vec![Clause {
-            axis: Axis::Syntax,
+            axis: Axis::NativeSyntax,
             block_index: 0,
         }],
         composition: crate::AspClientSearchPlaybookComposition::Leaf {
             clause: Clause {
-                axis: Axis::Syntax,
+                axis: Axis::NativeSyntax,
                 block_index: 0,
             },
         },
@@ -578,7 +428,6 @@ fn workspace_search_v1_rejects_flattened_or_domain_invalid_composition() {
         rg: Some(vec![vec!["RuntimeClient|ResolvedRoute".to_owned()]]),
         tantivy: None,
         topology: None,
-        syntax: None,
         native_syntax: None,
         graph: None,
         composition: Composition::Leaf {
@@ -606,17 +455,14 @@ fn workspace_search_v1_rejects_flattened_or_domain_invalid_composition() {
             .contains("exactly match clauseOrder")
     );
 
-    request.syntax = Some(vec![crate::AspClientSearchPlaybookSyntaxBlock {
-        producer: "rust".to_owned(),
-        plan: resident_syntax_plan_fixture(),
-    }]);
+    request.native_syntax = Some(vec!["rust://src/lib.rs#item/function/example".to_owned()]);
     request.clause_order = vec![
         Clause {
             axis: Axis::Rg,
             block_index: 0,
         },
         Clause {
-            axis: Axis::Syntax,
+            axis: Axis::NativeSyntax,
             block_index: 0,
         },
     ];

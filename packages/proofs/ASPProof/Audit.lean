@@ -19,7 +19,6 @@ import ASPProof.Audit.SearchEvidenceDerivation
 import ASPProof.Audit.ProjectTopologyProgram
 import ASPProof.Audit.ProjectTopologyIdentityRefinement
 import ASPProof.Audit.RuntimeProjectTopologyAttachment
-import ASPProof.Audit.EnhancedSyntaxQueryPlan
 import Lean.Elab.Command
 
 namespace ASPProof.Audit

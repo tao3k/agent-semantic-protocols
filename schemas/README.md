@@ -772,11 +772,12 @@ native Scheme/query-table admission. Neither Scheme source nor a private POO
 IR is added to Client Protocol; the former flag-shaped CLI is removed rather
 than retained as a compatibility path.
 
-`enhanced-tree-sitter-query-operator-table.v1.schema.json` defines the
-language-neutral MRR Gerbil AOT operator declaration for the namespaced
-`#asp-*` predicates and result directive.
-`enhanced-tree-sitter-query-capability-table.v1.schema.json` defines each
-provider's parser/grammar-bound publication and equivalence rows.
+`provider-core-manifest.schema.json`, `ast-inspect.schema.json`,
+`ast-verify.schema.json`, and `language-conformance-pack.schema.json` define the
+converged minimal AI-Native Language Server Provider Protocol (RFC 10.36):
+native language providers self-report their syntax surface and implement the
+compiler-oracle wire spine without Tree-sitter adapters, while high-order
+language ontology and Coding Style policies live in Gerbil Scheme.
 `resident-syntax-query-plan.v1.schema.json` is the complete normalized plan
 executed over one active generation. Search and direct Syntax requests carry
 that plan rather than Tree-sitter Query source or provider argv. These are
@@ -1007,3 +1008,19 @@ fetches that revision's successful CI artifact, and Orgize build-support admits
 its target, runtime, headers and static library hashes. ASP does not implicitly
 compile the Scheme parser. The external-program C lifecycle bridge still uses
 the paired FFI runtime toolchain.
+
+`semantic-open-edb.v1.schema.json` is the converged, zero-regex Open EDB fact
+ingestion wire contract (`kind` + native parser `languageKind` + `source` +
+open `attrs` + directed `edges`) serving ASP's resident `WorkspaceSearchIndex`
+and Marlin's native Gerbil Scheme `:gerbil-ascent` / `:gerbil-parser` / POO
+reasoning plane. Existing V1 provider payloads
+(`semantic-native-syntax-fact-index.v1.schema.json` and
+`provider-language-projection-batch-response.schema.json`) bridge losslessly
+into `semantic-open-edb.v1` through ASP's zero-regex Rust wire adapters
+(`parse_native_syntax_fact_index_json` and
+`parse_provider_projection_batch_json`), while BLAKE3 `content_hash`-keyed
+persistent Open EDB caches (`WorkspaceOpenEdbCache`) guarantee zero stale facts
+across workspace restarts. The 12 legacy tree-sitter and syntax-query-plan
+schemas remain frozen solely for V1 external provider bundle compatibility and
+are superseded for all new Marlin/ASP workflows by `semantic-open-edb.v1` +
+Scheme POO language fragments (see RFC 10.34).

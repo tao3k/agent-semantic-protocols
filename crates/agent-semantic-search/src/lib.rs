@@ -25,9 +25,14 @@ pub use agent_semantic_search_playbook::{
     search_playbook_composition_abi_digest,
 };
 pub use converged_resident_index::{
-    WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceFileDelta, WorkspaceIndexConfig,
-    WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery, WorkspaceSearchReport,
-    WorkspaceSymbolKind, WorkspaceSymbolMatch,
+    OPEN_EDB_CACHE_SCHEMA_VERSION, SEMANTIC_OPEN_EDB_SCHEMA_ID, SEMANTIC_OPEN_EDB_SCHEMA_VERSION,
+    WorkspaceContextLine, WorkspaceDeltaReceipt, WorkspaceEdbAttr, WorkspaceEdbEdgeFact,
+    WorkspaceEdbEntityFact, WorkspaceEdbFileFact, WorkspaceEdbPrefilter, WorkspaceEdbSnapshot,
+    WorkspaceFileDelta, WorkspaceIndexConfig, WorkspaceOpenEdbCache, WorkspaceOpenEdbCacheFile,
+    WorkspaceOpenEdbIngestBatch, WorkspaceOpenEdbIngestReceipt, WorkspaceOpenEdbPendingFile,
+    WorkspaceOpenEdbRestoreReceipt, WorkspaceSearchHit, WorkspaceSearchIndex, WorkspaceSearchQuery,
+    WorkspaceSearchReport, WorkspaceSymbolKind, WorkspaceSymbolMatch,
+    parse_native_syntax_fact_index_json, parse_provider_projection_batch_json,
 };
 pub use marlin_engine::{DEFAULT_SEARCH_GENERATION_POINTER_KEY, MarlinConvergedSearchEngine};
 pub use marlin_playbook_executor::{

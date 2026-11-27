@@ -10,6 +10,7 @@ license.workspace = true
 
 [dependencies]
 agent-semantic-config = { path = "../agent-semantic-config" }
+schemars.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml.workspace = true

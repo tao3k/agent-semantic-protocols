@@ -52,6 +52,8 @@ def test_rust_package_matrix_covers_each_workspace_package_once() -> None:
     assert "agent-semantic-scheme-syntax" not in workflow
     assert "agent-semantic-client-db" not in workflow
     assert "agent-semantic-runtime-server" not in workflow
+    assert "agent-semantic-tree-sitter" not in workflow
+    assert "agent-semantic-mrr" not in workflow
     assert "orgize-ffi" not in workflow
     assert "--ignored --exact" not in workflow
     monolithic_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -126,21 +128,19 @@ def test_root_release_carries_server_managed_graphs_artifact() -> None:
     ).exists()
 
 
-def test_tree_sitter_contract_gate_uses_packaged_cli() -> None:
+def test_tree_sitter_pseudo_sexp_gate_is_retired() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     assert "tools/run-tree-sitter-query-contracts.sh" not in workflow
-    assert (
-        "uv run --project packages/python --frozen python -m tools "
-        "tree-sitter validate contracts"
-    ) in workflow
+    assert "tree-sitter-query-contract-gates:" not in workflow
+    assert "agent-semantic-tree-sitter" not in workflow
+    assert "agent-semantic-mrr" not in workflow
 
 
 def test_language_facade_ci_gate_is_static() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     step = workflow.split("- name: Language facade smoke gate", 1)[1]
-    step = step.split("  tree-sitter-query-contract-gates:", 1)[0]
 
     assert (
         "uv run --project packages/python --frozen pytest "

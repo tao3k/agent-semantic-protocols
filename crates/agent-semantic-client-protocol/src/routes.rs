@@ -8,19 +8,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::resident_syntax_query_plan::ResidentSyntaxQueryPlan;
-
 pub(super) const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
 pub(super) const CLIENT_WORKSPACE_SEARCH_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-search-playbook-request";
 pub(super) const CLIENT_WORKSPACE_QUERY_PLAYBOOK_REQUEST: &str =
     "agent.semantic-protocols.asp-client-workspace-query-playbook-request";
-pub(super) const CLIENT_WORKSPACE_SYNTAX_QUERY_REQUEST: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
-pub(super) const CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request";
-pub(super) const CLIENT_WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response";
 pub(super) const CLIENT_SOURCE_INDEX_LOOKUP_REQUEST: &str =
     "agent.semantic-protocols.asp-client-source-index-lookup-request";
 pub(super) const CLIENT_EXACT_QUERY_REQUEST: &str =
@@ -39,14 +31,6 @@ pub const LIVE_CORPUS_CACHE_STATE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.live-corpus-cache-state-receipt";
 pub(super) const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
 pub(super) const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
-
-/// One provider-native Syntax block inside Search Playbook.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientSearchPlaybookSyntaxBlock {
-    pub producer: String,
-    pub plan: ResidentSyntaxQueryPlan,
-}
 
 /// One native Graph-language block inside Search Playbook.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -78,7 +62,6 @@ pub enum AspClientSearchPlaybookClauseAxis {
     Rg,
     Tantivy,
     Topology,
-    Syntax,
     #[serde(rename = "native-syntax")]
     NativeSyntax,
     Graph,
@@ -130,8 +113,6 @@ pub struct AspClientWorkspaceSearchPlaybookRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topology: Option<Vec<AspClientSearchPlaybookTopologyBlock>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub syntax: Option<Vec<AspClientSearchPlaybookSyntaxBlock>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_syntax: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph: Option<Vec<AspClientSearchPlaybookGraphBlock>>,
@@ -151,97 +132,6 @@ pub struct AspClientWorkspaceQueryPlaybookRequest {
     pub documents: Option<String>,
     pub selectors: Vec<String>,
     pub projection: String,
-}
-
-/// Direct provider-native syntax Query over the current immutable workspace.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQueryRequest {
-    pub schema_id: String,
-    pub schema_version: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub languages: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub documents: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<String>,
-    pub syntax: Vec<AspClientSearchPlaybookSyntaxBlock>,
-    pub projection: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQueryEvidence {
-    pub owner: String,
-    pub selector: String,
-    pub capture: String,
-    pub relation: String,
-    pub selected: AspClientWorkspaceSyntaxQuerySelection,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQuerySelection {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub selector: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub byte_range: Option<[usize; 2]>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub scopes: Vec<AspClientWorkspaceSyntaxQueryScope>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub query_keys: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub projections: Vec<AspClientWorkspaceSyntaxQueryProjection>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub relations: Vec<
-        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
-    >,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQueryScope {
-    pub relation: String,
-    pub kind: String,
-    pub symbol: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQueryProjection {
-    pub kind: String,
-    pub digest: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxQueryResponse {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub state: String,
-    pub evidence: Vec<AspClientWorkspaceSyntaxQueryEvidence>,
-}
-
-/// Constant-time resident context read used by Client-side plan compilation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxPlanContextRequest {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub producer: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspClientWorkspaceSyntaxPlanContextResponse {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub generation_digest: String,
-    pub capability: crate::EnhancedQueryCapabilityTable,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

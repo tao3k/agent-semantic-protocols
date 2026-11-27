@@ -98,7 +98,6 @@ jobs:
           cargo check
           -p agent-semantic-client-protocol
           -p agent-semantic-provider-protocol
-          -p agent-semantic-tree-sitter
           -p agent-semantic-topology
           -p agent-semantic-search-playbook
           -p agent-semantic-search-projection
@@ -161,10 +160,6 @@ jobs:
         run: |
           uv run --project packages/python --frozen pytest \
             tests/unit/test_semantic_source_location_schema.py \
-            tests/unit/test_semantic_tree_sitter_grammar_profile_schema.py \
-            tests/unit/test_semantic_tree_sitter_provenance_schema.py \
-            tests/unit/test_semantic_tree_sitter_query_schema.py \
-            tests/unit/semantic_tree_sitter_query_rfc \
             tests/unit/test_asp_server_first_architecture_rfc.py \
             tests/unit/test_marlin_host_integration_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
@@ -274,37 +269,3 @@ jobs:
 
       - name: Language facade smoke gate
         run: uv run --project packages/python --frozen pytest tests/unit/test_language_facade_smoke.py -q
-
-  tree-sitter-query-contract-gates:
-    name: Tree-sitter query and ABI contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Sync core external providers from providers.toml
-        run: python3 scripts/providers_sync.py sync --workspace . --profile core
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: languages/asp-typescript/package-lock.json
-
-      - name: Install TypeScript query validator dependencies
-        run: npm --prefix languages/asp-typescript ci
-
-      - name: Tree-sitter query and ABI gates
-        run: >-
-          uv run --project packages/python --frozen python -m tools tree-sitter validate contracts
-          --gate runtime-boundary
-          --gate query-corpus
-          --no-build

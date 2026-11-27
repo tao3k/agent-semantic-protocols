@@ -24,6 +24,7 @@ under =target/=.
 |-------+---------------------+-----------|
 | [[file:../../project.sysml][project.sysml]] | Top-level ASP project entry and named views | [[file:../../README.md][ASP README]] |
 | [[file:search-engine.sysml][search-engine.sysml]] | ASP-SRCH-R01/R07 Pure-Rust search kernel, host Storage/Org ports, atomic CAS generation lifecycle, `providers.toml` packaging, Quint verification, and Criterion benchmarks | [[file:../quint/search-engine.qnt][Search Engine Quint model]] |
+| [[file:ast-engine.sysml][ast-engine.sysml]] | ASP-AST-R01/R07 Language-agnostic AI-Native Language Server AST Provider Register Engine (`crates/agent-semantic-ast`), Source-Backed Span-Overlay over registered native providers, Frontier 1 `:gerbil-ascent` style elevation, Frontier 2 Oracle-Verified / LR CPCT+ syntax calibration, and atomic Open EDB sync | [[file:../quint/ast-engine.qnt][AST Engine Quint model]] · [[file:../../docs/10-19-rfcs/10.35-agent-semantic-ast-engine-and-calibration-protocol.org][RFC 10.35]] |
 
 * Validate and render
 

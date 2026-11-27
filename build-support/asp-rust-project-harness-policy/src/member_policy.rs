@@ -264,16 +264,6 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         latency_sensitive_performance_owners: &[],
         availability_stability_owners: &[],
     },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-tree-sitter",
-        crate_root: "crates/agent-semantic-tree-sitter",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-tree-sitter cargo-check advice; owner=agent-semantic-tree-sitter build gate; finding_category=advisory policy findings; why_safe_now=tree-sitter catalog ABI advice stays visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: None,
-        rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
 ];
 
 /// Returns the ASP workspace member policies centralized under this crate.

@@ -53,8 +53,6 @@
         "enum": [
           "asp.workspace.search.playbook",
           "asp.workspace.query.playbook",
-          "asp.workspace.query.syntax",
-          "asp.workspace.query.syntax-plan-context",
           "asp.workspace.generation.ensure-ready",
           "asp.graph.evaluate",
           "asp.schema.bundle",

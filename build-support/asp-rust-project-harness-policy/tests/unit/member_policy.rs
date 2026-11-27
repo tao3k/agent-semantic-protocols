@@ -23,6 +23,9 @@ fn retired_codex_claude_hook_and_legacy_standalone_crates_are_absent_from_worksp
         "crates/agent-semantic-runtime-process-observation",
         "crates/agent-semantic-runtime-server",
         "crates/agent-semantic-scheme-syntax",
+        "crates/agent-semantic-tree-sitter",
+        "crates/agent-semantic-mrr",
+        ".github/actions/mrr-search-owner",
         ".github/actions/orgize-ffi",
         ".github/scripts/fetch-orgize-ffi.sh",
         "asp-codex-plugin",
@@ -57,7 +60,6 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-search-projection",
             "agent-semantic-topology",
             "agent-semantic-schema-manager",
-            "agent-semantic-tree-sitter",
         ]
     );
 }

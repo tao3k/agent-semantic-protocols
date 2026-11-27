@@ -6,6 +6,16 @@
     "asp-client-protocol-v1": "asp-client-protocol.v1.proto"
   },
   "rootSets": {
+    "provider-core": [
+      "provider-core-manifest.schema.json",
+      "universal-search-protocol.schema.json",
+      "provider-runtime-request-frame.schema.json",
+      "provider-runtime-response-frame.schema.json",
+      "semantic-open-edb.v1.schema.json",
+      "ast-inspect.schema.json",
+      "ast-verify.schema.json",
+      "language-conformance-pack.schema.json"
+    ],
     "provider-contract": [
       "provider-registration.schema.json",
       "provider-manifest.schema.json",
@@ -27,10 +37,6 @@
       "asp-client-conformance.schema.json",
       "asp-client-workspace-search-playbook-request.v1.schema.json",
       "asp-client-workspace-query-playbook-request.v1.schema.json",
-      "asp-client-workspace-syntax-query-request.v1.schema.json",
-      "asp-client-workspace-syntax-query-response.v1.schema.json",
-      "asp-client-workspace-syntax-plan-context-request.v1.schema.json",
-      "asp-client-workspace-syntax-plan-context-response.v1.schema.json",
       "resident-syntax-query-plan.v1.schema.json",
       "search-topology-settlement.v1.schema.json",
       "runtime-search-execution-budget.v1.schema.json",
@@ -42,15 +48,9 @@
       "asp-client-exact-query-response.schema.json",
       "asp-client-exact-query-failure.schema.json",
       "query-playbook-materialization-receipt.v1.schema.json",
-      "asp-client-query-readiness-failure.schema.json",
-      "asp-client-dispatch-failure.schema.json",
       "asp-client-work-counters.schema.json",
       "asp-client-schema-bundle-request.schema.json",
       "asp-client-schema-bundle-response.schema.json",
-      "grpc-warm-latency-receipt.schema.json",
-      "lexical-postings-work-reduction-receipt.schema.json",
-      "rg-coverage-receipt.schema.json",
-      "runtime-client-terminal.schema.json",
       "asp-client-workspace-source-mutation.schema.json",
       "asp-client-cancellation-probe-request.schema.json",
       "asp-client-cancellation-probe-response.schema.json",
@@ -78,17 +78,12 @@
       "runtime-workspace-execution-pointer.v1.schema.json",
       "query-playbook-materialization-request.v1.schema.json",
       "query-playbook-materialization-receipt.v1.schema.json",
-      "semantic-exact-selector-receipt.v1.schema.json",
-      "semantic-owner-item-evidence.v1.schema.json",
       "semantic-content-compaction.v1.schema.json",
-      "search-generation-change-set.v1.schema.json",
       "semantic-read-packet.v1.schema.json",
       "semantic-source-location.v1.schema.json",
       "semantic-tree-sitter-provenance.v1.schema.json",
       "semantic-tree-sitter-query.v1.schema.json",
       "semantic-tree-sitter-grammar-profile.v1.schema.json",
-      "enhanced-tree-sitter-query-operator-table.v1.schema.json",
-      "enhanced-tree-sitter-query-capability-table.v1.schema.json",
       "resident-syntax-query-plan.v1.schema.json",
       "semantic-relation-plan.v1.schema.json",
       "semantic-flow-lite.v1.schema.json",
@@ -124,10 +119,13 @@
   "profiles": [
     {
       "languageId": "rust",
-      "searchProducerAxes": ["language"],
+      "searchProducerAxes": [
+        "language"
+      ],
       "packageRoot": "languages/asp-rust",
       "bundleRoot": "languages/asp-rust/schemas",
       "rootSets": [
+        "provider-core",
         "provider-contract",
         "client-protocol",
         "project-resolution",
@@ -140,7 +138,9 @@
         "semantic-invariant-candidate.v1.schema.json",
         "semantic-compare-packet.v1.schema.json"
       ],
-      "bootstrap": ["provider-workspace-install.schema.json"],
+      "bootstrap": [
+        "provider-workspace-install.schema.json"
+      ],
       "providerOwned": [
         "rust-ast-patch-real-project-evidence.v1.schema.json",
         "rust-semantic-capabilities.v1.schema.json"
@@ -148,10 +148,13 @@
     },
     {
       "languageId": "typescript",
-      "searchProducerAxes": ["language"],
+      "searchProducerAxes": [
+        "language"
+      ],
       "packageRoot": "languages/asp-typescript",
       "bundleRoot": "languages/asp-typescript/schemas",
       "rootSets": [
+        "provider-core",
         "provider-contract",
         "client-protocol",
         "project-resolution",
@@ -159,17 +162,22 @@
         "agent-reasoning"
       ],
       "roots": [],
-      "bootstrap": ["provider-workspace-install.schema.json"],
+      "bootstrap": [
+        "provider-workspace-install.schema.json"
+      ],
       "providerOwned": [
         "typescript-semantic-capabilities.v1.schema.json"
       ]
     },
     {
       "languageId": "python",
-      "searchProducerAxes": ["language"],
+      "searchProducerAxes": [
+        "language"
+      ],
       "packageRoot": "languages/asp-python",
       "bundleRoot": "languages/asp-python/schemas",
       "rootSets": [
+        "provider-core",
         "provider-contract",
         "client-protocol",
         "project-resolution",
@@ -177,17 +185,22 @@
         "agent-reasoning"
       ],
       "roots": [],
-      "bootstrap": ["provider-workspace-install.schema.json"],
+      "bootstrap": [
+        "provider-workspace-install.schema.json"
+      ],
       "providerOwned": [
         "python-semantic-capabilities.v1.schema.json"
       ]
     },
     {
       "languageId": "julia",
-      "searchProducerAxes": ["language"],
+      "searchProducerAxes": [
+        "language"
+      ],
       "packageRoot": "languages/AspJulia.jl",
       "bundleRoot": "languages/AspJulia.jl/schemas",
       "rootSets": [
+        "provider-core",
         "provider-contract",
         "client-protocol",
         "project-resolution",
@@ -195,15 +208,20 @@
         "agent-reasoning"
       ],
       "roots": [],
-      "bootstrap": ["provider-workspace-install.schema.json"],
+      "bootstrap": [
+        "provider-workspace-install.schema.json"
+      ],
       "providerOwned": []
     },
     {
       "languageId": "gerbil-scheme",
-      "searchProducerAxes": ["language"],
+      "searchProducerAxes": [
+        "language"
+      ],
       "packageRoot": "languages/asp-gerbil-scheme",
       "bundleRoot": "languages/asp-gerbil-scheme/schemas",
       "rootSets": [
+        "provider-core",
         "provider-contract",
         "client-protocol",
         "project-resolution",
@@ -216,14 +234,15 @@
         "provider-native-exact-request.v1.schema.json",
         "provider-native-exact-response.v1.schema.json",
         "semantic-query-packet.v1.schema.json",
-        "semantic-owner-item-evidence.v1.schema.json",
         "semantic-extension-pattern-mapping.v1.schema.json",
         "semantic-language-evidence.v1.schema.json",
         "semantic-language-policy-report.v1.schema.json",
         "semantic-runtime-source-acquisition.v1.schema.json",
         "semantic-type-proof.v1.schema.json"
       ],
-      "bootstrap": ["provider-workspace-install.schema.json"],
+      "bootstrap": [
+        "provider-workspace-install.schema.json"
+      ],
       "providerOwned": [
         "semantic-asp-gerbil-scheme-info.v1.schema.json"
       ]
@@ -231,10 +250,13 @@
     {
       "languageId": "org",
       "publicationOwner": "builtin",
-      "searchProducerAxes": ["document"],
+      "searchProducerAxes": [
+        "document"
+      ],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/org/schemas",
       "rootSets": [
+        "provider-core",
         "client-protocol",
         "project-resolution",
         "core-query",
@@ -247,10 +269,13 @@
     {
       "languageId": "md",
       "publicationOwner": "builtin",
-      "searchProducerAxes": ["document"],
+      "searchProducerAxes": [
+        "document"
+      ],
       "packageRoot": "languages/orgize",
       "bundleRoot": "languages/orgize/provider/md/schemas",
       "rootSets": [
+        "provider-core",
         "client-protocol",
         "project-resolution",
         "core-query",
@@ -262,6 +287,22 @@
     }
   ],
   "families": [
+    {
+      "familyId": "asp.schema-family.provider-core",
+      "owner": "crates/agent-semantic-provider-protocol",
+      "rationale": "Converged minimal AI-Native Language Server provider core schemas generated directly from Rust structs via schemars with version-free filenames (RFC 10.36).",
+      "priority": 400,
+      "parentFamilyId": "asp.schema-family.provider",
+      "namespace": {
+        "filenamePrefixes": [
+          "provider-core-manifest.",
+          "universal-search-protocol.",
+          "ast-inspect.",
+          "ast-verify.",
+          "language-conformance-pack."
+        ]
+      }
+    },
     {
       "familyId": "asp.schema-family.semantic-assurance",
       "owner": "schemas",
@@ -304,8 +345,6 @@
       "rationale": "Semantic policy facts and executable policy recipe contracts.",
       "priority": 200,
       "parentFamilyId": "asp.schema-family.semantic",
-      "definitionSchemaPath": "schemas/semantic-policy-definitions.v1.schema.json",
-      "definitionVisibility": "family",
       "namespace": {
         "filenamePrefixes": [
           "semantic-policy-",
@@ -373,11 +412,6 @@
       "namespace": {
         "filenamePrefixes": [
           "activation-"
-        ]
-      },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/host-native-execution-required.v1.schema.json"
         ]
       }
     },
@@ -505,12 +539,6 @@
           "source-overlay.",
           "source-snapshot-"
         ]
-      },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/asp.resource-sync-receipt.v1.schema.json",
-          "schemas/parser-read-authority.v1.schema.json"
-        ]
       }
     },
     {
@@ -573,23 +601,14 @@
         ]
       },
       "membershipOverrides": {
-      "includeSchemaPaths": [
-        "schemas/asp.exact-selector-execution-receipt.v1.schema.json",
-        "schemas/query-playbook-materialization-request.v1.schema.json",
-        "schemas/query-playbook-materialization-receipt.v1.schema.json",
-        "schemas/projection-evidence-context.v1.schema.json",
-          "schemas/lexical-postings-work-reduction-receipt.schema.json",
-          "schemas/rg-coverage-receipt.schema.json",
+        "includeSchemaPaths": [
+          "schemas/query-playbook-materialization-request.v1.schema.json",
+          "schemas/query-playbook-materialization-receipt.v1.schema.json",
+          "schemas/projection-evidence-context.v1.schema.json",
           "schemas/asp-client-workspace-search-playbook-request.v1.schema.json",
-          "schemas/asp-client-workspace-syntax-query-request.v1.schema.json",
-          "schemas/asp-client-workspace-syntax-query-response.v1.schema.json",
-          "schemas/asp-client-workspace-syntax-plan-context-request.v1.schema.json",
-          "schemas/asp-client-workspace-syntax-plan-context-response.v1.schema.json",
           "schemas/search-topology-settlement.v1.schema.json",
           "schemas/runtime-search-execution-budget.v1.schema.json",
           "schemas/runtime-resident-request-plane-receipt.v1.schema.json",
-          "schemas/enhanced-tree-sitter-query-operator-table.v1.schema.json",
-          "schemas/enhanced-tree-sitter-query-capability-table.v1.schema.json",
           "schemas/resident-syntax-query-plan.v1.schema.json"
         ]
       }
@@ -667,11 +686,6 @@
           "semantic-"
         ]
       },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/relationship-contract.v1.schema.json"
-        ]
-      },
       "definitionSchemaPath": "schemas/semantic-definitions.v1.schema.json",
       "definitionVisibility": "descendants"
     },
@@ -686,9 +700,7 @@
           "rust-project-harness-",
           "rust-ast-patch-"
         ]
-      },
-      "definitionSchemaPath": "schemas/rust-project-harness-definitions.v1.schema.json",
-      "definitionVisibility": "family"
+      }
     },
     {
       "familyId": "asp.schema-family.provider",
@@ -705,7 +717,6 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp.activated-ranker.v1.schema.json",
           "schemas/asp-gerbil-scheme-bench.v1.schema.json"
         ]
       }
@@ -723,9 +734,7 @@
           "storage-",
           "turso-"
         ]
-      },
-      "definitionSchemaPath": "schemas/client-storage-definitions.v1.schema.json",
-      "definitionVisibility": "family"
+      }
     },
     {
       "familyId": "asp.schema-family.workspace",
@@ -741,7 +750,6 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp.active-workspace-generation.v1.schema.json",
           "schemas/active-generation-projection-capability.v1.schema.json",
           "schemas/active-search-generation.schema.json",
           "schemas/project-workspace-binding.v1.schema.json",
@@ -788,11 +796,6 @@
       "namespace": {
         "filenamePrefixes": [
           "runtime-server-"
-        ]
-      },
-      "membershipOverrides": {
-        "includeSchemaPaths": [
-          "schemas/grpc-warm-latency-receipt.schema.json"
         ]
       }
     },

@@ -6,6 +6,7 @@
 //! with compact 6-byte trigram postings, HIR boolean query planning, zero-copy `mmap`
 //! snapshots, and incremental delta updates.
 
+use super::edb::{WorkspaceEdbEdgeFact, WorkspaceEdbEntityFact};
 use super::symbols::{IndexedSymbol, WorkspaceSymbolMatch};
 use super::{build, query};
 
@@ -135,6 +136,8 @@ pub(super) struct IndexedFile {
     pub(super) line_offsets: Vec<u32>,
     pub(super) symbols: Vec<IndexedSymbol>,
     pub(super) imports: Vec<String>,
+    pub(super) open_edb_entities: Vec<WorkspaceEdbEntityFact>,
+    pub(super) open_edb_edges: Vec<WorkspaceEdbEdgeFact>,
 }
 
 /// Resident, generation-stamped 4-axis search index owned by ASP.
@@ -246,6 +249,7 @@ impl WorkspaceSearchIndex {
         {
             let receipt = idx.sync_workspace_from_disk();
             if receipt.upserted_files > 0 || receipt.deleted_files > 0 {
+                idx.compact();
                 let _ = idx.save_snapshot(snapshot_path);
             }
             return idx;

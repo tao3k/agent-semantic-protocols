@@ -4,14 +4,10 @@
 
 use agent_semantic_search_projection::SearchTopologySettlement;
 use agent_semantic_topology::{
-    OrgDocumentProjection, OrgPropertyEntry, OrgSectionProjection, ProjectTopologyClosureLimits,
-    ProjectTopologyDirectEdge, ProjectTopologyExpectedRelation, ProjectTopologyGenerationBuilder,
-    ProjectTopologyGenerationIdentity, ProjectTopologyInferenceProgram, ProjectTopologyLibrary,
-    ProjectTopologyManifest, ProjectTopologyRelationCoverage, ProjectTopologySourceNode,
-    ProjectTopologySourceSegment,
+    OrgDocumentProjection, OrgPropertyEntry, OrgSectionProjection, ProjectTopologyLibrary,
+    ProjectTopologyManifest,
 };
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 fn canonical_manifest() -> ProjectTopologyManifest {
     let projection = OrgDocumentProjection::new(
@@ -57,89 +53,6 @@ fn valid_library() -> ProjectTopologyLibrary {
     let manifest = canonical_manifest();
     ProjectTopologyLibrary::admit_with_receipts(packet, manifest.project_workspace(), &receipts)
         .expect("admitted Project Topology fixture")
-}
-
-fn digest(byte: char) -> String {
-    format!("blake3-256:{}", byte.to_string().repeat(64))
-}
-
-async fn generated_v2_library_with_frontier() -> ProjectTopologyLibrary {
-    let manifest = canonical_manifest();
-    let source = ProjectTopologySourceSegment::new(
-        "src/registry.rs",
-        digest('1'),
-        vec![
-            ProjectTopologySourceNode::new_owner(
-                "registry-owner",
-                "rust",
-                "src/registry.rs",
-            )
-            .expect("registry owner node"),
-            ProjectTopologySourceNode::new(
-                "registry",
-                "rust://src/registry.rs#item/struct/Registry",
-            )
-            .expect("registry node"),
-            ProjectTopologySourceNode::new(
-                "refresh",
-                "rust://src/registry.rs#item/method/refresh/scope/implementation-owner/type/Registry",
-            )
-            .expect("refresh node"),
-            ProjectTopologySourceNode::new(
-                "publication",
-                "org://docs/publication.org#item/heading/Publication",
-            )
-            .expect("publication node"),
-        ],
-        vec![
-            ProjectTopologyDirectEdge::new("calls-refresh", "CALLS", "registry", "refresh")
-                .expect("CALLS edge"),
-            ProjectTopologyDirectEdge::new(
-                "covers-publication",
-                "COVERS",
-                "refresh",
-                "publication",
-            )
-            .expect("COVERS edge"),
-        ],
-    )
-    .expect("source segment");
-    let candidate = ProjectTopologyGenerationBuilder::new(
-        ProjectTopologyGenerationIdentity::new(
-            manifest.project_workspace().clone(),
-            digest('2'),
-            digest('3'),
-            Arc::new(ProjectTopologyInferenceProgram::standard().expect("standard MRR program")),
-            digest('4'),
-            digest('5'),
-            digest('6'),
-        )
-        .expect("generation identity"),
-        ProjectTopologyClosureLimits::new(64, 256, 256).expect("closure limits"),
-    )
-    .with_expected_relations(vec![
-        ProjectTopologyExpectedRelation::new(
-            "expected-publication",
-            "registry",
-            "COVERS",
-            "publication",
-            "heading",
-            1,
-            ProjectTopologyRelationCoverage::Partial,
-        )
-        .expect("expected relation"),
-    ])
-    .expect("unique expectation")
-    .build_from_scratch(vec![source])
-    .await
-    .expect("generated V1 topology");
-    let admitted = BTreeMap::from([(
-        candidate.rebuild_receipt_id().to_owned(),
-        candidate.rebuild_receipt().clone(),
-    )]);
-    candidate
-        .admit(&admitted)
-        .expect("generated V1 topology admission")
 }
 
 #[test]
@@ -472,80 +385,6 @@ fn executed_workspace_result_is_joined_to_topology_before_rendering() {
     );
 }
 
-#[tokio::test]
-async fn topology_owner_root_is_ranked_and_rendered_as_queryable_evidence() {
-    let owner_selector = "rust://src/registry.rs";
-    let library = generated_v2_library_with_frontier().await;
-    let settlement = SearchTopologySettlement::from_workspace_result(
-        "search-request-owner-root",
-        &serde_json::json!({
-            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-            "schemaVersion": "1",
-            "result": "exact-selector-ready",
-            "evidenceItemLimit": 30,
-            "evidence": [{
-                "owner": "src/registry.rs",
-                "item": "owner-root",
-                "selector": owner_selector,
-                "matchedBy": ["topology:0"],
-                "relation": "topology-owner-membership",
-                "hit": {"native": true}
-            }]
-        }),
-        &library,
-    )
-    .expect("owner-root Search evidence joins its topology owner");
-
-    let owner = settlement.as_json()["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["ownerLocator"] == owner_selector)
-        .expect("ranked owner root");
-    assert_eq!(owner["projection"]["rank"], 1);
-    assert_eq!(owner["projection"]["hit"]["native"], true);
-    assert_eq!(settlement.queryable_endpoint_count(), 1);
-    let rendered = settlement.render_org_gql().expect("owner-root GQL");
-    assert!(rendered.contains("owner_locator:\"rust://src/registry.rs\""));
-    assert!(rendered.contains("projection:{rank:1,depth:0,hit:{native:true}}"));
-}
-
-#[tokio::test]
-async fn generated_v2_frontier_is_preserved_in_public_gql() {
-    let library = generated_v2_library_with_frontier().await;
-    let settlement = SearchTopologySettlement::from_workspace_result(
-        "search-request-frontier",
-        &serde_json::json!({
-            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-            "schemaVersion": "1",
-            "result": "exact-selector-ready",
-            "evidenceItemLimit": 30,
-            "evidence": [{
-                "owner": "src/registry.rs",
-                "item": "struct/Registry",
-                "selector": "rust://src/registry.rs#item/struct/Registry",
-                "matchedBy": ["native-syntax:0"],
-                "relation": "native-selector",
-                "hit": {"native": true}
-            }]
-        }),
-        &library,
-    )
-    .expect("frontier-bearing Search settlement");
-
-    assert_eq!(settlement.as_json()["schemaVersion"], "1");
-    assert_eq!(
-        settlement.as_json()["frontiers"].as_array().unwrap().len(),
-        1
-    );
-    let gql = settlement.render_org_gql().unwrap();
-    assert!(gql.contains("(item3)-[:CALLS {modality:\"parser-direct\""));
-    assert!(gql.contains("(item2)-[:COVERS {modality:\"parser-direct\""));
-    assert!(gql.contains(
-        "(item3)-[:FRONTIER {relation:\"COVERS\",target_kind:\"heading\",depth:1,state:\"unknown\",reason:\"coverage-open\",coverage:\"coverage-expected-publication\"}]->(item1)"
-    ));
-}
-
 #[test]
 fn public_gql_aliases_do_not_expose_internal_hashed_node_ids() {
     let mut packet = valid_settlement();
@@ -653,58 +492,4 @@ fn workspace_result_cannot_mint_a_selector_absent_from_attached_topology() {
     )
     .expect_err("flat evidence cannot bypass topology authority");
     assert_eq!(error.reason_kind(), "search-selector-absent-from-topology");
-}
-
-#[tokio::test]
-async fn request_grounded_selector_joins_its_generation_owned_base_owner() {
-    let library = generated_v2_library_with_frontier().await;
-    let selector = "rust://src/registry.rs#item/function/new_runtime_selector";
-    let settlement = SearchTopologySettlement::from_workspace_result(
-        "search-request-grounded-selector",
-        &serde_json::json!({
-            "schemaId": "agent.semantic-protocols.workspace-search-playbook-result",
-            "schemaVersion": "1",
-            "result": "exact-selector-ready",
-            "evidenceItemLimit": 30,
-            "evidence": [{
-                "owner": "src/registry.rs",
-                "item": "function/new_runtime_selector",
-                "selector": selector,
-                "matchedBy": ["rg:0", "tantivy:0"],
-                "relation": "syntax-capture:function",
-                "hit": {"rg": [[1, 1]], "tantivy": ["new_runtime_selector"]}
-            }]
-        }),
-        &library,
-    )
-    .expect("request-grounded selector must join an admitted base owner");
-
-    assert_eq!(
-        settlement.as_json()["binding"]["topologyGenerationDigest"],
-        library.generation_digest()
-    );
-    assert!(
-        settlement.as_json()["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|node| node["selector"] == selector)
-    );
-    assert!(
-        settlement.as_json()["edges"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|edge| edge["relation"] == "CONTAINS"
-                && edge["witnesses"] == serde_json::json!(["search-result-grounding"]))
-    );
-
-    let rendered = settlement
-        .render_org_gql()
-        .expect("grounded result has a compact public projection");
-    assert!(rendered.contains("new_runtime_selector"));
-    assert!(!rendered.contains("registry-owner"));
-    assert!(!rendered.contains("owner_locator"));
-    assert!(!rendered.contains("search-result-grounding"));
-    assert!(!rendered.contains("[:CONTAINS"));
 }

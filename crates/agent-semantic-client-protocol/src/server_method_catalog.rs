@@ -46,14 +46,6 @@ const WORKSPACE_QUERY_PLAYBOOK_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-query-playbook-request";
 const WORKSPACE_QUERY_PLAYBOOK_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.query-playbook-materialization-receipt";
-const WORKSPACE_SYNTAX_QUERY_REQUEST_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-query-request";
-const WORKSPACE_SYNTAX_QUERY_RESPONSE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-query-response";
-const WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-request";
-const WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.asp-client-workspace-syntax-plan-context-response";
 
 pub const GRAPH_EVALUATE_METHOD: &str = "asp.graph.evaluate";
 pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
@@ -74,8 +66,6 @@ pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
 pub const WORKSPACE_GENERATION_ENSURE_READY_METHOD: &str = "asp.workspace.generation.ensure-ready";
 pub const WORKSPACE_SEARCH_PLAYBOOK_METHOD: &str = "asp.workspace.search.playbook";
 pub const WORKSPACE_QUERY_PLAYBOOK_METHOD: &str = "asp.workspace.query.playbook";
-pub const WORKSPACE_SYNTAX_QUERY_METHOD: &str = "asp.workspace.query.syntax";
-pub const WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD: &str = "asp.workspace.query.syntax-plan-context";
 pub const WORKSPACE_GENERATION_ENSURE_READY_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.asp-client-workspace-generation-ensure-ready-request";
 pub const WORKSPACE_GENERATION_ENSURE_READY_RESPONSE_SCHEMA_ID: &str =
@@ -97,8 +87,6 @@ pub fn classify_client_dispatch(method: &str) -> ClientDispatchClass {
         ClientDispatchClass::ColdGenerationAdmission
     } else if method == WORKSPACE_SEARCH_PLAYBOOK_METHOD
         || method == WORKSPACE_QUERY_PLAYBOOK_METHOD
-        || method == WORKSPACE_SYNTAX_QUERY_METHOD
-        || method == WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD
         || method == GRAPH_EVALUATE_METHOD
         || method.ends_with(".query")
     {
@@ -121,8 +109,6 @@ pub enum ServerClientRoute {
     WorkspaceGenerationEnsureReady,
     WorkspaceSearchPlaybook,
     WorkspaceQueryPlaybook,
-    WorkspaceSyntaxQuery,
-    WorkspaceSyntaxPlanContext,
     GraphEvaluate,
     GraphsTimeline,
     SourceIndexLookup,
@@ -147,8 +133,6 @@ impl ServerClientRoute {
             Self::WorkspaceGenerationEnsureReady => "workspace.generation.ensure-ready",
             Self::WorkspaceSearchPlaybook => "workspace.search.playbook",
             Self::WorkspaceQueryPlaybook => "workspace.query.playbook",
-            Self::WorkspaceSyntaxQuery => "workspace.query.syntax",
-            Self::WorkspaceSyntaxPlanContext => "workspace.query.syntax-plan-context",
             Self::GraphEvaluate => "graph.evaluate",
             Self::GraphsTimeline => "graphs.timeline",
             Self::SourceIndexLookup => "source-index.lookup",
@@ -180,8 +164,6 @@ pub fn server_client_methods(
         workspace_generation_ensure_ready_method(),
         workspace_search_playbook_method(),
         workspace_query_playbook_method(),
-        workspace_syntax_query_method(),
-        workspace_syntax_plan_context_method(),
         schema_bundle_method(),
         graph_evaluate_method(),
         graphs_timeline_method(),
@@ -380,16 +362,6 @@ pub fn resolve_server_client_method_owner(
             ServerClientRoute::WorkspaceQueryPlaybook,
         ));
     }
-    if method == WORKSPACE_SYNTAX_QUERY_METHOD {
-        return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::WorkspaceSyntaxQuery,
-        ));
-    }
-    if method == WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD {
-        return Ok(ResolvedServerClientMethod::Server(
-            ServerClientRoute::WorkspaceSyntaxPlanContext,
-        ));
-    }
     if method == GRAPH_TIMELINE_METHOD {
         return Ok(ResolvedServerClientMethod::Server(
             ServerClientRoute::GraphsTimeline,
@@ -504,44 +476,6 @@ fn workspace_query_playbook_method() -> ClientMethod {
             required_string("schemaVersion"),
             required("selectors", ClientParameterType::StringArray),
             required_string("projection"),
-        ],
-        cancellable: true,
-        streaming: false,
-    }
-}
-
-fn workspace_syntax_query_method() -> ClientMethod {
-    ClientMethod {
-        method: WORKSPACE_SYNTAX_QUERY_METHOD.to_owned(),
-        route_id: client_route_id(WORKSPACE_SYNTAX_QUERY_METHOD),
-        request_schema_id: client_schema_id(WORKSPACE_SYNTAX_QUERY_REQUEST_SCHEMA_ID),
-        response_schema_id: client_schema_id(WORKSPACE_SYNTAX_QUERY_RESPONSE_SCHEMA_ID),
-        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
-        parameters: vec![
-            required_string("schemaId"),
-            required_string("schemaVersion"),
-            optional("languages", ClientParameterType::String),
-            optional("documents", ClientParameterType::String),
-            optional("workspace", ClientParameterType::String),
-            required("syntax", ClientParameterType::Json),
-            required_string("projection"),
-        ],
-        cancellable: true,
-        streaming: false,
-    }
-}
-
-fn workspace_syntax_plan_context_method() -> ClientMethod {
-    ClientMethod {
-        method: WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD.to_owned(),
-        route_id: client_route_id(WORKSPACE_SYNTAX_PLAN_CONTEXT_METHOD),
-        request_schema_id: client_schema_id(WORKSPACE_SYNTAX_PLAN_CONTEXT_REQUEST_SCHEMA_ID),
-        response_schema_id: client_schema_id(WORKSPACE_SYNTAX_PLAN_CONTEXT_RESPONSE_SCHEMA_ID),
-        error_schema_ids: vec![client_schema_id(ROUTE_FAILURE_SCHEMA_ID)],
-        parameters: vec![
-            required_string("schemaId"),
-            required_string("schemaVersion"),
-            required_string("producer"),
         ],
         cancellable: true,
         streaming: false,

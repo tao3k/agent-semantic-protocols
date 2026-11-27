@@ -20,7 +20,6 @@ use agent_semantic_search_playbook::{
 use agent_semantic_topology::{
     AgentOrgTopologyOverlay, AgentOrgTopologyOverlayError, AgentTopologyRelationship,
     OrgDocumentProjectionPort, ProjectTopologyManifest, ProjectTopologyManifestError,
-    ProjectTopologySourceProgram, ProjectTopologySourceProgramError,
 };
 
 use crate::{
@@ -69,14 +68,6 @@ impl MarlinConvergedSearchEngine {
         org_source: &str,
     ) -> Result<ProjectTopologyManifest, ProjectTopologyManifestError> {
         ProjectTopologyManifest::parse_with_port(org_source, self.org_port.as_ref())
-    }
-
-    /// Admit a canonical Project Topology source program through Marlin's Org port.
-    pub fn admit_topology_program(
-        &self,
-        org_source: &str,
-    ) -> Result<ProjectTopologySourceProgram, ProjectTopologySourceProgramError> {
-        ProjectTopologySourceProgram::parse_with_port(org_source, self.org_port.as_ref())
     }
 
     /// Admit an Agent-authored Org topology overlay through Marlin's Org port.

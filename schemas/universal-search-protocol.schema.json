@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "UniversalSearchKind": {
+      "description": "Universal cross-language General Ontology symbol kind domain shared across all ASP providers.",
+      "enum": [
+        "any",
+        "function",
+        "method",
+        "struct",
+        "enum",
+        "trait",
+        "interface",
+        "class",
+        "type",
+        "impl",
+        "macro",
+        "module",
+        "constant",
+        "binding",
+        "item",
+        "import",
+        "test"
+      ],
+      "type": "string"
+    },
+    "UniversalSearchProjection": {
+      "description": "Universal result projection surface shared by ASP search/query endpoints.",
+      "enum": [
+        "matches",
+        "source",
+        "callable-skeleton"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://agent-semantic-protocols.local/schemas/universal-search-protocol.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Universal ASP Search & Query Protocol Contract (`universal-search-protocol.schema.json`).\n\nSingle language-neutral Draft 2020-12 protocol schema forwarded by ASP `GET /v1/providers`\n(`universalProtocolSchema`). External language providers (`asp-rust`, `asp-python`,\n`asp-typescript`, `AspJulia.jl`, `asp-gerbil-scheme`, ...) extend this base contract via\n[`ProviderSpecialExtension`] over HTTP/gRPC without modifying ASP or Marlin core.",
+  "properties": {
+    "context": {
+      "description": "Source context lines shown around each match.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "exclude-path-prefix": {
+      "description": "Workspace-relative path prefix excluded from results.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exclude-tests?": {
+      "description": "Exclude test files and test modules from results.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "ext": {
+      "description": "Source file extension filter without leading dot (projected from provider manifests).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UniversalSearchKind"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Universal General Ontology symbol kind filter (refined per language by `special`)."
+    },
+    "lang": {
+      "description": "Canonical language identifier served by an ASP provider (or `\"any\"`).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "languageKind": {
+      "description": "Native compiler AST node kind (populated dynamically from each provider's `special` schema).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limit": {
+      "description": "Maximum returned hits or rows.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max-per-file": {
+      "description": "Maximum symbols emitted per file in multi-file `file-outline`.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "min-files": {
+      "description": "Minimum distinct files sharing a symbol name in `find-collisions` (2..4).",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "module-limit": {
+      "description": "Maximum scoped modules passed into finite-choice `solve-placement`.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "name-contains": {
+      "description": "Case-insensitive substring or token list matched against symbol names.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "path-prefix": {
+      "description": "Workspace-relative directory or file path prefix scoping the query.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "projection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UniversalSearchProjection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Result projection surface (`matches`, `source`, `callable-skeleton`)."
+    },
+    "special": {
+      "additionalProperties": true,
+      "description": "Optional language-specific `special` extension filters validated against the active provider's schema.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "state-budget": {
+      "description": "Bounded Dusa finite-choice exploration state budget.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "symbol": {
+      "description": "Exact symbol anchor name for zero-I/O file reads or impact analysis.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "title": "ASP Universal Search Protocol",
+  "type": "object",
+  "x-schema-version": "1"
+}

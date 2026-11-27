@@ -123,6 +123,8 @@ pub(super) fn assemble_from_snapshot(
             line_offsets,
             symbols: semantics.symbols,
             imports: semantics.imports,
+            open_edb_entities: Vec::new(),
+            open_edb_edges: Vec::new(),
         });
     }
 
@@ -649,6 +651,8 @@ fn build_file_record_from_bytes(relative_path: String, bytes: Vec<u8>) -> Option
             line_offsets,
             symbols: semantics.symbols,
             imports: semantics.imports,
+            open_edb_entities: Vec::new(),
+            open_edb_edges: Vec::new(),
         },
         trigrams,
     })
